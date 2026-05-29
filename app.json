@@ -20,7 +20,8 @@
       "reactCompiler": true
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "extra": {
       "eas": {
