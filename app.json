@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "CustodiCore",
+    "slug": "custodicore",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "custodicore",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.yuttq.custodicore"
+    },
+    "web": {},
+    "experiments": {
+      "reactCompiler": true
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "91bdab4f-6989-4532-90f8-0f99edcf0708"
+      }
+    },
+    "owner": "yuttq"
+  }
+}
