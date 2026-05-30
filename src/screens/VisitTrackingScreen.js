@@ -2,13 +2,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import VisitTimelineStep from '../components/VisitTimelineStep';
+import VisitProgressTimeline from '../components/VisitProgressTimeline';
 import { Card, StatusChip, colors, layout, spacing, typography } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
 import { getMockVisitTrackingTimeline } from '../mock/visitTrackingTimeline.mock';
 
 /**
  * Visit tracking — full BJMP 11-step vertical timeline (v2.1).
+ * Shares courier-style layout with `TimelineScreen` via `VisitProgressTimeline`.
  */
 export default function VisitTrackingScreen({ navigation, route }) {
   const visitId = route?.params?.visitId ?? route?.params?.scheduleId;
@@ -64,24 +65,10 @@ export default function VisitTrackingScreen({ navigation, route }) {
           ) : null}
         </Card>
 
-        <Text style={styles.timelineHeading}>Progress Timeline</Text>
-        <Text style={styles.timelineSub}>
-          Chronological status from registration through visit completion.
-        </Text>
-
-        <View style={styles.timeline}>
-          {steps.map((item, index) => (
-            <VisitTimelineStep
-              key={item.id}
-              stepState={item.stepState}
-              title={item.title}
-              description={item.description}
-              occurredAt={item.occurredAt}
-              officerNote={item.officerNote}
-              isLast={index === steps.length - 1}
-            />
-          ))}
-        </View>
+        <VisitProgressTimeline
+          steps={steps}
+          subtitle="Chronological status from registration through visit completion."
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -93,7 +80,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
     paddingVertical: spacing[8],
   },
   backButton: {
@@ -112,7 +99,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing[32],
   },
   summaryCard: {
@@ -138,23 +125,5 @@ const styles = StyleSheet.create({
   chipWrap: {
     marginTop: spacing[12],
     alignSelf: 'flex-start',
-  },
-  timelineHeading: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing[4],
-  },
-  timelineSub: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing[16],
-    lineHeight: 22,
-  },
-  timeline: {
-    backgroundColor: colors.card,
-    borderRadius: layout.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing[16],
   },
 });

@@ -11,6 +11,8 @@ import { getRequiredVerificationDocuments } from '../utils/visitorVerificationDo
  * @property {string} label
  * @property {DocumentUploadStatus} uploadStatus
  * @property {string | null} [uploadedAt]
+ * @property {string | null} [verifiedAt]
+ * @property {string | null} [rejectionReason]
  * @property {string | null} [reviewNote]
  */
 
@@ -25,12 +27,13 @@ import { getRequiredVerificationDocuments } from '../utils/visitorVerificationDo
  * @property {string | null} [rejectionReason]
  */
 
-/** @type {Record<string, Record<string, { uploadStatus: DocumentUploadStatus, uploadedAt?: string, reviewNote?: string }>>} */
+/** @type {Record<string, Record<string, Partial<MockVerificationDocument>>>} */
 const DOCUMENT_STATUS_PRESETS = {
   spouse: {
     marriage_certificate: {
       uploadStatus: 'verified',
       uploadedAt: '2026-05-02T10:15:00',
+      verifiedAt: '2026-05-03T14:15:00',
       reviewNote: 'Certificate matched submitted profile.',
     },
     government_id: {
@@ -44,7 +47,7 @@ const DOCUMENT_STATUS_PRESETS = {
       uploadedAt: '2026-05-04T14:30:00',
     },
     government_id: {
-      uploadStatus: 'uploaded',
+      uploadStatus: 'under_review',
       uploadedAt: '2026-05-04T14:35:00',
     },
   },
@@ -60,17 +63,19 @@ const DOCUMENT_STATUS_PRESETS = {
     authorization_documents: {
       uploadStatus: 'rejected',
       uploadedAt: '2026-05-01T09:00:00',
-      reviewNote: 'Authorization letter is missing notarized signature.',
+      rejectionReason: 'Authorization letter is missing notarized signature.',
     },
     government_id: {
       uploadStatus: 'verified',
       uploadedAt: '2026-05-01T09:05:00',
+      verifiedAt: '2026-05-02T10:30:00',
     },
   },
   parent: {
     government_id: {
       uploadStatus: 'verified',
       uploadedAt: '2026-04-28T11:00:00',
+      verifiedAt: '2026-04-29T08:30:00',
     },
   },
 };
@@ -128,6 +133,8 @@ export function getMockVisitorVerification(relationshipId = 'spouse') {
       label: doc.label,
       uploadStatus: preset?.uploadStatus ?? 'pending',
       uploadedAt: preset?.uploadedAt ?? null,
+      verifiedAt: preset?.verifiedAt ?? null,
+      rejectionReason: preset?.rejectionReason ?? null,
       reviewNote: preset?.reviewNote ?? null,
     };
   });
@@ -161,13 +168,12 @@ function getRelationshipLabelFromId(relationshipId) {
 }
 
 /**
- * Maps mock upload status to StatusChip keys.
+ * Maps document workflow status to StatusChip keys (BJMP: Pending, Under Review, Verified, Rejected).
  * @param {DocumentUploadStatus} uploadStatus
  */
-export function documentUploadStatusToChip(uploadStatus) {
+export function documentWorkflowStatusToChip(uploadStatus) {
   switch (uploadStatus) {
     case 'uploaded':
-      return 'document_uploaded';
     case 'under_review':
       return 'document_under_review';
     case 'verified':
@@ -178,4 +184,12 @@ export function documentUploadStatusToChip(uploadStatus) {
     default:
       return 'document_pending';
   }
+}
+
+/**
+ * Maps mock upload status to StatusChip keys.
+ * @param {DocumentUploadStatus} uploadStatus
+ */
+export function documentUploadStatusToChip(uploadStatus) {
+  return documentWorkflowStatusToChip(uploadStatus);
 }

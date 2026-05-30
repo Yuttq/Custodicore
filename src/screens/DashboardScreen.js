@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,17 +22,20 @@ import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
+import { FACILITY_RULES, VISITOR_REMINDERS } from '../mock/assignedVisits.mock';
 import { MOCK_VERIFICATION_ITEMS } from '../mock/dashboard.mock';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 
-const QUICK_ACTIONS_TOP = [
-  { label: 'My Visits', icon: 'calendar-outline', tab: 'Schedule', variant: 'standard' },
-  { label: 'QR Pass', icon: 'qr-code', tab: 'QR', variant: 'primary' },
-];
-
-const QUICK_ACTIONS_BOTTOM = [
-  { label: 'Notifications', icon: 'notifications-outline', tab: 'Notifications', variant: 'standard' },
-  { label: 'Profile', icon: 'person-outline', tab: 'Profile', variant: 'standard' },
+/** Auxiliary shortcuts — excludes items already in bottom navigation. */
+const QUICK_ACTION_ROWS = [
+  [
+    { id: 'history', label: 'Visit History', icon: 'time-outline' },
+    { id: 'documents', label: 'Verification Documents', icon: 'document-text-outline' },
+  ],
+  [
+    { id: 'guidelines', label: 'Facility Guidelines', icon: 'book-outline' },
+    { id: 'help', label: 'Help Center', icon: 'help-circle-outline' },
+  ],
 ];
 
 function getTimeGreeting() {
@@ -42,25 +46,17 @@ function getTimeGreeting() {
 }
 
 function QuickActionTile({ action, onPress }) {
-  const isPrimary = action.variant === 'primary';
-
   return (
     <Pressable
-      style={[styles.quickItem, isPrimary && styles.quickItemPrimary]}
+      style={styles.quickItem}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={action.label}
     >
-      <View style={[styles.quickIconCircle, isPrimary && styles.quickIconPrimary]}>
-        <Ionicons
-          name={action.icon}
-          size={isPrimary ? 30 : 26}
-          color={isPrimary ? colors.white : colors.primaryTeal}
-        />
+      <View style={styles.quickIconCircle}>
+        <Ionicons name={action.icon} size={26} color={colors.primaryTeal} />
       </View>
-      <Text style={[styles.quickLabel, isPrimary && styles.quickLabelPrimary]}>
-        {action.label}
-      </Text>
+      <Text style={styles.quickLabel}>{action.label}</Text>
     </Pressable>
   );
 }
@@ -97,6 +93,42 @@ export default function DashboardScreen({ navigation }) {
     if (!nextVisit) return;
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
   };
+
+  const onQuickAction = useCallback(
+    (actionId) => {
+      if (actionId === 'history') {
+        navigation.navigate('VisitHistory');
+        return;
+      }
+      if (actionId === 'documents') {
+        navigation.navigate('VisitorVerificationDocuments', {
+          relationshipId:
+            registrationSummary?.relationship ??
+            DEFAULT_LOCAL_PROFILE.relationshipToPdl ??
+            'spouse',
+        });
+        return;
+      }
+      if (actionId === 'guidelines') {
+        const body = [
+          'Facility rules:',
+          ...FACILITY_RULES.map((rule) => `• ${rule}`),
+          '',
+          'Visitor reminders:',
+          ...VISITOR_REMINDERS.map((reminder) => `• ${reminder}`),
+        ].join('\n');
+        Alert.alert('Facility Guidelines', body);
+        return;
+      }
+      if (actionId === 'help') {
+        Alert.alert(
+          'Help Center',
+          'For visit scheduling, verification, or facility questions, contact the BJMP facility front desk during business hours or use the reference number on your assigned visit.',
+        );
+      }
+    },
+    [navigation, registrationSummary?.relationship],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -177,24 +209,17 @@ export default function DashboardScreen({ navigation }) {
 
         <Text style={styles.sectionLabel}>Quick Actions</Text>
         <View style={styles.quickSection}>
-          <View style={styles.quickRow}>
-            {QUICK_ACTIONS_TOP.map((action) => (
-              <QuickActionTile
-                key={action.label}
-                action={action}
-                onPress={() => navigation.navigate(action.tab)}
-              />
-            ))}
-          </View>
-          <View style={styles.quickRow}>
-            {QUICK_ACTIONS_BOTTOM.map((action) => (
-              <QuickActionTile
-                key={action.label}
-                action={action}
-                onPress={() => navigation.navigate(action.tab)}
-              />
-            ))}
-          </View>
+          {QUICK_ACTION_ROWS.map((row) => (
+            <View key={row.map((action) => action.id).join('-')} style={styles.quickRow}>
+              {row.map((action) => (
+                <QuickActionTile
+                  key={action.id}
+                  action={action}
+                  onPress={() => onQuickAction(action.id)}
+                />
+              ))}
+            </View>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -352,9 +377,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[8],
     alignItems: 'center',
   },
-  quickItemPrimary: {
-    flex: 1.15,
-  },
   quickIconCircle: {
     width: 56,
     height: 56,
@@ -366,20 +388,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing[8],
   },
-  quickIconPrimary: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primaryTeal,
-    borderWidth: 0,
-  },
   quickLabel: {
     ...typography.caption,
     color: colors.textPrimary,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  quickLabelPrimary: {
-    color: colors.primaryTeal,
   },
 });

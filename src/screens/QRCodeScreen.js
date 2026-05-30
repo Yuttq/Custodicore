@@ -12,6 +12,7 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, layout, spacing, typography } from '../designSystem';
+import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import {
@@ -91,9 +92,22 @@ function InfoLine({ label, value }) {
 }
 
 /**
+ * @param {string | null | undefined} message
+ */
+function isNoActiveQrPassError(message) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('no upcoming visit') ||
+    normalized.includes('no active qr') ||
+    normalized.includes('no confirmed visit')
+  );
+}
+
+/**
  * Digital visit pass — gate QR with expiry countdown (v2.1).
  */
-export default function QRCodeScreen({ route }) {
+export default function QRCodeScreen({ route, navigation }) {
   const scheduleIdParam = route?.params?.scheduleId ?? route?.params?.visitId;
   const { visits } = useVisits();
 
@@ -177,6 +191,11 @@ export default function QRCodeScreen({ route }) {
   const countdownDisplay = formatCountdown(secondsLeft);
   const isExpired = secondsLeft <= 0 && qrPayload?.expiresAt;
   const tabBarInset = useTabBarScrollInset();
+  const showNoActivePass = !loading && !qrPayload && isNoActiveQrPassError(error);
+
+  const onViewMyVisits = useCallback(() => {
+    navigation.navigate('Schedule');
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -192,12 +211,33 @@ export default function QRCodeScreen({ route }) {
             <ActivityIndicator size="large" color={colors.primaryTeal} />
             <Text style={styles.loadingText}>Loading visit pass…</Text>
           </View>
+        ) : showNoActivePass ? (
+          <EmptyState
+            title="No Active QR Pass"
+            message="A QR pass is issued when you have a confirmed assigned visit. Check My Visits for your schedule, or pull to refresh after an officer assigns a visit."
+            iconName="qr-code-outline"
+            iconColor={colors.primaryTeal}
+            style={styles.centerBlock}
+          >
+            <Button
+              title="View My Visits"
+              onPress={onViewMyVisits}
+              accessibilityLabel="View my assigned visits"
+            />
+          </EmptyState>
         ) : error ? (
           <View style={styles.centerBlock}>
-            <Text style={styles.errorText} accessibilityRole="alert">
-              {error}
-            </Text>
-            <Button title="Retry" onPress={() => load('initial')} />
+            <EmptyState
+              title="Couldn't Load QR Pass"
+              message={error}
+              emphasis="error"
+              iconName="cloud-offline-outline"
+              iconColor={colors.danger}
+              accessibilityRole="alert"
+              style={styles.errorEmpty}
+            >
+              <Button title="Retry" onPress={() => load('initial')} accessibilityLabel="Retry loading QR pass" />
+            </EmptyState>
           </View>
         ) : (
           <>
@@ -294,10 +334,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[20],
   },
   centerBlock: {
-    minHeight: 280,
+    minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing[16],
+  },
+  errorEmpty: {
+    paddingVertical: spacing[16],
   },
   loadingText: {
     ...typography.body,

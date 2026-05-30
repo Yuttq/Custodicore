@@ -193,35 +193,35 @@ export default function NotificationsScreen() {
           accessibilityState={{ selected: item.read }}
           accessibilityLabel={
             item.read
-              ? `${item.title}. Read.`
-              : `${item.title}. Unread. Tap to mark as read.`
+              ? `${item.title}. Read.${item.body ? ` ${item.body}` : ''}`
+              : `${item.title}. Unread. Tap to mark as read.${item.body ? ` ${item.body}` : ''}`
           }
         >
-          <Card style={styles.card}>
-            <View style={styles.rowTop}>
-              {!item.read ? (
-                <View style={styles.unreadRail} accessibilityLabel="Unread">
-                  <View style={styles.unreadDot} />
-                </View>
-              ) : (
-                <View style={styles.readSpacer} />
-              )}
+          <Card style={[styles.card, !item.read && styles.cardUnread]}>
+            <View style={styles.cardRow}>
               <View style={styles.textBlock}>
-                <Text
-                  style={[
-                    typography.headline,
-                    styles.title,
-                    !item.read && styles.titleUnread,
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.title}
-                </Text>
+                <View style={styles.titleRow}>
+                  <Text
+                    style={[
+                      typography.bodyStrong,
+                      styles.title,
+                      !item.read && styles.titleUnread,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.title}
+                  </Text>
+                  {!item.read ? (
+                    <View style={styles.unreadDot} accessibilityLabel="Unread" />
+                  ) : null}
+                </View>
                 {dateLabel ? (
-                  <Text style={[typography.captionStrong, styles.date]}>{dateLabel}</Text>
+                  <Text style={[typography.caption, styles.date]} numberOfLines={1}>
+                    {dateLabel}
+                  </Text>
                 ) : null}
                 {item.body ? (
-                  <Text style={[typography.body, styles.body]} numberOfLines={4}>
+                  <Text style={[typography.caption, styles.body]} numberOfLines={2}>
                     {item.body}
                   </Text>
                 ) : null}
@@ -300,15 +300,17 @@ export default function NotificationsScreen() {
       return (
         <EmptyState
           title={`No ${filterLabel.toLowerCase()} notifications`}
-          message="Try another filter or pull down to refresh."
+          message="Nothing in this category right now. Try another filter or pull down to refresh."
+          iconName="filter-outline"
           style={styles.emptyWrap}
         />
       );
     }
     return (
       <EmptyState
-        title="No notifications"
-        message="Alerts about visit approvals, schedule changes, and reminders will show up here. Pull down to refresh."
+        title="No Notifications"
+        message="Alerts about visit assignments, confirmations, schedule changes, and facility updates will appear here when available."
+        iconName="notifications-off-outline"
         style={styles.emptyWrap}
       />
     );
@@ -323,6 +325,10 @@ export default function NotificationsScreen() {
         renderItem={renderItem}
         renderSectionHeader={renderSectionHeader}
         stickySectionHeadersEnabled={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={8}
+        removeClippedSubviews={Platform.OS === 'android'}
         contentContainerStyle={
           sections.length === 0 ? styles.listEmptyContent : styles.listContent
         }
@@ -343,7 +349,8 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   listContent: {
-    padding: layout.screenPadding,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.spacing.sm,
     paddingBottom: layout.spacing.md,
   },
   listEmptyContent: {
@@ -355,7 +362,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: layout.spacing.sm,
-    marginBottom: layout.spacing.md,
+    marginBottom: layout.spacing.sm,
   },
   filterChip: {
     paddingHorizontal: layout.spacing.md,
@@ -383,64 +390,56 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginTop: layout.spacing.md,
-    marginBottom: layout.spacing.sm,
+    marginTop: layout.spacing.sm,
+    marginBottom: layout.spacing.xs,
   },
   sectionHeaderFirst: {
     marginTop: 0,
   },
   card: {
-    marginBottom: layout.cardGap,
+    marginBottom: layout.spacing.sm,
+    paddingVertical: layout.spacing.sm,
+    paddingHorizontal: layout.spacing.md,
   },
-  rowTop: {
+  cardUnread: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  cardRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
-  unreadRail: {
-    width: 14,
-    marginRight: layout.spacing.sm,
-    alignItems: 'center',
-    paddingTop: 4,
-  },
-  unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.white,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.35,
-        shadowRadius: 3,
-      },
-      android: {},
-    }),
-  },
-  readSpacer: {
-    width: 14,
-    marginRight: layout.spacing.sm,
-  },
   textBlock: {
     flex: 1,
+    minWidth: 0,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: layout.spacing.sm,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    flexShrink: 0,
   },
   title: {
     color: colors.textPrimary,
+    flex: 1,
   },
   titleUnread: {
     color: colors.primary,
   },
   date: {
     color: colors.textSecondary,
-    marginTop: layout.spacing.xs,
-    letterSpacing: 0.15,
+    marginTop: 2,
   },
   body: {
     color: colors.textMuted,
-    marginTop: layout.spacing.sm,
-    lineHeight: 21,
+    marginTop: layout.spacing.xs,
+    lineHeight: 17,
   },
   emptyWrap: {
     flex: 1,

@@ -3,9 +3,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CustomButton, EmptyState, LoadingSpinner } from '../components';
-import VisitTimelineStep from '../components/VisitTimelineStep';
+import VisitProgressTimeline from '../components/VisitProgressTimeline';
 import { Card, StatusChip, colors, layout, spacing, typography } from '../designSystem';
-import * as api from '../services/api';
+import { fetchVisitTimeline } from '../repositories/timelineRepository';
 
 /**
  * @param {Record<string, unknown>} raw
@@ -92,6 +92,20 @@ function deriveDisplaySteps(events) {
   });
 }
 
+/** @param {unknown[]} events */
+function isMockTimelineFormat(events) {
+  return (
+    events.length > 0 &&
+    events.every(
+      (event) =>
+        event &&
+        typeof event === 'object' &&
+        'stepState' in event &&
+        typeof /** @type {Record<string, unknown>} */ (event).stepState === 'string',
+    )
+  );
+}
+
 export default function TimelineScreen({ navigation, route }) {
   const scheduleId = route?.params?.scheduleId;
   const referenceNumber = route?.params?.referenceNumber;
@@ -103,6 +117,9 @@ export default function TimelineScreen({ navigation, route }) {
   const [error, setError] = useState(null);
 
   const sortedEvents = useMemo(() => {
+    if (isMockTimelineFormat(events)) {
+      return events;
+    }
     return [...events].sort((a, b) => {
       const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
       const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
@@ -110,7 +127,12 @@ export default function TimelineScreen({ navigation, route }) {
     });
   }, [events]);
 
-  const displaySteps = useMemo(() => deriveDisplaySteps(sortedEvents), [sortedEvents]);
+  const displaySteps = useMemo(() => {
+    if (isMockTimelineFormat(sortedEvents)) {
+      return sortedEvents;
+    }
+    return deriveDisplaySteps(sortedEvents);
+  }, [sortedEvents]);
 
   const load = useCallback(async () => {
     if (!scheduleId || String(scheduleId).trim() === '' || scheduleId === '—') {
@@ -123,8 +145,12 @@ export default function TimelineScreen({ navigation, route }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getTimeline(String(scheduleId));
-      setEvents(normalizeTimelineResponse(data));
+      const result = await fetchVisitTimeline(String(scheduleId), visitStatus);
+      if (result.source === 'mock') {
+        setEvents(result.steps);
+      } else {
+        setEvents(normalizeTimelineResponse(result.data));
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not load timeline.';
       setError(message);
@@ -132,7 +158,7 @@ export default function TimelineScreen({ navigation, route }) {
     } finally {
       setLoading(false);
     }
-  }, [scheduleId]);
+  }, [scheduleId, visitStatus]);
 
   useEffect(() => {
     load();
@@ -193,35 +219,7 @@ export default function TimelineScreen({ navigation, route }) {
             ) : null}
           </Card>
 
-          <Text style={styles.timelineHeading}>Progress Timeline</Text>
-          <Text style={styles.timelineSub}>
-            Track each milestone from registration through visit completion — like parcel
-            delivery updates.
-          </Text>
-
-          {displaySteps.length === 0 ? (
-            <View style={styles.timelineEmpty}>
-              <EmptyState
-                title="No timeline events"
-                message="Steps such as assignment, confirmation, check-in, and check-out will appear here when recorded."
-              />
-            </View>
-          ) : (
-            <View style={styles.timelineCard}>
-              {displaySteps.map((item, index) => (
-                <VisitTimelineStep
-                  key={item.id}
-                  stepState={item.stepState}
-                  title={item.title}
-                  description={item.description}
-                  occurredAt={item.occurredAt}
-                  officerNote={item.officerNote}
-                  isLast={index === displaySteps.length - 1}
-                  carded
-                />
-              ))}
-            </View>
-          )}
+          <VisitProgressTimeline steps={displaySteps} />
         </ScrollView>
       )}
     </SafeAreaView>
@@ -237,7 +235,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
     paddingVertical: spacing[8],
   },
   backButton: {
@@ -256,7 +254,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing[32],
     flexGrow: 1,
   },
@@ -284,29 +282,6 @@ const styles = StyleSheet.create({
     marginTop: spacing[12],
     alignSelf: 'flex-start',
   },
-  timelineHeading: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing[4],
-  },
-  timelineSub: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing[16],
-    lineHeight: 22,
-  },
-  timelineCard: {
-    backgroundColor: colors.card,
-    borderRadius: layout.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing[16],
-  },
-  timelineEmpty: {
-    minHeight: 320,
-    justifyContent: 'center',
-    paddingVertical: spacing[16],
-  },
   emptyActions: {
     marginTop: spacing[16],
     alignSelf: 'stretch',
@@ -316,13 +291,8 @@ const styles = StyleSheet.create({
   centered: {
     flex: 1,
     minHeight: 280,
-    padding: spacing[20],
+    padding: layout.screenPadding,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  muted: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing[8],
   },
 });

@@ -11,22 +11,40 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import { EmptyState } from '../components';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 import {
-  documentUploadStatusToChip,
+  documentWorkflowStatusToChip,
   getMockVisitorVerification,
 } from '../mock/visitorVerificationDocuments.mock';
 import { formatDate, formatTime } from '../utils';
 import { getRelationshipLabel } from '../utils/registrationRequirements';
 
+/**
+ * @param {string | null | undefined} isoDate
+ */
+function formatDocumentDate(isoDate) {
+  if (!isoDate) return null;
+  const datePart = formatDate(isoDate);
+  const timePart = formatTime(isoDate);
+  return [datePart, timePart].filter(Boolean).join(' · ');
+}
+
+function DocInfoRow({ label, value }) {
+  return (
+    <View style={styles.docInfoRow}>
+      <Text style={styles.docInfoLabel}>{label}</Text>
+      <Text style={styles.docInfoValue}>{value || '—'}</Text>
+    </View>
+  );
+}
+
 function DocumentStatusRow({ document: doc }) {
-  const chipStatus = documentUploadStatusToChip(doc.uploadStatus);
-  const whenLine = (() => {
-    if (!doc.uploadedAt) return null;
-    const datePart = formatDate(doc.uploadedAt);
-    const timePart = formatTime(doc.uploadedAt);
-    return [datePart, timePart].filter(Boolean).join(' · ');
-  })();
+  const chipStatus = documentWorkflowStatusToChip(doc.uploadStatus);
+  const submittedDate = formatDocumentDate(doc.uploadedAt);
+  const verifiedDate = formatDocumentDate(doc.verifiedAt);
+  const isPending = doc.uploadStatus === 'pending';
+  const isRejected = doc.uploadStatus === 'rejected';
 
   return (
     <Card style={styles.docCard}>
@@ -55,15 +73,31 @@ function DocumentStatusRow({ document: doc }) {
             <Text style={styles.docTitle}>{doc.label}</Text>
             <StatusChip status={chipStatus} />
           </View>
-          {whenLine ? (
-            <Text style={styles.docMeta}>Uploaded {whenLine}</Text>
-          ) : (
-            <Text style={styles.docMetaMuted}>Not uploaded yet</Text>
-          )}
-          {doc.reviewNote ? (
-            <View style={styles.reviewNoteWrap}>
-              <Text style={styles.reviewNoteLabel}>Review note</Text>
-              <Text style={styles.reviewNoteBody}>{doc.reviewNote}</Text>
+
+          <DocInfoRow label="Document Name" value={doc.label} />
+          <DocInfoRow
+            label="Status"
+            value={
+              chipStatus === 'document_pending'
+                ? 'Pending'
+                : chipStatus === 'document_under_review'
+                  ? 'Under Review'
+                  : chipStatus === 'document_verified'
+                    ? 'Verified'
+                    : 'Rejected'
+            }
+          />
+          <DocInfoRow
+            label="Submitted Date"
+            value={isPending ? 'Not submitted yet' : submittedDate}
+          />
+          {verifiedDate ? (
+            <DocInfoRow label="Verified Date" value={verifiedDate} />
+          ) : null}
+          {isRejected && doc.rejectionReason ? (
+            <View style={styles.rejectionWrap}>
+              <Text style={styles.rejectionLabel}>Rejection Reason</Text>
+              <Text style={styles.rejectionBody}>{doc.rejectionReason}</Text>
             </View>
           ) : null}
         </View>
@@ -154,19 +188,37 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
           verification.
         </Text>
 
-        {verification.documents.map((doc) => (
-          <DocumentStatusRow key={doc.key} document={doc} />
-        ))}
+        {totalCount === 0 ? (
+          <EmptyState
+            title="No Verification Documents"
+            message="Required documents for your relationship are not available yet. Contact facility staff if you believe this is an error."
+            iconName="document-text-outline"
+            iconColor={colors.primaryTeal}
+            style={styles.documentsEmpty}
+          >
+            <Button
+              title="Go Back"
+              onPress={() => navigation.goBack()}
+              accessibilityLabel="Go back"
+            />
+          </EmptyState>
+        ) : (
+          <>
+            {verification.documents.map((doc) => (
+              <DocumentStatusRow key={doc.key} document={doc} />
+            ))}
 
-        <Button
-          title="Upload or Update Documents"
-          onPress={() =>
-            navigation.navigate('UploadID', {
-              relationshipId,
-            })
-          }
-          accessibilityLabel="Upload or update verification documents"
-        />
+            <Button
+              title="Upload or Update Documents"
+              onPress={() =>
+                navigation.navigate('UploadID', {
+                  relationshipId,
+                })
+              }
+              accessibilityLabel="Upload or update verification documents"
+            />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -278,6 +330,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing[16],
     lineHeight: 18,
   },
+  documentsEmpty: {
+    paddingVertical: spacing[24],
+    marginBottom: spacing[16],
+  },
   docCard: {
     borderRadius: layout.cardRadius,
     marginBottom: spacing[12],
@@ -305,7 +361,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing[8],
-    marginBottom: spacing[4],
+    marginBottom: spacing[12],
   },
   docTitle: {
     ...typography.body,
@@ -313,31 +369,36 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
   },
-  docMeta: {
+  docInfoRow: {
+    marginBottom: spacing[8],
+  },
+  docInfoLabel: {
     ...typography.caption,
     color: colors.textSecondary,
+    marginBottom: spacing[4],
   },
-  docMetaMuted: {
+  docInfoValue: {
     ...typography.caption,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
+    color: colors.textPrimary,
+    fontWeight: '500',
+    lineHeight: 18,
   },
-  reviewNoteWrap: {
-    marginTop: spacing[8],
-    padding: spacing[8],
+  rejectionWrap: {
+    marginTop: spacing[4],
+    padding: spacing[10],
     borderRadius: 8,
-    backgroundColor: colors.background,
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
   },
-  reviewNoteLabel: {
+  rejectionLabel: {
     ...typography.statusLabel,
-    color: colors.textSecondary,
+    color: colors.danger,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
     marginBottom: spacing[4],
   },
-  reviewNoteBody: {
+  rejectionBody: {
     ...typography.caption,
     color: colors.textPrimary,
     lineHeight: 18,

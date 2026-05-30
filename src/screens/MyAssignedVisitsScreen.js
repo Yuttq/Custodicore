@@ -19,7 +19,7 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { LoadingSpinner } from '../components';
+import { LoadingSpinner, EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { getVisitListTab } from '../mock/assignedVisits.mock';
@@ -32,18 +32,46 @@ const TABS = [
 
 const LOADING_MS = 500;
 
-function VisitListEmpty({ tab }) {
-  const messages = {
-    assigned: 'No assigned visits at this time. Pull down to refresh.',
-    completed: 'No completed visits yet.',
-    cancelled: 'No cancelled visits.',
+function VisitListEmpty({ tab, onReturnHome }) {
+  const config = {
+    assigned: {
+      title: 'No Assigned Visits',
+      message:
+        'Visit schedules are assigned by facility officers. When a visit is assigned to you, it will appear here.',
+      icon: 'calendar-outline',
+      actionTitle: 'Return to Home',
+    },
+    completed: {
+      title: 'No Completed Visits',
+      message: 'Visits you have completed will be listed here for your records.',
+      icon: 'checkmark-done-outline',
+      actionTitle: null,
+    },
+    cancelled: {
+      title: 'No Cancelled Visits',
+      message: 'Cancelled or missed visits will appear here when recorded by the facility.',
+      icon: 'close-circle-outline',
+      actionTitle: null,
+    },
   };
+  const state = config[tab] ?? config.assigned;
+
   return (
-    <View style={styles.emptyWrap}>
-      <Ionicons name="calendar-outline" size={40} color={colors.textSecondary} />
-      <Text style={styles.emptyTitle}>Nothing here</Text>
-      <Text style={styles.emptyMessage}>{messages[tab]}</Text>
-    </View>
+    <EmptyState
+      title={state.title}
+      message={`${state.message} Pull down to refresh.`}
+      iconName={state.icon}
+      iconColor={colors.primaryTeal}
+      style={styles.emptyWrap}
+    >
+      {state.actionTitle && onReturnHome ? (
+        <Button
+          title={state.actionTitle}
+          onPress={onReturnHome}
+          accessibilityLabel={state.actionTitle}
+        />
+      ) : null}
+    </EmptyState>
   );
 }
 
@@ -162,6 +190,10 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     [navigation],
   );
 
+  const onReturnHome = useCallback(() => {
+    navigation.navigate('Dashboard');
+  }, [navigation]);
+
   const renderItem = useCallback(
     ({ item }) => (
       <VisitCard
@@ -209,7 +241,7 @@ export default function MyAssignedVisitsScreen({ navigation }) {
               ? [styles.emptyList, { paddingBottom: tabBarInset }]
               : [styles.list, { paddingBottom: tabBarInset }]
           }
-          ListEmptyComponent={<VisitListEmpty tab={activeTab} />}
+          ListEmptyComponent={<VisitListEmpty tab={activeTab} onReturnHome={onReturnHome} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -356,19 +388,8 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.9 },
   emptyWrap: {
-    alignItems: 'center',
-    paddingVertical: spacing[32],
-  },
-  emptyTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginTop: spacing[12],
-  },
-  emptyMessage: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing[8],
-    paddingHorizontal: spacing[16],
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing[24],
   },
 });

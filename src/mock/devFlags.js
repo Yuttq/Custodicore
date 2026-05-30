@@ -12,3 +12,6 @@ export const USE_MOCK_QR = true;
 
 /** When true, visitation history uses local mock data (no HTTP). */
 export const USE_MOCK_VISIT_HISTORY = true;
+
+/** When true, visit progress timeline uses local mock data (no HTTP). */
+export const USE_MOCK_TIMELINE = true;

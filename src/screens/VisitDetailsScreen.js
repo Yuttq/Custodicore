@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -19,7 +19,12 @@ import {
   typography,
 } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
-import { FACILITY_RULES, VISITOR_REMINDERS, canRespondToVisit } from '../mock/assignedVisits.mock';
+import {
+  FACILITY_RULES,
+  VISITOR_REMINDERS,
+  canRespondToVisit,
+  getMockFacilityContact,
+} from '../mock/assignedVisits.mock';
 
 function InfoRow({ label, value }) {
   return (
@@ -40,6 +45,10 @@ export default function VisitDetailsScreen({ navigation, route }) {
   const [submitting, setSubmitting] = useState(false);
 
   const showActions = visit && canRespondToVisit(visit.status);
+  const facilityContact = useMemo(
+    () => getMockFacilityContact(visit?.facility),
+    [visit?.facility],
+  );
 
   const onConfirm = useCallback(async () => {
     if (!visit || submitting) return;
@@ -136,6 +145,13 @@ export default function VisitDetailsScreen({ navigation, route }) {
               <Text style={styles.ruleText}>{reminder}</Text>
             </View>
           ))}
+        </Card>
+
+        <Text style={styles.sectionHeading}>FACILITY CONTACT</Text>
+        <Card style={styles.card}>
+          <InfoRow label="Facility Name" value={facilityContact.facilityName} />
+          <InfoRow label="Contact Number" value={facilityContact.contactNumber} />
+          <InfoRow label="Office Availability" value={facilityContact.officeAvailability} />
         </Card>
 
         <View style={styles.actions}>

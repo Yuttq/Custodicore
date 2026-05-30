@@ -144,6 +144,50 @@ export const VISITOR_REMINDERS = [
   'Security screening required',
 ];
 
+/**
+ * Facility front-desk contact (mock). Replace with visit/facility API when available.
+ * @typedef {object} MockFacilityContact
+ * @property {string} facilityName
+ * @property {string} contactNumber
+ * @property {string} officeAvailability
+ */
+
+/** @type {Record<string, MockFacilityContact>} */
+export const MOCK_FACILITY_CONTACTS = {
+  'BJMP Facility — Visiting Area': {
+    facilityName: 'BJMP Facility — Visiting Area',
+    contactNumber: '(02) 8123-4567',
+    officeAvailability: 'Monday–Friday, 8:00 AM – 5:00 PM',
+  },
+  'BJMP Facility — Block A': {
+    facilityName: 'BJMP Facility — Block A',
+    contactNumber: '(02) 8123-4570',
+    officeAvailability: 'Monday–Friday, 8:00 AM – 4:00 PM',
+  },
+  'BJMP Facility — Block B': {
+    facilityName: 'BJMP Facility — Block B',
+    contactNumber: '(02) 8123-4571',
+    officeAvailability: 'Monday–Saturday, 8:00 AM – 4:30 PM',
+  },
+};
+
+/** @type {MockFacilityContact} */
+export const DEFAULT_FACILITY_CONTACT = MOCK_FACILITY_CONTACTS['BJMP Facility — Visiting Area'];
+
+/**
+ * @param {string | undefined} facilityName
+ * @returns {MockFacilityContact}
+ */
+export function getMockFacilityContact(facilityName) {
+  if (facilityName && MOCK_FACILITY_CONTACTS[facilityName]) {
+    return MOCK_FACILITY_CONTACTS[facilityName];
+  }
+  return {
+    ...DEFAULT_FACILITY_CONTACT,
+    facilityName: facilityName?.trim() || DEFAULT_FACILITY_CONTACT.facilityName,
+  };
+}
+
 export const UNABLE_TO_ATTEND_REASONS = [
   'Personal Conflict',
   'Medical Reason',
