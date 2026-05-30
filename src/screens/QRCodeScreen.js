@@ -13,6 +13,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
+import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import {
   fetchQrTokenPayload,
   resolveScheduleIdForQr,
@@ -175,13 +176,14 @@ export default function QRCodeScreen({ route }) {
 
   const countdownDisplay = formatCountdown(secondsLeft);
   const isExpired = secondsLeft <= 0 && qrPayload?.expiresAt;
+  const tabBarInset = useTabBarScrollInset();
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <Text style={styles.headerTitle}>QR PASS</Text>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -290,7 +292,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing[20],
-    paddingBottom: spacing[24],
   },
   centerBlock: {
     minHeight: 280,

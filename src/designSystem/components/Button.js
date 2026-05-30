@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -8,6 +9,12 @@ import {
 import { colors } from '../tokens/colors';
 import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
+
+const PRESS_FEEDBACK = Platform.select({
+  android: { opacity: 0.88 },
+  ios: { opacity: 0.9 },
+  default: { opacity: 0.9 },
+});
 
 /**
  * v2.1 Button
@@ -36,10 +43,20 @@ export function Button({
       accessibilityState={{ disabled: isDisabled }}
       onPress={onPress}
       disabled={isDisabled}
+      android_ripple={
+        isDisabled
+          ? undefined
+          : {
+              color:
+                variant === 'primary'
+                  ? 'rgba(255,255,255,0.25)'
+                  : 'rgba(13,165,138,0.12)',
+            }
+      }
       style={({ pressed }) => [
         styles.base,
         variant === 'primary' ? styles.primary : styles.secondary,
-        pressed && !isDisabled && styles.pressed,
+        pressed && !isDisabled && PRESS_FEEDBACK,
         isDisabled && styles.disabled,
       ]}
     >
@@ -83,7 +100,6 @@ const styles = StyleSheet.create({
   },
   labelPrimary: { color: colors.white },
   labelSecondary: { color: colors.textPrimary },
-  pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 },
 });
 

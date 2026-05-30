@@ -19,7 +19,9 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import { LoadingSpinner } from '../components';
 import { useVisits } from '../context/VisitsContext';
+import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { getVisitListTab } from '../mock/assignedVisits.mock';
 
 const TABS = [
@@ -129,6 +131,7 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     () => visits.filter((v) => getVisitListTab(v.status) === activeTab),
     [visits, activeTab],
   );
+  const tabBarInset = useTabBarScrollInset();
 
   const onViewDetails = useCallback(
     (item) => {
@@ -195,16 +198,16 @@ export default function MyAssignedVisitsScreen({ navigation }) {
       </View>
 
       {loading ? (
-        <View style={styles.loadingWrap}>
-          <Text style={styles.loadingText}>Loading visits…</Text>
-        </View>
+        <LoadingSpinner message="Loading visits…" compact />
       ) : (
         <FlatList
           data={filteredVisits}
           keyExtractor={(it) => it.id}
           renderItem={renderItem}
           contentContainerStyle={
-            filteredVisits.length === 0 ? styles.emptyList : styles.list
+            filteredVisits.length === 0
+              ? [styles.emptyList, { paddingBottom: tabBarInset }]
+              : [styles.list, { paddingBottom: tabBarInset }]
           }
           ListEmptyComponent={<VisitListEmpty tab={activeTab} />}
           refreshControl={
@@ -260,21 +263,11 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing[20],
-    paddingBottom: spacing[24],
   },
   emptyList: {
     flexGrow: 1,
     paddingHorizontal: spacing[20],
     justifyContent: 'center',
-  },
-  loadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    ...typography.body,
-    color: colors.textSecondary,
   },
   visitCard: {
     borderRadius: layout.cardRadius,

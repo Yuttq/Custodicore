@@ -22,6 +22,7 @@ import MyAssignedVisitsScreen from '../screens/MyAssignedVisitsScreen';
 import SplashScreen from '../screens/SplashScreen';
 import TimelineScreen from '../screens/TimelineScreen';
 import UploadIDScreen from '../screens/UploadIDScreen';
+import VisitorVerificationDocumentsScreen from '../screens/VisitorVerificationDocumentsScreen';
 import VerificationReviewScreen from '../screens/VerificationReviewScreen';
 import UnableToAttendScreen from '../screens/UnableToAttendScreen';
 import VisitDetailsScreen from '../screens/VisitDetailsScreen';
@@ -161,6 +162,10 @@ function AuthenticatedStack() {
       />
       <AppStack.Screen name="MainTabs" component={MainTabs} />
       <AppStack.Screen name="UploadID" component={UploadIDScreen} />
+      <AppStack.Screen
+        name="VisitorVerificationDocuments"
+        component={VisitorVerificationDocumentsScreen}
+      />
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
       <AppStack.Screen name="VisitDetails" component={VisitDetailsScreen} />
       <AppStack.Screen name="UnableToAttend" component={UnableToAttendScreen} />
@@ -174,7 +179,7 @@ export default function AppNavigator() {
   const { token, initializing } = useAuth();
 
   if (initializing) {
-    return <LoadingSpinner />;
+    return <LoadingSpinner message="Starting CustodiCore…" />;
   }
 
   return (

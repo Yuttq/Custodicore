@@ -1,14 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import {
-  CustomButton,
-  EmptyState,
-  Header,
-  LoadingSpinner,
-  ScreenContainer,
-  TimelineItem,
-} from '../components';
-import { colors, layout, typography } from '../constants';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { CustomButton, EmptyState, LoadingSpinner } from '../components';
+import VisitTimelineStep from '../components/VisitTimelineStep';
+import { Card, StatusChip, colors, layout, spacing, typography } from '../designSystem';
 import * as api from '../services/api';
 
 /**
@@ -37,8 +33,18 @@ function normalizeEvent(raw, index) {
     (typeof raw.timestamp === 'string' && raw.timestamp) ||
     (typeof raw.at === 'string' && raw.at) ||
     null;
+  const officerNote =
+    (typeof raw.officerNote === 'string' && raw.officerNote) ||
+    (typeof raw.staffNote === 'string' && raw.staffNote) ||
+    (typeof raw.officer_note === 'string' && raw.officer_note) ||
+    null;
+  const stepStateRaw = raw.stepState ?? raw.step_state;
+  const stepState =
+    stepStateRaw === 'completed' || stepStateRaw === 'current' || stepStateRaw === 'pending'
+      ? stepStateRaw
+      : null;
 
-  return { id, status, title, description, occurredAt };
+  return { id, status, title, description, occurredAt, officerNote, stepState };
 }
 
 function humanizeStatus(status) {
@@ -63,8 +69,34 @@ function normalizeTimelineResponse(data) {
   return [];
 }
 
+/**
+ * @param {ReturnType<typeof normalizeEvent>[]} events
+ */
+function deriveDisplaySteps(events) {
+  const firstPendingIndex = events.findIndex((event) => !event.occurredAt && !event.stepState);
+
+  return events.map((event, index) => {
+    if (event.stepState) {
+      return event;
+    }
+
+    if (event.occurredAt) {
+      return { ...event, stepState: 'completed' };
+    }
+
+    if (index === firstPendingIndex) {
+      return { ...event, stepState: 'current' };
+    }
+
+    return { ...event, stepState: 'pending' };
+  });
+}
+
 export default function TimelineScreen({ navigation, route }) {
   const scheduleId = route?.params?.scheduleId;
+  const referenceNumber = route?.params?.referenceNumber;
+  const pdlName = route?.params?.pdlName;
+  const visitStatus = route?.params?.visitStatus;
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +109,8 @@ export default function TimelineScreen({ navigation, route }) {
       return ta - tb;
     });
   }, [events]);
+
+  const displaySteps = useMemo(() => deriveDisplaySteps(sortedEvents), [sortedEvents]);
 
   const load = useCallback(async () => {
     if (!scheduleId || String(scheduleId).trim() === '' || scheduleId === '—') {
@@ -105,16 +139,23 @@ export default function TimelineScreen({ navigation, route }) {
   }, [load]);
 
   return (
-    <ScreenContainer backgroundColor="lightGray">
-      <Header
-        title="Visit timeline"
-        showBackButton
-        onBackPress={() => navigation.goBack()}
-      />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
+        </Pressable>
+        <Text style={styles.screenTitle}>Visit Progress</Text>
+        <View style={styles.backPlaceholder} />
+      </View>
+
       {loading ? (
         <View style={styles.centered}>
-          <LoadingSpinner />
-          <Text style={[typography.caption, styles.muted]}>Loading timeline…</Text>
+          <LoadingSpinner message="Loading timeline…" compact />
         </View>
       ) : error ? (
         <View style={styles.centered}>
@@ -135,10 +176,30 @@ export default function TimelineScreen({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[typography.caption, styles.ref]}>
-            Schedule: {String(scheduleId)}
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryEyebrow}>VISIT TRACKING</Text>
+            <Text style={styles.summaryRef}>
+              Reference: {referenceNumber || scheduleId || '—'}
+            </Text>
+            {pdlName ? (
+              <Text style={styles.summaryPdl} numberOfLines={2}>
+                {pdlName}
+              </Text>
+            ) : null}
+            {visitStatus ? (
+              <View style={styles.chipWrap}>
+                <StatusChip status={visitStatus} />
+              </View>
+            ) : null}
+          </Card>
+
+          <Text style={styles.timelineHeading}>Progress Timeline</Text>
+          <Text style={styles.timelineSub}>
+            Track each milestone from registration through visit completion — like parcel
+            delivery updates.
           </Text>
-          {sortedEvents.length === 0 ? (
+
+          {displaySteps.length === 0 ? (
             <View style={styles.timelineEmpty}>
               <EmptyState
                 title="No timeline events"
@@ -146,40 +207,108 @@ export default function TimelineScreen({ navigation, route }) {
               />
             </View>
           ) : (
-            sortedEvents.map((item, index) => (
-              <TimelineItem
-                key={item.id}
-                status={item.status}
-                title={item.title}
-                description={item.description || undefined}
-                occurredAt={item.occurredAt}
-                isLast={index === sortedEvents.length - 1}
-              />
-            ))
+            <View style={styles.timelineCard}>
+              {displaySteps.map((item, index) => (
+                <VisitTimelineStep
+                  key={item.id}
+                  stepState={item.stepState}
+                  title={item.title}
+                  description={item.description}
+                  occurredAt={item.occurredAt}
+                  officerNote={item.officerNote}
+                  isLast={index === displaySteps.length - 1}
+                  carded
+                />
+              ))}
+            </View>
           )}
         </ScrollView>
       )}
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[20],
+    paddingVertical: spacing[8],
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  backPlaceholder: { width: 44 },
+  screenTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
   scroll: {
-    padding: layout.spacing.md,
-    paddingBottom: layout.spacing.xl,
+    paddingHorizontal: spacing[20],
+    paddingBottom: spacing[32],
     flexGrow: 1,
   },
-  ref: {
+  summaryCard: {
+    borderRadius: layout.cardRadius,
+    marginBottom: layout.sectionGap,
+  },
+  summaryEyebrow: {
+    ...typography.caption,
+    fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: layout.spacing.md,
+    letterSpacing: 0.5,
+    marginBottom: spacing[4],
+  },
+  summaryRef: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing[8],
+  },
+  summaryPdl: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  chipWrap: {
+    marginTop: spacing[12],
+    alignSelf: 'flex-start',
+  },
+  timelineHeading: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    marginBottom: spacing[4],
+  },
+  timelineSub: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing[16],
+    lineHeight: 22,
+  },
+  timelineCard: {
+    backgroundColor: colors.card,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing[16],
   },
   timelineEmpty: {
     minHeight: 320,
     justifyContent: 'center',
-    paddingVertical: layout.spacing.lg,
+    paddingVertical: spacing[16],
   },
   emptyActions: {
-    marginTop: layout.spacing.md,
+    marginTop: spacing[16],
     alignSelf: 'stretch',
     maxWidth: 280,
     width: '100%',
@@ -187,12 +316,13 @@ const styles = StyleSheet.create({
   centered: {
     flex: 1,
     minHeight: 280,
-    padding: layout.spacing.lg,
+    padding: spacing[20],
     alignItems: 'center',
     justifyContent: 'center',
   },
   muted: {
+    ...typography.caption,
     color: colors.textSecondary,
-    marginTop: layout.spacing.sm,
+    marginTop: spacing[8],
   },
 });

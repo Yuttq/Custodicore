@@ -13,6 +13,7 @@ import { formatDate, formatTime } from '../utils';
  * @param {string | null} [props.occurredAt]
  * @param {string | null} [props.officerNote]
  * @param {boolean} [props.isLast]
+ * @param {boolean} [props.carded] — per-step white card (courier / parcel tracking layout)
  */
 export default function VisitTimelineStep({
   stepState,
@@ -21,6 +22,7 @@ export default function VisitTimelineStep({
   occurredAt,
   officerNote,
   isLast = false,
+  carded = false,
 }) {
   const isCompleted = stepState === 'completed';
   const isCurrent = stepState === 'current';
@@ -37,9 +39,40 @@ export default function VisitTimelineStep({
   const dotCompleted = isCompleted;
   const dotCurrent = isCurrent;
 
+  const content = (
+    <>
+      <Text
+        style={[
+          styles.title,
+          isPending && styles.titlePending,
+          isCurrent && styles.titleCurrent,
+        ]}
+      >
+        {title}
+      </Text>
+
+      {whenLine ? (
+        <Text style={[styles.timestamp, isPending && styles.textMuted]}>{whenLine}</Text>
+      ) : isPending ? (
+        <Text style={styles.awaiting}>Awaiting update</Text>
+      ) : null}
+
+      {description ? (
+        <Text style={[styles.description, isPending && styles.textMuted]}>{description}</Text>
+      ) : null}
+
+      {officerNote ? (
+        <View style={styles.noteWrap}>
+          <Text style={styles.noteLabel}>Officer Note</Text>
+          <Text style={styles.noteBody}>{officerNote}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+
   return (
     <View style={styles.row} accessibilityRole="summary">
-      <View style={styles.track}>
+      <View style={[styles.track, carded && styles.trackCarded]}>
         {dotCompleted ? (
           <View style={styles.dotCompleted}>
             <Ionicons name="checkmark" size={14} color={colors.white} />
@@ -51,34 +84,31 @@ export default function VisitTimelineStep({
         ) : (
           <View style={styles.dotPending} />
         )}
-        {!isLast ? <View style={[styles.line, { backgroundColor: lineColor }]} /> : null}
+        {!isLast ? (
+          <View
+            style={[
+              styles.line,
+              carded && styles.lineCarded,
+              { backgroundColor: lineColor },
+            ]}
+          />
+        ) : null}
       </View>
 
-      <View style={styles.body}>
-        <Text
-          style={[
-            styles.title,
-            isPending && styles.titlePending,
-            isCurrent && styles.titleCurrent,
-          ]}
-        >
-          {title}
-        </Text>
-
-        {whenLine ? (
-          <Text style={[styles.timestamp, isPending && styles.textMuted]}>{whenLine}</Text>
-        ) : isPending ? (
-          <Text style={styles.awaiting}>Awaiting update</Text>
-        ) : null}
-
-        <Text style={[styles.description, isPending && styles.textMuted]}>{description}</Text>
-
-        {officerNote ? (
-          <View style={styles.noteWrap}>
-            <Text style={styles.noteLabel}>Officer Note</Text>
-            <Text style={styles.noteBody}>{officerNote}</Text>
+      <View style={[styles.body, carded && styles.bodyCarded]}>
+        {carded ? (
+          <View
+            style={[
+              styles.contentCard,
+              isCurrent && styles.contentCardCurrent,
+              isPending && styles.contentCardPending,
+            ]}
+          >
+            {content}
           </View>
-        ) : null}
+        ) : (
+          content
+        )}
       </View>
     </View>
   );
@@ -93,6 +123,10 @@ const styles = StyleSheet.create({
     width: 32,
     alignItems: 'center',
     marginRight: spacing[12],
+  },
+  trackCarded: {
+    width: 36,
+    marginRight: spacing[8],
   },
   dotCompleted: {
     width: 26,
@@ -132,9 +166,30 @@ const styles = StyleSheet.create({
     marginTop: spacing[4],
     minHeight: spacing[16],
   },
+  lineCarded: {
+    minHeight: spacing[20],
+  },
   body: {
     flex: 1,
     paddingBottom: spacing[20],
+  },
+  bodyCarded: {
+    paddingBottom: spacing[12],
+  },
+  contentCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing[16],
+  },
+  contentCardCurrent: {
+    borderColor: colors.primaryTeal,
+    backgroundColor: 'rgba(13, 165, 138, 0.06)',
+  },
+  contentCardPending: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
   },
   title: {
     ...typography.body,

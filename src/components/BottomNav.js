@@ -10,10 +10,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, layout, shadows } from '../designSystem';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
 
-const TAB_PADDING_TOP = 8;
-const TAB_PADDING_BOTTOM_MIN = 20;
-const QR_BUTTON_SIZE = 60;
-const QR_LIFT = 10;
+const TAB_PADDING_TOP = layout.tabBarPaddingTop;
+const TAB_PADDING_BOTTOM_MIN = layout.tabBarPaddingBottomMin;
+const QR_BUTTON_SIZE = layout.qrButtonSize;
+const QR_LIFT = 12;
 const PRESS_DURATION_MS = 150;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -91,7 +91,7 @@ export default function BottomNav({ state, descriptors, navigation }) {
               accessibilityLabel={options.tabBarAccessibilityLabel ?? String(label)}
               onPress={() => onTabPress(route, isFocused)}
               onLongPress={() => onTabLongPress(route)}
-              style={styles.tab}
+              style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
             >
               <View style={styles.iconWrap}>
                 {options.tabBarIcon?.({
@@ -162,7 +162,7 @@ function QrCenterTabButton({ focused, label, accessibilityLabel, onPress, onLong
         style={[styles.qrPressable, animatedStyle]}
       >
         <View style={[styles.qrButton, shadows.qrFab]}>
-          <Ionicons name="qr-code" size={28} color={colors.white} />
+          <Ionicons name="qr-code" size={30} color={colors.white} />
         </View>
         <Text style={[styles.qrLabel, focused && styles.qrLabelFocused]}>{label}</Text>
       </AnimatedPressable>
@@ -188,6 +188,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingVertical: 4,
+  },
+  tabPressed: {
+    opacity: 0.72,
   },
   iconWrap: {
     height: 28,

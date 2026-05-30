@@ -54,6 +54,31 @@ const VARIANTS = {
     bg: colors.success,
     fg: colors.white,
   },
+  document_rejected: {
+    label: 'Rejected',
+    bg: colors.danger,
+    fg: colors.white,
+  },
+  verification_pending: {
+    label: 'Pending',
+    bg: 'rgba(245, 158, 11, 0.15)',
+    fg: colors.textPrimary,
+  },
+  verification_under_review: {
+    label: 'Under Review',
+    bg: 'rgba(245, 158, 11, 0.18)',
+    fg: colors.textPrimary,
+  },
+  verification_verified: {
+    label: 'Verified',
+    bg: colors.success,
+    fg: colors.white,
+  },
+  verification_rejected: {
+    label: 'Rejected',
+    bg: colors.danger,
+    fg: colors.white,
+  },
 };
 
 /**

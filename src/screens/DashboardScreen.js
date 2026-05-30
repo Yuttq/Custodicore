@@ -20,6 +20,7 @@ import {
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
+import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { MOCK_VERIFICATION_ITEMS } from '../mock/dashboard.mock';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 
@@ -90,6 +91,8 @@ export default function DashboardScreen({ navigation }) {
   }, [visits]);
   const isVerified = !pendingVerification;
 
+  const tabBarInset = useTabBarScrollInset();
+
   const onViewVisitDetails = () => {
     if (!nextVisit) return;
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
@@ -98,7 +101,7 @@ export default function DashboardScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -202,7 +205,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
     paddingHorizontal: spacing[20],
-    paddingBottom: spacing[24],
   },
   headerRow: {
     flexDirection: 'row',

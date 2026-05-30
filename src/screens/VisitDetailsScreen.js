@@ -19,7 +19,7 @@ import {
   typography,
 } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
-import { FACILITY_RULES, canRespondToVisit } from '../mock/assignedVisits.mock';
+import { FACILITY_RULES, VISITOR_REMINDERS, canRespondToVisit } from '../mock/assignedVisits.mock';
 
 function InfoRow({ label, value }) {
   return (
@@ -61,6 +61,17 @@ export default function VisitDetailsScreen({ navigation, route }) {
   const onUnableToAttend = useCallback(() => {
     if (!visit) return;
     navigation.navigate('UnableToAttend', { visitId: visit.id });
+  }, [visit, navigation]);
+
+  const onTrackVisitProgress = useCallback(() => {
+    if (!visit) return;
+    navigation.navigate('Timeline', {
+      scheduleId: visit.id,
+      visitId: visit.id,
+      visitStatus: visit.status,
+      pdlName: visit.pdlName,
+      referenceNumber: visit.referenceNumber,
+    });
   }, [visit, navigation]);
 
   if (!visit) {
@@ -116,6 +127,25 @@ export default function VisitDetailsScreen({ navigation, route }) {
             </View>
           ))}
         </Card>
+
+        <Text style={styles.sectionHeading}>VISITOR REMINDERS</Text>
+        <Card style={styles.card}>
+          {VISITOR_REMINDERS.map((reminder) => (
+            <View key={reminder} style={styles.ruleRow}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+              <Text style={styles.ruleText}>{reminder}</Text>
+            </View>
+          ))}
+        </Card>
+
+        <View style={styles.actions}>
+          <Button
+            title="Track Visit Progress"
+            variant="secondary"
+            onPress={onTrackVisitProgress}
+            accessibilityLabel="Track visit progress"
+          />
+        </View>
 
         {showActions ? (
           <View style={styles.actions}>

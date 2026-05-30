@@ -287,6 +287,7 @@ export default function VisitHistoryScreen({ navigation }) {
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           {listHeader}
+          <Text style={styles.loadingLabel}>Loading history…</Text>
           <HistorySkeleton />
         </View>
       ) : (
@@ -344,6 +345,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing[20],
     paddingBottom: spacing[24],
+  },
+  loadingLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing[12],
   },
   listContent: {
     paddingHorizontal: spacing[20],

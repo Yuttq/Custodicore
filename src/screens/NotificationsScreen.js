@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   Platform,
   Pressable,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -24,6 +24,12 @@ import {
   markNotificationReadById,
 } from '../repositories/notificationsRepository';
 import { formatDate } from '../utils';
+import {
+  NOTIFICATION_FILTERS,
+  filterNotificationsByCategory,
+  groupNotificationsByDate,
+  inferNotificationCategory,
+} from '../utils/notificationFilters';
 
 /** Feed data comes from `notificationsRepository` (local mock or HTTP per `src/mock/devFlags.js`). */
 
@@ -52,8 +58,9 @@ function normalizeNotification(raw, index) {
     (typeof raw.sentAt === 'string' && raw.sentAt) ||
     (typeof raw.timestamp === 'string' && raw.timestamp) ||
     null;
+  const category = inferNotificationCategory(raw);
 
-  return { id, title, body, read, createdAt };
+  return { id, title, body, read, createdAt, category };
 }
 
 /**
@@ -78,9 +85,49 @@ function normalizeList(data) {
   return [];
 }
 
+/**
+ * @param {object} props
+ * @param {string} props.activeFilter
+ * @param {(filter: string) => void} props.onFilterChange
+ */
+function NotificationFilterBar({ activeFilter, onFilterChange }) {
+  return (
+    <View style={styles.filterBar}>
+      {NOTIFICATION_FILTERS.map((filter) => {
+        const isActive = activeFilter === filter.key;
+        return (
+          <Pressable
+            key={filter.key}
+            onPress={() => onFilterChange(filter.key)}
+            style={({ pressed }) => [
+              styles.filterChip,
+              isActive && styles.filterChipActive,
+              pressed && styles.filterChipPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={`Filter notifications by ${filter.label}`}
+          >
+            <Text
+              style={[
+                typography.captionStrong,
+                styles.filterChipLabel,
+                isActive && styles.filterChipLabelActive,
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function NotificationsScreen() {
   const { refreshUnreadCount } = useNotificationBadge();
   const [items, setItems] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -110,6 +157,11 @@ export default function NotificationsScreen() {
   const onRefresh = useCallback(() => {
     fetchNotifications(true);
   }, [fetchNotifications]);
+
+  const sections = useMemo(() => {
+    const filtered = filterNotificationsByCategory(items, activeFilter);
+    return groupNotificationsByDate(filtered);
+  }, [items, activeFilter]);
 
   const handlePress = useCallback(async (item) => {
     if (item.read) return;
@@ -182,13 +234,44 @@ export default function NotificationsScreen() {
     [handlePress],
   );
 
+  const renderSectionHeader = useCallback(
+    ({ section }) => (
+      <Text
+        style={[styles.sectionHeader, section.isFirst && styles.sectionHeaderFirst]}
+        accessibilityRole="header"
+      >
+        {section.title}
+      </Text>
+    ),
+    [],
+  );
+
   const keyExtractor = useCallback((it) => it.id, []);
+
+  const listHeader = useMemo(
+    () => (
+      <>
+        <NotificationFilterBar activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+        {error && items.length > 0 ? (
+          <View style={styles.inlineError}>
+            <Text style={[typography.caption, styles.inlineErrorText]}>{error}</Text>
+            <CustomButton
+              title="Retry"
+              onPress={() => fetchNotifications(false)}
+              accessibilityLabel="Retry after error"
+            />
+          </View>
+        ) : null}
+      </>
+    ),
+    [activeFilter, error, items.length, fetchNotifications],
+  );
 
   const listEmpty = useCallback(() => {
     if (loading && !refreshing) {
       return (
         <View style={styles.emptyWrap}>
-          <LoadingSpinner />
+          <LoadingSpinner message="Loading notifications…" compact />
         </View>
       );
     }
@@ -211,6 +294,17 @@ export default function NotificationsScreen() {
         </EmptyState>
       );
     }
+    if (items.length > 0 && activeFilter !== 'all') {
+      const filterLabel =
+        NOTIFICATION_FILTERS.find((filter) => filter.key === activeFilter)?.label ?? 'selected';
+      return (
+        <EmptyState
+          title={`No ${filterLabel.toLowerCase()} notifications`}
+          message="Try another filter or pull down to refresh."
+          style={styles.emptyWrap}
+        />
+      );
+    }
     return (
       <EmptyState
         title="No notifications"
@@ -218,19 +312,22 @@ export default function NotificationsScreen() {
         style={styles.emptyWrap}
       />
     );
-  }, [loading, refreshing, error, fetchNotifications]);
+  }, [loading, refreshing, error, fetchNotifications, items.length, activeFilter]);
 
   return (
-    <ScreenContainer backgroundColor="lightGray">
+    <ScreenContainer backgroundColor="lightGray" tabScreen>
       <Header title="Notifications" />
-      <FlatList
-        data={items}
+      <SectionList
+        sections={sections}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={
-          items.length === 0 ? styles.listEmptyContent : styles.listContent
+          sections.length === 0 ? styles.listEmptyContent : styles.listContent
         }
         ListEmptyComponent={listEmpty}
+        ListHeaderComponent={listHeader}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -239,18 +336,6 @@ export default function NotificationsScreen() {
             colors={[colors.primary]}
           />
         }
-        ListHeaderComponent={
-          error && items.length > 0 ? (
-            <View style={styles.inlineError}>
-              <Text style={[typography.caption, styles.inlineErrorText]}>{error}</Text>
-              <CustomButton
-                title="Retry"
-                onPress={() => fetchNotifications(false)}
-                accessibilityLabel="Retry after error"
-              />
-            </View>
-          ) : null
-        }
       />
     </ScreenContainer>
   );
@@ -258,14 +343,54 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   listContent: {
-    padding: layout.spacing.md,
-    paddingBottom: layout.spacing.xl,
+    padding: layout.screenPadding,
+    paddingBottom: layout.spacing.md,
   },
   listEmptyContent: {
     flexGrow: 1,
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: layout.spacing.md,
+  },
+  filterBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: layout.spacing.sm,
+    marginBottom: layout.spacing.md,
+  },
+  filterChip: {
+    paddingHorizontal: layout.spacing.md,
+    paddingVertical: layout.spacing.sm,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterChipPressed: {
+    opacity: 0.92,
+  },
+  filterChipLabel: {
+    color: colors.textSecondary,
+  },
+  filterChipLabelActive: {
+    color: colors.white,
+  },
+  sectionHeader: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: layout.spacing.md,
+    marginBottom: layout.spacing.sm,
+  },
+  sectionHeaderFirst: {
+    marginTop: 0,
   },
   card: {
-    marginBottom: layout.spacing.sm,
+    marginBottom: layout.cardGap,
   },
   rowTop: {
     flexDirection: 'row',
@@ -330,7 +455,6 @@ const styles = StyleSheet.create({
   inlineError: {
     padding: layout.spacing.md,
     marginBottom: layout.spacing.sm,
-    marginHorizontal: layout.spacing.md,
     backgroundColor: colors.white,
     borderRadius: layout.borderRadius,
     borderWidth: 1,

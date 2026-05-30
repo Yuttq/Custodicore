@@ -13,6 +13,18 @@ export const ACCEPTED_GOVERNMENT_IDS = [
 ];
 
 /**
+ * All required verification uploads for a relationship (relationship docs + Government ID).
+ * @param {string} [relationshipId]
+ * @returns {{ key: string, label: string }[]}
+ */
+export function getRequiredVerificationDocuments(relationshipId) {
+  return [
+    ...getRelationshipVerificationDocs(relationshipId),
+    { key: GOVERNMENT_ID_KEY, label: 'Government ID' },
+  ];
+}
+
+/**
  * Relationship-based documents for Section 2 (excludes Government ID).
  * @param {string} [relationshipId]
  * @returns {{ key: string, label: string }[]}

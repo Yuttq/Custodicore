@@ -4,6 +4,7 @@
  * @property {string} email
  * @property {string} phone
  * @property {string} registrationStatus
+ * @property {string | null} [photoUri]
  */
 
 /**

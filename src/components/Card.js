@@ -37,7 +37,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     padding: layout.spacing.md,
+    marginBottom: layout.cardGap,
     ...shadows.card,
   },
-  pressed: { opacity: 0.96 },
+  pressed: { opacity: 0.97 },
 });

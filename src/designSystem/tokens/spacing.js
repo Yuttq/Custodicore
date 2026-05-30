@@ -26,7 +26,11 @@ export const layout = {
   buttonHeight: 48,
 
   /** Bottom navigation content height (excluding safe-area inset) */
-  tabBarHeight: 76,
+  tabBarHeight: 80,
+  /** Elevated center QR tab button */
+  qrButtonSize: 64,
+  tabBarPaddingTop: 8,
+  tabBarPaddingBottomMin: 20,
 
   /** Radii */
   cardRadius: 16,

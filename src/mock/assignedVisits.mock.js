@@ -134,6 +134,16 @@ export const FACILITY_RULES = [
   'Follow officer instructions',
 ];
 
+/** BJMP-aligned pre-visit reminders shown on Visit Details. */
+export const VISITOR_REMINDERS = [
+  'Arrive 15 minutes early',
+  'Bring valid government ID',
+  'Present QR Pass',
+  'Food subject to inspection',
+  'Belongings subject to inspection',
+  'Security screening required',
+];
+
 export const UNABLE_TO_ATTEND_REASONS = [
   'Personal Conflict',
   'Medical Reason',
