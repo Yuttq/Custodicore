@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -22,44 +21,81 @@ import {
 import { LoadingSpinner, EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
-import { getVisitListTab } from '../mock/assignedVisits.mock';
+import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
 
 const TABS = [
-  { key: 'assigned', label: 'Assigned' },
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'pending', label: 'Pending' },
   { key: 'completed', label: 'Completed' },
-  { key: 'cancelled', label: 'Cancelled' },
 ];
 
 const LOADING_MS = 500;
 
-function VisitListEmpty({ tab, onReturnHome }) {
+/** Maps visit status to StatusChip keys for the BJMP visitation workflow. */
+const VISIT_STATUS_CHIP = {
+  pending_confirmation: 'pending_confirmation',
+  scheduled: 'pending_confirmation',
+  confirmed: 'confirmed',
+  qr_ready: 'qr_ready',
+  checked_in: 'checked_in',
+  checked_out: 'completed',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  unable_to_attend: 'unable_to_attend',
+};
+
+/**
+ * @param {string} status
+ */
+function resolveVisitStatusChip(status) {
+  return VISIT_STATUS_CHIP[status] ?? 'pending';
+}
+
+function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
+  if (!hasAnyVisits && tab === 'upcoming') {
+    return (
+      <EmptyState
+        title="No Upcoming Visits"
+        message="You currently have no assigned visits."
+        iconName="calendar-outline"
+        iconColor={colors.primaryTeal}
+        style={styles.emptyWrap}
+      >
+        <Button
+          title="Return to Home"
+          onPress={onReturnHome}
+          accessibilityLabel="Return to home"
+        />
+      </EmptyState>
+    );
+  }
+
   const config = {
-    assigned: {
-      title: 'No Assigned Visits',
-      message:
-        'Visit schedules are assigned by facility officers. When a visit is assigned to you, it will appear here.',
+    upcoming: {
+      title: 'No Upcoming Visits',
+      message: 'Confirmed visits ready for your schedule will appear here.',
       icon: 'calendar-outline',
       actionTitle: 'Return to Home',
     },
+    pending: {
+      title: 'No Pending Visits',
+      message: 'Visits awaiting your attendance confirmation will appear here.',
+      icon: 'time-outline',
+      actionTitle: null,
+    },
     completed: {
       title: 'No Completed Visits',
-      message: 'Visits you have completed will be listed here for your records.',
+      message: 'Your visit history will appear here after sessions are completed.',
       icon: 'checkmark-done-outline',
       actionTitle: null,
     },
-    cancelled: {
-      title: 'No Cancelled Visits',
-      message: 'Cancelled or missed visits will appear here when recorded by the facility.',
-      icon: 'close-circle-outline',
-      actionTitle: null,
-    },
   };
-  const state = config[tab] ?? config.assigned;
+  const state = config[tab] ?? config.upcoming;
 
   return (
     <EmptyState
       title={state.title}
-      message={`${state.message} Pull down to refresh.`}
+      message={state.message}
       iconName={state.icon}
       iconColor={colors.primaryTeal}
       style={styles.emptyWrap}
@@ -75,55 +111,48 @@ function VisitListEmpty({ tab, onReturnHome }) {
   );
 }
 
-function VisitCard({ item, onViewDetails, onConfirm, onUnableToAttend }) {
-  const isPendingConfirmation = item.status === 'pending_confirmation';
+/**
+ * @param {object} props
+ * @param {import('../context/VisitsContext').Visit} props.item
+ * @param {() => void} props.onPress
+ * @param {boolean} props.showPendingActions
+ * @param {(id: string) => void} props.onConfirmPress
+ * @param {(id: string) => void} props.onUnablePress
+ */
+function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnablePress }) {
+  const chipStatus = resolveVisitStatusChip(item.status);
 
   return (
     <Card style={styles.visitCard}>
-      <View style={styles.cardRow}>
-        <View style={styles.dateBlock}>
-          <Text style={styles.dateText}>{item.dateDisplay}</Text>
-        </View>
-        <View style={styles.cardBody}>
-          <View style={styles.cardTopRow}>
-            <Text style={styles.timeText}>{item.timeLabel}</Text>
-            <StatusChip status={item.status} />
-          </View>
-          <Text style={styles.pdlName}>{item.pdlName}</Text>
-          <Text style={styles.facility}>{item.facility}</Text>
-        </View>
-      </View>
-
       <Pressable
-        onPress={() => onViewDetails(item)}
-        style={({ pressed }) => [styles.detailsLink, pressed && styles.pressed]}
+        onPress={onPress}
+        style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`View details for visit with ${item.pdlName}`}
+        accessibilityLabel={`Visit with ${item.pdlName} on ${item.dateDisplay}`}
       >
-        <Text style={styles.detailsLinkText}>View Details</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.primaryTeal} />
+        <Text style={styles.dateText}>{item.dateDisplay}</Text>
+        <Text style={styles.pdlName} numberOfLines={2}>
+          {item.pdlName}
+        </Text>
+        <Text style={styles.timeText}>{item.timeLabel}</Text>
+        <View style={styles.chipRow}>
+          <StatusChip status={chipStatus} />
+        </View>
       </Pressable>
 
-      {isPendingConfirmation ? (
+      {showPendingActions ? (
         <View style={styles.pendingActions}>
-          <View style={styles.actionBtn}>
-            <Button
-              title="Confirm Attendance"
-              onPress={() => onConfirm(item.id)}
-              accessibilityLabel={`Confirm attendance for ${item.pdlName}`}
-            />
-          </View>
-          <Pressable
-            onPress={() => onUnableToAttend(item.id)}
-            style={({ pressed }) => [
-              styles.unableBtn,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
+          <Button
+            title="Confirm Attendance"
+            onPress={() => onConfirmPress(item.id)}
+            accessibilityLabel={`Confirm attendance for ${item.pdlName}`}
+          />
+          <Button
+            title="Unable To Attend"
+            variant="secondary"
+            onPress={() => onUnablePress(item.id)}
             accessibilityLabel={`Unable to attend visit with ${item.pdlName}`}
-          >
-            <Text style={styles.unableBtnText}>Unable To Attend</Text>
-          </Pressable>
+          />
         </View>
       ) : null}
     </Card>
@@ -131,11 +160,11 @@ function VisitCard({ item, onViewDetails, onConfirm, onUnableToAttend }) {
 }
 
 /**
- * My Assigned Visits — system-assigned schedules only (v2.1 / BJMP).
+ * My Visits — upcoming, pending confirmation, and completed visits (v2.1 / BJMP).
  */
 export default function MyAssignedVisitsScreen({ navigation }) {
   const { visits, confirmVisit, refreshVisits } = useVisits();
-  const [activeTab, setActiveTab] = useState('assigned');
+  const [activeTab, setActiveTab] = useState('upcoming');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -155,10 +184,17 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     fetchVisits(false);
   }, [fetchVisits]);
 
-  const filteredVisits = useMemo(
-    () => visits.filter((v) => getVisitListTab(v.status) === activeTab),
-    [visits, activeTab],
-  );
+  const filteredVisits = useMemo(() => {
+    const filtered = visits.filter((v) => getMyVisitsTab(v.status) === activeTab);
+    const sorted = [...filtered].sort(
+      (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
+    );
+    if (activeTab === 'completed') {
+      sorted.reverse();
+    }
+    return sorted;
+  }, [visits, activeTab]);
+
   const tabBarInset = useTabBarScrollInset();
 
   const onViewDetails = useCallback(
@@ -168,7 +204,7 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     [navigation],
   );
 
-  const onConfirm = useCallback(
+  const handleConfirm = useCallback(
     async (id) => {
       try {
         await confirmVisit(id);
@@ -183,9 +219,29 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     [confirmVisit],
   );
 
-  const onUnableToAttend = useCallback(
+  const onConfirmPress = useCallback(
     (id) => {
-      navigation.navigate('UnableToAttend', { visitId: id });
+      Alert.alert(
+        'Confirm Attendance?',
+        'Are you sure you will attend this scheduled visit?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Confirm', onPress: () => handleConfirm(id) },
+        ],
+      );
+    },
+    [handleConfirm],
+  );
+
+  const onUnablePress = useCallback(
+    (visitId) => {
+      Alert.alert('Unable To Attend?', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () => navigation.navigate('UnableToAttend', { visitId }),
+        },
+      ]);
     },
     [navigation],
   );
@@ -198,17 +254,18 @@ export default function MyAssignedVisitsScreen({ navigation }) {
     ({ item }) => (
       <VisitCard
         item={item}
-        onViewDetails={onViewDetails}
-        onConfirm={onConfirm}
-        onUnableToAttend={onUnableToAttend}
+        onPress={() => onViewDetails(item)}
+        showPendingActions={activeTab === 'pending' && canRespondToVisit(item.status)}
+        onConfirmPress={onConfirmPress}
+        onUnablePress={onUnablePress}
       />
     ),
-    [onViewDetails, onConfirm, onUnableToAttend],
+    [activeTab, onViewDetails, onConfirmPress, onUnablePress],
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <Text style={styles.screenTitle}>My Assigned Visits</Text>
+      <Text style={styles.screenTitle}>My Visits</Text>
 
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
@@ -241,7 +298,13 @@ export default function MyAssignedVisitsScreen({ navigation }) {
               ? [styles.emptyList, { paddingBottom: tabBarInset }]
               : [styles.list, { paddingBottom: tabBarInset }]
           }
-          ListEmptyComponent={<VisitListEmpty tab={activeTab} onReturnHome={onReturnHome} />}
+          ListEmptyComponent={
+            <VisitListEmpty
+              tab={activeTab}
+              hasAnyVisits={visits.length > 0}
+              onReturnHome={onReturnHome}
+            />
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -303,90 +366,38 @@ const styles = StyleSheet.create({
   },
   visitCard: {
     borderRadius: layout.cardRadius,
-    padding: spacing[12],
-    marginBottom: layout.cardGap,
+    padding: spacing[10],
+    marginBottom: spacing[8],
   },
-  cardRow: {
-    flexDirection: 'row',
-  },
-  dateBlock: {
-    width: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    paddingVertical: spacing[8],
-    marginRight: spacing[12],
+  cardPressable: {
+    gap: spacing[4],
   },
   dateText: {
-    ...typography.statusLabel,
+    ...typography.body,
     fontWeight: '700',
     color: colors.primaryNavy,
-    textAlign: 'center',
-  },
-  cardBody: {
-    flex: 1,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing[8],
-    marginBottom: spacing[4],
-  },
-  timeText: {
-    ...typography.caption,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    flex: 1,
   },
   pdlName: {
     ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: spacing[4],
   },
-  facility: {
+  timeText: {
     ...typography.caption,
     color: colors.textSecondary,
   },
-  detailsLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing[12],
-    paddingVertical: spacing[8],
-  },
-  detailsLinkText: {
-    ...typography.caption,
-    fontWeight: '600',
-    color: colors.primaryTeal,
-    marginRight: spacing[4],
+  chipRow: {
+    alignSelf: 'flex-start',
+    marginTop: spacing[4],
   },
   pendingActions: {
-    marginTop: spacing[8],
+    marginTop: spacing[10],
+    paddingTop: spacing[10],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingTop: spacing[12],
+    gap: spacing[8],
   },
-  actionBtn: {
-    marginBottom: spacing[8],
-  },
-  unableBtn: {
-    height: 44,
-    borderRadius: layout.buttonRadius,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-  },
-  unableBtnText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.danger,
-  },
-  pressed: { opacity: 0.9 },
+  pressed: { opacity: 0.92 },
   emptyWrap: {
     flexGrow: 1,
     justifyContent: 'center',

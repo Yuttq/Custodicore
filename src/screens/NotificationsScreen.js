@@ -10,14 +10,14 @@ import {
   View,
 } from 'react-native';
 import {
-  Card,
   CustomButton,
   EmptyState,
   Header,
   LoadingSpinner,
+  NotificationRow,
   ScreenContainer,
 } from '../components';
-import { colors, layout, typography } from '../constants';
+import { colors, layout, spacing, typography } from '../designSystem';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import {
   fetchNotificationsList,
@@ -29,9 +29,21 @@ import {
   filterNotificationsByCategory,
   groupNotificationsByDate,
   inferNotificationCategory,
+  inferNotificationTone,
 } from '../utils/notificationFilters';
 
 /** Feed data comes from `notificationsRepository` (local mock or HTTP per `src/mock/devFlags.js`). */
+
+const DESCRIPTION_PREVIEW_MAX = 72;
+
+/**
+ * @param {string} text
+ */
+function shortDescription(text) {
+  const trimmed = String(text || '').trim();
+  if (trimmed.length <= DESCRIPTION_PREVIEW_MAX) return trimmed;
+  return `${trimmed.slice(0, DESCRIPTION_PREVIEW_MAX - 1).trim()}…`;
+}
 
 /**
  * @param {Record<string, unknown>} raw
@@ -59,8 +71,9 @@ function normalizeNotification(raw, index) {
     (typeof raw.timestamp === 'string' && raw.timestamp) ||
     null;
   const category = inferNotificationCategory(raw);
+  const tone = inferNotificationTone(raw);
 
-  return { id, title, body, read, createdAt, category };
+  return { id, title, body, read, createdAt, category, tone };
 }
 
 /**
@@ -109,11 +122,7 @@ function NotificationFilterBar({ activeFilter, onFilterChange }) {
             accessibilityLabel={`Filter notifications by ${filter.label}`}
           >
             <Text
-              style={[
-                typography.captionStrong,
-                styles.filterChipLabel,
-                isActive && styles.filterChipLabelActive,
-              ]}
+              style={[styles.filterChipLabel, isActive && styles.filterChipLabelActive]}
             >
               {filter.label}
             </Text>
@@ -163,75 +172,60 @@ export default function NotificationsScreen() {
     return groupNotificationsByDate(filtered);
   }, [items, activeFilter]);
 
-  const handlePress = useCallback(async (item) => {
-    if (item.read) return;
+  const markRead = useCallback(
+    async (item) => {
+      if (item.read) return;
 
-    setItems((prev) =>
-      prev.map((n) => (n.id === item.id ? { ...n, read: true } : n)),
-    );
-
-    try {
-      await markNotificationReadById(item.id);
-      refreshUnreadCount();
-    } catch (e) {
       setItems((prev) =>
-        prev.map((n) => (n.id === item.id ? { ...n, read: false } : n)),
+        prev.map((n) => (n.id === item.id ? { ...n, read: true } : n)),
       );
-      const message = e instanceof Error ? e.message : 'Could not mark as read.';
-      Alert.alert('Something went wrong', message);
-    }
-  }, [refreshUnreadCount]);
+
+      try {
+        await markNotificationReadById(item.id);
+        refreshUnreadCount();
+      } catch (e) {
+        setItems((prev) =>
+          prev.map((n) => (n.id === item.id ? { ...n, read: false } : n)),
+        );
+        const message = e instanceof Error ? e.message : 'Could not mark as read.';
+        Alert.alert('Something went wrong', message);
+      }
+    },
+    [refreshUnreadCount],
+  );
+
+  const handleRowPress = useCallback(
+    (item) => {
+      if (!item.read) {
+        markRead(item);
+      }
+
+      Alert.alert(
+        item.title,
+        item.body?.trim() || 'No additional details for this notification.',
+        [{ text: 'OK' }],
+      );
+    },
+    [markRead],
+  );
 
   const renderItem = useCallback(
     ({ item }) => {
       const dateLabel = item.createdAt ? formatDate(item.createdAt) : '';
+      const preview = shortDescription(item.body);
 
       return (
-        <Pressable
-          onPress={() => handlePress(item)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: item.read }}
-          accessibilityLabel={
-            item.read
-              ? `${item.title}. Read.${item.body ? ` ${item.body}` : ''}`
-              : `${item.title}. Unread. Tap to mark as read.${item.body ? ` ${item.body}` : ''}`
-          }
-        >
-          <Card style={[styles.card, !item.read && styles.cardUnread]}>
-            <View style={styles.cardRow}>
-              <View style={styles.textBlock}>
-                <View style={styles.titleRow}>
-                  <Text
-                    style={[
-                      typography.bodyStrong,
-                      styles.title,
-                      !item.read && styles.titleUnread,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {item.title}
-                  </Text>
-                  {!item.read ? (
-                    <View style={styles.unreadDot} accessibilityLabel="Unread" />
-                  ) : null}
-                </View>
-                {dateLabel ? (
-                  <Text style={[typography.caption, styles.date]} numberOfLines={1}>
-                    {dateLabel}
-                  </Text>
-                ) : null}
-                {item.body ? (
-                  <Text style={[typography.caption, styles.body]} numberOfLines={2}>
-                    {item.body}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          </Card>
-        </Pressable>
+        <NotificationRow
+          title={item.title}
+          description={preview}
+          dateLabel={dateLabel}
+          tone={item.tone}
+          read={item.read}
+          onPress={() => handleRowPress(item)}
+        />
       );
     },
-    [handlePress],
+    [handleRowPress],
   );
 
   const renderSectionHeader = useCallback(
@@ -254,7 +248,7 @@ export default function NotificationsScreen() {
         <NotificationFilterBar activeFilter={activeFilter} onFilterChange={setActiveFilter} />
         {error && items.length > 0 ? (
           <View style={styles.inlineError}>
-            <Text style={[typography.caption, styles.inlineErrorText]}>{error}</Text>
+            <Text style={styles.inlineErrorText}>{error}</Text>
             <CustomButton
               title="Retry"
               onPress={() => fetchNotifications(false)}
@@ -309,7 +303,7 @@ export default function NotificationsScreen() {
     return (
       <EmptyState
         title="No Notifications"
-        message="Alerts about visit assignments, confirmations, schedule changes, and facility updates will appear here when available."
+        message="We'll notify you about approvals, schedules and updates."
         iconName="notifications-off-outline"
         style={styles.emptyWrap}
       />
@@ -325,10 +319,12 @@ export default function NotificationsScreen() {
         renderItem={renderItem}
         renderSectionHeader={renderSectionHeader}
         stickySectionHeadersEnabled={false}
-        initialNumToRender={12}
-        maxToRenderPerBatch={12}
-        windowSize={8}
+        initialNumToRender={24}
+        maxToRenderPerBatch={20}
+        windowSize={10}
         removeClippedSubviews={Platform.OS === 'android'}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
         contentContainerStyle={
           sections.length === 0 ? styles.listEmptyContent : styles.listContent
         }
@@ -338,8 +334,8 @@ export default function NotificationsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
+            tintColor={colors.primaryTeal}
+            colors={[colors.primaryTeal]}
           />
         }
       />
@@ -350,119 +346,87 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: layout.spacing.sm,
-    paddingBottom: layout.spacing.md,
+    paddingTop: spacing[2],
+    paddingBottom: spacing[8],
   },
   listEmptyContent: {
     flexGrow: 1,
     paddingHorizontal: layout.screenPadding,
-    paddingBottom: layout.spacing.md,
+    paddingBottom: spacing[12],
   },
   filterBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: layout.spacing.sm,
-    marginBottom: layout.spacing.sm,
+    gap: spacing[6],
+    marginBottom: spacing[6],
   },
   filterChip: {
-    paddingHorizontal: layout.spacing.md,
-    paddingVertical: layout.spacing.sm,
+    paddingHorizontal: spacing[10],
+    paddingVertical: spacing[6],
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
   },
   filterChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: colors.primaryTeal,
+    borderColor: colors.primaryTeal,
   },
   filterChipPressed: {
     opacity: 0.92,
   },
   filterChipLabel: {
+    ...typography.caption,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
   filterChipLabelActive: {
     color: colors.white,
   },
   sectionHeader: {
-    ...typography.captionStrong,
+    ...typography.caption,
+    fontWeight: '600',
     color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: layout.spacing.sm,
-    marginBottom: layout.spacing.xs,
+    letterSpacing: 0.5,
+    marginTop: spacing[6],
+    marginBottom: spacing[2],
+    paddingHorizontal: spacing[2],
   },
   sectionHeaderFirst: {
     marginTop: 0,
   },
-  card: {
-    marginBottom: layout.spacing.sm,
-    paddingVertical: layout.spacing.sm,
-    paddingHorizontal: layout.spacing.md,
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: spacing[10] + 32 + spacing[8],
   },
-  cardUnread: {
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  textBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: layout.spacing.sm,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    flexShrink: 0,
-  },
-  title: {
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  titleUnread: {
-    color: colors.primary,
-  },
-  date: {
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  body: {
-    color: colors.textMuted,
-    marginTop: layout.spacing.xs,
-    lineHeight: 17,
+  sectionGap: {
+    height: spacing[2],
   },
   emptyWrap: {
     flex: 1,
-    minHeight: 360,
+    minHeight: 280,
   },
   emptyActions: {
-    marginTop: layout.spacing.md,
+    marginTop: spacing[12],
     alignSelf: 'stretch',
     maxWidth: 280,
     width: '100%',
   },
   inlineError: {
-    padding: layout.spacing.md,
-    marginBottom: layout.spacing.sm,
-    backgroundColor: colors.white,
-    borderRadius: layout.borderRadius,
+    padding: spacing[12],
+    marginBottom: spacing[8],
+    backgroundColor: colors.card,
+    borderRadius: layout.cardRadius,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderLeftWidth: 4,
+    borderColor: colors.border,
+    borderLeftWidth: 3,
     borderLeftColor: colors.danger,
-    gap: layout.spacing.sm,
+    gap: spacing[8],
   },
   inlineErrorText: {
+    ...typography.caption,
     color: colors.danger,
   },
 });

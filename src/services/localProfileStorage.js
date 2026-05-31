@@ -13,7 +13,9 @@ function pickStoredFields(obj) {
     ...(typeof o.fullName === 'string' ? { fullName: o.fullName } : {}),
     ...(typeof o.email === 'string' ? { email: o.email } : {}),
     ...(typeof o.phone === 'string' ? { phone: o.phone } : {}),
+    ...(typeof o.address === 'string' ? { address: o.address } : {}),
     ...(typeof o.registrationStatus === 'string' ? { registrationStatus: o.registrationStatus } : {}),
+    ...(typeof o.relationshipToPdl === 'string' ? { relationshipToPdl: o.relationshipToPdl } : {}),
     ...(typeof o.photoUri === 'string' ? { photoUri: o.photoUri } : {}),
     ...(o.photoUri === null ? { photoUri: null } : {}),
   };
@@ -42,14 +44,16 @@ export async function loadLocalProfile(defaultProfile) {
  * Persists editable profile fields locally.
  * TODO: Connect to backend/database in production — PATCH /me (or equivalent), then mirror to cache if needed.
  *
- * @param {{ fullName: string; email: string; phone: string; registrationStatus: string; photoUri?: string | null }} profile
+ * @param {{ fullName: string; email: string; phone: string; address?: string; registrationStatus: string; relationshipToPdl?: string; photoUri?: string | null }} profile
  */
 export async function persistLocalProfile(profile) {
   const payload = JSON.stringify({
     fullName: profile.fullName,
     email: profile.email,
     phone: profile.phone,
+    address: profile.address ?? '',
     registrationStatus: profile.registrationStatus,
+    relationshipToPdl: profile.relationshipToPdl ?? '',
     photoUri: typeof profile.photoUri === 'string' ? profile.photoUri : null,
   });
   await AsyncStorage.setItem(STORAGE_KEY, payload);

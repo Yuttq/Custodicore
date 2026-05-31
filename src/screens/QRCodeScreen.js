@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, colors, layout, spacing, typography } from '../designSystem';
+import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
 import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
@@ -20,6 +20,8 @@ import {
   resolveScheduleIdForQr,
 } from '../repositories/qrRepository';
 import { formatDate, formatTime } from '../utils';
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 /**
  * @param {Record<string, unknown>} data
@@ -46,15 +48,6 @@ function normalizeQrPayload(data) {
     (typeof schedule.pdlName === 'string' && schedule.pdlName) ||
     (typeof data?.pdlName === 'string' && data.pdlName) ||
     '—';
-  const facility =
-    (typeof schedule.facilityName === 'string' && schedule.facilityName) ||
-    (typeof schedule.facility === 'string' && schedule.facility) ||
-    (typeof data?.facilityName === 'string' && data.facilityName) ||
-    '—';
-  const referenceNumber =
-    (typeof data?.referenceNumber === 'string' && data.referenceNumber) ||
-    (typeof data?.scheduleId === 'string' && data.scheduleId) ||
-    '—';
   const dateDisplay =
     (typeof schedule.dateDisplay === 'string' && schedule.dateDisplay) ||
     (scheduledAt ? formatDate(scheduledAt) : '—');
@@ -66,8 +59,6 @@ function normalizeQrPayload(data) {
     qrToken,
     expiresAt,
     pdlName,
-    facility,
-    referenceNumber,
     dateDisplay,
     timeLabel,
   };
@@ -79,14 +70,55 @@ function formatCountdown(totalSeconds) {
   const m = Math.floor((safe % 3600) / 60);
   const s = safe % 60;
   const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(h)} : ${pad(m)} : ${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-function InfoLine({ label, value }) {
+/**
+ * @param {boolean} isExpired
+ * @param {string | undefined} visitStatus
+ */
+function getPassStatus(isExpired, visitStatus) {
+  if (isExpired) {
+    return {
+      label: 'Expired',
+      hint: 'This pass is no longer valid for entry.',
+      tone: 'expired',
+    };
+  }
+  if (visitStatus === 'checked_in') {
+    return {
+      label: 'Active',
+      hint: 'You may present this pass at the facility.',
+      tone: 'active',
+    };
+  }
+  return {
+    label: 'Ready for Check-In',
+    hint: 'Valid for your assigned visit window.',
+    tone: 'ready',
+  };
+}
+
+/**
+ * @param {object} props
+ * @param {ReturnType<typeof getPassStatus>} props.status
+ */
+function PassStatusBanner({ status }) {
+  const toneStyles = {
+    active: styles.statusActive,
+    ready: styles.statusReady,
+    expired: styles.statusExpired,
+  };
+  const textStyles = {
+    active: styles.statusTextActive,
+    ready: styles.statusTextReady,
+    expired: styles.statusTextExpired,
+  };
+
   return (
-    <View style={styles.infoLine}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+    <View style={[styles.statusBanner, toneStyles[status.tone]]}>
+      <Text style={[styles.statusLabel, textStyles[status.tone]]}>{status.label}</Text>
+      <Text style={styles.statusHint}>{status.hint}</Text>
     </View>
   );
 }
@@ -105,11 +137,11 @@ function isNoActiveQrPassError(message) {
 }
 
 /**
- * Digital visit pass — gate QR with expiry countdown (v2.1).
+ * Digital visit pass — answers “Can I enter the facility?” (v2.1).
  */
 export default function QRCodeScreen({ route, navigation }) {
   const scheduleIdParam = route?.params?.scheduleId ?? route?.params?.visitId;
-  const { visits } = useVisits();
+  const { visits, getVisitById } = useVisits();
 
   const preferredVisitId = useMemo(() => {
     const confirmed = visits.find((v) => v.status === 'confirmed');
@@ -120,8 +152,14 @@ export default function QRCodeScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [qrPayload, setQrPayload] = useState(null);
+  const [resolvedScheduleId, setResolvedScheduleId] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const hasLoadedOnce = useRef(false);
+
+  const activeVisit = useMemo(
+    () => (resolvedScheduleId ? getVisitById(resolvedScheduleId) : null),
+    [resolvedScheduleId, getVisitById],
+  );
 
   const applyExpiry = useCallback((expiresAt) => {
     if (!expiresAt) {
@@ -148,6 +186,7 @@ export default function QRCodeScreen({ route, navigation }) {
         const sid = await resolveScheduleIdForQr(
           scheduleIdParam ?? preferredVisitId,
         );
+        setResolvedScheduleId(sid);
         const data = await fetchQrTokenPayload(sid);
         const normalized = normalizeQrPayload(
           data && typeof data === 'object' ? data : {},
@@ -188,10 +227,19 @@ export default function QRCodeScreen({ route, navigation }) {
     return () => clearInterval(id);
   }, [qrPayload?.expiresAt]);
 
+  useEffect(() => {
+    if (!qrPayload?.qrToken || loading) return undefined;
+    const id = setInterval(() => {
+      load('refresh');
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [qrPayload?.qrToken, loading, load]);
+
   const countdownDisplay = formatCountdown(secondsLeft);
-  const isExpired = secondsLeft <= 0 && qrPayload?.expiresAt;
+  const isExpired = secondsLeft <= 0 && Boolean(qrPayload?.expiresAt);
   const tabBarInset = useTabBarScrollInset();
   const showNoActivePass = !loading && !qrPayload && isNoActiveQrPassError(error);
+  const passStatus = getPassStatus(isExpired, activeVisit?.status);
 
   const onViewMyVisits = useCallback(() => {
     navigation.navigate('Schedule');
@@ -199,7 +247,30 @@ export default function QRCodeScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <Text style={styles.headerTitle}>QR PASS</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>QR Pass</Text>
+        {qrPayload && !loading ? (
+          <Pressable
+            onPress={() => load('refresh')}
+            disabled={refreshing}
+            style={({ pressed }) => [
+              styles.refreshIconBtn,
+              pressed && !refreshing && styles.pressed,
+              refreshing && styles.refreshDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh QR pass"
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primaryTeal} />
+            ) : (
+              <Ionicons name="refresh" size={22} color={colors.primaryTeal} />
+            )}
+          </Pressable>
+        ) : (
+          <View style={styles.refreshPlaceholder} />
+        )}
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
@@ -214,7 +285,7 @@ export default function QRCodeScreen({ route, navigation }) {
         ) : showNoActivePass ? (
           <EmptyState
             title="No Active QR Pass"
-            message="A QR pass is issued when you have a confirmed assigned visit. Check My Visits for your schedule, or pull to refresh after an officer assigns a visit."
+            message="A QR pass is issued when you have a confirmed assigned visit. Check My Visits for your schedule, or tap refresh after an officer assigns a visit."
             iconName="qr-code-outline"
             iconColor={colors.primaryTeal}
             style={styles.centerBlock}
@@ -236,78 +307,58 @@ export default function QRCodeScreen({ route, navigation }) {
               accessibilityRole="alert"
               style={styles.errorEmpty}
             >
-              <Button title="Retry" onPress={() => load('initial')} accessibilityLabel="Retry loading QR pass" />
+              <Button
+                title="Retry"
+                onPress={() => load('initial')}
+                accessibilityLabel="Retry loading QR pass"
+              />
             </EmptyState>
           </View>
         ) : (
           <>
-            <View style={styles.passCard}>
-              <Text style={styles.passIntro}>
-                Present this QR code at the facility gate and to the Front Desk
-                Officer.
-              </Text>
+            <Card style={styles.passCard}>
+              <PassStatusBanner status={passStatus} />
 
-              <Text style={styles.expiresLabel}>EXPIRES IN</Text>
-              <Text
-                style={[styles.countdown, isExpired && styles.countdownExpired]}
-                accessibilityLabel={`Expires in ${countdownDisplay}`}
+              <View style={styles.expiryRow}>
+                <Ionicons
+                  name="time-outline"
+                  size={16}
+                  color={isExpired ? colors.warning : colors.textSecondary}
+                />
+                <Text style={styles.expiryLabel}>Expires in</Text>
+                <Text
+                  style={[styles.countdown, isExpired && styles.countdownExpired]}
+                  accessibilityLabel={`Expires in ${countdownDisplay}`}
+                >
+                  {isExpired ? '00:00:00' : countdownDisplay}
+                </Text>
+              </View>
+
+              <View
+                style={[styles.qrFrame, isExpired && styles.qrFrameExpired]}
+                accessibilityLabel="Visit entry QR code"
               >
-                {isExpired ? '00 : 00 : 00' : countdownDisplay}
-              </Text>
-
-              <View style={styles.qrFrame} accessibilityLabel="Visit entry QR code">
                 <QRCode
                   value={qrPayload?.qrToken ?? ''}
-                  size={248}
+                  size={232}
                   color={colors.primaryNavy}
                   backgroundColor={colors.white}
                 />
               </View>
 
-              <View style={styles.visitInfo}>
-                <InfoLine label="Facility" value={qrPayload?.facility} />
-                <InfoLine label="Date" value={qrPayload?.dateDisplay} />
-                <InfoLine label="Time" value={qrPayload?.timeLabel} />
-                <InfoLine label="PDL" value={qrPayload?.pdlName} />
-                <InfoLine label="Reference Number" value={qrPayload?.referenceNumber} />
+              <View style={styles.visitSummary}>
+                <Text style={styles.summaryDate}>{qrPayload?.dateDisplay}</Text>
+                <Text style={styles.summaryTime}>{qrPayload?.timeLabel}</Text>
+                <Text style={styles.summaryPdl} numberOfLines={2}>
+                  {qrPayload?.pdlName}
+                </Text>
               </View>
-
-              {!isExpired ? (
-                <View style={styles.activeBadge}>
-                  <Text style={styles.activeText}>ACTIVE</Text>
-                </View>
-              ) : (
-                <View style={styles.expiredBadge}>
-                  <Text style={styles.expiredText}>EXPIRED</Text>
-                </View>
-              )}
-
-              <Pressable
-                onPress={() => load('refresh')}
-                disabled={refreshing}
-                style={({ pressed }) => [
-                  styles.refreshBtn,
-                  pressed && !refreshing && styles.pressed,
-                  refreshing && styles.refreshDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Refresh QR"
-              >
-                {refreshing ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="refresh" size={18} color={colors.white} />
-                    <Text style={styles.refreshText}>Refresh QR</Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
+            </Card>
 
             <View style={styles.noticeBox}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={colors.primaryTeal} />
+              <Ionicons name="id-card-outline" size={18} color={colors.primaryTeal} />
               <Text style={styles.noticeText}>
-                Bring the same government-issued ID used during registration.
+                Bring your valid ID. Present both QR code and ID during check-in.
               </Text>
             </View>
           </>
@@ -322,19 +373,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[20],
+    paddingTop: spacing[8],
+    paddingBottom: spacing[8],
+  },
   headerTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
-    textAlign: 'center',
-    paddingTop: spacing[8],
-    paddingBottom: spacing[12],
-    letterSpacing: 1,
+    flex: 1,
+  },
+  refreshIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  refreshPlaceholder: {
+    width: 40,
   },
   scroll: {
     paddingHorizontal: spacing[20],
   },
   centerBlock: {
-    minHeight: 320,
+    minHeight: 300,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -342,129 +411,125 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[16],
   },
   loadingText: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textSecondary,
-  },
-  errorText: {
-    ...typography.body,
-    color: colors.danger,
-    textAlign: 'center',
-    marginBottom: spacing[8],
+    marginTop: spacing[12],
   },
   passCard: {
-    backgroundColor: colors.primaryNavy,
     borderRadius: layout.cardRadius,
-    padding: spacing[20],
-    marginBottom: layout.cardGap,
+    padding: spacing[16],
+    marginBottom: spacing[12],
+    alignItems: 'center',
   },
-  passIntro: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: spacing[16],
+  statusBanner: {
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    paddingVertical: spacing[10],
+    paddingHorizontal: spacing[12],
+    marginBottom: spacing[12],
+    alignItems: 'center',
   },
-  expiresLabel: {
+  statusActive: {
+    backgroundColor: 'rgba(22, 163, 74, 0.12)',
+  },
+  statusReady: {
+    backgroundColor: 'rgba(13, 165, 138, 0.12)',
+  },
+  statusExpired: {
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+  },
+  statusLabel: {
+    ...typography.body,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  statusTextActive: {
+    color: colors.success,
+  },
+  statusTextReady: {
+    color: colors.primaryTeal,
+  },
+  statusTextExpired: {
+    color: colors.warning,
+  },
+  statusHint: {
     ...typography.caption,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.textSecondary,
+    marginTop: spacing[4],
     textAlign: 'center',
-    letterSpacing: 1.2,
-    marginBottom: spacing[8],
+  },
+  expiryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[6],
+    marginBottom: spacing[12],
+  },
+  expiryLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   countdown: {
-    fontSize: 32,
+    ...typography.caption,
     fontWeight: '700',
-    color: colors.white,
-    textAlign: 'center',
-    letterSpacing: 2,
-    marginBottom: spacing[20],
+    color: colors.primaryNavy,
+    fontVariant: ['tabular-nums'],
   },
   countdownExpired: {
     color: colors.warning,
   },
   qrFrame: {
-    alignSelf: 'center',
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: spacing[16],
-    marginBottom: spacing[20],
-  },
-  visitInfo: {
-    marginBottom: spacing[16],
-  },
-  infoLine: {
-    marginBottom: spacing[10],
-  },
-  infoLabel: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: spacing[4],
-  },
-  infoValue: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  activeBadge: {
-    alignSelf: 'center',
-    backgroundColor: colors.success,
-    paddingHorizontal: spacing[16],
-    paddingVertical: spacing[8],
-    borderRadius: layout.chipRadius,
-    marginBottom: spacing[16],
-  },
-  activeText: {
-    ...typography.statusLabel,
-    color: colors.white,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  expiredBadge: {
-    alignSelf: 'center',
-    backgroundColor: colors.warning,
-    paddingHorizontal: spacing[16],
-    paddingVertical: spacing[8],
-    borderRadius: layout.chipRadius,
-    marginBottom: spacing[16],
-  },
-  expiredText: {
-    ...typography.statusLabel,
-    color: colors.textPrimary,
-    fontWeight: '700',
-  },
-  refreshBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing[8],
-    height: layout.buttonHeight,
-    borderRadius: layout.buttonRadius,
+    padding: spacing[14],
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.border,
+    marginBottom: spacing[14],
   },
-  refreshText: {
+  qrFrameExpired: {
+    opacity: 0.55,
+  },
+  visitSummary: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingTop: spacing[4],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  summaryDate: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.white,
+    fontWeight: '700',
+    color: colors.primaryNavy,
   },
-  refreshDisabled: { opacity: 0.7 },
-  pressed: { opacity: 0.9 },
+  summaryTime: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginTop: spacing[4],
+  },
+  summaryPdl: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing[4],
+    textAlign: 'center',
+  },
   noticeBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing[12],
+    gap: spacing[10],
     backgroundColor: colors.card,
     borderRadius: layout.cardRadius,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing[16],
+    padding: spacing[12],
   },
   noticeText: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textPrimary,
     flex: 1,
-    lineHeight: 22,
+    lineHeight: 18,
   },
+  refreshDisabled: { opacity: 0.6 },
+  pressed: { opacity: 0.88 },
 });

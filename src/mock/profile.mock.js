@@ -3,7 +3,9 @@
  * @property {string} fullName
  * @property {string} email
  * @property {string} phone
+ * @property {string} address
  * @property {string} registrationStatus
+ * @property {string} relationshipToPdl
  * @property {string | null} [photoUri]
  */
 
@@ -17,7 +19,7 @@ export const DEFAULT_LOCAL_PROFILE = {
   fullName: 'Maria Santos',
   email: 'maria.santos@example.com',
   phone: '+63 917 000 0000',
+  address: '123 Rizal Street, Quezon City, Metro Manila',
   registrationStatus: 'approved',
-  /** Used for visitor verification document requirements (mock). */
   relationshipToPdl: 'spouse',
 };

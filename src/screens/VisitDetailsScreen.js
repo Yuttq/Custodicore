@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CompactVisitTimeline from '../components/CompactVisitTimeline';
 import {
   Button,
   Card,
@@ -20,11 +21,16 @@ import {
 } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
 import {
-  FACILITY_RULES,
-  VISITOR_REMINDERS,
+  VISITATION_GUIDELINES,
   canRespondToVisit,
-  getMockFacilityContact,
 } from '../mock/assignedVisits.mock';
+import { getCompactVisitSteps } from '../utils/visitProgressSnapshot';
+
+const DETAIL_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'timeline', label: 'Timeline' },
+  { key: 'guidelines', label: 'Guidelines' },
+];
 
 function InfoRow({ label, value }) {
   return (
@@ -36,18 +42,22 @@ function InfoRow({ label, value }) {
 }
 
 /**
- * Visit details — information, facility rules, confirm / unable to attend (v2.1).
+ * Visit details — overview, timeline, and guidelines (v2.1).
  */
 export default function VisitDetailsScreen({ navigation, route }) {
   const visitId = route.params?.visitId;
   const { getVisitById, confirmVisit } = useVisits();
   const visit = getVisitById(visitId);
+  const [activeTab, setActiveTab] = useState('overview');
   const [submitting, setSubmitting] = useState(false);
 
   const showActions = visit && canRespondToVisit(visit.status);
-  const facilityContact = useMemo(
-    () => getMockFacilityContact(visit?.facility),
-    [visit?.facility],
+  const showQrPass =
+    visit && (visit.status === 'confirmed' || visit.status === 'checked_in');
+
+  const compactSteps = useMemo(
+    () => (visit ? getCompactVisitSteps(visit.id, visit.status) : []),
+    [visit],
   );
 
   const onConfirm = useCallback(async () => {
@@ -72,16 +82,13 @@ export default function VisitDetailsScreen({ navigation, route }) {
     navigation.navigate('UnableToAttend', { visitId: visit.id });
   }, [visit, navigation]);
 
-  const onTrackVisitProgress = useCallback(() => {
+  const onShowQrPass = useCallback(() => {
     if (!visit) return;
-    navigation.navigate('Timeline', {
-      scheduleId: visit.id,
-      visitId: visit.id,
-      visitStatus: visit.status,
-      pdlName: visit.pdlName,
-      referenceNumber: visit.referenceNumber,
+    navigation.navigate('MainTabs', {
+      screen: 'QR',
+      params: { scheduleId: visit.id, visitId: visit.id },
     });
-  }, [visit, navigation]);
+  }, [navigation, visit]);
 
   if (!visit) {
     return (
@@ -109,78 +116,92 @@ export default function VisitDetailsScreen({ navigation, route }) {
         <View style={styles.backPlaceholder} />
       </View>
 
+      <View style={styles.statusRow}>
+        <StatusChip status={visit.status} />
+      </View>
+
+      <View style={styles.tabBar}>
+        {DETAIL_TABS.map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={[styles.tab, active && styles.tabActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.statusRow}>
-          <StatusChip status={visit.status} />
-        </View>
+        {activeTab === 'overview' ? (
+          <>
+            <Card style={styles.card}>
+              <InfoRow label="Date" value={visit.dateDisplay} />
+              <InfoRow label="Time" value={visit.timeLabel} />
+              <InfoRow label="Facility" value={visit.facility} />
+              <InfoRow label="PDL Name" value={visit.pdlName} />
+              <InfoRow label="Visit Type" value={visit.visitType} />
+              <InfoRow label="Reference Number" value={visit.referenceNumber} />
+            </Card>
 
-        <Text style={styles.sectionHeading}>VISIT INFORMATION</Text>
-        <Card style={styles.card}>
-          <InfoRow label="Date" value={visit.dateDisplay} />
-          <InfoRow label="Time" value={visit.timeLabel} />
-          <InfoRow label="Facility" value={visit.facility} />
-          <InfoRow label="PDL Name" value={visit.pdlName} />
-          <InfoRow label="Reference Number" value={visit.referenceNumber} />
-          <InfoRow label="Visit Type" value={visit.visitType} />
-        </Card>
+            {showQrPass ? (
+              <Button
+                title="Show QR Pass"
+                onPress={onShowQrPass}
+                accessibilityLabel="Show QR pass for this visit"
+              />
+            ) : null}
 
-        <Text style={styles.sectionHeading}>FACILITY RULES</Text>
-        <Card style={styles.card}>
-          {FACILITY_RULES.map((rule) => (
-            <View key={rule} style={styles.ruleRow}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-              <Text style={styles.ruleText}>{rule}</Text>
-            </View>
-          ))}
-        </Card>
+            {showActions ? (
+              <View style={styles.actions}>
+                <Button
+                  title="Confirm Attendance"
+                  onPress={onConfirm}
+                  loading={submitting}
+                  disabled={submitting}
+                  accessibilityLabel="Confirm attendance"
+                />
+                <Pressable
+                  onPress={onUnableToAttend}
+                  style={({ pressed }) => [styles.unableBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Unable to attend"
+                >
+                  <Text style={styles.unableBtnText}>Unable To Attend</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </>
+        ) : null}
 
-        <Text style={styles.sectionHeading}>VISITOR REMINDERS</Text>
-        <Card style={styles.card}>
-          {VISITOR_REMINDERS.map((reminder) => (
-            <View key={reminder} style={styles.ruleRow}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-              <Text style={styles.ruleText}>{reminder}</Text>
-            </View>
-          ))}
-        </Card>
+        {activeTab === 'timeline' ? (
+          <CompactVisitTimeline steps={compactSteps} />
+        ) : null}
 
-        <Text style={styles.sectionHeading}>FACILITY CONTACT</Text>
-        <Card style={styles.card}>
-          <InfoRow label="Facility Name" value={facilityContact.facilityName} />
-          <InfoRow label="Contact Number" value={facilityContact.contactNumber} />
-          <InfoRow label="Office Availability" value={facilityContact.officeAvailability} />
-        </Card>
-
-        <View style={styles.actions}>
-          <Button
-            title="Track Visit Progress"
-            variant="secondary"
-            onPress={onTrackVisitProgress}
-            accessibilityLabel="Track visit progress"
-          />
-        </View>
-
-        {showActions ? (
-          <View style={styles.actions}>
-            <Button
-              title="Confirm Attendance"
-              onPress={onConfirm}
-              loading={submitting}
-              disabled={submitting}
-              accessibilityLabel="Confirm attendance"
-            />
-            <Pressable
-              onPress={onUnableToAttend}
-              style={({ pressed }) => [styles.unableBtn, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Unable to attend"
-            >
-              <Text style={styles.unableBtnText}>Unable To Attend</Text>
-            </Pressable>
-          </View>
+        {activeTab === 'guidelines' ? (
+          <Card style={styles.card}>
+            <Text style={styles.guidelinesTitle}>Visitation Guidelines</Text>
+            <Text style={styles.guidelinesSub}>
+              Facility rules and reminders for your assigned visit.
+            </Text>
+            {VISITATION_GUIDELINES.map((item) => (
+              <View key={item} style={styles.guidelineRow}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                <Text style={styles.guidelineText}>{item}</Text>
+              </View>
+            ))}
+          </Card>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -211,20 +232,41 @@ const styles = StyleSheet.create({
     ...typography.sectionTitle,
     color: colors.textPrimary,
   },
-  scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
-  },
   statusRow: {
     alignSelf: 'flex-start',
-    marginBottom: spacing[16],
+    marginLeft: spacing[20],
+    marginBottom: spacing[12],
   },
-  sectionHeading: {
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: spacing[20],
+    marginBottom: spacing[12],
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing[4],
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: spacing[8],
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: colors.primaryTeal,
+  },
+  tabLabel: {
     ...typography.caption,
     fontWeight: '600',
     color: colors.textSecondary,
-    letterSpacing: 0.6,
-    marginBottom: spacing[8],
+  },
+  tabLabelActive: {
+    color: colors.white,
+  },
+  scroll: {
+    paddingHorizontal: spacing[20],
+    paddingBottom: spacing[32],
   },
   card: {
     borderRadius: layout.cardRadius,
@@ -243,20 +285,31 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: '500',
   },
-  ruleRow: {
+  guidelinesTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+    marginBottom: spacing[4],
+  },
+  guidelinesSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing[12],
+    lineHeight: 18,
+  },
+  guidelineRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing[12],
-    marginBottom: spacing[10],
+    gap: spacing[10],
+    marginBottom: spacing[8],
   },
-  ruleText: {
+  guidelineText: {
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   actions: {
-    marginTop: spacing[8],
+    marginTop: spacing[12],
     gap: spacing[12],
   },
   unableBtn: {

@@ -1,5 +1,6 @@
 /** @typedef {'all' | 'visits' | 'updates' | 'system'} NotificationFilterKey */
 /** @typedef {'visits' | 'updates' | 'system'} NotificationCategory */
+/** @typedef {'success' | 'warning' | 'information'} NotificationTone */
 /** @typedef {'today' | 'yesterday' | 'thisWeek' | 'earlier'} NotificationDateGroupKey */
 
 export const NOTIFICATION_FILTERS = [
@@ -81,6 +82,46 @@ export function inferNotificationCategory(raw) {
     return 'updates';
   }
   return 'system';
+}
+
+/**
+ * Display tone for compact notification rows (Success / Warning / Information).
+ * @param {Record<string, unknown>} raw
+ * @returns {NotificationTone}
+ */
+export function inferNotificationTone(raw) {
+  if (typeof raw.tone === 'string') {
+    const tone = raw.tone.toLowerCase();
+    if (tone === 'success' || tone === 'warning' || tone === 'information') {
+      return tone;
+    }
+  }
+  if (typeof raw.type === 'string') {
+    const type = raw.type.toLowerCase();
+    if (type === 'success' || type === 'warning' || type === 'information') {
+      return type;
+    }
+  }
+
+  const title = String(raw.title ?? raw.subject ?? '').toLowerCase();
+  if (
+    title.includes('cancel') ||
+    title.includes('maintenance') ||
+    title.includes('security') ||
+    title.includes('pending') ||
+    title.includes('unable')
+  ) {
+    return 'warning';
+  }
+  if (
+    title.includes('confirm') ||
+    title.includes('approved') ||
+    title.includes('verified') ||
+    title.includes('eligible')
+  ) {
+    return 'success';
+  }
+  return 'information';
 }
 
 /**

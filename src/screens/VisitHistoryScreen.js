@@ -9,172 +9,87 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Button,
-  Card,
-  StatusChip,
-  colors,
-  layout,
-  spacing,
-  typography,
-} from '../designSystem';
-import { useVisits } from '../context/VisitsContext';
-import { getVisitationHistorySummary } from '../mock/visitationHistory.mock';
+import { Button, colors, layout, spacing, typography } from '../designSystem';
+import { EmptyState } from '../components';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
 
 const TABS = [
-  { key: 'all', label: 'All' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
 
 const LOADING_MS = 520;
 
+/** @typedef {import('../mock/visitationHistory.mock').MOCK_VISITATION_HISTORY[number]} HistoryRecord */
+
 function HistorySkeleton() {
   return (
     <View style={styles.skeletonList}>
-      {[1, 2, 3].map((n) => (
-        <Card key={n} style={styles.skeletonCard}>
-          <View style={styles.skeletonRow}>
-            <View style={styles.skeletonIcon} />
-            <View style={styles.skeletonBody}>
-              <View style={styles.skeletonLine} />
-              <View style={[styles.skeletonLine, styles.skeletonLineMid]} />
-              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
-            </View>
+      {[1, 2, 3, 4].map((n) => (
+        <View key={n} style={[styles.skeletonRow, n < 4 && styles.historyRowBorder]}>
+          <View style={styles.skeletonCol}>
+            <View style={styles.skeletonLine} />
+            <View style={[styles.skeletonLine, styles.skeletonLineWide]} />
           </View>
-        </Card>
+          <View style={styles.skeletonStatus} />
+        </View>
       ))}
     </View>
   );
 }
 
-function SummaryCard({ total, completed, cancelled }) {
-  return (
-    <Card style={styles.summaryCard}>
-      <View style={styles.summaryItem}>
-        <Text style={styles.summaryValue}>{total}</Text>
-        <Text style={styles.summaryLabel}>Total Visits</Text>
-      </View>
-      <View style={styles.summaryDivider} />
-      <View style={styles.summaryItem}>
-        <Text style={[styles.summaryValue, styles.summaryValueSuccess]}>{completed}</Text>
-        <Text style={styles.summaryLabel}>Completed</Text>
-      </View>
-      <View style={styles.summaryDivider} />
-      <View style={styles.summaryItem}>
-        <Text style={[styles.summaryValue, styles.summaryValueDanger]}>{cancelled}</Text>
-        <Text style={styles.summaryLabel}>Cancelled</Text>
-      </View>
-    </Card>
-  );
+/**
+ * @param {HistoryRecord} item
+ */
+function getStatusLabel(item) {
+  return item.status === 'completed' ? 'Completed' : 'Cancelled';
 }
 
-function HistoryMetaRow({ icon, label, value }) {
-  return (
-    <View style={styles.metaRow}>
-      <Ionicons name={icon} size={16} color={colors.textSecondary} />
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue} numberOfLines={2}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function VisitationHistoryCard({ item, onViewDetails, showViewDetails }) {
+/**
+ * @param {object} props
+ * @param {HistoryRecord} props.item
+ * @param {boolean} props.isLast
+ * @param {() => void} props.onPress
+ */
+function HistoryCompactRow({ item, isLast, onPress }) {
+  const statusLabel = getStatusLabel(item);
   const isCompleted = item.status === 'completed';
-  const statusIcon = isCompleted ? 'checkmark-circle' : 'close-circle';
-  const statusIconColor = isCompleted ? colors.success : colors.danger;
 
   return (
-    <Card style={styles.historyCard}>
-      <View style={styles.cardHeader}>
-        <View style={styles.statusIconWrap}>
-          <Ionicons name={statusIcon} size={28} color={statusIconColor} />
-        </View>
-        <View style={styles.cardHeaderText}>
-          <StatusChip status={item.status} />
-          <Text style={styles.cardDate}>{item.dateDisplay}</Text>
-          <Text style={styles.cardTime}>{item.timeLabel}</Text>
-        </View>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.historyRow,
+        !isLast && styles.historyRowBorder,
+        pressed && styles.historyRowPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${statusLabel} visit on ${item.dateDisplay} with ${item.pdlName}`}
+    >
+      <View style={styles.rowContent}>
+        <Text style={styles.historyDate}>{item.dateDisplay}</Text>
+        <Text style={styles.historyPdl} numberOfLines={1}>
+          {item.pdlName}
+        </Text>
       </View>
-
-      <HistoryMetaRow icon="person-outline" label="PDL" value={item.pdlName} />
-
-      {isCompleted ? (
-        <>
-          <HistoryMetaRow icon="business-outline" label="Facility" value={item.facility} />
-          <HistoryMetaRow
-            icon="document-text-outline"
-            label="Reference"
-            value={item.referenceNumber}
-          />
-          {showViewDetails ? (
-            <View style={styles.viewDetailsWrap}>
-              <Button
-                title="View Details"
-                variant="secondary"
-                onPress={() => onViewDetails(item)}
-                accessibilityLabel={`View details for visit with ${item.pdlName}`}
-              />
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <HistoryMetaRow
-          icon="information-circle-outline"
-          label="Reason"
-          value={item.cancellationReason ?? 'Visit cancelled'}
-        />
-      )}
-    </Card>
-  );
-}
-
-function HistoryEmpty({ onReturnDashboard }) {
-  return (
-    <View style={styles.emptyWrap}>
-      <View style={styles.emptyIconCircle}>
-        <Ionicons name="time-outline" size={48} color={colors.primaryNavy} />
-      </View>
-      <Text style={styles.emptyTitle}>No Visitation Records</Text>
-      <Text style={styles.emptyMessage}>
-        Your completed visitation records will appear here.
+      <Text
+        style={[
+          styles.historyStatus,
+          isCompleted ? styles.statusCompleted : styles.statusCancelled,
+        ]}
+      >
+        {statusLabel}
       </Text>
-      <View style={styles.emptyButtonWrap}>
-        <Button
-          title="Return To Dashboard"
-          onPress={onReturnDashboard}
-          accessibilityLabel="Return to dashboard"
-        />
-      </View>
-    </View>
-  );
-}
-
-function HistoryError({ onRetry }) {
-  return (
-    <View style={styles.emptyWrap}>
-      <View style={[styles.emptyIconCircle, styles.errorIconCircle]}>
-        <Ionicons name="cloud-offline-outline" size={48} color={colors.danger} />
-      </View>
-      <Text style={styles.emptyTitle}>Unable to load visitation history.</Text>
-      <Text style={styles.emptyMessage}>Please try again.</Text>
-      <View style={styles.emptyButtonWrap}>
-        <Button title="Retry" onPress={onRetry} accessibilityLabel="Retry loading history" />
-      </View>
-    </View>
+    </Pressable>
   );
 }
 
 /**
- * Visitation history — past completed and cancelled visits (v2.1 / BJMP).
+ * Visitation history — past completed and cancelled visits only (v2.1 / BJMP).
  */
 export default function VisitHistoryScreen({ navigation }) {
-  const { getVisitById } = useVisits();
-  const [items, setItems] = useState([]);
-  const [activeTab, setActiveTab] = useState('all');
+  const [items, setItems] = useState(/** @type {HistoryRecord[]} */ ([]));
+  const [activeTab, setActiveTab] = useState('completed');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -204,16 +119,14 @@ export default function VisitHistoryScreen({ navigation }) {
     loadHistory(false);
   }, [loadHistory]);
 
-  const summary = useMemo(() => getVisitationHistorySummary(items), [items]);
+  const filteredItems = useMemo(
+    () => items.filter((r) => r.status === activeTab),
+    [items, activeTab],
+  );
 
-  const filteredItems = useMemo(() => {
-    if (activeTab === 'all') return items;
-    return items.filter((r) => r.status === activeTab);
-  }, [items, activeTab]);
-
-  const onViewDetails = useCallback(
+  const openDetail = useCallback(
     (item) => {
-      navigation.navigate('VisitDetails', { visitId: item.id });
+      navigation.navigate('VisitHistoryDetail', { visitId: item.id });
     },
     [navigation],
   );
@@ -222,52 +135,107 @@ export default function VisitHistoryScreen({ navigation }) {
     navigation.navigate('MainTabs', { screen: 'Dashboard' });
   }, [navigation]);
 
+  const listData = useMemo(
+    () => (filteredItems.length > 0 ? [{ key: 'group', items: filteredItems }] : []),
+    [filteredItems],
+  );
+
   const renderItem = useCallback(
-    ({ item }) => (
-      <VisitationHistoryCard
-        item={item}
-        onViewDetails={onViewDetails}
-        showViewDetails={item.status === 'completed' && Boolean(getVisitById(item.id))}
-      />
+    ({ item: group }) => (
+      <View style={styles.historyList}>
+        {group.items.map((row, index) => (
+          <HistoryCompactRow
+            key={row.id}
+            item={row}
+            isLast={index === group.items.length - 1}
+            onPress={() => openDetail(row)}
+          />
+        ))}
+      </View>
     ),
-    [onViewDetails, getVisitById],
+    [openDetail],
   );
 
   const listHeader = useMemo(
     () => (
-      <>
-        <SummaryCard
-          total={summary.total}
-          completed={summary.completed}
-          cancelled={summary.cancelled}
-        />
-        <View style={styles.tabBar}>
-          {TABS.map((tab) => {
-            const active = activeTab === tab.key;
-            return (
-              <Pressable
-                key={tab.key}
-                onPress={() => setActiveTab(tab.key)}
-                style={[styles.tab, active && styles.tabActive]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-              >
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </>
+      <View style={styles.tabBar}>
+        {TABS.map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={[styles.tab, active && styles.tabActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     ),
-    [activeTab, summary],
+    [activeTab],
   );
 
   const listEmpty = useCallback(() => {
-    if (error) return <HistoryError onRetry={() => loadHistory(false)} />;
-    return <HistoryEmpty onReturnDashboard={onReturnDashboard} />;
-  }, [error, loadHistory, onReturnDashboard]);
+    if (error) {
+      return (
+        <EmptyState
+          title="Unable to load history"
+          message="Please check your connection and try again."
+          iconName="cloud-offline-outline"
+          iconColor={colors.danger}
+          emphasis="error"
+          style={styles.emptyState}
+        >
+          <Button title="Retry" onPress={() => loadHistory(false)} accessibilityLabel="Retry" />
+        </EmptyState>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <EmptyState
+          title="No Visit History Yet"
+          message="Your completed visits will appear here."
+          iconName="time-outline"
+          iconColor={colors.primaryTeal}
+          style={styles.emptyState}
+        >
+          <Button
+            title="Return to Home"
+            variant="secondary"
+            onPress={onReturnDashboard}
+            accessibilityLabel="Return to home"
+          />
+        </EmptyState>
+      );
+    }
+
+    const tabEmpty =
+      activeTab === 'completed'
+        ? {
+            title: 'No Completed Visits',
+            message: 'Finished visitation sessions will appear here.',
+            icon: 'checkmark-done-outline',
+          }
+        : {
+            title: 'No Cancelled Visits',
+            message: 'Cancelled visitation records will appear here.',
+            icon: 'close-circle-outline',
+          };
+
+    return (
+      <EmptyState
+        title={tabEmpty.title}
+        message={tabEmpty.message}
+        iconName={tabEmpty.icon}
+        iconColor={colors.primaryTeal}
+        style={styles.emptyState}
+      />
+    );
+  }, [error, items.length, activeTab, loadHistory, onReturnDashboard]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -288,12 +256,14 @@ export default function VisitHistoryScreen({ navigation }) {
         <View style={styles.loadingContainer}>
           {listHeader}
           <Text style={styles.loadingLabel}>Loading history…</Text>
-          <HistorySkeleton />
+          <View style={styles.historyList}>
+            <HistorySkeleton />
+          </View>
         </View>
       ) : (
         <FlatList
-          data={filteredItems}
-          keyExtractor={(it) => it.id}
+          data={listData}
+          keyExtractor={(it) => it.key}
           renderItem={renderItem}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={listEmpty}
@@ -322,7 +292,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing[20],
     paddingTop: spacing[8],
-    paddingBottom: spacing[12],
+    paddingBottom: spacing[10],
   },
   backButton: {
     width: 44,
@@ -349,7 +319,7 @@ const styles = StyleSheet.create({
   loadingLabel: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginBottom: spacing[12],
+    marginBottom: spacing[10],
   },
   listContent: {
     paddingHorizontal: spacing[20],
@@ -360,42 +330,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[20],
     paddingBottom: spacing[24],
   },
-  summaryCard: {
-    borderRadius: layout.cardRadius,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing[16],
-    paddingVertical: spacing[16],
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryValue: {
-    ...typography.screenTitle,
-    fontSize: 24,
-    color: colors.primaryNavy,
-    marginBottom: spacing[4],
-  },
-  summaryValueSuccess: {
-    color: colors.success,
-  },
-  summaryValueDanger: {
-    color: colors.danger,
-  },
-  summaryLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  summaryDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 40,
-    backgroundColor: colors.border,
-  },
   tabBar: {
     flexDirection: 'row',
-    marginBottom: spacing[16],
+    marginBottom: spacing[10],
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
@@ -419,125 +356,87 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: colors.white,
   },
-  historyCard: {
+  historyList: {
     borderRadius: layout.cardRadius,
-    marginBottom: layout.cardGap,
-    padding: spacing[16],
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  historyRow: {
     flexDirection: 'row',
-    marginBottom: spacing[12],
-    gap: spacing[12],
-  },
-  statusIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.background,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[12],
+    paddingVertical: spacing[8],
+    gap: spacing[10],
+    backgroundColor: colors.card,
+    minHeight: 44,
   },
-  cardHeaderText: {
+  historyRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  historyRowPressed: {
+    backgroundColor: colors.background,
+  },
+  rowContent: {
     flex: 1,
-    gap: spacing[4],
+    minWidth: 0,
+    gap: spacing[2],
   },
-  cardDate: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
+  historyDate: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.primaryNavy,
   },
-  cardTime: {
+  historyPdl: {
     ...typography.caption,
     fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing[8],
-    marginBottom: spacing[8],
-  },
-  metaLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    width: 56,
-  },
-  metaValue: {
-    ...typography.body,
     color: colors.textPrimary,
-    flex: 1,
-    fontWeight: '500',
   },
-  viewDetailsWrap: {
-    marginTop: spacing[8],
+  historyStatus: {
+    ...typography.caption,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  statusCompleted: {
+    color: colors.success,
+  },
+  statusCancelled: {
+    color: colors.danger,
+  },
+  emptyState: {
+    paddingVertical: spacing[24],
   },
   skeletonList: {
-    gap: spacing[12],
-  },
-  skeletonCard: {
-    borderRadius: layout.cardRadius,
-    padding: spacing[16],
+    backgroundColor: colors.card,
   },
   skeletonRow: {
     flexDirection: 'row',
-    gap: spacing[12],
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[12],
+    paddingVertical: spacing[10],
+    gap: spacing[10],
   },
-  skeletonIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.border,
-  },
-  skeletonBody: {
+  skeletonCol: {
     flex: 1,
-    gap: spacing[8],
+    gap: spacing[6],
   },
   skeletonLine: {
-    height: 12,
-    borderRadius: 6,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.border,
+    width: '35%',
   },
-  skeletonLineMid: {
-    width: '75%',
+  skeletonLineWide: {
+    width: '70%',
   },
-  skeletonLineShort: {
-    width: '50%',
-  },
-  emptyWrap: {
-    alignItems: 'center',
-    paddingVertical: spacing[32],
-    paddingHorizontal: spacing[12],
-  },
-  emptyIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing[16],
-  },
-  errorIconCircle: {
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  emptyTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing[8],
-  },
-  emptyMessage: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing[16],
-  },
-  emptyButtonWrap: {
-    alignSelf: 'stretch',
-    maxWidth: 320,
-    width: '100%',
+  skeletonStatus: {
+    width: 56,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.border,
   },
 });

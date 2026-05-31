@@ -5,13 +5,19 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const VARIANTS = {
-  confirmed: { label: 'Confirmed', bg: colors.success, fg: colors.white },
+  confirmed: { label: 'Attendance Confirmed', bg: colors.success, fg: colors.white },
   pending: { label: 'Pending', bg: colors.warning, fg: colors.textPrimary },
   pending_confirmation: {
     label: 'Pending Confirmation',
     bg: colors.warning,
     fg: colors.textPrimary,
   },
+  qr_ready: {
+    label: 'QR Ready',
+    bg: 'rgba(15, 61, 122, 0.12)',
+    fg: colors.primaryNavy,
+  },
+  checked_in: { label: 'Checked-In', bg: colors.success, fg: colors.white },
   scheduled: {
     label: 'Scheduled',
     bg: 'rgba(15, 61, 122, 0.12)',

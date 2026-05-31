@@ -3,9 +3,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CustomButton, EmptyState, LoadingSpinner } from '../components';
-import VisitProgressTimeline from '../components/VisitProgressTimeline';
-import { Card, StatusChip, colors, layout, spacing, typography } from '../designSystem';
+import CompactVisitTimeline from '../components/CompactVisitTimeline';
+import { colors, layout, spacing, typography } from '../designSystem';
 import { fetchVisitTimeline } from '../repositories/timelineRepository';
+import {
+  buildCompactVisitStepsFromTimeline,
+  getCompactVisitSteps,
+} from '../utils/visitProgressSnapshot';
 
 /**
  * @param {Record<string, unknown>} raw
@@ -69,29 +73,6 @@ function normalizeTimelineResponse(data) {
   return [];
 }
 
-/**
- * @param {ReturnType<typeof normalizeEvent>[]} events
- */
-function deriveDisplaySteps(events) {
-  const firstPendingIndex = events.findIndex((event) => !event.occurredAt && !event.stepState);
-
-  return events.map((event, index) => {
-    if (event.stepState) {
-      return event;
-    }
-
-    if (event.occurredAt) {
-      return { ...event, stepState: 'completed' };
-    }
-
-    if (index === firstPendingIndex) {
-      return { ...event, stepState: 'current' };
-    }
-
-    return { ...event, stepState: 'pending' };
-  });
-}
-
 /** @param {unknown[]} events */
 function isMockTimelineFormat(events) {
   return (
@@ -108,31 +89,30 @@ function isMockTimelineFormat(events) {
 
 export default function TimelineScreen({ navigation, route }) {
   const scheduleId = route?.params?.scheduleId;
-  const referenceNumber = route?.params?.referenceNumber;
-  const pdlName = route?.params?.pdlName;
   const visitStatus = route?.params?.visitStatus;
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const sortedEvents = useMemo(() => {
+  const compactSteps = useMemo(() => {
     if (isMockTimelineFormat(events)) {
-      return events;
+      return buildCompactVisitStepsFromTimeline(events);
     }
-    return [...events].sort((a, b) => {
-      const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
-      const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
-      return ta - tb;
-    });
-  }, [events]);
-
-  const displaySteps = useMemo(() => {
-    if (isMockTimelineFormat(sortedEvents)) {
-      return sortedEvents;
+    if (events.length > 0) {
+      return buildCompactVisitStepsFromTimeline(
+        events.map((e, i) => ({
+          id: e.id,
+          stepState: e.stepState ?? 'pending',
+          title: e.title,
+          description: e.description,
+          occurredAt: e.occurredAt,
+          officerNote: e.officerNote,
+        })),
+      );
     }
-    return deriveDisplaySteps(sortedEvents);
-  }, [sortedEvents]);
+    return getCompactVisitSteps(String(scheduleId || ''), visitStatus);
+  }, [events, scheduleId, visitStatus]);
 
   const load = useCallback(async () => {
     if (!scheduleId || String(scheduleId).trim() === '' || scheduleId === '—') {
@@ -175,7 +155,7 @@ export default function TimelineScreen({ navigation, route }) {
         >
           <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
         </Pressable>
-        <Text style={styles.screenTitle}>Visit Progress</Text>
+        <Text style={styles.screenTitle}>Visit Timeline</Text>
         <View style={styles.backPlaceholder} />
       </View>
 
@@ -202,24 +182,8 @@ export default function TimelineScreen({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryEyebrow}>VISIT TRACKING</Text>
-            <Text style={styles.summaryRef}>
-              Reference: {referenceNumber || scheduleId || '—'}
-            </Text>
-            {pdlName ? (
-              <Text style={styles.summaryPdl} numberOfLines={2}>
-                {pdlName}
-              </Text>
-            ) : null}
-            {visitStatus ? (
-              <View style={styles.chipWrap}>
-                <StatusChip status={visitStatus} />
-              </View>
-            ) : null}
-          </Card>
-
-          <VisitProgressTimeline steps={displaySteps} />
+          <Text style={styles.hint}>Tap a step to view date, time, officer, and remarks.</Text>
+          <CompactVisitTimeline steps={compactSteps} />
         </ScrollView>
       )}
     </SafeAreaView>
@@ -258,29 +222,11 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[32],
     flexGrow: 1,
   },
-  summaryCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.sectionGap,
-  },
-  summaryEyebrow: {
-    ...typography.caption,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    marginBottom: spacing[4],
-  },
-  summaryRef: {
+  hint: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginBottom: spacing[8],
-  },
-  summaryPdl: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  chipWrap: {
-    marginTop: spacing[12],
-    alignSelf: 'flex-start',
+    marginBottom: spacing[12],
+    lineHeight: 18,
   },
   emptyActions: {
     marginTop: spacing[16],

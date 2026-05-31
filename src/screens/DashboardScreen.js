@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useMemo } from 'react';
+import { Image as ExpoImage } from 'expo-image';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -18,22 +19,32 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
-import { FACILITY_RULES, VISITOR_REMINDERS } from '../mock/assignedVisits.mock';
-import { MOCK_VERIFICATION_ITEMS } from '../mock/dashboard.mock';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
+import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
+import { loadLocalProfile } from '../services/localProfileStorage';
+import { getCompactVisitSteps } from '../utils/visitProgressSnapshot';
 
-/** Auxiliary shortcuts — excludes items already in bottom navigation. */
+const GRAY_UPCOMING = '#9CA3AF';
+
+const HOME_STEP_LABELS = {
+  visitor_eligible: 'Documents Verified',
+  schedule_assigned: 'Schedule Assigned',
+  attendance_confirmed: 'Attendance Confirmed',
+  qr_generated: 'QR Pass Ready',
+  checked_in: 'Check-In',
+  visit_completed: 'Visit Completed',
+};
+
 const QUICK_ACTION_ROWS = [
   [
-    { id: 'history', label: 'Visit History', icon: 'time-outline' },
-    { id: 'documents', label: 'Verification Documents', icon: 'document-text-outline' },
+    { id: 'visits', label: 'My Visits', icon: 'calendar-outline' },
+    { id: 'qr', label: 'QR Pass', icon: 'qr-code-outline' },
   ],
   [
-    { id: 'guidelines', label: 'Facility Guidelines', icon: 'book-outline' },
+    { id: 'documents', label: 'Documents', icon: 'document-text-outline' },
     { id: 'help', label: 'Help Center', icon: 'help-circle-outline' },
   ],
 ];
@@ -45,6 +56,158 @@ function getTimeGreeting() {
   return 'Good Evening,';
 }
 
+/**
+ * @param {string} fullName
+ */
+function getInitials(fullName) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * @param {string} relationshipId
+ * @param {boolean} pendingVerification
+ * @param {string} registrationStatus
+ */
+function resolveVerificationDisplay(relationshipId, pendingVerification, registrationStatus) {
+  const { verificationStatus } = getMockVisitorVerification(relationshipId);
+
+  if (verificationStatus === 'verification_verified') {
+    return {
+      label: 'Verified Visitor',
+      icon: 'shield-checkmark',
+      accent: colors.success,
+      bg: 'rgba(22, 163, 74, 0.1)',
+    };
+  }
+  if (verificationStatus === 'verification_under_review') {
+    return {
+      label: 'Documents Under Review',
+      icon: 'time-outline',
+      accent: colors.primaryNavy,
+      bg: 'rgba(15, 61, 122, 0.08)',
+    };
+  }
+  if (!pendingVerification && registrationStatus === 'approved') {
+    return {
+      label: 'Verified Visitor',
+      icon: 'shield-checkmark',
+      accent: colors.success,
+      bg: 'rgba(22, 163, 74, 0.1)',
+    };
+  }
+  return {
+    label: 'Verification Required',
+    icon: 'alert-circle-outline',
+    accent: colors.warning,
+    bg: 'rgba(245, 158, 11, 0.12)',
+  };
+}
+
+/**
+ * @param {object} props
+ * @param {string | null | undefined} props.photoUri
+ * @param {string} props.initials
+ */
+function DashboardAvatar({ photoUri, initials }) {
+  return (
+    <View style={styles.avatar} accessibilityLabel="Profile photo">
+      {photoUri ? (
+        <ExpoImage
+          source={{ uri: photoUri }}
+          style={styles.avatarImage}
+          contentFit="cover"
+        />
+      ) : (
+        <Text style={styles.avatarText}>{initials}</Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {{ label: string; icon: string; accent: string; bg: string }} props.display
+ * @param {() => void} props.onViewDocuments
+ */
+function CompactVerificationStatus({ display, onViewDocuments }) {
+  return (
+    <View style={[styles.verificationStrip, { backgroundColor: display.bg }]}>
+      <View style={styles.verificationMain}>
+        <Ionicons name={display.icon} size={18} color={display.accent} />
+        <Text style={styles.verificationLabel}>{display.label}</Text>
+      </View>
+      <Pressable
+        onPress={onViewDocuments}
+        style={({ pressed }) => [styles.verificationAction, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="View verification documents"
+      >
+        <Text style={styles.verificationActionText}>View Documents</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.primaryTeal} />
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {import('../utils/visitProgressSnapshot').CompactVisitStep} props.step
+ * @param {boolean} props.isLast
+ */
+function HomeTimelineStep({ step, isLast }) {
+  const isCompleted = step.stepState === 'completed';
+  const isCurrent = step.stepState === 'current';
+  const lineColor = isCompleted ? colors.success : colors.border;
+
+  return (
+    <View style={styles.timelineRow}>
+      <View style={styles.timelineTrack}>
+        {isCompleted ? (
+          <View style={styles.dotDone}>
+            <Ionicons name="checkmark" size={11} color={colors.white} />
+          </View>
+        ) : isCurrent ? (
+          <View style={styles.dotCurrent}>
+            <View style={styles.dotCurrentInner} />
+          </View>
+        ) : (
+          <View style={styles.dotPending} />
+        )}
+        {!isLast ? <View style={[styles.timelineLine, { backgroundColor: lineColor }]} /> : null}
+      </View>
+      <View style={[styles.timelineBody, !isLast && styles.timelineBodySpaced]}>
+        <Text
+          style={[
+            styles.timelineLabel,
+            isCompleted && styles.timelineLabelDone,
+            isCurrent && styles.timelineLabelCurrent,
+            step.stepState === 'pending' && styles.timelineLabelPending,
+          ]}
+        >
+          {step.label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {import('../utils/visitProgressSnapshot').CompactVisitStep[]} props.steps
+ */
+function HomeVisualTimeline({ steps }) {
+  return (
+    <View style={styles.timelinePanel}>
+      {steps.map((step, index) => (
+        <HomeTimelineStep key={step.id} step={step} isLast={index === steps.length - 1} />
+      ))}
+    </View>
+  );
+}
+
 function QuickActionTile({ action, onPress }) {
   return (
     <Pressable
@@ -54,25 +217,59 @@ function QuickActionTile({ action, onPress }) {
       accessibilityLabel={action.label}
     >
       <View style={styles.quickIconCircle}>
-        <Ionicons name={action.icon} size={26} color={colors.primaryTeal} />
+        <Ionicons name={action.icon} size={20} color={colors.primaryTeal} />
       </View>
       <Text style={styles.quickLabel}>{action.label}</Text>
     </Pressable>
   );
 }
 
+function TextLink({ label, onPress, accessibilityLabel }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.textLink, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+    >
+      <Text style={styles.textLinkLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={16} color={colors.primaryTeal} />
+    </Pressable>
+  );
+}
+
 /**
- * Visitor home — verification status, next assigned visit, quick actions (v2.1 / BJMP).
+ * Visitor home dashboard — verification, upcoming visit, progress snapshot, quick actions (v2.1).
  */
 export default function DashboardScreen({ navigation }) {
-  const { unreadCount } = useNotificationBadge();
   const { registrationSummary, pendingVerification } = useAuth();
   const { visits } = useVisits();
+  const [profile, setProfile] = useState(DEFAULT_LOCAL_PROFILE);
 
   const visitorName =
-    registrationSummary?.fullName?.trim() || DEFAULT_LOCAL_PROFILE.fullName;
+    registrationSummary?.fullName?.trim() ||
+    profile.fullName ||
+    DEFAULT_LOCAL_PROFILE.fullName;
+
+  const relationshipId =
+    registrationSummary?.relationship ??
+    profile.relationshipToPdl ??
+    DEFAULT_LOCAL_PROFILE.relationshipToPdl ??
+    'spouse';
 
   const greeting = useMemo(() => getTimeGreeting(), []);
+  const initials = useMemo(() => getInitials(visitorName), [visitorName]);
+
+  const verificationDisplay = useMemo(
+    () =>
+      resolveVerificationDisplay(
+        relationshipId,
+        pendingVerification,
+        profile.registrationStatus,
+      ),
+    [relationshipId, pendingVerification, profile.registrationStatus],
+  );
+
   const nextVisit = useMemo(() => {
     const assigned = visits.filter(
       (v) =>
@@ -85,39 +282,61 @@ export default function DashboardScreen({ navigation }) {
       (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
     )[0];
   }, [visits]);
-  const isVerified = !pendingVerification;
+
+  const timelineSteps = useMemo(() => {
+    if (!nextVisit) return [];
+    return getCompactVisitSteps(String(nextVisit.id), nextVisit.status).map((step) => ({
+      ...step,
+      label: HOME_STEP_LABELS[step.id] ?? step.label,
+    }));
+  }, [nextVisit]);
 
   const tabBarInset = useTabBarScrollInset();
 
-  const onViewVisitDetails = () => {
+  useEffect(() => {
+    let cancelled = false;
+    loadLocalProfile(DEFAULT_LOCAL_PROFILE).then((loaded) => {
+      if (!cancelled) setProfile(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onViewDocuments = useCallback(() => {
+    navigation.navigate('VisitorVerificationDocuments', {
+      relationshipId,
+    });
+  }, [navigation, relationshipId]);
+
+  const onViewVisit = useCallback(() => {
     if (!nextVisit) return;
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
-  };
+  }, [navigation, nextVisit]);
+
+  const onViewFullTimeline = useCallback(() => {
+    if (!nextVisit) return;
+    navigation.navigate('Timeline', {
+      scheduleId: nextVisit.id,
+      visitId: nextVisit.id,
+      visitStatus: nextVisit.status,
+      pdlName: nextVisit.pdlName,
+      referenceNumber: nextVisit.referenceNumber,
+    });
+  }, [navigation, nextVisit]);
 
   const onQuickAction = useCallback(
     (actionId) => {
-      if (actionId === 'history') {
-        navigation.navigate('VisitHistory');
+      if (actionId === 'visits') {
+        navigation.navigate('Schedule');
+        return;
+      }
+      if (actionId === 'qr') {
+        navigation.navigate('QR');
         return;
       }
       if (actionId === 'documents') {
-        navigation.navigate('VisitorVerificationDocuments', {
-          relationshipId:
-            registrationSummary?.relationship ??
-            DEFAULT_LOCAL_PROFILE.relationshipToPdl ??
-            'spouse',
-        });
-        return;
-      }
-      if (actionId === 'guidelines') {
-        const body = [
-          'Facility rules:',
-          ...FACILITY_RULES.map((rule) => `• ${rule}`),
-          '',
-          'Visitor reminders:',
-          ...VISITOR_REMINDERS.map((reminder) => `• ${reminder}`),
-        ].join('\n');
-        Alert.alert('Facility Guidelines', body);
+        onViewDocuments();
         return;
       }
       if (actionId === 'help') {
@@ -127,7 +346,7 @@ export default function DashboardScreen({ navigation }) {
         );
       }
     },
-    [navigation, registrationSummary?.relationship],
+    [navigation, onViewDocuments],
   );
 
   return (
@@ -139,75 +358,57 @@ export default function DashboardScreen({ navigation }) {
       >
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
-            <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.visitorName}>{visitorName}</Text>
-            <View style={styles.badgeRow}>
-              {isVerified ? (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-                  <Text style={styles.verifiedBadgeText}>Verified Visitor</Text>
-                </View>
-              ) : (
-                <StatusChip status="pending_verification" />
-              )}
-            </View>
+            <Text style={styles.greeting}>
+              {greeting} {visitorName}
+            </Text>
+            <Text style={styles.welcomeBack}>Welcome Back</Text>
           </View>
-
-          <Pressable
-            onPress={() => navigation.navigate('Notifications')}
-            style={styles.notifyBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications-outline" size={24} color={colors.primaryNavy} />
-            {unreadCount > 0 ? <View style={styles.notifyDot} /> : null}
-          </Pressable>
+          <DashboardAvatar photoUri={profile.photoUri} initials={initials} />
         </View>
 
-        <View style={styles.navyCard}>
-          <View style={styles.navyCardTop}>
-            <Text style={styles.navyTitle}>Verification Status</Text>
-            <Ionicons name="shield-checkmark" size={40} color="rgba(255,255,255,0.35)" />
-          </View>
-          {MOCK_VERIFICATION_ITEMS.map((item) => (
-            <View key={item.id} style={styles.verifyRow}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-              <Text style={styles.verifyLabel}>{item.label}</Text>
-            </View>
-          ))}
-        </View>
+        <CompactVerificationStatus
+          display={verificationDisplay}
+          onViewDocuments={onViewDocuments}
+        />
 
-        <Text style={styles.sectionLabel}>Next Assigned Visit</Text>
+        <Text style={styles.sectionLabel}>Upcoming Visit</Text>
         {nextVisit ? (
           <Card style={styles.visitCard}>
-            <View style={styles.visitDateBlock}>
-              <Text style={styles.visitDateMonth}>{nextVisit.dateDisplay}</Text>
-            </View>
-            <View style={styles.visitDetails}>
-              <Text style={styles.visitTime}>{nextVisit.timeLabel}</Text>
-              <Text style={styles.visitPdl}>{nextVisit.pdlName}</Text>
-              <Text style={styles.visitLocation}>
-                {nextVisit.facility || nextVisit.location}
-              </Text>
-              <View style={styles.visitChipRow}>
-                <StatusChip status={nextVisit.status} />
+            <View style={styles.visitPrimaryRow}>
+              <View style={styles.visitDateCol}>
+                <Text style={styles.visitDate}>{nextVisit.dateDisplay}</Text>
+                <Text style={styles.visitTime}>{nextVisit.timeLabel}</Text>
               </View>
+              <StatusChip status={nextVisit.status} />
             </View>
-            <View style={styles.visitButtonWrap}>
-              <Button
-                title="View Visit Details"
-                onPress={onViewVisitDetails}
-                accessibilityLabel="View visit details"
-              />
-            </View>
+            <Text style={styles.visitPdl}>{nextVisit.pdlName}</Text>
+            <Button
+              title="View Visit"
+              onPress={onViewVisit}
+              accessibilityLabel="View visit details"
+            />
           </Card>
         ) : (
           <Card style={styles.visitCard}>
-            <Text style={styles.noVisit}>No upcoming assigned visits.</Text>
+            <Text style={styles.noVisit}>
+              No upcoming assigned visits. Schedules are assigned by facility officers.
+            </Text>
           </Card>
         )}
 
-        <Text style={styles.sectionLabel}>Quick Actions</Text>
+        {nextVisit && timelineSteps.length > 0 ? (
+          <View style={styles.progressSection}>
+            <Text style={styles.sectionLabel}>Visit Progress</Text>
+            <HomeVisualTimeline steps={timelineSteps} />
+            <TextLink
+              label="View Full Timeline"
+              onPress={onViewFullTimeline}
+              accessibilityLabel="View full visit timeline"
+            />
+          </View>
+        ) : null}
+
+        <Text style={[styles.sectionLabel, styles.quickSectionLabel]}>Quick Actions</Text>
         <View style={styles.quickSection}>
           {QUICK_ACTION_ROWS.map((row) => (
             <View key={row.map((action) => action.id).join('-')} style={styles.quickRow}>
@@ -229,43 +430,247 @@ export default function DashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing[6],
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: layout.sectionGap,
+    marginBottom: spacing[10],
   },
-  headerText: { flex: 1, paddingRight: spacing[12] },
+  headerText: {
+    flex: 1,
+    paddingRight: spacing[10],
+  },
   greeting: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  visitorName: {
-    ...typography.screenTitle,
+    ...typography.cardTitle,
     color: colors.textPrimary,
-    marginTop: spacing[4],
+    fontSize: 17,
   },
-  badgeRow: {
-    marginTop: spacing[8],
-    alignSelf: 'flex-start',
+  welcomeBack: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing[2],
   },
-  verifiedBadge: {
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primaryNavy,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.white,
+    fontSize: 15,
+  },
+  verificationStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing[8],
+    paddingHorizontal: spacing[12],
+    paddingVertical: spacing[10],
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing[12],
+  },
+  verificationMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[8],
-    backgroundColor: 'rgba(22, 163, 74, 0.12)',
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[4],
-    borderRadius: layout.chipRadius,
+    flex: 1,
   },
-  verifiedBadgeText: {
-    ...typography.statusLabel,
-    color: colors.success,
+  verificationLabel: {
+    ...typography.body,
     fontWeight: '600',
+    color: colors.textPrimary,
+    flexShrink: 1,
   },
-  notifyBtn: {
+  verificationAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    paddingVertical: spacing[2],
+  },
+  verificationActionText: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.primaryTeal,
+  },
+  sectionLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: spacing[6],
+  },
+  quickSectionLabel: {
+    marginTop: spacing[4],
+  },
+  visitCard: {
+    borderRadius: layout.cardRadius,
+    marginBottom: spacing[12],
+    padding: spacing[12],
+  },
+  visitPrimaryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing[10],
+    marginBottom: spacing[6],
+  },
+  visitDateCol: {
+    flex: 1,
+  },
+  visitDate: {
+    ...typography.cardTitle,
+    color: colors.primaryNavy,
+    fontSize: 18,
+  },
+  visitTime: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginTop: spacing[2],
+  },
+  visitPdl: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: spacing[10],
+  },
+  noVisit: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  progressSection: {
+    marginBottom: spacing[10],
+  },
+  timelinePanel: {
+    backgroundColor: colors.card,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing[12],
+    paddingVertical: spacing[10],
+    marginBottom: spacing[4],
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  timelineTrack: {
+    width: 22,
+    alignItems: 'center',
+    marginRight: spacing[8],
+    alignSelf: 'stretch',
+  },
+  dotDone: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  dotCurrent: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primaryTeal,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  dotCurrentInner: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primaryTeal,
+  },
+  dotPending: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: GRAY_UPCOMING,
+    backgroundColor: colors.white,
+    zIndex: 1,
+  },
+  timelineLine: {
+    flex: 1,
+    width: 2,
+    marginTop: spacing[2],
+    minHeight: spacing[8],
+    borderRadius: 1,
+  },
+  timelineBody: {
+    flex: 1,
+    paddingTop: spacing[2],
+  },
+  timelineBodySpaced: {
+    paddingBottom: spacing[4],
+  },
+  timelineLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  timelineLabelDone: {
+    color: colors.textPrimary,
+  },
+  timelineLabelCurrent: {
+    color: colors.primaryNavy,
+    fontWeight: '700',
+  },
+  timelineLabelPending: {
+    color: GRAY_UPCOMING,
+    fontWeight: '500',
+  },
+  textLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: spacing[2],
+    gap: spacing[4],
+  },
+  textLinkLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.primaryTeal,
+  },
+  pressed: { opacity: 0.88 },
+  quickSection: {
+    marginHorizontal: -spacing[4],
+    marginBottom: spacing[4],
+  },
+  quickRow: {
+    flexDirection: 'row',
+    marginBottom: spacing[8],
+  },
+  quickItem: {
+    flex: 1,
+    paddingHorizontal: spacing[4],
+    alignItems: 'center',
+  },
+  quickIconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -274,124 +679,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  notifyDot: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.danger,
-    borderWidth: 1.5,
-    borderColor: colors.white,
-  },
-  navyCard: {
-    backgroundColor: colors.primaryNavy,
-    borderRadius: layout.cardRadius,
-    padding: spacing[16],
-    marginBottom: layout.cardGap,
-  },
-  navyCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing[16],
-  },
-  navyTitle: {
-    ...typography.cardTitle,
-    color: colors.white,
-  },
-  verifyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[12],
-    marginBottom: spacing[12],
-  },
-  verifyLabel: {
-    ...typography.body,
-    color: colors.white,
-    flex: 1,
-  },
-  sectionLabel: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing[12],
-  },
-  visitCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.sectionGap,
-    padding: spacing[16],
-  },
-  visitDateBlock: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[8],
-    marginBottom: spacing[12],
-  },
-  visitDateMonth: {
-    ...typography.cardTitle,
-    color: colors.primaryNavy,
-  },
-  visitDetails: {
-    marginBottom: spacing[16],
-  },
-  visitTime: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: spacing[4],
-  },
-  visitPdl: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing[4],
-  },
-  visitLocation: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing[12],
-  },
-  visitChipRow: {
-    alignSelf: 'flex-start',
-  },
-  visitButtonWrap: {
-    marginTop: spacing[4],
-  },
-  noVisit: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  quickSection: {
-    marginHorizontal: -spacing[8],
-  },
-  quickRow: {
-    flexDirection: 'row',
-    marginBottom: spacing[16],
-  },
-  quickItem: {
-    flex: 1,
-    paddingHorizontal: spacing[8],
-    alignItems: 'center',
-  },
-  quickIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing[8],
   },
   quickLabel: {
     ...typography.caption,
     color: colors.textPrimary,
     fontWeight: '600',
     textAlign: 'center',
+    fontSize: 11,
   },
 });

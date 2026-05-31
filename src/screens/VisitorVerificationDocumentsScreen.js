@@ -1,114 +1,89 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Button,
-  Card,
-  StatusChip,
-  colors,
-  layout,
-  spacing,
-  typography,
-} from '../designSystem';
+import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { EmptyState } from '../components';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
-import {
-  documentWorkflowStatusToChip,
-  getMockVisitorVerification,
-} from '../mock/visitorVerificationDocuments.mock';
-import { formatDate, formatTime } from '../utils';
-import { getRelationshipLabel } from '../utils/registrationRequirements';
+import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
 
 /**
- * @param {string | null | undefined} isoDate
+ * @param {import('../mock/visitorVerificationDocuments.mock').VisitorVerificationStatus} status
  */
-function formatDocumentDate(isoDate) {
-  if (!isoDate) return null;
-  const datePart = formatDate(isoDate);
-  const timePart = formatTime(isoDate);
-  return [datePart, timePart].filter(Boolean).join(' · ');
+function getOverallVerificationDisplay(status) {
+  switch (status) {
+    case 'verification_verified':
+      return { label: 'Verified', icon: 'checkmark-circle', accent: colors.success };
+    case 'verification_under_review':
+      return { label: 'Under Review', icon: 'time', accent: colors.primaryNavy };
+    case 'verification_rejected':
+    case 'verification_pending':
+    default:
+      return { label: 'Action Required', icon: 'alert-circle', accent: colors.warning };
+  }
 }
 
-function DocInfoRow({ label, value }) {
+/**
+ * @param {import('../mock/visitorVerificationDocuments.mock').DocumentUploadStatus} uploadStatus
+ */
+function getDocumentStatusLabel(uploadStatus) {
+  switch (uploadStatus) {
+    case 'verified':
+      return { label: 'Verified', color: colors.success };
+    case 'rejected':
+      return { label: 'Rejected', color: colors.danger };
+    case 'under_review':
+    case 'uploaded':
+      return { label: 'Under Review', color: colors.warning };
+    case 'pending':
+    default:
+      return { label: 'Not Submitted', color: colors.textSecondary };
+  }
+}
+
+/**
+ * @param {object} props
+ * @param {{ label: string; icon: string; accent: string }} props.display
+ */
+function CompactVerificationStatus({ display }) {
   return (
-    <View style={styles.docInfoRow}>
-      <Text style={styles.docInfoLabel}>{label}</Text>
-      <Text style={styles.docInfoValue}>{value || '—'}</Text>
+    <View style={styles.statusStrip}>
+      <Ionicons name={display.icon} size={16} color={display.accent} />
+      <Text style={[styles.statusStripLabel, { color: display.accent }]}>{display.label}</Text>
     </View>
   );
 }
 
-function DocumentStatusRow({ document: doc }) {
-  const chipStatus = documentWorkflowStatusToChip(doc.uploadStatus);
-  const submittedDate = formatDocumentDate(doc.uploadedAt);
-  const verifiedDate = formatDocumentDate(doc.verifiedAt);
-  const isPending = doc.uploadStatus === 'pending';
-  const isRejected = doc.uploadStatus === 'rejected';
+/**
+ * @param {object} props
+ * @param {import('../mock/visitorVerificationDocuments.mock').MockVerificationDocument} props.document
+ * @param {boolean} props.isLast
+ * @param {() => void} props.onPress
+ */
+function DocumentCompactRow({ document: doc, isLast, onPress }) {
+  const status = getDocumentStatusLabel(doc.uploadStatus);
 
   return (
-    <Card style={styles.docCard}>
-      <View style={styles.docHeader}>
-        <View style={styles.docIconWrap}>
-          <Ionicons
-            name={
-              doc.uploadStatus === 'verified'
-                ? 'document-text'
-                : doc.uploadStatus === 'rejected'
-                  ? 'alert-circle-outline'
-                  : 'document-outline'
-            }
-            size={22}
-            color={
-              doc.uploadStatus === 'verified'
-                ? colors.success
-                : doc.uploadStatus === 'rejected'
-                  ? colors.danger
-                  : colors.primaryTeal
-            }
-          />
-        </View>
-        <View style={styles.docBody}>
-          <View style={styles.docTitleRow}>
-            <Text style={styles.docTitle}>{doc.label}</Text>
-            <StatusChip status={chipStatus} />
-          </View>
-
-          <DocInfoRow label="Document Name" value={doc.label} />
-          <DocInfoRow
-            label="Status"
-            value={
-              chipStatus === 'document_pending'
-                ? 'Pending'
-                : chipStatus === 'document_under_review'
-                  ? 'Under Review'
-                  : chipStatus === 'document_verified'
-                    ? 'Verified'
-                    : 'Rejected'
-            }
-          />
-          <DocInfoRow
-            label="Submitted Date"
-            value={isPending ? 'Not submitted yet' : submittedDate}
-          />
-          {verifiedDate ? (
-            <DocInfoRow label="Verified Date" value={verifiedDate} />
-          ) : null}
-          {isRejected && doc.rejectionReason ? (
-            <View style={styles.rejectionWrap}>
-              <Text style={styles.rejectionLabel}>Rejection Reason</Text>
-              <Text style={styles.rejectionBody}>{doc.rejectionReason}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-    </Card>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.docRow,
+        !isLast && styles.docRowBorder,
+        pressed && styles.docRowPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${doc.label}, ${status.label}. Tap for details.`}
+    >
+      <Text style={styles.docRowLabel} numberOfLines={2}>
+        {doc.label}
+      </Text>
+      <Text style={[styles.docStatusLabel, { color: status.color }]}>{status.label}</Text>
+    </Pressable>
   );
 }
 
 /**
- * Visitor verification documents — status overview and required uploads (v2.1).
- * Mock data only; no backend APIs.
+ * Visitor verification documents — main document management screen (v2.1 / BJMP).
  */
 export default function VisitorVerificationDocumentsScreen({ navigation, route }) {
   const relationshipId =
@@ -119,11 +94,22 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
     [relationshipId],
   );
 
-  const uploadedCount = verification.documents.filter(
-    (doc) => doc.uploadStatus !== 'pending',
-  ).length;
-  const totalCount = verification.documents.length;
-  const progressRatio = totalCount > 0 ? uploadedCount / totalCount : 0;
+  const overall = getOverallVerificationDisplay(verification.verificationStatus);
+  const documents = verification.documents;
+
+  const openDocument = useCallback(
+    (doc) => {
+      navigation.navigate('VerificationDocumentDetail', {
+        relationshipId,
+        documentKey: doc.key,
+      });
+    },
+    [navigation, relationshipId],
+  );
+
+  const onUpload = useCallback(() => {
+    navigation.navigate('UploadID', { relationshipId });
+  }, [navigation, relationshipId]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -145,76 +131,40 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Card style={styles.statusCard}>
-          <Text style={styles.eyebrow}>VERIFICATION STATUS</Text>
-          <View style={styles.statusRow}>
-            <StatusChip status={verification.verificationStatus} />
-          </View>
-          <Text style={styles.statusHint}>
-            {verification.verificationStatus === 'verification_pending'
-              ? 'Upload the required documents below to begin verification.'
-              : verification.verificationStatus === 'verification_under_review'
-                ? 'Your documents are being reviewed by facility staff.'
-                : verification.verificationStatus === 'verification_verified'
-                  ? 'Your visitor verification is complete. You may proceed with assigned visits.'
-                  : 'One or more documents need to be corrected and re-uploaded.'}
-          </Text>
-          {verification.rejectionReason ? (
-            <View style={styles.rejectionBanner}>
-              <Ionicons name="warning-outline" size={18} color={colors.danger} />
-              <Text style={styles.rejectionText}>{verification.rejectionReason}</Text>
-            </View>
-          ) : null}
-        </Card>
+        <Text style={styles.sectionEyebrow}>Verification Status</Text>
+        <CompactVerificationStatus display={overall} />
 
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Relationship to PDL</Text>
-          <Text style={styles.summaryValue}>
-            {getRelationshipLabel(relationshipId) || verification.relationshipLabel}
-          </Text>
-          <Text style={styles.progressMeta}>
-            {uploadedCount} of {totalCount} document{totalCount === 1 ? '' : 's'} uploaded
-          </Text>
-          <View style={styles.progressTrack}>
-            <View
-              style={[styles.progressFill, { width: `${Math.round(progressRatio * 100)}%` }]}
-            />
-          </View>
-        </Card>
-
-        <Text style={styles.sectionHeading}>Required Documents</Text>
-        <Text style={styles.sectionSub}>
-          Based on your relationship, the following documents are required for visitor
-          verification.
-        </Text>
-
-        {totalCount === 0 ? (
+        {documents.length === 0 ? (
           <EmptyState
-            title="No Verification Documents"
-            message="Required documents for your relationship are not available yet. Contact facility staff if you believe this is an error."
+            title="No Documents Uploaded"
+            message="Upload required documents to begin verification."
             iconName="document-text-outline"
             iconColor={colors.primaryTeal}
             style={styles.documentsEmpty}
           >
             <Button
-              title="Go Back"
-              onPress={() => navigation.goBack()}
-              accessibilityLabel="Go back"
+              title="Upload Documents"
+              onPress={onUpload}
+              accessibilityLabel="Upload verification documents"
             />
           </EmptyState>
         ) : (
           <>
-            {verification.documents.map((doc) => (
-              <DocumentStatusRow key={doc.key} document={doc} />
-            ))}
+            <Text style={styles.sectionEyebrow}>Required Documents</Text>
+            <View style={styles.docList}>
+              {documents.map((doc, index) => (
+                <DocumentCompactRow
+                  key={doc.key}
+                  document={doc}
+                  isLast={index === documents.length - 1}
+                  onPress={() => openDocument(doc)}
+                />
+              ))}
+            </View>
 
             <Button
-              title="Upload or Update Documents"
-              onPress={() =>
-                navigation.navigate('UploadID', {
-                  relationshipId,
-                })
-              }
+              title="Upload Documents"
+              onPress={onUpload}
               accessibilityLabel="Upload or update verification documents"
             />
           </>
@@ -231,176 +181,90 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingVertical: spacing[6],
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  backPlaceholder: { width: 44 },
+  backPlaceholder: { width: 40 },
   screenTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
   },
   scroll: {
     paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
+    paddingBottom: spacing[24],
   },
-  statusCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.cardGap,
-  },
-  eyebrow: {
+  sectionEyebrow: {
     ...typography.caption,
     fontWeight: '600',
     color: colors.textSecondary,
-    letterSpacing: 0.5,
-    marginBottom: spacing[8],
-  },
-  statusRow: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing[12],
-  },
-  statusHint: {
-    ...typography.body,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  rejectionBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing[8],
-    marginTop: spacing[12],
-    padding: spacing[12],
-    borderRadius: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.25)',
-  },
-  rejectionText: {
-    ...typography.caption,
-    color: colors.danger,
-    flex: 1,
-    lineHeight: 18,
-  },
-  summaryCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.sectionGap,
-  },
-  summaryLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
+    letterSpacing: 0.4,
     marginBottom: spacing[4],
+    marginTop: spacing[4],
   },
-  summaryValue: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing[12],
-  },
-  progressMeta: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing[8],
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primaryTeal,
-    borderRadius: 4,
-  },
-  sectionHeading: {
-    ...typography.sectionTitle,
-    color: colors.primaryNavy,
-    marginBottom: spacing[4],
-  },
-  sectionSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing[16],
-    lineHeight: 18,
-  },
-  documentsEmpty: {
-    paddingVertical: spacing[24],
-    marginBottom: spacing[16],
-  },
-  docCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: spacing[12],
-  },
-  docHeader: {
+  statusStrip: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing[12],
-  },
-  docIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.background,
+    alignItems: 'center',
+    gap: spacing[6],
+    paddingHorizontal: spacing[10],
+    paddingVertical: spacing[8],
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.card,
+    marginBottom: spacing[8],
   },
-  docBody: {
-    flex: 1,
+  statusStripLabel: {
+    ...typography.body,
+    fontWeight: '700',
+    fontSize: 15,
   },
-  docTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing[8],
+  documentsEmpty: {
+    paddingVertical: spacing[20],
+  },
+  docList: {
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    overflow: 'hidden',
     marginBottom: spacing[12],
   },
-  docTitle: {
+  docRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[12],
+    paddingVertical: spacing[10],
+    gap: spacing[12],
+    backgroundColor: colors.card,
+    minHeight: 42,
+  },
+  docRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  docRowPressed: {
+    backgroundColor: colors.background,
+  },
+  docRowLabel: {
     ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,
+    fontSize: 14,
   },
-  docInfoRow: {
-    marginBottom: spacing[8],
-  },
-  docInfoLabel: {
+  docStatusLabel: {
     ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing[4],
-  },
-  docInfoValue: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  rejectionWrap: {
-    marginTop: spacing[4],
-    padding: spacing[10],
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  rejectionLabel: {
-    ...typography.statusLabel,
-    color: colors.danger,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    marginBottom: spacing[4],
-  },
-  rejectionBody: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    lineHeight: 18,
+    fontWeight: '600',
+    flexShrink: 0,
   },
 });

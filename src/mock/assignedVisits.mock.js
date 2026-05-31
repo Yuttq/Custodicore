@@ -144,6 +144,9 @@ export const VISITOR_REMINDERS = [
   'Security screening required',
 ];
 
+/** Facility rules + visitor reminders for Visit Details guidelines tab. */
+export const VISITATION_GUIDELINES = [...FACILITY_RULES, ...VISITOR_REMINDERS];
+
 /**
  * Facility front-desk contact (mock). Replace with visit/facility API when available.
  * @typedef {object} MockFacilityContact
@@ -201,6 +204,26 @@ export function getVisitListTab(status) {
   if (status === 'completed') return 'completed';
   if (status === 'cancelled' || status === 'unable_to_attend') return 'cancelled';
   return 'assigned';
+}
+
+/**
+ * My Visits screen tabs: Upcoming | Pending | Completed.
+ * @param {string} status
+ * @returns {'upcoming' | 'pending' | 'completed'}
+ */
+export function getMyVisitsTab(status) {
+  if (
+    status === 'completed' ||
+    status === 'checked_out' ||
+    status === 'cancelled' ||
+    status === 'unable_to_attend'
+  ) {
+    return 'completed';
+  }
+  if (status === 'pending_confirmation' || status === 'scheduled') {
+    return 'pending';
+  }
+  return 'upcoming';
 }
 
 export function canRespondToVisit(status) {

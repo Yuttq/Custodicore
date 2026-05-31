@@ -18,7 +18,7 @@ function phoneDigitsOk(s) {
 }
 
 /**
- * @param {{ fullName?: string; email?: string; phone?: string }} fields
+ * @param {{ fullName?: string; email?: string; phone?: string; address?: string }} fields
  * @returns {{ valid: boolean; errors: Record<string, string> }}
  */
 export function validateProfileFields(fields) {
@@ -43,6 +43,11 @@ export function validateProfileFields(fields) {
     errors.phone = 'Use only digits, spaces, +, -, and parentheses';
   } else if (!phoneDigitsOk(phone)) {
     errors.phone = 'Enter a valid number (10–15 digits)';
+  }
+
+  const address = String(fields.address ?? '').trim();
+  if (!address) {
+    errors.address = 'Address is required';
   }
 
   return { valid: Object.keys(errors).length === 0, errors };

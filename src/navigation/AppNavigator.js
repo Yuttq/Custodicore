@@ -15,6 +15,7 @@ import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ForgotPasswordSuccessScreen from '../screens/ForgotPasswordSuccessScreen';
 import LoginScreen from '../screens/LoginScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import PersonalInformationScreen from '../screens/PersonalInformationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRCodeScreen from '../screens/QRCodeScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -22,10 +23,12 @@ import MyAssignedVisitsScreen from '../screens/MyAssignedVisitsScreen';
 import SplashScreen from '../screens/SplashScreen';
 import TimelineScreen from '../screens/TimelineScreen';
 import UploadIDScreen from '../screens/UploadIDScreen';
+import VerificationDocumentDetailScreen from '../screens/VerificationDocumentDetailScreen';
 import VisitorVerificationDocumentsScreen from '../screens/VisitorVerificationDocumentsScreen';
 import VerificationReviewScreen from '../screens/VerificationReviewScreen';
 import UnableToAttendScreen from '../screens/UnableToAttendScreen';
 import VisitDetailsScreen from '../screens/VisitDetailsScreen';
+import VisitHistoryDetailScreen from '../screens/VisitHistoryDetailScreen';
 import VisitHistoryScreen from '../screens/VisitHistoryScreen';
 import VisitTrackingScreen from '../screens/VisitTrackingScreen';
 
@@ -166,7 +169,13 @@ function AuthenticatedStack() {
         name="VisitorVerificationDocuments"
         component={VisitorVerificationDocumentsScreen}
       />
+      <AppStack.Screen
+        name="VerificationDocumentDetail"
+        component={VerificationDocumentDetailScreen}
+      />
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
+      <AppStack.Screen name="VisitHistoryDetail" component={VisitHistoryDetailScreen} />
+      <AppStack.Screen name="PersonalInformation" component={PersonalInformationScreen} />
       <AppStack.Screen name="VisitDetails" component={VisitDetailsScreen} />
       <AppStack.Screen name="UnableToAttend" component={UnableToAttendScreen} />
       <AppStack.Screen name="VisitTracking" component={VisitTrackingScreen} />
