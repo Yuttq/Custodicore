@@ -127,25 +127,34 @@ export const MOCK_ASSIGNED_VISITS = [
   },
 ];
 
-export const FACILITY_RULES = [
-  'Bring valid government-issued ID',
-  'Arrive at least 30 minutes early',
-  'No prohibited items',
-  'Follow officer instructions',
-];
+/**
+ * Grouped visitation guidelines for Visit Details → Guidelines tab.
+ * @typedef {{ title: string; items: string[] }} VisitationGuidelineSection
+ */
 
-/** BJMP-aligned pre-visit reminders shown on Visit Details. */
-export const VISITOR_REMINDERS = [
-  'Arrive 15 minutes early',
-  'Bring valid government ID',
-  'Present QR Pass',
-  'Food subject to inspection',
-  'Belongings subject to inspection',
-  'Security screening required',
+/** @type {VisitationGuidelineSection[]} */
+export const VISITATION_GUIDELINE_SECTIONS = [
+  {
+    title: 'Required Before Arrival',
+    items: [
+      'Bring valid government-issued ID',
+      'Present QR Pass',
+      'Arrive at least 30 minutes early',
+    ],
+  },
+  {
+    title: 'Security Screening',
+    items: [
+      'Food subject to inspection',
+      'Belongings subject to inspection',
+      'Security screening required',
+    ],
+  },
+  {
+    title: 'Facility Rules',
+    items: ['No prohibited items', 'Follow officer instructions'],
+  },
 ];
-
-/** Facility rules + visitor reminders for Visit Details guidelines tab. */
-export const VISITATION_GUIDELINES = [...FACILITY_RULES, ...VISITOR_REMINDERS];
 
 /**
  * Facility front-desk contact (mock). Replace with visit/facility API when available.

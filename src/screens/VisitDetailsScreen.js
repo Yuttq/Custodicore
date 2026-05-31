@@ -21,7 +21,7 @@ import {
 } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
 import {
-  VISITATION_GUIDELINES,
+  VISITATION_GUIDELINE_SECTIONS,
   canRespondToVisit,
 } from '../mock/assignedVisits.mock';
 import { getCompactVisitSteps } from '../utils/visitProgressSnapshot';
@@ -37,6 +37,25 @@ function InfoRow({ label, value }) {
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value || '—'}</Text>
+    </View>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {import('../mock/assignedVisits.mock').VisitationGuidelineSection} props.section
+ * @param {boolean} props.isLast
+ */
+function GuidelineSection({ section, isLast }) {
+  return (
+    <View style={!isLast ? styles.guidelineSectionSpaced : undefined}>
+      <Text style={styles.guidelineSectionTitle}>{section.title}</Text>
+      {section.items.map((item) => (
+        <View key={item} style={styles.guidelineBulletRow}>
+          <Text style={styles.guidelineBullet}>•</Text>
+          <Text style={styles.guidelineBulletText}>{item}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -193,13 +212,14 @@ export default function VisitDetailsScreen({ navigation, route }) {
           <Card style={styles.card}>
             <Text style={styles.guidelinesTitle}>Visitation Guidelines</Text>
             <Text style={styles.guidelinesSub}>
-              Facility rules and reminders for your assigned visit.
+              Please review these requirements before arriving at the facility.
             </Text>
-            {VISITATION_GUIDELINES.map((item) => (
-              <View key={item} style={styles.guidelineRow}>
-                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                <Text style={styles.guidelineText}>{item}</Text>
-              </View>
+            {VISITATION_GUIDELINE_SECTIONS.map((section, index) => (
+              <GuidelineSection
+                key={section.title}
+                section={section}
+                isLast={index === VISITATION_GUIDELINE_SECTIONS.length - 1}
+              />
             ))}
           </Card>
         ) : null}
@@ -293,16 +313,31 @@ const styles = StyleSheet.create({
   guidelinesSub: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginBottom: spacing[12],
+    marginBottom: spacing[16],
     lineHeight: 18,
   },
-  guidelineRow: {
+  guidelineSectionSpaced: {
+    marginBottom: spacing[16],
+  },
+  guidelineSectionTitle: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing[6],
+  },
+  guidelineBulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing[10],
-    marginBottom: spacing[8],
+    marginBottom: spacing[4],
+    paddingLeft: spacing[2],
   },
-  guidelineText: {
+  guidelineBullet: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    width: spacing[12],
+  },
+  guidelineBulletText: {
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,

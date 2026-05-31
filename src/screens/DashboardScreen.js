@@ -1,14 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
@@ -37,17 +30,6 @@ const HOME_STEP_LABELS = {
   checked_in: 'Check-In',
   visit_completed: 'Visit Completed',
 };
-
-const QUICK_ACTION_ROWS = [
-  [
-    { id: 'visits', label: 'My Visits', icon: 'calendar-outline' },
-    { id: 'qr', label: 'QR Pass', icon: 'qr-code-outline' },
-  ],
-  [
-    { id: 'documents', label: 'Documents', icon: 'document-text-outline' },
-    { id: 'help', label: 'Help Center', icon: 'help-circle-outline' },
-  ],
-];
 
 function getTimeGreeting() {
   const hour = new Date().getHours();
@@ -208,22 +190,6 @@ function HomeVisualTimeline({ steps }) {
   );
 }
 
-function QuickActionTile({ action, onPress }) {
-  return (
-    <Pressable
-      style={styles.quickItem}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={action.label}
-    >
-      <View style={styles.quickIconCircle}>
-        <Ionicons name={action.icon} size={20} color={colors.primaryTeal} />
-      </View>
-      <Text style={styles.quickLabel}>{action.label}</Text>
-    </Pressable>
-  );
-}
-
 function TextLink({ label, onPress, accessibilityLabel }) {
   return (
     <Pressable
@@ -239,7 +205,7 @@ function TextLink({ label, onPress, accessibilityLabel }) {
 }
 
 /**
- * Visitor home dashboard — verification, upcoming visit, progress snapshot, quick actions (v2.1).
+ * Visitor home dashboard — verification, upcoming visit, progress snapshot (v2.1).
  */
 export default function DashboardScreen({ navigation }) {
   const { registrationSummary, pendingVerification } = useAuth();
@@ -325,30 +291,6 @@ export default function DashboardScreen({ navigation }) {
     });
   }, [navigation, nextVisit]);
 
-  const onQuickAction = useCallback(
-    (actionId) => {
-      if (actionId === 'visits') {
-        navigation.navigate('Schedule');
-        return;
-      }
-      if (actionId === 'qr') {
-        navigation.navigate('QR');
-        return;
-      }
-      if (actionId === 'documents') {
-        onViewDocuments();
-        return;
-      }
-      if (actionId === 'help') {
-        Alert.alert(
-          'Help Center',
-          'For visit scheduling, verification, or facility questions, contact the BJMP facility front desk during business hours or use the reference number on your assigned visit.',
-        );
-      }
-    },
-    [navigation, onViewDocuments],
-  );
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
@@ -407,21 +349,6 @@ export default function DashboardScreen({ navigation }) {
             />
           </View>
         ) : null}
-
-        <Text style={[styles.sectionLabel, styles.quickSectionLabel]}>Quick Actions</Text>
-        <View style={styles.quickSection}>
-          {QUICK_ACTION_ROWS.map((row) => (
-            <View key={row.map((action) => action.id).join('-')} style={styles.quickRow}>
-              {row.map((action) => (
-                <QuickActionTile
-                  key={action.id}
-                  action={action}
-                  onPress={() => onQuickAction(action.id)}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -516,9 +443,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     marginBottom: spacing[6],
-  },
-  quickSectionLabel: {
-    marginTop: spacing[4],
   },
   visitCard: {
     borderRadius: layout.cardRadius,
@@ -657,35 +581,4 @@ const styles = StyleSheet.create({
     color: colors.primaryTeal,
   },
   pressed: { opacity: 0.88 },
-  quickSection: {
-    marginHorizontal: -spacing[4],
-    marginBottom: spacing[4],
-  },
-  quickRow: {
-    flexDirection: 'row',
-    marginBottom: spacing[8],
-  },
-  quickItem: {
-    flex: 1,
-    paddingHorizontal: spacing[4],
-    alignItems: 'center',
-  },
-  quickIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing[4],
-  },
-  quickLabel: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    fontWeight: '600',
-    textAlign: 'center',
-    fontSize: 11,
-  },
 });
