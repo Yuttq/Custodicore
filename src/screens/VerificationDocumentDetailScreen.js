@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, StatusChip, colors, layout, spacing, typography } from '../designSystem';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
@@ -9,6 +9,11 @@ import {
   getMockVisitorVerification,
 } from '../mock/visitorVerificationDocuments.mock';
 import { formatDate, formatTime } from '../utils';
+import {
+  getDocumentDetailAction,
+  getDocumentDetailActionLabel,
+  isDocumentVerified,
+} from '../utils/verificationDocumentUi';
 
 /**
  * @param {string | null | undefined} isoDate
@@ -30,7 +35,7 @@ function DetailField({ label, value }) {
 }
 
 /**
- * Single verification document — review details and replace (v2.1).
+ * Single verification document — view details; upload actions by status only (v2.1).
  */
 export default function VerificationDocumentDetailScreen({ navigation, route }) {
   const relationshipId =
@@ -41,6 +46,9 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
     const verification = getMockVisitorVerification(relationshipId);
     return verification.documents.find((doc) => doc.key === documentKey) ?? null;
   }, [relationshipId, documentKey]);
+
+  const detailAction = document ? getDocumentDetailAction(document.uploadStatus) : null;
+  const actionLabel = document ? getDocumentDetailActionLabel(document.uploadStatus) : null;
 
   if (!document) {
     return (
@@ -72,6 +80,20 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
   const verificationDate = formatDocumentDate(document.verifiedAt) || '—';
   const officerRemarks = document.reviewNote?.trim() || '—';
 
+  const openUpload = () => {
+    if (isDocumentVerified(document.uploadStatus)) {
+      Alert.alert(
+        'Document locked',
+        'Verified documents cannot be replaced or modified.',
+      );
+      return;
+    }
+    navigation.navigate('UploadID', {
+      relationshipId,
+      documentKey: document.key,
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.topBar}>
@@ -94,7 +116,7 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
       >
         <View style={styles.panel}>
           <Text style={styles.docTitle}>{document.label}</Text>
-          <View style={styles.chipRow}>
+          <View style={styles.statusBadgeWrap}>
             <StatusChip status={documentWorkflowStatusToChip(document.uploadStatus)} />
           </View>
 
@@ -104,21 +126,21 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
 
           {document.uploadStatus === 'rejected' && document.rejectionReason ? (
             <View style={styles.rejectionBox}>
-              <Text style={styles.rejectionTitle}>Rejection Reason</Text>
+              <Text style={styles.rejectionTitle}>Reason</Text>
               <Text style={styles.rejectionBody}>{document.rejectionReason}</Text>
             </View>
           ) : null}
 
-          <Button
-            title="Replace Document"
-            onPress={() =>
-              navigation.navigate('UploadID', {
-                relationshipId,
-                documentKey: document.key,
-              })
-            }
-            accessibilityLabel={`Replace ${document.label}`}
-          />
+          {detailAction && actionLabel ? (
+            <View style={styles.actionButtonWrap}>
+              <Button
+                title={actionLabel}
+                variant={detailAction === 'upload' || detailAction === 'upload_new' ? 'primary' : 'secondary'}
+                onPress={openUpload}
+                accessibilityLabel={actionLabel}
+              />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -165,12 +187,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing[8],
   },
-  chipRow: {
+  statusBadgeWrap: {
     alignSelf: 'flex-start',
-    marginBottom: spacing[14],
+    marginBottom: spacing[16],
   },
   detailField: {
-    marginBottom: spacing[12],
+    marginBottom: spacing[14],
   },
   detailLabel: {
     ...typography.caption,
@@ -183,7 +205,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   rejectionBox: {
-    marginBottom: spacing[14],
+    marginTop: spacing[2],
+    marginBottom: spacing[16],
     padding: spacing[10],
     borderRadius: 8,
     backgroundColor: 'rgba(239, 68, 68, 0.06)',
@@ -199,6 +222,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     lineHeight: 20,
+  },
+  actionButtonWrap: {
+    marginTop: spacing[2],
   },
   missingWrap: {
     flex: 1,

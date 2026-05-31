@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -11,8 +11,13 @@ import {
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, colors, layout, spacing, typography } from '../designSystem';
+import { Button, colors, spacing, typography } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
+import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
+import {
+  canModifyDocument,
+  getDocumentStatusDisplay,
+} from '../utils/verificationDocumentUi';
 import {
   ACCEPTED_GOVERNMENT_IDS,
   GOVERNMENT_ID_KEY,
@@ -28,32 +33,29 @@ const VERIFICATION_TIPS = [
   'Use valid government-issued IDs',
 ];
 
-function UploadActionRow({ icon, label, onPress, accessibilityLabel, isLast }) {
+function UploadActionRow({ icon, label, onPress, accessibilityLabel }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionRow,
-        !isLast && styles.actionRowBorder,
-        pressed && styles.actionRowPressed,
-      ]}
+      style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
       <Ionicons name={icon} size={20} color={colors.primaryTeal} />
       <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
     </Pressable>
   );
 }
 
 /**
  * @param {object} props
- * @param {{ key: string; label: string }} props.doc
+ * @param {{ key: string; label: string; uploadStatus?: string }} props.doc
  * @param {boolean} props.isLast
  * @param {() => void} props.onPress
  */
 function DocumentPickerRow({ doc, isLast, onPress }) {
+  const status = doc.uploadStatus ? getDocumentStatusDisplay(doc.uploadStatus) : null;
+
   return (
     <Pressable
       onPress={onPress}
@@ -66,14 +68,18 @@ function DocumentPickerRow({ doc, isLast, onPress }) {
       accessibilityLabel={`Upload ${doc.label}`}
     >
       <Text style={styles.pickerLabel}>{doc.label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+      {status ? (
+        <Text style={[styles.pickerStatus, { color: status.color }]}>{status.label}</Text>
+      ) : (
+        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+      )}
     </Pressable>
   );
 }
 
 /**
- * Focused document upload — one document at a time with tips (v2.1 / BJMP).
- * Replaces the former multi-document "Visitor Verification" hub screen.
+ * Focused document upload — one document at a time (v2.1 / BJMP).
+ * Verified documents cannot be selected or replaced.
  */
 export default function UploadIDScreen({ navigation, route }) {
   const { registrationSummary } = useAuth();
@@ -81,19 +87,50 @@ export default function UploadIDScreen({ navigation, route }) {
     route.params?.relationshipId ?? registrationSummary?.relationship ?? 'spouse';
   const initialDocumentKey = route.params?.documentKey ?? null;
 
-  const requiredDocs = useMemo(
-    () => getRequiredVerificationDocuments(relationshipId),
+  const verification = useMemo(
+    () => getMockVisitorVerification(relationshipId),
     [relationshipId],
   );
 
-  const [activeDocKey, setActiveDocKey] = useState(initialDocumentKey);
+  const uploadableDocs = useMemo(() => {
+    const required = getRequiredVerificationDocuments(relationshipId);
+    return required
+      .map((doc) => {
+        const mockDoc = verification.documents.find((d) => d.key === doc.key);
+        return {
+          ...doc,
+          uploadStatus: mockDoc?.uploadStatus ?? 'pending',
+        };
+      })
+      .filter((doc) => canModifyDocument(doc.uploadStatus));
+  }, [relationshipId, verification.documents]);
+
+  const [activeDocKey, setActiveDocKey] = useState(() => {
+    if (!initialDocumentKey) return null;
+    const mockDoc = verification.documents.find((d) => d.key === initialDocumentKey);
+    if (mockDoc && !canModifyDocument(mockDoc.uploadStatus)) return null;
+    return initialDocumentKey;
+  });
+
   const [entry, setEntry] = useState({ uri: null, status: 'pending', fileName: null });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!initialDocumentKey) return;
+    const mockDoc = verification.documents.find((d) => d.key === initialDocumentKey);
+    if (mockDoc && !canModifyDocument(mockDoc.uploadStatus)) {
+      Alert.alert(
+        'Document locked',
+        'This document is verified and cannot be replaced.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
+    }
+  }, [initialDocumentKey, verification.documents, navigation]);
+
   const activeDoc = useMemo(
-    () => requiredDocs.find((doc) => doc.key === activeDocKey) ?? null,
-    [requiredDocs, activeDocKey],
+    () => uploadableDocs.find((doc) => doc.key === activeDocKey) ?? null,
+    [uploadableDocs, activeDocKey],
   );
 
   const pickPhoto = useCallback(async (useCamera) => {
@@ -171,32 +208,40 @@ export default function UploadIDScreen({ navigation, route }) {
       >
         {!activeDocKey ? (
           <>
-            <Text style={styles.pickerHint}>Select a document to upload or replace.</Text>
-            <View style={styles.pickerList}>
-              {requiredDocs.map((doc, index) => (
-                <DocumentPickerRow
-                  key={doc.key}
-                  doc={doc}
-                  isLast={index === requiredDocs.length - 1}
-                  onPress={() => {
-                    setActiveDocKey(doc.key);
-                    setEntry({ uri: null, status: 'pending', fileName: null });
-                    setError('');
-                  }}
-                />
-              ))}
-            </View>
+            {uploadableDocs.length === 0 ? (
+              <Text style={styles.emptyHint}>
+                All required documents are verified. No uploads are needed.
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.pickerHint}>Select a document to upload.</Text>
+                <View style={styles.pickerList}>
+                  {uploadableDocs.map((doc, index) => (
+                    <DocumentPickerRow
+                      key={doc.key}
+                      doc={doc}
+                      isLast={index === uploadableDocs.length - 1}
+                      onPress={() => {
+                        setActiveDocKey(doc.key);
+                        setEntry({ uri: null, status: 'pending', fileName: null });
+                        setError('');
+                      }}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
           </>
         ) : (
           <>
             <Text style={styles.docHeading}>{activeDoc?.label}</Text>
 
             {activeDocKey === GOVERNMENT_ID_KEY ? (
-              <View style={styles.acceptedBlock}>
-                <Text style={styles.acceptedTitle}>Accepted IDs</Text>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Accepted IDs</Text>
                 {ACCEPTED_GOVERNMENT_IDS.map((id) => (
-                  <Text key={id} style={styles.acceptedItem}>
-                    · {id}
+                  <Text key={id} style={styles.listItem}>
+                    {id}
                   </Text>
                 ))}
               </View>
@@ -216,22 +261,18 @@ export default function UploadIDScreen({ navigation, route }) {
               </View>
             ) : null}
 
-            <View style={styles.actionsBlock}>
-              <UploadActionRow
-                icon="camera-outline"
-                label="Take Photo"
-                onPress={() => pickPhoto(true)}
-                accessibilityLabel={`Take photo for ${activeDoc?.label}`}
-                isLast={false}
-              />
-              <UploadActionRow
-                icon="images-outline"
-                label="Choose From Gallery"
-                onPress={() => pickPhoto(false)}
-                accessibilityLabel={`Choose ${activeDoc?.label} from gallery`}
-                isLast
-              />
-            </View>
+            <UploadActionRow
+              icon="camera-outline"
+              label="Take Photo"
+              onPress={() => pickPhoto(true)}
+              accessibilityLabel={`Take photo for ${activeDoc?.label}`}
+            />
+            <UploadActionRow
+              icon="images-outline"
+              label="Choose From Gallery"
+              onPress={() => pickPhoto(false)}
+              accessibilityLabel={`Choose ${activeDoc?.label} from gallery`}
+            />
 
             {error ? (
               <Text style={styles.fieldError} accessibilityRole="alert">
@@ -239,11 +280,11 @@ export default function UploadIDScreen({ navigation, route }) {
               </Text>
             ) : null}
 
-            <View style={styles.tipsBlock}>
-              <Text style={styles.tipsTitle}>Verification Tips</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Verification Tips</Text>
               {VERIFICATION_TIPS.map((tip) => (
-                <Text key={tip} style={styles.tipItem}>
-                  · {tip}
+                <Text key={tip} style={styles.listItem}>
+                  {tip}
                 </Text>
               ))}
             </View>
@@ -298,20 +339,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing[10],
   },
+  emptyHint: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
   pickerList: {
-    borderRadius: layout.cardRadius,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderRadius: 8,
     overflow: 'hidden',
   },
   pickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[14],
+    paddingHorizontal: spacing[12],
     paddingVertical: spacing[12],
     backgroundColor: colors.card,
+    gap: spacing[8],
   },
   pickerRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -326,40 +372,39 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
   },
+  pickerStatus: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
   docHeading: {
     ...typography.sectionTitle,
     color: colors.primaryNavy,
-    marginBottom: spacing[12],
+    marginBottom: spacing[14],
   },
-  acceptedBlock: {
-    marginBottom: spacing[12],
-    paddingVertical: spacing[8],
+  section: {
+    marginBottom: spacing[14],
   },
-  acceptedTitle: {
+  sectionTitle: {
     ...typography.caption,
     fontWeight: '600',
     color: colors.textSecondary,
     marginBottom: spacing[6],
   },
-  acceptedItem: {
+  listItem: {
     ...typography.caption,
     color: colors.textPrimary,
     lineHeight: 20,
+    marginBottom: spacing[2],
   },
   previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[10],
     marginBottom: spacing[12],
-    padding: spacing[8],
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
   },
   preview: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: 6,
     backgroundColor: colors.border,
   },
@@ -368,54 +413,25 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
   },
-  actionsBlock: {
-    borderRadius: layout.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    overflow: 'hidden',
-    marginBottom: spacing[12],
-  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[10],
-    paddingHorizontal: spacing[14],
     paddingVertical: spacing[12],
-    backgroundColor: colors.card,
-  },
-  actionRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   actionRowPressed: {
-    backgroundColor: colors.background,
+    opacity: 0.88,
   },
   actionLabel: {
     ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
-    flex: 1,
   },
   fieldError: {
     ...typography.caption,
     color: colors.danger,
-    marginBottom: spacing[10],
-  },
-  tipsBlock: {
-    marginBottom: spacing[14],
-    paddingVertical: spacing[4],
-  },
-  tipsTitle: {
-    ...typography.caption,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: spacing[6],
-  },
-  tipItem: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: spacing[2],
+    marginVertical: spacing[8],
   },
 });

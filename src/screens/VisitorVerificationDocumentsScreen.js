@@ -4,55 +4,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { EmptyState } from '../components';
+import VerificationProgressCard from '../components/VerificationProgressCard';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
-
-/**
- * @param {import('../mock/visitorVerificationDocuments.mock').VisitorVerificationStatus} status
- */
-function getOverallVerificationDisplay(status) {
-  switch (status) {
-    case 'verification_verified':
-      return { label: 'Verified', icon: 'checkmark-circle', accent: colors.success };
-    case 'verification_under_review':
-      return { label: 'Under Review', icon: 'time', accent: colors.primaryNavy };
-    case 'verification_rejected':
-    case 'verification_pending':
-    default:
-      return { label: 'Action Required', icon: 'alert-circle', accent: colors.warning };
-  }
-}
-
-/**
- * @param {import('../mock/visitorVerificationDocuments.mock').DocumentUploadStatus} uploadStatus
- */
-function getDocumentStatusLabel(uploadStatus) {
-  switch (uploadStatus) {
-    case 'verified':
-      return { label: 'Verified', color: colors.success };
-    case 'rejected':
-      return { label: 'Rejected', color: colors.danger };
-    case 'under_review':
-    case 'uploaded':
-      return { label: 'Under Review', color: colors.warning };
-    case 'pending':
-    default:
-      return { label: 'Not Submitted', color: colors.textSecondary };
-  }
-}
-
-/**
- * @param {object} props
- * @param {{ label: string; icon: string; accent: string }} props.display
- */
-function CompactVerificationStatus({ display }) {
-  return (
-    <View style={styles.statusStrip}>
-      <Ionicons name={display.icon} size={16} color={display.accent} />
-      <Text style={[styles.statusStripLabel, { color: display.accent }]}>{display.label}</Text>
-    </View>
-  );
-}
+import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 
 /**
  * @param {object} props
@@ -61,7 +16,7 @@ function CompactVerificationStatus({ display }) {
  * @param {() => void} props.onPress
  */
 function DocumentCompactRow({ document: doc, isLast, onPress }) {
-  const status = getDocumentStatusLabel(doc.uploadStatus);
+  const status = getDocumentStatusDisplay(doc.uploadStatus);
 
   return (
     <Pressable
@@ -94,7 +49,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
     [relationshipId],
   );
 
-  const overall = getOverallVerificationDisplay(verification.verificationStatus);
   const documents = verification.documents;
 
   const openDocument = useCallback(
@@ -106,10 +60,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
     },
     [navigation, relationshipId],
   );
-
-  const onUpload = useCallback(() => {
-    navigation.navigate('UploadID', { relationshipId });
-  }, [navigation, relationshipId]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -131,9 +81,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.sectionEyebrow}>Verification Status</Text>
-        <CompactVerificationStatus display={overall} />
-
         {documents.length === 0 ? (
           <EmptyState
             title="No Documents Uploaded"
@@ -143,13 +90,20 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
             style={styles.documentsEmpty}
           >
             <Button
-              title="Upload Documents"
-              onPress={onUpload}
-              accessibilityLabel="Upload verification documents"
+              title="Upload Document"
+              onPress={() =>
+                navigation.navigate('UploadID', { relationshipId })
+              }
+              accessibilityLabel="Upload verification document"
             />
           </EmptyState>
         ) : (
           <>
+            <VerificationProgressCard
+              documents={documents}
+              overallStatus={verification.verificationStatus}
+            />
+
             <Text style={styles.sectionEyebrow}>Required Documents</Text>
             <View style={styles.docList}>
               {documents.map((doc, index) => (
@@ -161,12 +115,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
                 />
               ))}
             </View>
-
-            <Button
-              title="Upload Documents"
-              onPress={onUpload}
-              accessibilityLabel="Upload or update verification documents"
-            />
           </>
         )}
       </ScrollView>
@@ -207,25 +155,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 0.4,
-    marginBottom: spacing[4],
-    marginTop: spacing[4],
-  },
-  statusStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[6],
-    paddingHorizontal: spacing[10],
-    paddingVertical: spacing[8],
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    marginBottom: spacing[8],
-  },
-  statusStripLabel: {
-    ...typography.body,
-    fontWeight: '700',
-    fontSize: 15,
+    marginBottom: spacing[6],
   },
   documentsEmpty: {
     paddingVertical: spacing[20],
@@ -236,7 +166,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.card,
     overflow: 'hidden',
-    marginBottom: spacing[12],
   },
   docRow: {
     flexDirection: 'row',
