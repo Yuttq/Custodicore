@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, layout, typography } from '../constants';
+import { colors, layout, typography } from '../designSystem';
 
 /**
  * @param {object} props
@@ -26,7 +26,7 @@ export default function Header({ title, showBackButton, onBackPress }) {
       )}
       <Text
         accessibilityRole="header"
-        style={[typography.title, styles.title]}
+        style={[typography.pageTitle, styles.title, { fontSize: 20, lineHeight: 24 }]}
         numberOfLines={1}
       >
         {title}
@@ -41,12 +41,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: layout.spacing.sm,
-    paddingHorizontal: layout.spacing.sm,
+    paddingVertical: layout.tabBarPaddingTop,
+    paddingHorizontal: layout.screenPadding,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    minHeight: layout.minTouchHeight,
+    minHeight: layout.buttonHeight,
   },
   title: {
     flex: 1,
@@ -55,13 +55,13 @@ const styles = StyleSheet.create({
   },
   back: {
     width: 40,
-    minHeight: layout.minTouchHeight,
+    minHeight: layout.buttonHeight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   backText: {
     fontSize: 28,
-    color: colors.primary,
+    color: colors.primaryNavy,
     fontWeight: '600',
   },
   backPlaceholder: { width: 40 },

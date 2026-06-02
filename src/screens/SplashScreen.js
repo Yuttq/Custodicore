@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing[32],
+    paddingHorizontal: spacing.xl,
   },
   logoWrap: {
     alignItems: 'center',
@@ -105,12 +105,9 @@ const styles = StyleSheet.create({
     height: 248,
   },
   tagline: {
-    ...typography.caption,
-    fontSize: 13,
-    lineHeight: 20,
+    ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: spacing[20],
-    letterSpacing: 0.2,
+    marginTop: spacing.md,
   },
 });

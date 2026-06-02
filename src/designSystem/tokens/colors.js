@@ -17,6 +17,9 @@ export const colors = {
   textPrimary: '#111827',
   textSecondary: '#6B7280',
 
+  /** Informational status / accents */
+  info: '#2563EB',
+
   white: '#FFFFFF',
 };
 

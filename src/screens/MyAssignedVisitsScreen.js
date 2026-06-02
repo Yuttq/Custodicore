@@ -323,25 +323,25 @@ export default function MyAssignedVisitsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
     color: colors.textPrimary,
-    paddingHorizontal: spacing[20],
-    paddingTop: spacing[8],
-    paddingBottom: spacing[12],
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: spacing[20],
-    marginBottom: spacing[12],
+    marginHorizontal: layout.screenPadding,
+    marginBottom: spacing.md,
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing[4],
+    padding: spacing.xs,
   },
   tab: {
     flex: 1,
-    paddingVertical: spacing[8],
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     borderRadius: 8,
   },
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryTeal,
   },
   tabLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     fontWeight: '600',
     color: colors.textSecondary,
   },
@@ -357,24 +357,22 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   list: {
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
   },
   emptyList: {
     flexGrow: 1,
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: layout.screenPadding,
     justifyContent: 'center',
   },
   visitCard: {
     borderRadius: layout.cardRadius,
-    padding: spacing[10],
-    marginBottom: spacing[8],
+    marginBottom: layout.cardGap,
   },
   cardPressable: {
-    gap: spacing[4],
+    gap: spacing.xs,
   },
   dateText: {
-    ...typography.body,
-    fontWeight: '700',
+    ...typography.cardTitle,
     color: colors.primaryNavy,
   },
   pdlName: {
@@ -383,24 +381,24 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   timeText: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
   },
   chipRow: {
     alignSelf: 'flex-start',
-    marginTop: spacing[4],
+    marginTop: spacing.xs,
   },
   pendingActions: {
-    marginTop: spacing[10],
-    paddingTop: spacing[10],
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   pressed: { opacity: 0.92 },
   emptyWrap: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: spacing[24],
+    paddingVertical: spacing.lg,
   },
 });

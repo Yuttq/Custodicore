@@ -164,8 +164,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[12],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   row: {
     flexDirection: 'row',
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   track: {
     width: 24,
     alignItems: 'center',
-    marginRight: spacing[10],
+    marginRight: spacing.sm,
     alignSelf: 'stretch',
   },
   dotDone: {
@@ -215,21 +215,21 @@ const styles = StyleSheet.create({
   line: {
     flex: 1,
     width: 2,
-    marginTop: spacing[4],
-    minHeight: spacing[12],
+    marginTop: spacing.xs,
+    minHeight: spacing.sm,
     borderRadius: 1,
   },
   body: {
     flex: 1,
   },
   bodySpaced: {
-    paddingBottom: spacing[8],
+    paddingBottom: spacing.sm,
   },
   headerPress: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   pressed: { opacity: 0.88 },
   label: {
@@ -250,29 +250,29 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   details: {
-    marginTop: spacing[8],
-    paddingTop: spacing[8],
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   detailRow: {
-    gap: spacing[2],
+    gap: spacing.xs,
   },
   detailLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
     fontWeight: '600',
   },
   detailValue: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
     lineHeight: 18,
   },
   empty: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingVertical: spacing[16],
+    paddingVertical: spacing.md,
   },
 });

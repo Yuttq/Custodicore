@@ -153,8 +153,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -168,36 +168,38 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
   panel: {
     borderRadius: layout.cardRadius,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    padding: spacing[16],
+    padding: spacing.md,
   },
   docTitle: {
-    ...typography.sectionTitle,
+    ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   statusBadgeWrap: {
     alignSelf: 'flex-start',
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   detailField: {
-    marginBottom: spacing[14],
+    marginBottom: spacing.md,
   },
   detailLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[2],
+    marginBottom: spacing.xs,
   },
   detailValue: {
     ...typography.body,
@@ -205,9 +207,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   rejectionBox: {
-    marginTop: spacing[2],
-    marginBottom: spacing[16],
-    padding: spacing[10],
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    padding: spacing.sm,
     borderRadius: 8,
     backgroundColor: 'rgba(239, 68, 68, 0.06)',
     borderWidth: 1,
@@ -216,7 +218,7 @@ const styles = StyleSheet.create({
   rejectionTitle: {
     ...typography.statusLabel,
     color: colors.danger,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   rejectionBody: {
     ...typography.body,
@@ -224,14 +226,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   actionButtonWrap: {
-    marginTop: spacing[2],
+    marginTop: spacing.xs,
   },
   missingWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing[20],
-    gap: spacing[16],
+    padding: spacing.md,
+    gap: spacing.md,
   },
   missingText: {
     ...typography.body,

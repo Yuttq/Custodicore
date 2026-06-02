@@ -3,7 +3,7 @@
  */
 export const typography = {
   /** Screen titles in headers (unchanged consumer usage) */
-  title: { fontSize: 20, fontWeight: 'bold' },
+  title: { fontSize: 30, fontWeight: '700', lineHeight: 36 },
   /** Welcome / hero line on dashboard */
   display: { fontSize: 22, fontWeight: '700', letterSpacing: -0.2 },
   /** Section titles, list primary lines */

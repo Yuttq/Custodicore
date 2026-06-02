@@ -313,12 +313,12 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
-    paddingHorizontal: spacing[20],
+    paddingHorizontal: spacing.md,
   },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
     color: colors.textPrimary,
-    marginBottom: spacing[16],
+    marginBottom: layout.pageTitleGap,
   },
   hero: {
     alignItems: 'center',
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
   },
   avatarPressable: {
     position: 'relative',
-    marginBottom: spacing[12],
+    marginBottom: spacing.sm,
   },
   avatarPressed: {
     opacity: 0.92,
@@ -365,11 +365,10 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
   visitorName: {
-    ...typography.screenTitle,
-    fontSize: 24,
+    ...typography.cardTitle,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   badgeRow: {
     alignSelf: 'center',
@@ -377,10 +376,10 @@ const styles = StyleSheet.create({
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[8],
+    gap: spacing.sm,
     backgroundColor: 'rgba(22, 163, 74, 0.12)',
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: layout.chipRadius,
   },
   verifiedBadgeText: {
@@ -389,11 +388,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionHeading: {
-    ...typography.caption,
-    fontWeight: '600',
+    ...typography.sectionLabel,
     color: colors.textSecondary,
-    letterSpacing: 0.6,
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   menuCard: {
     borderRadius: layout.cardRadius,
@@ -404,9 +401,9 @@ const styles = StyleSheet.create({
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing[16],
-    paddingVertical: spacing[14],
-    gap: spacing[12],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.card,
   },
   menuRowBorder: {

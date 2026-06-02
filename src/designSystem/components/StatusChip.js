@@ -14,14 +14,14 @@ const VARIANTS = {
   },
   qr_ready: {
     label: 'QR Ready',
-    bg: 'rgba(15, 61, 122, 0.12)',
-    fg: colors.primaryNavy,
+    bg: 'rgba(37, 99, 235, 0.12)',
+    fg: colors.info,
   },
   checked_in: { label: 'Checked-In', bg: colors.success, fg: colors.white },
   scheduled: {
     label: 'Scheduled',
-    bg: 'rgba(15, 61, 122, 0.12)',
-    fg: colors.primaryNavy,
+    bg: 'rgba(37, 99, 235, 0.12)',
+    fg: colors.info,
   },
   cancelled: { label: 'Cancelled', bg: colors.danger, fg: colors.white },
   unable_to_attend: {
@@ -47,8 +47,8 @@ const VARIANTS = {
   },
   document_uploaded: {
     label: 'Uploaded',
-    bg: 'rgba(15, 61, 122, 0.12)',
-    fg: colors.primaryNavy,
+    bg: 'rgba(37, 99, 235, 0.12)',
+    fg: colors.info,
   },
   document_under_review: {
     label: 'Under Review',
@@ -115,8 +115,8 @@ export function StatusChip({ status, label }) {
 const styles = StyleSheet.create({
   base: {
     alignSelf: 'flex-start',
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: layout.chipRadius,
   },
   text: {

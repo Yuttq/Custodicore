@@ -239,8 +239,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -254,24 +254,26 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
   card: {
     borderRadius: layout.cardRadius,
-    padding: spacing[16],
+    padding: spacing.md,
   },
   infoField: {
-    marginBottom: spacing[14],
+    marginBottom: spacing.md,
   },
   infoFieldLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   infoFieldValue: {
     ...typography.body,
@@ -280,12 +282,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   inputSpacing: {
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   editActionsRow: {
     flexDirection: 'row',
-    gap: spacing[12],
-    marginTop: spacing[8],
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   editActionGrow: {
     flex: 1,
@@ -297,7 +299,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing[16],
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.white,
   },
   cancelButtonPressed: {

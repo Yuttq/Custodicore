@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, colors, spacing, typography } from '../designSystem';
+import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
 import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
 import {
@@ -309,8 +309,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -324,20 +324,22 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: spacing[8],
+    marginHorizontal: spacing.sm,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[28],
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
   pickerHint: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[10],
+    marginBottom: spacing.md,
   },
   emptyHint: {
     ...typography.body,
@@ -354,10 +356,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[12],
-    paddingVertical: spacing[12],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.card,
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   pickerRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -373,34 +375,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pickerStatus: {
-    ...typography.caption,
+    ...typography.metadata,
     fontWeight: '600',
   },
   docHeading: {
-    ...typography.sectionTitle,
+    ...typography.cardTitle,
     color: colors.primaryNavy,
-    marginBottom: spacing[14],
+    marginBottom: spacing.md,
   },
   section: {
-    marginBottom: spacing[14],
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    ...typography.caption,
-    fontWeight: '600',
+    ...typography.sectionLabel,
     color: colors.textSecondary,
-    marginBottom: spacing[6],
+    marginBottom: spacing.sm,
   },
   listItem: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
-    lineHeight: 20,
-    marginBottom: spacing[2],
+    marginBottom: spacing.xs,
   },
   previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[10],
-    marginBottom: spacing[12],
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   preview: {
     width: 56,
@@ -409,15 +409,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   previewName: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
     flex: 1,
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[10],
-    paddingVertical: spacing[12],
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
@@ -430,8 +430,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   fieldError: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.danger,
-    marginVertical: spacing[8],
+    marginVertical: spacing.sm,
   },
 });

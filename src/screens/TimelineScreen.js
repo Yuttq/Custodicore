@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing[8],
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -214,22 +214,23 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
   },
   scroll: {
     paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing[32],
+    paddingBottom: spacing.xl,
     flexGrow: 1,
   },
   hint: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[12],
-    lineHeight: 18,
+    marginBottom: spacing.md,
   },
   emptyActions: {
-    marginTop: spacing[16],
+    marginTop: spacing.md,
     alignSelf: 'stretch',
     maxWidth: 280,
     width: '100%',

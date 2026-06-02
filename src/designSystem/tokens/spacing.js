@@ -1,38 +1,29 @@
 /**
- * CustodiCore Visitor App v2.1 — spacing scale & layout constants.
+ * CustodiCore Visitor App — spacing scale (government UI).
+ * Use ONLY: xs | sm | md | lg | xl
  */
 export const spacing = {
-  4: 4,
-  8: 8,
-  12: 12,
-  16: 16,
-  20: 20,
-  24: 24,
-  32: 32,
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
 };
 
 export const layout = {
-  /** Default screen padding */
-  screenPadding: 20,
-  /** Card internal padding */
-  cardPadding: 16,
+  screenPadding: spacing.md,
+  cardPadding: spacing.md,
+  cardGap: spacing.md,
+  pageTitleGap: spacing.lg,
+  sectionGap: spacing.lg,
 
-  /** Gap between cards in a list / stack */
-  cardGap: 16,
-  /** Gap between sections */
-  sectionGap: 24,
-
-  /** Buttons */
   buttonHeight: 48,
 
-  /** Bottom navigation content height (excluding safe-area inset) */
   tabBarHeight: 80,
-  /** Elevated center QR tab button */
   qrButtonSize: 64,
-  tabBarPaddingTop: 8,
-  tabBarPaddingBottomMin: 20,
+  tabBarPaddingTop: spacing.sm,
+  tabBarPaddingBottomMin: spacing.lg,
 
-  /** Radii */
   cardRadius: 16,
   buttonRadius: 12,
   chipRadius: 999,

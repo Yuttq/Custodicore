@@ -138,8 +138,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -153,19 +153,21 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing[20],
-    gap: spacing[16],
+    padding: spacing.md,
+    gap: spacing.md,
   },
   missingText: {
     ...typography.body,
@@ -174,24 +176,24 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: layout.cardRadius,
-    padding: spacing[16],
+    padding: spacing.md,
   },
   visitDate: {
-    ...typography.sectionTitle,
+    ...typography.cardTitle,
     color: colors.primaryNavy,
-    marginBottom: spacing[10],
+    marginBottom: spacing.sm,
   },
   chipRow: {
     alignSelf: 'flex-start',
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   detailField: {
-    marginBottom: spacing[14],
+    marginBottom: spacing.md,
   },
   detailLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   detailValue: {
     ...typography.body,
@@ -199,8 +201,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   cancellationBox: {
-    marginBottom: spacing[16],
-    padding: spacing[12],
+    marginBottom: spacing.md,
+    padding: spacing.sm,
     borderRadius: 8,
     backgroundColor: 'rgba(239, 68, 68, 0.06)',
     borderWidth: 1,
@@ -209,7 +211,7 @@ const styles = StyleSheet.create({
   cancellationTitle: {
     ...typography.statusLabel,
     color: colors.danger,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   cancellationBody: {
     ...typography.body,

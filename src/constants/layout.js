@@ -10,7 +10,7 @@ export const layout = {
   /** Inputs, chips, small controls */
   borderRadiusSm: 6,
   /** Default horizontal screen padding */
-  screenPadding: 20,
+  screenPadding: 16,
   /** Gap between stacked cards */
   cardGap: 16,
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },

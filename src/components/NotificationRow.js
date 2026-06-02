@@ -5,7 +5,7 @@ import { colors, spacing, typography } from '../designSystem';
 
 /** @typedef {'success' | 'warning' | 'information'} NotificationTone */
 
-const UNREAD_BLUE = '#3B82F6';
+const UNREAD_BLUE = colors.info;
 
 const TONE_CONFIG = {
   success: {
@@ -20,8 +20,8 @@ const TONE_CONFIG = {
   },
   information: {
     icon: 'information-circle',
-    color: colors.primaryNavy,
-    bg: 'rgba(15, 61, 122, 0.08)',
+    color: colors.info,
+    bg: 'rgba(37, 99, 235, 0.12)',
   },
 };
 
@@ -88,11 +88,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing[8],
-    paddingHorizontal: spacing[10],
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
-    gap: spacing[8],
-    minHeight: 48,
+    gap: spacing.sm,
+    minHeight: 56,
   },
   rowPressed: {
     backgroundColor: colors.background,
@@ -100,8 +100,8 @@ const styles = StyleSheet.create({
   unreadBar: {
     position: 'absolute',
     left: 0,
-    top: spacing[6],
-    bottom: spacing[6],
+    top: spacing.sm,
+    bottom: spacing.sm,
     width: 3,
     borderRadius: 2,
     backgroundColor: UNREAD_BLUE,
@@ -112,22 +112,21 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing[2],
+    marginLeft: spacing.xs,
   },
   content: {
     flex: 1,
     minWidth: 0,
-    paddingRight: spacing[2],
   },
   topLine: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    gap: spacing[6],
-    marginBottom: spacing[2],
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
   title: {
-    ...typography.caption,
+    ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,
@@ -137,20 +136,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   date: {
-    ...typography.caption,
-    fontSize: 10,
+    ...typography.metadata,
     color: colors.textSecondary,
     flexShrink: 0,
   },
   description: {
-    ...typography.caption,
-    fontSize: 11,
+    ...typography.metadata,
     color: colors.textSecondary,
-    lineHeight: 15,
   },
   unreadDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
     backgroundColor: UNREAD_BLUE,
     flexShrink: 0,

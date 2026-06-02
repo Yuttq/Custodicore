@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, colors, spacing, typography } from '../designSystem';
+import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { resendPasswordReset } from '../services/forgotPasswordService';
 
 /**
@@ -81,14 +81,14 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: spacing[20],
-    paddingTop: spacing[32],
-    paddingBottom: spacing[24],
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
     justifyContent: 'center',
   },
   illustrationWrap: {
     alignItems: 'center',
-    marginBottom: spacing[24],
+    marginBottom: spacing.lg,
   },
   illustrationOuter: {
     width: 120,
@@ -120,22 +120,21 @@ const styles = StyleSheet.create({
     borderColor: colors.background,
   },
   title: {
-    ...typography.screenTitle,
+    ...typography.pageTitle,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
   },
   message: {
-    ...typography.body,
+    ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing[32],
+    marginBottom: spacing.xl,
   },
   actions: {
     width: '100%',
   },
   secondaryWrap: {
-    marginTop: spacing[12],
+    marginTop: spacing.sm,
   },
 });

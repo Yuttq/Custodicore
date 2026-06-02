@@ -111,9 +111,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingTop: spacing[12],
-    paddingBottom: spacing[24],
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   backButton: {
     width: 44,
@@ -125,31 +125,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     alignSelf: 'flex-start',
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   header: {
-    marginBottom: spacing[16],
+    marginBottom: layout.pageTitleGap,
   },
   title: {
-    ...typography.screenTitle,
+    ...typography.pageTitle,
     color: colors.textPrimary,
   },
   subtitle: {
-    ...typography.body,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginTop: spacing[8],
-    lineHeight: 22,
+    marginTop: spacing.sm,
   },
   card: {
     borderRadius: layout.cardRadius,
   },
   field: {
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   label: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
     fontWeight: '600',
   },
   input: {
@@ -157,7 +156,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    paddingHorizontal: spacing[12],
+    paddingHorizontal: spacing.sm,
     backgroundColor: colors.white,
     color: colors.textPrimary,
     ...typography.body,
@@ -166,14 +165,14 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
   },
   error: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.danger,
-    marginTop: spacing[8],
+    marginTop: spacing.sm,
   },
   footer: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: spacing[16],
+    marginTop: spacing.lg,
   },
 });

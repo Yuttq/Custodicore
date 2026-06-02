@@ -93,9 +93,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: spacing[20],
-    paddingTop: spacing[24],
-    paddingBottom: spacing[32],
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   illustrationWrap: {
     alignItems: 'center',
@@ -125,9 +125,9 @@ const styles = StyleSheet.create({
     borderColor: colors.white,
   },
   sectionHeading: {
-    ...typography.sectionTitle,
+    ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing[12],
+    marginBottom: spacing.sm,
   },
   documentsCard: {
     borderRadius: layout.cardRadius,
@@ -136,8 +136,8 @@ const styles = StyleSheet.create({
   docRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: spacing[12],
-    gap: spacing[12],
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
   docText: { flex: 1 },
   docLabel: {
@@ -146,9 +146,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   docDetail: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginTop: spacing[4],
+    marginTop: spacing.xs,
   },
   docEmpty: {
     ...typography.body,
@@ -156,36 +156,33 @@ const styles = StyleSheet.create({
   },
   reviewCard: {
     borderRadius: layout.cardRadius,
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   reviewLead: {
     ...typography.body,
     color: colors.textPrimary,
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
     lineHeight: 22,
   },
   estimateLabel: {
-    ...typography.caption,
+    ...typography.sectionLabel,
     color: colors.textSecondary,
-    marginBottom: spacing[4],
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    marginBottom: spacing.xs,
   },
   estimateValue: {
-    ...typography.sectionTitle,
+    ...typography.cardTitle,
     color: colors.primaryNavy,
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   chipWrap: {
     alignSelf: 'flex-start',
   },
   notifyMessage: {
-    ...typography.body,
+    ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing[24],
-    paddingHorizontal: spacing[8],
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   buttonWrap: {
     marginTop: 'auto',

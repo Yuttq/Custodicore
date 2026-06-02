@@ -1,10 +1,10 @@
 import React from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
+    ActivityIndicator,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
 } from 'react-native';
 import { colors } from '../tokens/colors';
 import { layout, spacing } from '../tokens/spacing';
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     borderRadius: layout.buttonRadius,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing[16],
+    paddingHorizontal: spacing.md,
   },
   primary: {
     backgroundColor: colors.primaryTeal,

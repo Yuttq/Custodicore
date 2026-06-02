@@ -1,11 +1,6 @@
 import React from 'react';
-import {
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { colors, layout, typography } from '../constants';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { colors, layout, spacing, typography } from '../designSystem';
 
 /**
  * @param {object} props
@@ -18,7 +13,8 @@ import { colors, layout, typography } from '../constants';
  * @param {import('react-native').TextInputProps['keyboardType']} [props.keyboardType]
  * @param {import('react-native').TextInputProps['autoCapitalize']} [props.autoCapitalize]
  * @param {boolean} [props.autoCorrect]
- * @param {import('react-native').ViewStyle} [props.style] — outer container (e.g. spacing in dense forms)
+ * @param {import('react-native').ViewStyle} [props.style]
+ * @param {import('react-native').TextStyle} [props.labelStyle]
  */
 export default function CustomInput({
   label,
@@ -40,7 +36,7 @@ export default function CustomInput({
       <Text
         accessibilityRole="text"
         nativeID={`${inputId}-label`}
-        style={[typography.caption, styles.label, labelStyle]}
+        style={[styles.label, labelStyle]}
       >
         {label}
       </Text>
@@ -55,17 +51,10 @@ export default function CustomInput({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
-        style={[
-          styles.input,
-          typography.body,
-          error ? styles.inputError : null,
-        ]}
+        style={[styles.input, typography.body, error ? styles.inputError : null]}
       />
       {error ? (
-        <Text
-          accessibilityRole="alert"
-          style={[typography.caption, styles.error]}
-        >
+        <Text accessibilityRole="alert" style={styles.error}>
           {error}
         </Text>
       ) : null}
@@ -74,18 +63,27 @@ export default function CustomInput({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: layout.spacing.md },
-  label: { color: colors.textPrimary, marginBottom: layout.spacing.xs },
+  wrap: { marginBottom: spacing.md },
+  label: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: layout.borderRadiusSm,
-    paddingHorizontal: layout.spacing.md,
-    paddingVertical: layout.spacing.sm,
-    minHeight: layout.minTouchHeight,
-    color: colors.textPrimary,
+    borderRadius: layout.buttonRadius,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.white,
+    color: colors.textPrimary,
+    minHeight: layout.buttonHeight,
   },
   inputError: { borderColor: colors.danger },
-  error: { color: colors.danger, marginTop: layout.spacing.xs },
+  error: {
+    ...typography.metadata,
+    color: colors.danger,
+    marginTop: spacing.xs,
+  },
 });

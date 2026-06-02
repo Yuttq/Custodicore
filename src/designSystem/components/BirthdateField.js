@@ -132,18 +132,18 @@ export function BirthdateField({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: spacing[12] },
+  wrap: { marginBottom: spacing.sm },
   label: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   field: {
     height: layout.buttonHeight,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    paddingHorizontal: spacing[12],
+    paddingHorizontal: spacing.sm,
     backgroundColor: colors.white,
     flexDirection: 'row',
     alignItems: 'center',
@@ -164,9 +164,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   error: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.danger,
-    marginTop: spacing[8],
+    marginTop: spacing.sm,
   },
   modalOverlay: {
     flex: 1,
@@ -177,14 +177,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopLeftRadius: layout.cardRadius,
     borderTopRightRadius: layout.cardRadius,
-    paddingBottom: spacing[24],
+    paddingBottom: spacing.lg,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[12],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },

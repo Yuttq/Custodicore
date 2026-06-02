@@ -153,12 +153,12 @@ const styles = StyleSheet.create({
   track: {
     width: 32,
     alignItems: 'center',
-    marginRight: spacing[12],
+    marginRight: spacing.sm,
     alignSelf: 'stretch',
   },
   trackCarded: {
     width: 36,
-    marginRight: spacing[12],
+    marginRight: spacing.sm,
   },
   dotCompleted: {
     width: 28,
@@ -198,26 +198,26 @@ const styles = StyleSheet.create({
   line: {
     flex: 1,
     width: 3,
-    marginTop: spacing[4],
-    minHeight: spacing[20],
+    marginTop: spacing.xs,
+    minHeight: spacing.md,
     borderRadius: 2,
   },
   lineCarded: {
-    minHeight: spacing[24],
+    minHeight: spacing.lg,
   },
   body: {
     flex: 1,
-    paddingBottom: spacing[20],
+    paddingBottom: spacing.md,
   },
   bodyCarded: {
-    paddingBottom: spacing[14],
+    paddingBottom: spacing.md,
   },
   contentCard: {
     backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing[16],
+    padding: spacing.md,
     ...shadows.card,
   },
   contentCardCompleted: {
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   title: {
     ...typography.body,
@@ -257,12 +257,12 @@ const styles = StyleSheet.create({
   },
   currentBadge: {
     backgroundColor: 'rgba(13, 165, 138, 0.12)',
-    paddingHorizontal: spacing[8],
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: 999,
   },
   currentBadgeText: {
-    ...typography.caption,
+    ...typography.metadata,
     fontSize: 11,
     fontWeight: '700',
     color: colors.primaryTeal,
@@ -270,9 +270,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   timestamp: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginTop: spacing[4],
+    marginTop: spacing.xs,
   },
   timestampCompleted: {
     color: colors.success,
@@ -283,15 +283,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   awaiting: {
-    ...typography.caption,
+    ...typography.metadata,
     color: GRAY_UPCOMING,
-    marginTop: spacing[4],
+    marginTop: spacing.xs,
     fontStyle: 'italic',
   },
   description: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
-    marginTop: spacing[8],
+    marginTop: spacing.sm,
     lineHeight: 18,
   },
   descriptionCurrent: {
@@ -301,8 +301,8 @@ const styles = StyleSheet.create({
     color: GRAY_UPCOMING,
   },
   noteWrap: {
-    marginTop: spacing[12],
-    padding: spacing[12],
+    marginTop: spacing.sm,
+    padding: spacing.sm,
     borderRadius: 12,
     backgroundColor: colors.background,
     borderWidth: 1,
@@ -311,8 +311,8 @@ const styles = StyleSheet.create({
   noteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[4],
-    marginBottom: spacing[4],
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   noteLabel: {
     ...typography.statusLabel,
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   noteBody: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textPrimary,
     lineHeight: 18,
   },

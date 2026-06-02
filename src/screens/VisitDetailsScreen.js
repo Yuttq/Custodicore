@@ -234,8 +234,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[20],
-    paddingVertical: spacing[8],
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -249,27 +249,29 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: { width: 44 },
   screenTitle: {
-    ...typography.sectionTitle,
+    ...typography.pageTitle,
+    fontSize: 20,
+    lineHeight: 24,
     color: colors.textPrimary,
   },
   statusRow: {
     alignSelf: 'flex-start',
-    marginLeft: spacing[20],
-    marginBottom: spacing[12],
+    marginLeft: layout.screenPadding,
+    marginBottom: spacing.md,
   },
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: spacing[20],
-    marginBottom: spacing[12],
+    marginHorizontal: layout.screenPadding,
+    marginBottom: spacing.md,
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing[4],
+    padding: spacing.xs,
   },
   tab: {
     flex: 1,
-    paddingVertical: spacing[8],
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     borderRadius: 8,
   },
@@ -277,7 +279,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryTeal,
   },
   tabLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     fontWeight: '600',
     color: colors.textSecondary,
   },
@@ -285,20 +287,20 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   scroll: {
-    paddingHorizontal: spacing[20],
-    paddingBottom: spacing[32],
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
   card: {
     borderRadius: layout.cardRadius,
     marginBottom: layout.cardGap,
   },
   infoRow: {
-    marginBottom: spacing[12],
+    marginBottom: spacing.sm,
   },
   infoLabel: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   infoValue: {
     ...typography.body,
@@ -308,34 +310,33 @@ const styles = StyleSheet.create({
   guidelinesTitle: {
     ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing[4],
+    marginBottom: spacing.xs,
   },
   guidelinesSub: {
-    ...typography.caption,
+    ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing[16],
-    lineHeight: 18,
+    marginBottom: spacing.md,
   },
   guidelineSectionSpaced: {
-    marginBottom: spacing[16],
+    marginBottom: spacing.md,
   },
   guidelineSectionTitle: {
     ...typography.body,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginBottom: spacing[6],
+    marginBottom: spacing.sm,
   },
   guidelineBulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: spacing[4],
-    paddingLeft: spacing[2],
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.xs,
   },
   guidelineBullet: {
     ...typography.body,
     color: colors.textSecondary,
     lineHeight: 20,
-    width: spacing[12],
+    width: spacing.sm,
   },
   guidelineBulletText: {
     ...typography.body,
@@ -344,8 +345,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   actions: {
-    marginTop: spacing[12],
-    gap: spacing[12],
+    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   unableBtn: {
     height: layout.buttonHeight,
@@ -365,8 +366,8 @@ const styles = StyleSheet.create({
   missingWrap: {
     flex: 1,
     justifyContent: 'center',
-    padding: spacing[20],
-    gap: spacing[16],
+    padding: spacing.md,
+    gap: spacing.md,
   },
   missingText: {
     ...typography.body,
