@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   input: {
     borderWidth: 1,

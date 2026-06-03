@@ -9,15 +9,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import {
-  CustomButton,
-  EmptyState,
-  Header,
-  LoadingSpinner,
-  NotificationRow,
-  ScreenContainer,
-} from '../components';
-import { colors, layout, spacing, typography } from '../designSystem';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { EmptyState, LoadingSpinner, NotificationRow } from '../components';
+import { Button, colors, commonStyles, layout, spacing, typography } from '../designSystem';
+import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import {
   fetchNotificationsList,
@@ -134,6 +129,7 @@ function NotificationFilterBar({ activeFilter, onFilterChange }) {
 }
 
 export default function NotificationsScreen() {
+  const tabBarInset = useTabBarScrollInset();
   const { refreshUnreadCount } = useNotificationBadge();
   const [items, setItems] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -249,7 +245,7 @@ export default function NotificationsScreen() {
         {error && items.length > 0 ? (
           <View style={styles.inlineError}>
             <Text style={styles.inlineErrorText}>{error}</Text>
-            <CustomButton
+            <Button
               title="Retry"
               onPress={() => fetchNotifications(false)}
               accessibilityLabel="Retry after error"
@@ -279,7 +275,7 @@ export default function NotificationsScreen() {
           style={styles.emptyWrap}
         >
           <View style={styles.emptyActions}>
-            <CustomButton
+            <Button
               title="Retry"
               onPress={() => fetchNotifications(false)}
               accessibilityLabel="Retry loading notifications"
@@ -296,6 +292,7 @@ export default function NotificationsScreen() {
           title={`No ${filterLabel.toLowerCase()} notifications`}
           message="Nothing in this category right now. Try another filter or pull down to refresh."
           iconName="filter-outline"
+          iconColor={colors.primaryTeal}
           style={styles.emptyWrap}
         />
       );
@@ -305,14 +302,22 @@ export default function NotificationsScreen() {
         title="No Notifications"
         message="We'll notify you about approvals, schedules and updates."
         iconName="notifications-off-outline"
+        iconColor={colors.primaryTeal}
         style={styles.emptyWrap}
       />
     );
   }, [loading, refreshing, error, fetchNotifications, items.length, activeFilter]);
 
+  const listContentStyle = [
+    sections.length === 0 ? styles.listEmptyContent : styles.listContent,
+    { paddingBottom: tabBarInset },
+  ];
+
   return (
-    <ScreenContainer backgroundColor="lightGray" tabScreen>
-      <Header title="Notifications" />
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
+      <Text style={styles.screenTitle} accessibilityRole="header">
+        Notifications
+      </Text>
       <SectionList
         sections={sections}
         keyExtractor={keyExtractor}
@@ -325,9 +330,7 @@ export default function NotificationsScreen() {
         removeClippedSubviews={Platform.OS === 'android'}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
-        contentContainerStyle={
-          sections.length === 0 ? styles.listEmptyContent : styles.listContent
-        }
+        contentContainerStyle={listContentStyle}
         ListEmptyComponent={listEmpty}
         ListHeaderComponent={listHeader}
         refreshControl={
@@ -338,16 +341,23 @@ export default function NotificationsScreen() {
             colors={[colors.primaryTeal]}
           />
         }
+        showsVerticalScrollIndicator={false}
       />
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  screenTitle: {
+    ...typography.pageTitle,
+    color: colors.textPrimary,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   listContent: {
     paddingHorizontal: layout.screenPadding,
     paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
   },
   listEmptyContent: {
     flexGrow: 1,

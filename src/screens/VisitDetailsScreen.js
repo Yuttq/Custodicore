@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
@@ -10,15 +9,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CompactVisitTimeline from '../components/CompactVisitTimeline';
+import { EmptyState } from '../components';
 import {
   Button,
   Card,
+  StackScreenHeader,
   StatusChip,
   colors,
+  commonStyles,
   layout,
   spacing,
   typography,
 } from '../designSystem';
+import { goBackOr } from '../utils/safeNavigation';
 import { useVisits } from '../context/VisitsContext';
 import {
   VISITATION_GUIDELINE_SECTIONS,
@@ -87,7 +90,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
       Alert.alert(
         'Attendance confirmed',
         'Your attendance has been recorded. Please arrive on time with valid ID.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
+        [{ text: 'OK', onPress: () => goBackOr(navigation) }],
       );
     } catch {
       Alert.alert('Error', 'Could not confirm attendance. Please try again.');
@@ -111,46 +114,51 @@ export default function VisitDetailsScreen({ navigation, route }) {
 
   if (!visit) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-        <View style={styles.missingWrap}>
-          <Text style={styles.missingText}>Visit not found.</Text>
-          <Button title="Go Back" onPress={() => navigation.goBack()} />
-        </View>
+      <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+        <StackScreenHeader title="Visit Details" navigation={navigation} />
+        <EmptyState
+          title="Visit Not Found"
+          message="This visit may have been removed or is no longer available."
+          iconName="calendar-outline"
+          iconColor={colors.textSecondary}
+          style={styles.missingEmpty}
+        >
+          <Button
+            title="Go Back"
+            variant="secondary"
+            onPress={() => goBackOr(navigation)}
+            accessibilityLabel="Go back"
+          />
+        </EmptyState>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-        </Pressable>
-        <Text style={styles.screenTitle}>Visit Details</Text>
-        <View style={styles.backPlaceholder} />
-      </View>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+      <StackScreenHeader title="Visit Details" navigation={navigation} />
 
       <View style={styles.statusRow}>
         <StatusChip status={visit.status} />
       </View>
 
-      <View style={styles.tabBar}>
+      <View style={commonStyles.segmentedControl}>
         {DETAIL_TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
             <Pressable
               key={tab.key}
               onPress={() => setActiveTab(tab.key)}
-              style={[styles.tab, active && styles.tabActive]}
+              style={[commonStyles.segmentedTab, active && commonStyles.segmentedTabActive]}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+              <Text
+                style={[
+                  commonStyles.segmentedTabLabel,
+                  active && commonStyles.segmentedTabLabelActive,
+                ]}
+              >
                 {tab.label}
               </Text>
             </Pressable>
@@ -159,7 +167,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={commonStyles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -183,7 +191,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
             ) : null}
 
             {showActions ? (
-              <View style={styles.actions}>
+              <View style={commonStyles.actionsStack}>
                 <Button
                   title="Confirm Attendance"
                   onPress={onConfirm}
@@ -229,66 +237,10 @@ export default function VisitDetailsScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backPlaceholder: { width: 44 },
-  screenTitle: {
-    ...typography.pageTitle,
-    fontSize: 20,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
   statusRow: {
     alignSelf: 'flex-start',
     marginLeft: layout.screenPadding,
     marginBottom: spacing.md,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    marginHorizontal: layout.screenPadding,
-    marginBottom: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.xs,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabActive: {
-    backgroundColor: colors.primaryTeal,
-  },
-  tabLabel: {
-    ...typography.metadata,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  tabLabelActive: {
-    color: colors.white,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
   },
   card: {
     borderRadius: layout.cardRadius,
@@ -344,10 +296,6 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
-  actions: {
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
   unableBtn: {
     height: layout.buttonHeight,
     borderRadius: layout.buttonRadius,
@@ -363,15 +311,8 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   pressed: { opacity: 0.92 },
-  missingWrap: {
+  missingEmpty: {
     flex: 1,
-    justifyContent: 'center',
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  missingText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    paddingHorizontal: layout.screenPadding,
   },
 });

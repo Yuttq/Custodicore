@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { colors, layout, typography } from '../constants';
+import { colors, layout, spacing, typography } from '../designSystem';
 
 /**
  * @param {object} [props]
@@ -14,9 +14,9 @@ export default function LoadingSpinner({ message, compact = false }) {
       accessibilityRole="progressbar"
       accessibilityLabel={message ?? 'Loading'}
     >
-      <ActivityIndicator size="large" color={colors.primary} />
+      <ActivityIndicator size="large" color={colors.primaryTeal} />
       {message ? (
-        <Text style={[typography.body, styles.message]}>{message}</Text>
+        <Text style={[typography.metadata, styles.message]}>{message}</Text>
       ) : null}
     </View>
   );
@@ -28,13 +28,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: layout.screenPadding,
-    paddingVertical: layout.spacing.lg,
-    gap: layout.spacing.md,
-    minHeight: 200,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+    minHeight: spacing.xl * 6,
   },
   compact: {
-    minHeight: 120,
-    paddingVertical: layout.spacing.md,
+    minHeight: spacing.xl * 4,
+    paddingVertical: spacing.md,
   },
   message: {
     color: colors.textSecondary,

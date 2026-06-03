@@ -1,14 +1,23 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, StatusChip, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  StackScreenHeader,
+  StatusChip,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 import {
   documentWorkflowStatusToChip,
   getMockVisitorVerification,
 } from '../mock/visitorVerificationDocuments.mock';
 import { formatDate, formatTime } from '../utils';
+import { goBackOr } from '../utils/safeNavigation';
 import {
   getDocumentDetailAction,
   getDocumentDetailActionLabel,
@@ -52,22 +61,11 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
 
   if (!document) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-          </Pressable>
-          <Text style={styles.screenTitle}>Document Details</Text>
-          <View style={styles.backPlaceholder} />
-        </View>
+      <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+        <StackScreenHeader title="Document Details" navigation={navigation} />
         <View style={styles.missingWrap}>
           <Text style={styles.missingText}>Document not found.</Text>
-          <Button title="Go Back" onPress={() => navigation.goBack()} />
+          <Button title="Go Back" onPress={() => goBackOr(navigation)} />
         </View>
       </SafeAreaView>
     );
@@ -95,22 +93,11 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-        </Pressable>
-        <Text style={styles.screenTitle}>Document Details</Text>
-        <View style={styles.backPlaceholder} />
-      </View>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+      <StackScreenHeader title="Document Details" navigation={navigation} />
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={commonStyles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -148,35 +135,6 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backPlaceholder: { width: 44 },
-  screenTitle: {
-    ...typography.pageTitle,
-    fontSize: 20,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
   panel: {
     borderRadius: layout.cardRadius,
     borderWidth: 1,
@@ -210,7 +168,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
     padding: spacing.sm,
-    borderRadius: 8,
+    borderRadius: layout.borderRadiusSm,
     backgroundColor: 'rgba(239, 68, 68, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.2)',

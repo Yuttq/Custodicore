@@ -18,6 +18,19 @@ export const typography = {
     fontWeight: '600',
     lineHeight: 24,
   },
+  /** Stack / modal screen titles (narrow header bar) */
+  screenHeader: {
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 24,
+  },
+  /** Tab bar context label, form eyebrows */
+  eyebrow: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   body: {
     fontSize: 16,
     fontWeight: '400',

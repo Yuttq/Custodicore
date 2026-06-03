@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { pickPhotoFromCamera, pickPhotoFromGallery } from '../services/imagePickerService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Card,
@@ -172,18 +172,15 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [profile]);
 
-  const pickProfilePhoto = useCallback(async (useCamera) => {
-    const options = { mediaType: 'photo', saveToPhotos: false };
-    const result = useCamera
-      ? await launchCamera(options)
-      : await launchImageLibrary(options);
-    const asset = result.assets?.[0];
-    if (asset?.uri) {
-      await persistProfilePhoto(asset.uri);
-    } else if (result.errorMessage) {
-      Alert.alert('Could not open image', result.errorMessage);
-    }
-  }, [persistProfilePhoto]);
+  const pickProfilePhoto = useCallback(
+    async (useCamera) => {
+      const picked = useCamera ? await pickPhotoFromCamera() : await pickPhotoFromGallery();
+      if (picked?.uri) {
+        await persistProfilePhoto(picked.uri);
+      }
+    },
+    [persistProfilePhoto],
+  );
 
   const removeProfilePhoto = useCallback(async () => {
     await persistProfilePhoto(null);
@@ -271,7 +268,9 @@ export default function ProfileScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.screenTitle}>Profile</Text>
+        <Text style={styles.screenTitle} accessibilityRole="header">
+          Profile
+        </Text>
 
         <View style={styles.hero}>
           <ProfileAvatar
@@ -313,7 +312,8 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
   },
   screenTitle: {
     ...typography.pageTitle,

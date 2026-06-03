@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { pickPhotoFromGallery } from '../services/imagePickerService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   BirthdateField,
@@ -44,8 +44,14 @@ const STEP_TITLES = {
 };
 
 function ProgressStepper({ step }) {
+  const stepLabel = STEP_TITLES[step] ?? `Step ${step}`;
   return (
-    <View style={stepperStyles.wrap}>
+    <View
+      style={stepperStyles.wrap}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Registration progress, step ${step} of ${TOTAL_STEPS}: ${stepLabel}`}
+      accessibilityValue={{ min: 1, max: TOTAL_STEPS, now: step }}
+    >
       <View style={stepperStyles.row}>
         {[1, 2, 3, 4].map((n, index) => {
           const done = n < step;
@@ -84,7 +90,7 @@ function ProgressStepper({ step }) {
           );
         })}
       </View>
-      <Text style={stepperStyles.progressLabel}>
+      <Text style={stepperStyles.progressLabel} accessibilityElementsHidden importantForAccessibility="no">
         {step} of {TOTAL_STEPS}
       </Text>
     </View>
@@ -235,18 +241,14 @@ export default function RegisterScreen({ navigation }) {
   }, [step, validateStep1, validateStep2, validateStep3]);
 
   const pickDocument = useCallback(async (docKey) => {
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      selectionLimit: 1,
-    });
-    const asset = result.assets?.[0];
-    if (asset?.uri) {
+    const picked = await pickPhotoFromGallery();
+    if (picked?.uri) {
       setDocuments((prev) => ({
         ...prev,
         [docKey]: {
           ...prev[docKey],
-          uri: asset.uri,
-          fileName: asset.fileName ?? 'document.jpg',
+          uri: picked.uri,
+          fileName: picked.fileName ?? 'document.jpg',
         },
       }));
       setErrors((e) => {
@@ -254,8 +256,6 @@ export default function RegisterScreen({ navigation }) {
         delete next[docKey];
         return next;
       });
-    } else if (result.errorMessage) {
-      Alert.alert('Upload failed', result.errorMessage);
     }
   }, []);
 
@@ -757,10 +757,10 @@ const fieldStyles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   input: {
-    height: 48,
+    height: layout.buttonHeight,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.white,
     color: colors.textPrimary,
@@ -772,10 +772,10 @@ const fieldStyles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   passwordRow: {
-    height: 48,
+    height: layout.buttonHeight,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingLeft: spacing.sm,
     paddingRight: spacing.sm,
     backgroundColor: colors.white,
@@ -810,9 +810,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: layout.iconButtonSize,
+    height: layout.iconButtonSize,
+    borderRadius: layout.iconButtonSize / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.sm,
@@ -882,7 +882,7 @@ const styles = StyleSheet.create({
   docCard: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     padding: spacing.sm,
     marginBottom: spacing.sm,
     backgroundColor: colors.white,
@@ -901,7 +901,7 @@ const styles = StyleSheet.create({
   uploadBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
+    borderRadius: layout.borderRadiusSm,
     backgroundColor: colors.primaryTeal,
   },
   uploadBtnText: {
@@ -913,10 +913,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 44,
+    height: layout.iconButtonSize,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     backgroundColor: colors.background,
@@ -966,7 +966,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    marginTop: spacing.xs,
   },
   checkboxChecked: {
     backgroundColor: colors.primaryTeal,

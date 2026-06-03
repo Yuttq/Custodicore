@@ -1,8 +1,15 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  StackScreenHeader,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import { EmptyState } from '../components';
 import VerificationProgressCard from '../components/VerificationProgressCard';
 import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
@@ -62,22 +69,11 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-        </Pressable>
-        <Text style={styles.screenTitle}>Verification Documents</Text>
-        <View style={styles.backPlaceholder} />
-      </View>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+      <StackScreenHeader title="Verification Documents" navigation={navigation} />
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={commonStyles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -123,35 +119,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backPlaceholder: { width: 40 },
-  screenTitle: {
-    ...typography.pageTitle,
-    fontSize: 20,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
   sectionEyebrow: {
     ...typography.sectionLabel,
     color: colors.textSecondary,

@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
@@ -12,7 +11,16 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  Card,
+  StackScreenHeader,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
 import { UNABLE_TO_ATTEND_REASONS } from '../mock/assignedVisits.mock';
 
@@ -59,26 +67,14 @@ export default function UnableToAttendScreen({ navigation, route }) {
   }, [visit, reason, notes, submitting, submitUnableToAttend, navigation]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+      <StackScreenHeader title="Unable To Attend" navigation={navigation} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-          </Pressable>
-          <Text style={styles.screenTitle}>Unable To Attend</Text>
-          <View style={styles.backPlaceholder} />
-        </View>
-
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={commonStyles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
           {visit ? (
@@ -140,36 +136,7 @@ export default function UnableToAttendScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backPlaceholder: { width: 44 },
-  screenTitle: {
-    ...typography.pageTitle,
-    fontSize: 20,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
   subtitle: {
     ...typography.metadata,
     color: colors.textSecondary,

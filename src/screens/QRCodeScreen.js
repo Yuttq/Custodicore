@@ -11,7 +11,15 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  Card,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
@@ -246,9 +254,11 @@ export default function QRCodeScreen({ route, navigation }) {
   }, [navigation]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>QR Pass</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">
+          QR Pass
+        </Text>
         {qrPayload && !loading ? (
           <Pressable
             onPress={() => load('refresh')}
@@ -273,7 +283,7 @@ export default function QRCodeScreen({ route, navigation }) {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
+        contentContainerStyle={[commonStyles.scrollContent, { paddingBottom: tabBarInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -369,10 +379,6 @@ export default function QRCodeScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -383,15 +389,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.pageTitle,
-    fontSize: 24,
-    lineHeight: 30,
     color: colors.textPrimary,
     flex: 1,
   },
   refreshIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: layout.iconButtonSize - spacing.sm,
+    height: layout.iconButtonSize - spacing.sm,
+    borderRadius: (layout.iconButtonSize - spacing.sm) / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
@@ -399,10 +403,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   refreshPlaceholder: {
-    width: 40,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
+    width: layout.iconButtonSize - spacing.sm,
   },
   centerBlock: {
     minHeight: 300,
@@ -424,7 +425,7 @@ const styles = StyleSheet.create({
   },
   statusBanner: {
     alignSelf: 'stretch',
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,

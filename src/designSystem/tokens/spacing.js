@@ -1,6 +1,7 @@
 /**
- * CustodiCore Visitor App — spacing scale (government UI).
- * Use ONLY: xs | sm | md | lg | xl
+ * CustodiCore spacing scale — use tokens only (no arbitrary px).
+ * sm = 8 | md = 16 | lg = 24 | xl = 32
+ * xs = 4 micro-gaps only (label-to-input, hairline adjacency)
  */
 export const spacing = {
   xs: 4,
@@ -18,14 +19,20 @@ export const layout = {
   sectionGap: spacing.lg,
 
   buttonHeight: 48,
+  /** Minimum touch target for icon-only controls */
+  iconButtonSize: 48,
 
-  tabBarHeight: 80,
+  tabBarRowMinHeight: 56,
+  tabBarQrLabelReserve: spacing.xs,
+  tabBarHeight: 56 + spacing.xs,
   qrButtonSize: 64,
   tabBarPaddingTop: spacing.sm,
   tabBarPaddingBottomMin: spacing.lg,
+  tabBarGestureBuffer: spacing.xs,
 
-  cardRadius: 16,
-  buttonRadius: 12,
+  cardRadius: spacing.md,
+  buttonRadius: spacing.sm + spacing.xs,
+  borderRadiusSm: spacing.sm,
   chipRadius: 999,
 };
 

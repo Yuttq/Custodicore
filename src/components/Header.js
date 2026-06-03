@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, layout, typography } from '../designSystem';
+import { colors, commonStyles, layout, spacing, typography } from '../designSystem';
 
 /**
  * @param {object} props
@@ -16,22 +16,22 @@ export default function Header({ title, showBackButton, onBackPress }) {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           onPress={onBackPress}
-          hitSlop={8}
+          hitSlop={spacing.sm}
           style={styles.back}
         >
           <Text style={styles.backText}>‹</Text>
         </Pressable>
       ) : (
-        <View style={styles.backPlaceholder} />
+        <View style={commonStyles.backPlaceholder} />
       )}
       <Text
         accessibilityRole="header"
-        style={[typography.pageTitle, styles.title, { fontSize: 20, lineHeight: 24 }]}
+        style={styles.title}
         numberOfLines={1}
       >
         {title}
       </Text>
-      <View style={styles.backPlaceholder} />
+      <View style={commonStyles.backPlaceholder} />
     </View>
   );
 }
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: layout.tabBarPaddingTop,
+    paddingVertical: spacing.sm,
     paddingHorizontal: layout.screenPadding,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
@@ -49,12 +49,13 @@ const styles = StyleSheet.create({
     minHeight: layout.buttonHeight,
   },
   title: {
+    ...typography.screenHeader,
     flex: 1,
     textAlign: 'center',
     color: colors.textPrimary,
   },
   back: {
-    width: 40,
+    width: layout.iconButtonSize - spacing.sm,
     minHeight: layout.buttonHeight,
     justifyContent: 'center',
     alignItems: 'center',
@@ -64,5 +65,4 @@ const styles = StyleSheet.create({
     color: colors.primaryNavy,
     fontWeight: '600',
   },
-  backPlaceholder: { width: 40 },
 });

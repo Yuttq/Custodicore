@@ -1,9 +1,7 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +9,16 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  Card,
+  StackScreenHeader,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import { requestPasswordReset } from '../services/forgotPasswordService';
 import { validateEmail, validateRequired } from '../utils';
 
@@ -46,24 +53,18 @@ export default function ForgotPasswordScreen({ navigation }) {
   }, [email, navigation, submitting]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right', 'bottom']}>
+      <StackScreenHeader
+        title="Forgot Password"
+        navigation={navigation}
+        backFallback={{ name: 'Login' }}
+      />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            hitSlop={10}
-            style={styles.backButton}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-          </Pressable>
-
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={commonStyles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Forgot Password</Text>
             <Text style={styles.subtitle}>
               Enter your email address and we will send a password reset link.
             </Text>
@@ -108,31 +109,9 @@ export default function ForgotPasswordScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: 'flex-start',
-    marginBottom: spacing.md,
-  },
   header: {
     marginBottom: layout.pageTitleGap,
-  },
-  title: {
-    ...typography.pageTitle,
-    color: colors.textPrimary,
   },
   subtitle: {
     ...typography.metadata,
@@ -155,7 +134,7 @@ const styles = StyleSheet.create({
     height: layout.buttonHeight,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.white,
     color: colors.textPrimary,

@@ -1,16 +1,20 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, StatusChip, colors, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  Card,
+  StackScreenHeader,
+  StatusChip,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
+import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
+import { goBackOr } from '../utils/safeNavigation';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
 
 /** @typedef {import('../mock/visitationHistory.mock').MOCK_VISITATION_HISTORY[number]} HistoryRecord */
@@ -67,32 +71,32 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
   }, [navigation, record]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
-        </Pressable>
-        <Text style={styles.screenTitle}>Visit Details</Text>
-        <View style={styles.backPlaceholder} />
-      </View>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+      <StackScreenHeader title="Visit Details" navigation={navigation} />
 
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primaryTeal} />
+          <Text style={styles.loadingLabel}>Loading visit record…</Text>
         </View>
       ) : notFound || !record ? (
-        <View style={styles.centered}>
-          <Text style={styles.missingText}>Visit record not found.</Text>
-          <Button title="Go Back" onPress={() => navigation.goBack()} />
-        </View>
+        <EmptyState
+          title="Visit Record Not Found"
+          message="This record may have been removed or is no longer available."
+          iconName="document-text-outline"
+          iconColor={colors.textSecondary}
+          style={styles.centered}
+        >
+          <Button
+            title="Go Back"
+            variant="secondary"
+            onPress={() => goBackOr(navigation)}
+            accessibilityLabel="Go back"
+          />
+        </EmptyState>
       ) : (
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={commonStyles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -133,35 +137,6 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layout.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backPlaceholder: { width: 44 },
-  screenTitle: {
-    ...typography.pageTitle,
-    fontSize: 20,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
-  scroll: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -169,10 +144,10 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  missingText: {
-    ...typography.body,
+  loadingLabel: {
+    ...typography.metadata,
     color: colors.textSecondary,
-    textAlign: 'center',
+    marginTop: spacing.sm,
   },
   card: {
     borderRadius: layout.cardRadius,
@@ -203,7 +178,7 @@ const styles = StyleSheet.create({
   cancellationBox: {
     marginBottom: spacing.md,
     padding: spacing.sm,
-    borderRadius: 8,
+    borderRadius: layout.borderRadiusSm,
     backgroundColor: 'rgba(239, 68, 68, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.2)',

@@ -7,25 +7,32 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, layout, shadows } from '../designSystem';
+import { colors, layout, shadows, spacing } from '../designSystem';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
+import {
+  getTabBarBottomInset,
+  TAB_BAR_QR_LIFT,
+  TAB_BAR_ROW_MIN_HEIGHT,
+} from '../utils/tabBarMetrics';
 
 const TAB_PADDING_TOP = layout.tabBarPaddingTop;
-const TAB_PADDING_BOTTOM_MIN = layout.tabBarPaddingBottomMin;
 const QR_BUTTON_SIZE = layout.qrButtonSize;
-const QR_LIFT = 12;
+const QR_FAB_LABEL_GAP = spacing.sm;
+const QR_LABEL_LINE_HEIGHT = 14;
 const PRESS_DURATION_MS = 150;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
  * Custom bottom tab bar — center QR Pass elevated (GCash / Maya style).
+ * Safe-area bottom inset is applied on the wrapper (not via minHeight) so labels
+ * stay visible on gesture navigation and 3-button Android devices.
  * @param {import('@react-navigation/bottom-tabs').BottomTabBarProps} props
  */
 export default function BottomNav({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotificationBadge();
-  const paddingBottom = Math.max(insets.bottom, TAB_PADDING_BOTTOM_MIN);
+  const paddingBottom = getTabBarBottomInset(insets);
 
   const onTabPress = useCallback(
     (route, isFocused) => {
@@ -107,7 +114,11 @@ export default function BottomNav({ state, descriptors, navigation }) {
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.label, { color: tint }, isFocused && styles.labelFocused]}>
+              <Text
+                style={[styles.label, { color: tint }, isFocused && styles.labelFocused]}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -164,7 +175,13 @@ function QrCenterTabButton({ focused, label, accessibilityLabel, onPress, onLong
         <View style={[styles.qrButton, shadows.qrFab]}>
           <Ionicons name="qr-code" size={30} color={colors.white} />
         </View>
-        <Text style={[styles.qrLabel, focused && styles.qrLabelFocused]}>{label}</Text>
+        <Text
+          style={[styles.qrLabel, focused && styles.qrLabelFocused]}
+          numberOfLines={1}
+          allowFontScaling={false}
+        >
+          {label}
+        </Text>
       </AnimatedPressable>
     </View>
   );
@@ -175,19 +192,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    minHeight: layout.tabBarHeight,
     overflow: 'visible',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    minHeight: 48,
+    minHeight: TAB_BAR_ROW_MIN_HEIGHT,
+    paddingTop: spacing.xs,
+    paddingBottom: layout.tabBarQrLabelReserve,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    minWidth: 0,
   },
   tabPressed: {
     opacity: 0.72,
@@ -196,30 +216,38 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   label: {
     fontSize: 11,
+    lineHeight: QR_LABEL_LINE_HEIGHT,
     fontWeight: '500',
     letterSpacing: 0.2,
-    marginBottom: Platform.OS === 'ios' ? 0 : 2,
+    textAlign: 'center',
+    maxWidth: '100%',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   labelFocused: {
     fontWeight: '600',
   },
   qrSlot: {
     flex: 1,
+    minWidth: 0,
+    minHeight: TAB_BAR_ROW_MIN_HEIGHT - layout.tabBarQrLabelReserve,
   },
   qrOuter: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: -QR_LIFT,
+    top: -TAB_BAR_QR_LIFT,
     alignItems: 'center',
     pointerEvents: 'box-none',
+    zIndex: 10,
+    elevation: 10,
   },
   qrPressable: {
     alignItems: 'center',
+    maxWidth: '100%',
   },
   qrButton: {
     width: QR_BUTTON_SIZE,
@@ -228,13 +256,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryTeal,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
   qrLabel: {
-    marginTop: 6,
+    marginTop: QR_FAB_LABEL_GAP,
+    paddingHorizontal: spacing.sm,
     fontSize: 11,
+    lineHeight: QR_LABEL_LINE_HEIGHT,
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 0.2,
+    textAlign: 'center',
+    maxWidth: 120,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   qrLabelFocused: {
     color: colors.primaryTeal,
@@ -249,7 +283,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xs,
     borderWidth: 1.5,
     borderColor: colors.white,
   },

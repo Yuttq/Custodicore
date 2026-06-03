@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     height: layout.buttonHeight,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: layout.buttonRadius,
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.white,
     flexDirection: 'row',

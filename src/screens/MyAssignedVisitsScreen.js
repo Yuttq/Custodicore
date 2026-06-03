@@ -14,6 +14,7 @@ import {
   Card,
   StatusChip,
   colors,
+  commonStyles,
   layout,
   spacing,
   typography,
@@ -247,7 +248,7 @@ export default function MyAssignedVisitsScreen({ navigation }) {
   );
 
   const onReturnHome = useCallback(() => {
-    navigation.navigate('Dashboard');
+    navigation.navigate('MainTabs', { screen: 'Dashboard' });
   }, [navigation]);
 
   const renderItem = useCallback(
@@ -264,21 +265,28 @@ export default function MyAssignedVisitsScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <Text style={styles.screenTitle}>My Visits</Text>
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
+      <Text style={styles.screenTitle} accessibilityRole="header">
+        My Visits
+      </Text>
 
-      <View style={styles.tabBar}>
+      <View style={commonStyles.segmentedControl}>
         {TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
             <Pressable
               key={tab.key}
               onPress={() => setActiveTab(tab.key)}
-              style={[styles.tab, active && styles.tabActive]}
+              style={[commonStyles.segmentedTab, active && commonStyles.segmentedTabActive]}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+              <Text
+                style={[
+                  commonStyles.segmentedTabLabel,
+                  active && commonStyles.segmentedTabLabelActive,
+                ]}
+              >
                 {tab.label}
               </Text>
             </Pressable>
@@ -286,8 +294,10 @@ export default function MyAssignedVisitsScreen({ navigation }) {
         })}
       </View>
 
-      {loading ? (
-        <LoadingSpinner message="Loading visits…" compact />
+      {loading && !refreshing ? (
+        <View style={styles.loadingWrap}>
+          <LoadingSpinner message="Loading visits…" compact />
+        </View>
       ) : (
         <FlatList
           data={filteredVisits}
@@ -321,40 +331,12 @@ export default function MyAssignedVisitsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
   screenTitle: {
     ...typography.pageTitle,
     color: colors.textPrimary,
     paddingHorizontal: layout.screenPadding,
     paddingTop: spacing.sm,
     marginBottom: spacing.sm,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    marginHorizontal: layout.screenPadding,
-    marginBottom: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.xs,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabActive: {
-    backgroundColor: colors.primaryTeal,
-  },
-  tabLabel: {
-    ...typography.metadata,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  tabLabelActive: {
-    color: colors.white,
   },
   list: {
     paddingHorizontal: layout.screenPadding,
@@ -400,5 +382,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingVertical: spacing.lg,
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: layout.screenPadding,
   },
 });

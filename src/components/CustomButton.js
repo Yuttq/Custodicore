@@ -6,15 +6,10 @@ import {
   StyleSheet,
   Text,
 } from 'react-native';
-import { colors, layout, typography } from '../constants';
-
-const PRESS_FEEDBACK = Platform.select({
-  android: { opacity: 0.88 },
-  ios: { opacity: 0.9 },
-  default: { opacity: 0.9 },
-});
+import { Button as DSButton } from '../designSystem';
 
 /**
+ * @deprecated Prefer `Button` from `src/designSystem`.
  * @param {object} props
  * @param {string} props.title
  * @param {() => void} props.onPress
@@ -31,45 +26,60 @@ export default function CustomButton({
   disabled = false,
   accessibilityLabel,
 }) {
-  const isDanger = variant === 'danger';
-  const bg = isDanger ? colors.danger : colors.primary;
-  const isDisabled = disabled || loading;
+  if (variant === 'danger') {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityState={{ disabled: disabled || loading }}
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={({ pressed }) => [
+          styles.dangerBase,
+          pressed && !disabled && !loading && styles.pressed,
+          (disabled || loading) && styles.disabled,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.dangerLabel}>{title}</Text>
+        )}
+      </Pressable>
+    );
+  }
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? title}
-      accessibilityState={{ disabled: isDisabled }}
+    <DSButton
+      title={title}
       onPress={onPress}
-      disabled={isDisabled}
-      android_ripple={
-        isDisabled ? undefined : { color: 'rgba(255,255,255,0.25)' }
-      }
-      style={({ pressed }) => [
-        styles.base,
-        { backgroundColor: bg },
-        pressed && !isDisabled && PRESS_FEEDBACK,
-        isDisabled && styles.disabled,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={colors.white} />
-      ) : (
-        <Text style={[typography.button, styles.label]}>{title}</Text>
-      )}
-    </Pressable>
+      loading={loading}
+      disabled={disabled}
+      accessibilityLabel={accessibilityLabel}
+    />
   );
 }
 
+const PRESS_FEEDBACK = Platform.select({
+  android: { opacity: 0.88 },
+  ios: { opacity: 0.9 },
+  default: { opacity: 0.9 },
+});
+
 const styles = StyleSheet.create({
-  base: {
-    minHeight: layout.minTouchHeight,
-    borderRadius: layout.buttonRadius,
+  dangerBase: {
+    minHeight: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: layout.spacing.md,
-    paddingVertical: layout.spacing.sm,
+    paddingHorizontal: 16,
+    backgroundColor: '#ef4444',
   },
-  label: { color: colors.white },
+  dangerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  pressed: PRESS_FEEDBACK,
   disabled: { opacity: 0.5 },
 });

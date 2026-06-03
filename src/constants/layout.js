@@ -1,19 +1,14 @@
 /**
- * Spacing, touch targets, and radii — use these instead of magic numbers in screens.
+ * @deprecated Import `layout` and `spacing` from `src/designSystem`.
  */
+import { layout as dsLayout, spacing } from '../designSystem/tokens/spacing';
+
 export const layout = {
-  minTouchHeight: 48,
-  /** Default card corner radius (v2.1 aligned) */
-  borderRadius: 16,
-  /** Primary action buttons */
-  buttonRadius: 12,
-  /** Inputs, chips, small controls */
-  borderRadiusSm: 6,
-  /** Default horizontal screen padding */
-  screenPadding: 16,
-  /** Gap between stacked cards */
-  cardGap: 16,
-  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
+  ...dsLayout,
+  minTouchHeight: dsLayout.buttonHeight,
+  borderRadius: dsLayout.cardRadius,
+  borderRadiusSm: dsLayout.borderRadiusSm,
+  spacing,
 };
 
 export default layout;

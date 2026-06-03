@@ -1,12 +1,12 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../components/BottomNav';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { colors as legacyColors } from '../constants';
 import { colors as dsColors } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
 import { MainTabBarIcon } from './mainTabBarIcons';
@@ -62,7 +62,7 @@ function AuthNavigator() {
     <AuthStack.Navigator
       screenOptions={{
         header: (props) => <AuthStackHeader {...props} />,
-        cardStyle: { backgroundColor: legacyColors.white },
+        cardStyle: { backgroundColor: dsColors.white },
         headerShadowVisible: false,
       }}
     >
@@ -156,7 +156,7 @@ function AuthenticatedStack() {
       initialRouteName={pendingVerification ? 'VerificationReview' : 'MainTabs'}
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: legacyColors.lightGray },
+        cardStyle: { backgroundColor: dsColors.background },
       }}
     >
       <AppStack.Screen
@@ -187,6 +187,16 @@ function AuthenticatedStack() {
 export default function AppNavigator() {
   const { token, initializing } = useAuth();
 
+  useEffect(() => {
+    if (initializing) return;
+    if (__DEV__) console.log('AUTH INITIALIZED');
+    ExpoSplashScreen.hideAsync()
+      .then(() => {
+        if (__DEV__) console.log('SPLASH HIDDEN');
+      })
+      .catch(() => {});
+  }, [initializing]);
+
   if (initializing) {
     return <LoadingSpinner message="Starting CustodiCore…" />;
   }
@@ -195,7 +205,7 @@ export default function AppNavigator() {
     <RootStack.Navigator
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: legacyColors.lightGray },
+        cardStyle: { backgroundColor: dsColors.background },
       }}
     >
       {token ? (
@@ -209,6 +219,6 @@ export default function AppNavigator() {
 
 const styles = StyleSheet.create({
   authHeaderWrap: {
-    backgroundColor: legacyColors.white,
+    backgroundColor: dsColors.white,
   },
 });

@@ -335,6 +335,14 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.noVisit}>
               No upcoming assigned visits. Schedules are assigned by facility officers.
             </Text>
+            <View style={styles.noVisitAction}>
+              <Button
+                title="View My Visits"
+                variant="secondary"
+                onPress={() => navigation.navigate('Schedule')}
+                accessibilityLabel="View my assigned visits"
+              />
+            </View>
           </Card>
         )}
 
@@ -380,9 +388,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: layout.buttonHeight,
+    height: layout.buttonHeight,
+    borderRadius: layout.buttonHeight / 2,
     backgroundColor: colors.primaryNavy,
     alignItems: 'center',
     justifyContent: 'center',
@@ -395,10 +403,9 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   avatarText: {
-    ...typography.body,
+    ...typography.metadata,
     fontWeight: '700',
     color: colors.white,
-    fontSize: 15,
   },
   verificationStrip: {
     flexDirection: 'row',
@@ -457,7 +464,6 @@ const styles = StyleSheet.create({
   visitDate: {
     ...typography.cardTitle,
     color: colors.primaryNavy,
-    fontSize: 18,
   },
   visitTime: {
     ...typography.metadata,
@@ -474,6 +480,10 @@ const styles = StyleSheet.create({
   noVisit: {
     ...typography.metadata,
     color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  noVisitAction: {
+    marginTop: spacing.xs,
   },
   progressSection: {
     marginBottom: spacing.md,

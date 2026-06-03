@@ -1,15 +1,15 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../constants';
+import { colors } from '../designSystem';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 
 /**
  * @param {object} props
  * @param {React.ReactNode} props.children
  * @param {'white' | 'lightGray'} [props.backgroundColor]
- * @param {import('react-native-safe-area-context').Edge[]} [props.edges] Safe-area edges (omit `top` when a parent stack header already handles the top inset).
- * @param {boolean} [props.tabScreen] Reserve space above the bottom tab bar for scrollable content.
+ * @param {import('react-native-safe-area-context').Edge[]} [props.edges]
+ * @param {boolean} [props.tabScreen]
  */
 export default function ScreenContainer({
   children,
@@ -17,8 +17,7 @@ export default function ScreenContainer({
   edges = ['top', 'left', 'right'],
   tabScreen = false,
 }) {
-  const bg =
-    backgroundColor === 'lightGray' ? colors.lightGray : colors.white;
+  const bg = backgroundColor === 'lightGray' ? colors.background : colors.white;
   const tabBarInset = useTabBarScrollInset(0);
 
   return (

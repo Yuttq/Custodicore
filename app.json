@@ -6,6 +6,12 @@
     "orientation": "portrait",
     "scheme": "custodicore",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F8FAFC"
+    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
@@ -13,15 +19,43 @@
     "android": {
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.yuttq.custodicore"
+      "package": "com.yuttq.custodicore",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
-    "web": {},
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
     "experiments": {
       "reactCompiler": true
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CustodiCore needs access to your photos so you can upload verification documents and choose a profile picture.",
+          "cameraPermission": "CustodiCore needs access to your camera so you can take photos for verification documents and your profile."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CustodiCore needs camera access to scan QR codes when you open the scanner."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F8FAFC",
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "imageWidth": 300
+        }
+      ]
     ],
     "extra": {
       "eas": {

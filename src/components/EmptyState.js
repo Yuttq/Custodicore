@@ -1,26 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors, layout, typography } from '../constants';
+import { colors, layout, spacing, typography } from '../designSystem';
 
 /**
  * Shared empty / informational panel with illustration or icon, title, message, and optional action.
- * @param {object} props
- * @param {string} props.title
- * @param {string} props.message
- * @param {'default' | 'error'} [props.emphasis] — `error` styles the message in **danger** (e.g. load failures).
- * @param {keyof typeof Ionicons.glyphMap} [props.iconName] — when set, shows icon instead of illustration.
- * @param {string} [props.iconColor]
- * @param {import('react-native').StyleProp<import('react-native').ViewStyle>} [props.style]
- * @param {React.ReactNode} [props.children] — e.g. Retry button
- * @param {import('react-native').AccessibilityProps['accessibilityRole']} [props.accessibilityRole]
  */
 export default function EmptyState({
   title,
   message,
   emphasis = 'default',
   iconName,
-  iconColor = colors.primary,
+  iconColor = colors.primaryTeal,
   style,
   children,
   accessibilityRole = 'text',
@@ -44,7 +35,7 @@ export default function EmptyState({
           accessibilityIgnoresInvertColors
         />
       )}
-      <Text style={[typography.title, styles.title]}>{title}</Text>
+      <Text style={[typography.pageTitle, styles.title]}>{title}</Text>
       <Text style={messageStyle}>{message}</Text>
       {children ? <View style={styles.actions}>{children}</View> : null}
     </View>
@@ -55,43 +46,43 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: layout.spacing.xl,
-    paddingHorizontal: layout.spacing.lg,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   img: {
-    width: 160,
-    height: 160,
-    marginBottom: layout.spacing.md,
+    width: spacing.xl * 5,
+    height: spacing.xl * 5,
+    marginBottom: spacing.md,
   },
   iconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: spacing.xl * 3,
+    height: spacing.xl * 3,
+    borderRadius: spacing.xl * 1.5,
     backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: layout.spacing.md,
+    marginBottom: spacing.md,
   },
   title: {
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: layout.spacing.sm,
+    marginBottom: spacing.sm,
   },
   message: {
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 320,
+    lineHeight: 24,
+    maxWidth: spacing.xl * 10,
   },
   messageError: {
     color: colors.danger,
   },
   actions: {
-    marginTop: layout.spacing.md,
+    marginTop: spacing.md,
     alignSelf: 'stretch',
-    maxWidth: 280,
+    maxWidth: spacing.xl * 9,
     width: '100%',
   },
 });
