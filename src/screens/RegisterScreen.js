@@ -189,8 +189,8 @@ export default function RegisterScreen({ navigation }) {
     if (!validateRequired(address)) next.address = 'Address is required';
     if (!validateRequired(contactNumber))
       next.contactNumber = 'Contact number is required';
-    if (!validateRequired(email)) next.email = 'Email is required';
-    else if (!validateEmail(email.trim())) next.email = 'Enter a valid email';
+    if (!validateRequired(email)) next.email = 'Email address is required';
+    else if (!validateEmail(email.trim())) next.email = 'Enter a valid email address';
     if (!validateRequired(password)) next.password = 'Password is required';
     else if (!validatePassword(password))
       next.password = 'Password must be at least 6 characters';
@@ -383,7 +383,7 @@ export default function RegisterScreen({ navigation }) {
         label="Email Address"
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder="Enter your email"
         keyboardType="email-address"
         error={errors.email}
         autoCapitalize="none"
@@ -617,6 +617,11 @@ export default function RegisterScreen({ navigation }) {
           </Pressable>
 
           <Text style={styles.screenTitle}>{STEP_TITLES[step]}</Text>
+          {step === 1 ? (
+            <Text style={styles.stepSubtitle}>
+              Create your visitor account with your email address and password.
+            </Text>
+          ) : null}
           <ProgressStepper step={step} />
 
           {step === 1 && renderStep1()}
@@ -825,6 +830,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 30,
     color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  stepSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 22,
     marginBottom: layout.pageTitleGap,
   },
   card: {

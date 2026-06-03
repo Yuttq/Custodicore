@@ -76,6 +76,20 @@ export async function login(email, password) {
 }
 
 /**
+ * Exchanges a Google ID token for a CustodiCore session (OAuth 2.0 / OpenID Connect).
+ * @param {{ idToken: string; accessToken?: string }} payload
+ * @returns {Promise<{ token: string; user?: Record<string, unknown> }>}
+ */
+export async function loginWithGoogle(payload) {
+  try {
+    const { data } = await client.post('/auth/google', payload);
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Registers a new visitor account (name, email, password, etc. per backend contract).
  * @param {Record<string, unknown>} payload
  */

@@ -9,3 +9,5 @@ export { default as Header } from './Header';
 export { default as NotificationRow } from './NotificationRow';
 export { default as TimelineItem } from './TimelineItem';
 export { default as QrScannerModal } from './QrScannerModal';
+export { default as AuthDivider } from './AuthDivider';
+export { default as GoogleSignInButton } from './GoogleSignInButton';

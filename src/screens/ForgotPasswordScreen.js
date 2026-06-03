@@ -36,9 +36,9 @@ export default function ForgotPasswordScreen({ navigation }) {
     const trimmedEmail = String(email || '').trim();
     const next = {};
     if (!validateRequired(trimmedEmail)) {
-      next.email = 'Email is required';
+      next.email = 'Email address is required';
     } else if (!validateEmail(trimmedEmail)) {
-      next.email = 'Please enter a valid email address';
+      next.email = 'Enter a valid email address';
     }
     setErrors(next);
     if (Object.keys(next).length) return;

@@ -8,6 +8,11 @@ import React, {
   useState,
 } from 'react';
 // Phase 4: import * as api from '../services/api';
+import {
+  authenticateWithGoogle,
+  GoogleSignInCancelledError,
+  GoogleSignInNotConfiguredError,
+} from '../services/socialAuthHandlers';
 
 const TOKEN_KEY = '@custodicore/auth_token';
 const PENDING_VERIFICATION_KEY = '@custodicore/pending_verification';
@@ -51,22 +56,47 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const persistSession = useCallback(async (sessionToken) => {
+    await AsyncStorage.setItem(TOKEN_KEY, sessionToken);
+    setToken(sessionToken);
+  }, []);
+
+  const login = useCallback(
+    async (email, password) => {
+      setError(null);
+      try {
+        // Phase 4: const data = await api.login(email, password); await persistSession(data.token);
+        await new Promise((r) => setTimeout(r, 350));
+        if (!String(email || '').trim() || !password) {
+          throw new Error('Please enter your email address and password.');
+        }
+        await persistSession('placeholder-token');
+      } catch (e) {
+        const message = e?.message ?? 'Login failed';
+        setError(message);
+        throw e;
+      }
+    },
+    [persistSession],
+  );
+
+  const loginWithGoogle = useCallback(async () => {
     setError(null);
     try {
-      // Phase 4: const data = await api.login(email, password); then persist data.token
-      await new Promise((r) => setTimeout(r, 350));
-      if (!String(email || '').trim() || !password) {
-        throw new Error('Please enter email and password.');
-      }
-      await AsyncStorage.setItem(TOKEN_KEY, 'placeholder-token');
-      setToken('placeholder-token');
+      const session = await authenticateWithGoogle();
+      await persistSession(session.token);
     } catch (e) {
-      const message = e?.message ?? 'Login failed';
+      if (e instanceof GoogleSignInCancelledError) {
+        return;
+      }
+      const message =
+        e instanceof GoogleSignInNotConfiguredError
+          ? e.message
+          : (e?.message ?? 'Google Sign-In failed');
       setError(message);
       throw e;
     }
-  }, []);
+  }, [persistSession]);
 
   const register = useCallback(async (payload) => {
     setError(null);
@@ -123,6 +153,7 @@ export function AuthProvider({ children }) {
       pendingVerification,
       registrationSummary,
       login,
+      loginWithGoogle,
       register,
       completeVerificationReview,
       logout,
@@ -134,6 +165,7 @@ export function AuthProvider({ children }) {
       pendingVerification,
       registrationSummary,
       login,
+      loginWithGoogle,
       register,
       completeVerificationReview,
       logout,
