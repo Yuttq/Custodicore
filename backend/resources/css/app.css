@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-background text-text-primary antialiased;
+    }
+}
+
+@layer components {
+    /* Mirrors src/components/Card.js: white card, 1px border, subtle shadow */
+    .cc-card {
+        @apply bg-card border border-border rounded-card shadow-card p-md;
+    }
+
+    /* Mirrors src/designSystem/components/Button.js primary variant */
+    .cc-btn-primary {
+        @apply inline-flex items-center justify-center gap-sm rounded-button bg-primary-navy px-lg text-body font-semibold text-white transition hover:bg-primary-navy/90;
+        height: 48px; /* layout.buttonHeight */
+    }
+
+    .cc-btn-secondary {
+        @apply inline-flex items-center justify-center gap-sm rounded-button border border-border bg-white px-lg text-body font-semibold text-text-primary transition hover:bg-background;
+        height: 48px;
+    }
+
+    /* Mirrors src/designSystem/components/StatusChip.js */
+    .cc-chip {
+        @apply inline-flex items-center rounded-chip px-sm py-xs text-status-label uppercase;
+    }
+    .cc-chip-success { @apply bg-success/10 text-success; }
+    .cc-chip-warning { @apply bg-warning/10 text-warning; }
+    .cc-chip-danger  { @apply bg-danger/10 text-danger; }
+    .cc-chip-info    { @apply bg-info/10 text-info; }
+    .cc-chip-neutral { @apply bg-text-secondary/10 text-text-secondary; }
+}
