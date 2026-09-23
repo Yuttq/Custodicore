@@ -10,6 +10,8 @@ export default {
     safelist: [
         'text-success', 'text-warning', 'text-danger', 'text-info',
         'bg-success', 'bg-warning', 'bg-danger', 'bg-info',
+        // stat-card.blade.php builds `bg-{accent}/10` dynamically
+        'bg-success/10', 'bg-warning/10', 'bg-danger/10', 'bg-info/10',
     ],
     theme: {
         extend: {

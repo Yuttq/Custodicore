@@ -11,5 +11,12 @@
     ];
     $variant = $map[$status] ?? 'neutral';
     $label = ucwords(str_replace('_', ' ', (string) $status));
+    $dot = [
+        'success' => 'bg-success', 'warning' => 'bg-warning',
+        'danger' => 'bg-danger', 'info' => 'bg-info', 'neutral' => 'bg-text-secondary',
+    ][$variant];
 @endphp
-<span class="cc-chip cc-chip-{{ $variant }}">{{ $label }}</span>
+<span class="cc-chip cc-chip-{{ $variant }} gap-xs">
+    <span class="h-1.5 w-1.5 rounded-full {{ $dot }}"></span>
+    {{ $label }}
+</span>

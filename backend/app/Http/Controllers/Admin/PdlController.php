@@ -5,7 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\View\View;
 
-/** Module 1.2 PDL Management. */
+/**
+ * Module 1.2 PDL Management — read-only.
+ *
+ * PDL custody records are not created or edited from this admin
+ * dashboard, so there is nothing here to register or modify — just the
+ * current sample records for reference.
+ */
 class PdlController extends Controller
 {
     public function index(): View
@@ -18,6 +24,15 @@ class PdlController extends Controller
             ['pdl_number' => 'PDL-0102', 'full_name' => 'Bea L. Santiago', 'classification' => 'non_drug_related', 'cell_block' => 'Dorm 5 (F)', 'custody_status' => 'active', 'active_restrictions' => 2],
         ];
 
-        return view('admin.pdls.index', compact('pdls'));
+        $activeCustody = count(array_filter($pdls, fn ($p) => $p['custody_status'] === 'active'));
+        $withRestrictions = count(array_filter($pdls, fn ($p) => $p['active_restrictions'] > 0));
+
+        $summary = [
+            ['label' => 'Total PDLs', 'value' => (string) count($pdls), 'icon' => 'identification', 'accent' => 'info'],
+            ['label' => 'Active in Custody', 'value' => (string) $activeCustody, 'icon' => 'check-circle', 'accent' => 'success'],
+            ['label' => 'With Restrictions', 'value' => (string) $withRestrictions, 'icon' => 'warning', 'accent' => 'danger'],
+        ];
+
+        return view('admin.pdls.index', compact('pdls', 'summary'));
     }
 }

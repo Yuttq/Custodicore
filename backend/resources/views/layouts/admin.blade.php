@@ -21,32 +21,36 @@
             <nav class="flex-1 space-y-xs px-sm py-md">
                 @php
                     $links = [
-                        ['route' => 'admin.dashboard', 'label' => 'Dashboard', 'module' => '1.7'],
-                        ['route' => 'admin.users.index', 'label' => 'User Management', 'module' => '1.1'],
-                        ['route' => 'admin.pdls.index', 'label' => 'PDL Management', 'module' => '1.2'],
-                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Management', 'module' => '1.3'],
-                        ['route' => 'admin.schedules.index', 'label' => 'Visit Scheduling', 'module' => '1.4'],
-                        ['route' => 'admin.checkins.index', 'label' => 'QR Check-In / Check-Out', 'module' => '1.5'],
-                        ['route' => 'admin.eligibility.index', 'label' => 'Eligibility Assessment', 'module' => '1.6'],
-                        ['route' => 'admin.audit.index', 'label' => 'Audit Trail & Reports', 'module' => '1.7'],
+                        ['route' => 'admin.dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard'],
+                        ['route' => 'admin.users.index', 'label' => 'User Management', 'icon' => 'users'],
+                        ['route' => 'admin.pdls.index', 'label' => 'PDL Management', 'icon' => 'identification'],
+                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Management', 'icon' => 'visitor'],
+                        ['route' => 'admin.schedules.index', 'label' => 'Visit Scheduling', 'icon' => 'calendar'],
+                        ['route' => 'admin.checkins.index', 'label' => 'Check-In / Check-Out', 'icon' => 'qrcode'],
+                        ['route' => 'admin.audit.index', 'label' => 'Audit Trail', 'icon' => 'clipboard'],
                     ];
                 @endphp
 
                 @foreach ($links as $link)
                     <a href="{{ route($link['route']) }}"
-                       class="flex items-center justify-between rounded-sm px-md py-sm text-body transition
-                              {{ request()->routeIs($link['route']) ? 'bg-white/15 font-semibold text-white' : 'text-white/75 hover:bg-white/10 hover:text-white' }}">
-                        <span>{{ $link['label'] }}</span>
-                        <span class="text-status-label text-white/40">{{ $link['module'] }}</span>
+                       class="flex items-center rounded-sm border-l-2 px-md py-sm text-body transition
+                              {{ request()->routeIs($link['route']) ? 'border-l-primary-teal bg-white/15 font-semibold text-white' : 'border-l-transparent text-white/75 hover:bg-white/10 hover:text-white' }}">
+                        <span class="flex items-center gap-sm">
+                            @include('admin.partials.icon', ['name' => $link['icon'], 'class' => 'h-5 w-5 shrink-0'])
+                            <span>{{ $link['label'] }}</span>
+                        </span>
                     </a>
                 @endforeach
             </nav>
 
             <div class="border-t border-white/10 px-md py-md">
                 <a href="{{ route('admin.settings.index') }}"
-                   class="flex items-center justify-between rounded-sm px-md py-sm text-body transition
-                          {{ request()->routeIs('admin.settings.index') ? 'bg-white/15 font-semibold text-white' : 'text-white/75 hover:bg-white/10 hover:text-white' }}">
-                    <span>Settings</span>
+                   class="flex items-center rounded-sm border-l-2 px-md py-sm text-body transition
+                          {{ request()->routeIs('admin.settings.index') ? 'border-l-primary-teal bg-white/15 font-semibold text-white' : 'border-l-transparent text-white/75 hover:bg-white/10 hover:text-white' }}">
+                    <span class="flex items-center gap-sm">
+                        @include('admin.partials.icon', ['name' => 'cog', 'class' => 'h-5 w-5 shrink-0'])
+                        <span>Settings</span>
+                    </span>
                 </a>
             </div>
         </aside>
@@ -57,16 +61,30 @@
             <header class="flex items-center justify-between border-b border-border bg-card px-lg py-md">
                 <div>
                     <h1 class="text-page-title">@yield('title', 'Dashboard')</h1>
-                    @hasSection('subtitle')
-                        <p class="text-metadata text-text-secondary">@yield('subtitle')</p>
-                    @endif
                 </div>
-                <div class="flex items-center gap-sm">
-                    <div class="text-right">
-                        <p class="text-body font-semibold leading-tight">Ana R. Domingo</p>
-                        <p class="text-status-label uppercase text-text-secondary">System Administrator / Warden</p>
+                <div class="flex items-center gap-md">
+                    <div class="relative hidden md:block">
+                        <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-sm text-text-secondary">
+                            @include('admin.partials.icon', ['name' => 'search', 'class' => 'h-4 w-4'])
+                        </span>
+                        <input type="text" placeholder="Search PDLs, visitors, records…" disabled
+                               class="w-56 rounded-button border border-border bg-background py-sm pl-xl pr-md text-body text-text-secondary placeholder:text-text-secondary/60 xl:w-72" />
                     </div>
-                    <div class="flex h-10 w-10 items-center justify-center rounded-chip bg-primary-navy text-body font-semibold text-white">AD</div>
+
+                    <button type="button"
+                            class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-chip border border-border text-text-secondary transition hover:bg-background">
+                        @include('admin.partials.icon', ['name' => 'bell', 'class' => 'h-5 w-5'])
+                        <span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-danger"></span>
+                    </button>
+
+                    <div class="flex items-center gap-sm">
+                        <div class="hidden text-right sm:block">
+                            <p class="text-body font-semibold leading-tight">Ana R. Domingo</p>
+                            <p class="text-status-label uppercase text-text-secondary">System Administrator / Warden</p>
+                        </div>
+                        @include('admin.partials.avatar', ['name' => 'Ana R. Domingo', 'size' => 'h-10 w-10', 'color' => 'bg-primary-navy'])
+                        @include('admin.partials.icon', ['name' => 'chevron-down', 'class' => 'h-4 w-4 text-text-secondary'])
+                    </div>
                 </div>
             </header>
 
@@ -81,5 +99,12 @@
             </main>
         </div>
     </div>
+
+    {{-- Chart.js is bundled via resources/js/app.js (see @vite above), which
+         exposes it as window.Chart. That app.js module tag is deferred, so
+         any script in @stack('scripts') below must wait for
+         DOMContentLoaded before touching window.Chart — see dashboard's
+         script block for the pattern. --}}
+    @stack('scripts')
 </body>
 </html>

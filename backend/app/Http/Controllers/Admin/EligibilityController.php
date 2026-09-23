@@ -22,6 +22,15 @@ class EligibilityController extends Controller
             ['visitor' => 'Fe M. Lopez', 'flag_type' => 'denied_visit', 'description' => 'Denied entry on 2026-07-02 — expired ID', 'status' => 'resolved'],
         ];
 
-        return view('admin.eligibility.index', compact('assessments', 'visitorFlags'));
+        $eligible = count(array_filter($assessments, fn ($a) => $a['overall_result'] === 'eligible'));
+        $flagged = count(array_filter($assessments, fn ($a) => $a['overall_result'] === 'flagged_for_review'));
+
+        $summary = [
+            ['label' => 'Assessments', 'value' => (string) count($assessments), 'icon' => 'shield-check', 'accent' => 'info'],
+            ['label' => 'Eligible', 'value' => (string) $eligible, 'icon' => 'check-circle', 'accent' => 'success'],
+            ['label' => 'Flagged for Review', 'value' => (string) $flagged, 'icon' => 'warning', 'accent' => 'danger'],
+        ];
+
+        return view('admin.eligibility.index', compact('assessments', 'visitorFlags', 'summary'));
     }
 }

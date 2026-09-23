@@ -34,4 +34,38 @@
     .cc-chip-danger  { @apply bg-danger/10 text-danger; }
     .cc-chip-info    { @apply bg-info/10 text-info; }
     .cc-chip-neutral { @apply bg-text-secondary/10 text-text-secondary; }
+
+    /* Small action button used inline in tables (verify/reject, approve/
+       decline, check-out, activate/deactivate, clear restrictions, ...) */
+    .cc-btn-ghost {
+        @apply inline-flex items-center justify-center gap-xs rounded-button border border-border bg-white px-sm text-status-label font-semibold text-text-primary transition hover:bg-background;
+        height: 32px;
+    }
+    .cc-btn-danger {
+        @apply inline-flex items-center justify-center gap-xs rounded-button bg-danger px-sm text-status-label font-semibold text-white transition hover:bg-danger/90;
+        height: 32px;
+    }
+
+    /* Form controls used inside the "New Account" / "Register PDL" /
+       "Check In Visitor" modals below. */
+    .cc-label {
+        @apply block text-status-label uppercase text-text-secondary;
+    }
+    .cc-input {
+        @apply mt-xs w-full rounded-button border border-border bg-white px-md text-body text-text-primary;
+        height: 44px;
+    }
+
+    /* Native <dialog>-based modal. The browser centers and backdrops a
+       dialog opened via showModal() on its own; these classes just style
+       its box and the darkened backdrop behind it. */
+    .cc-modal {
+        @apply w-full max-w-md rounded-card border border-border bg-card p-lg shadow-card;
+    }
+    .cc-modal::backdrop {
+        background-color: rgb(17 24 39 / 0.5);
+    }
+    .cc-modal-close {
+        @apply flex h-8 w-8 items-center justify-center rounded-chip text-text-secondary transition hover:bg-background;
+    }
 }

@@ -5,6 +5,9 @@
         "dev": "vite",
         "build": "vite build"
     },
+    "dependencies": {
+        "chart.js": "^4.4.4"
+    },
     "devDependencies": {
         "autoprefixer": "^10.4.20",
         "axios": "^1.7.4",

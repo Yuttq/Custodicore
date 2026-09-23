@@ -24,6 +24,11 @@ class SettingsController extends Controller
             ['role_name' => 'Visitor', 'access' => 'Own profile, own schedules and QR (mobile app only)'],
         ];
 
-        return view('admin.settings.index', compact('settings', 'roles'));
+        $summary = [
+            ['label' => 'Configured Settings', 'value' => (string) count($settings), 'icon' => 'cog', 'accent' => 'info'],
+            ['label' => 'Roles Defined', 'value' => (string) count($roles), 'icon' => 'users', 'accent' => 'success'],
+        ];
+
+        return view('admin.settings.index', compact('settings', 'roles', 'summary'));
     }
 }
