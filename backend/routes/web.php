@@ -8,6 +8,13 @@ use App\Http\Controllers\Admin\ScheduleController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VisitorController;
+
+use App\Http\Controllers\FrontDesk\DashboardController as FrontDeskDashboardController;
+use App\Http\Controllers\FrontDesk\CheckinCheckoutController;
+use App\Http\Controllers\FrontDesk\ScheduleController as FrontDeskScheduleController;
+use App\Http\Controllers\FrontDesk\VisitorLookupController;
+use App\Http\Controllers\FrontDesk\SettingsController as FrontDeskSettingsController;
+
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -45,4 +52,31 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
 
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Front Desk Officer
+|--------------------------------------------------------------------------
+| Front Desk handles visitor-facing gate operations such as the dashboard,
+| check-in/check-out, today's schedule and visitor lookup.
+*/
+
+Route::prefix('front-desk')->name('frontdesk.')->group(function () {
+
+    Route::get('/', [FrontDeskDashboardController::class, 'index'])
+        ->name('dashboard');
+
+    Route::get('/checkin-checkout', [CheckinCheckoutController::class, 'index'])
+        ->name('checkin-checkout');
+
+    Route::get('/schedule', [FrontDeskScheduleController::class, 'index'])
+        ->name('schedule');
+
+    Route::get('/visitor-lookup', [VisitorLookupController::class, 'index'])
+        ->name('visitor-lookup');
+
+    Route::get('/settings', [FrontDeskSettingsController::class, 'index'])
+        ->name('settings.index');
+
 });
