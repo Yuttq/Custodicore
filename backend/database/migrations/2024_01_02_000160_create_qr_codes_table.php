@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignId('visit_request_id')->unique()->constrained('visit_requests', 'visit_request_id')->cascadeOnDelete();
             $table->char('qr_token', 64)->unique();
             $table->timestamp('generated_at')->useCurrent();
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->enum('status', ['active', 'used', 'expired', 'void'])->default('active');
 
             $table->index('qr_token');
