@@ -4,878 +4,1864 @@
 
 @section('content')
 
+<div class="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
     {{-- =========================================================
-        PAGE INTRO
+        PAGE HEADER
     ========================================================== --}}
-    <div class="flex flex-col gap-sm sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
 
         <div>
-            <p class="text-body text-text-secondary">
-                Verify visitors and manage their check-in and check-out process.
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-primary-navy">
+                Check-In / Check-Out
+            </h1>
+
+            <p class="mt-1 text-sm text-text-secondary">
+                Process visitor entry and exit through QR-based verification.
             </p>
         </div>
 
-        <div class="rounded-chip border border-border bg-card px-md py-sm">
-
-            <p class="text-status-label uppercase tracking-wide text-text-secondary">
-                Gate Status
-            </p>
-
-            <p class="text-body font-semibold text-success">
-                Open
-            </p>
-
-        </div>
-
-    </div>
-
-
-    {{-- =========================================================
-        CHECK-IN / CHECK-OUT WORKFLOW
-    ========================================================== --}}
-    <div class="grid grid-cols-1 gap-lg xl:grid-cols-3">
-
-
-        {{-- =====================================================
-            LEFT: QR SCANNER
-        ====================================================== --}}
-        <section class="cc-card xl:col-span-1">
-
-            <div class="mb-md">
-
-                <h2 class="text-card-title font-semibold text-text-primary">
-                    QR Code Scanner
-                </h2>
-
-                <p class="mt-xs text-status-label text-text-secondary">
-                    Scan the visitor's QR code to begin verification.
-                </p>
-
-            </div>
-
-
-            {{-- Scanner Area --}}
-            <div
-                id="scanner-area"
-                class="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-sm border-2 border-dashed border-border bg-background"
-            >
-
-                {{-- Scanner Corners --}}
-                <div class="pointer-events-none absolute inset-8 border-2 border-primary-teal/30"></div>
-
-                <div class="relative flex flex-col items-center text-center">
-
-                    @include('admin.partials.icon', [
-                        'name' => 'qrcode',
-                        'class' => 'h-16 w-16 text-primary-navy'
-                    ])
-
-                    <p class="mt-md text-body font-semibold text-text-primary">
-                        Ready to Scan
-                    </p>
-
-                    <p class="mt-xs max-w-xs text-status-label text-text-secondary">
-                        Position the visitor's QR code inside the scanning area.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            {{-- Scan Button --}}
-            <button
-                type="button"
-                id="scan-button"
-                class="mt-md flex w-full items-center justify-center gap-sm rounded-chip bg-primary-navy px-md py-sm text-body font-semibold text-white transition hover:opacity-90"
-            >
-
-                @include('admin.partials.icon', [
-                    'name' => 'qrcode',
-                    'class' => 'h-5 w-5'
-                ])
-
-                <span id="scan-button-text">
-                    Scan QR Code
-                </span>
-
-            </button>
-
-
-            <p
-                id="scanner-message"
-                class="mt-sm text-center text-status-label text-text-secondary"
-            >
-                Scanner is ready.
-            </p>
-
-        </section>
-
-
-        {{-- =====================================================
-            RIGHT: VISITOR VERIFICATION
-        ====================================================== --}}
-        <section class="cc-card xl:col-span-2">
-
-            <div class="mb-md">
-
-                <h2 class="text-card-title font-semibold text-text-primary">
-                    Visitor Verification
-                </h2>
-
-                <p class="mt-xs text-status-label text-text-secondary">
-                    Verify visitor information before allowing entry.
-                </p>
-
-            </div>
-
-
-            {{-- Visitor Information --}}
-            <div class="rounded-sm border border-border bg-background p-md">
-
-                <div class="mb-md flex items-center justify-between">
-
-                    <div>
-                        <p class="text-status-label uppercase tracking-wide text-text-secondary">
-                            Visitor Information
-                        </p>
-
-                        <p class="mt-xs text-body font-semibold text-text-primary">
-                            Maria Santos
-                        </p>
-                    </div>
-
-                    <span class="inline-flex rounded-chip bg-success/10 px-sm py-xs text-status-label font-semibold text-success">
-                        Eligible
-                    </span>
-
-                </div>
-
-
-                <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-
-                    <div>
-                        <p class="text-status-label uppercase text-text-secondary">
-                            Visitor ID
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            VIS-00124
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label uppercase text-text-secondary">
-                            Contact Number
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            0917 123 4567
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label uppercase text-text-secondary">
-                            Relationship
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            Sister
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label uppercase text-text-secondary">
-                            Visit Type
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            Regular Visit
-                        </p>
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            {{-- PDL Information --}}
-            <div class="mt-md rounded-sm border border-border bg-background p-md">
-
-                <p class="text-status-label uppercase tracking-wide text-text-secondary">
-                    Person Deprived of Liberty
-                </p>
-
-                <div class="mt-md grid grid-cols-1 gap-md sm:grid-cols-2">
-
-                    <div>
-                        <p class="text-status-label text-text-secondary">
-                            PDL Name
-                        </p>
-
-                        <p class="mt-xs text-body font-semibold text-text-primary">
-                            Juan Dela Cruz
-                        </p>
-
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label text-text-secondary">
-                            PDL ID
-                        </p>
-
-                        <p class="mt-xs text-body font-semibold text-text-primary">
-                            PDL-00045
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            {{-- Scheduled Visit --}}
-            <div class="mt-md rounded-sm border border-border bg-background p-md">
-
-                <p class="text-status-label uppercase tracking-wide text-text-secondary">
-                    Scheduled Visit
-                </p>
-
-                <div class="mt-md grid grid-cols-1 gap-md sm:grid-cols-3">
-
-                    <div>
-                        <p class="text-status-label text-text-secondary">
-                            Date
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            {{ date('F d, Y') }}
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label text-text-secondary">
-                            Schedule
-                        </p>
-
-                        <p class="mt-xs text-body font-medium text-text-primary">
-                            9:00 AM – 10:00 AM
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <p class="text-status-label text-text-secondary">
-                            Status
-                        </p>
-
-                        <span class="mt-xs inline-flex rounded-chip bg-success/10 px-sm py-xs text-status-label font-semibold text-success">
-                            Approved
-                        </span>
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-    </div>
-
-
-    {{-- =========================================================
-        ID SURRENDER / CHECK-IN
-    ========================================================== --}}
-    <section class="cc-card">
-
-        <div class="mb-md">
-
-            <h2 class="text-card-title font-semibold text-text-primary">
-                Check-In
-            </h2>
-
-            <p class="mt-xs text-status-label text-text-secondary">
-                Record the visitor's entry and ID surrender.
-            </p>
-
-        </div>
-
-
-        <div class="grid grid-cols-1 gap-lg lg:grid-cols-2">
-
-
-            {{-- ID Surrender --}}
-            <div class="rounded-sm border border-border bg-background p-md">
-
-                <div class="flex items-start gap-md">
-
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-chip bg-primary-navy/10 text-primary-navy">
-
-                        @include('admin.partials.icon', [
-                            'name' => 'id-card',
-                            'class' => 'h-5 w-5'
-                        ])
-
-                    </div>
-
-
-                    <div>
-
-                        <h3 class="text-body font-semibold text-text-primary">
-                            ID Surrender
-                        </h3>
-
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Confirm that the visitor has surrendered a valid identification card.
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <label class="mt-md flex cursor-pointer items-center gap-sm">
-
-                    <input
-                        type="checkbox"
-                        id="id-surrendered"
-                        class="h-4 w-4 rounded border-border text-primary-navy focus:ring-primary-teal"
-                    >
-
-                    <span class="text-body text-text-primary">
-                        Visitor ID surrendered
-                    </span>
-
-                </label>
-
-            </div>
-
-
-            {{-- Check-In --}}
-            <div class="rounded-sm border border-border bg-background p-md">
-
-                <div class="flex items-start gap-md">
-
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-chip bg-success/10 text-success">
-
-                        @include('admin.partials.icon', [
-                            'name' => 'check',
-                            'class' => 'h-5 w-5'
-                        ])
-
-                    </div>
-
-
-                    <div>
-
-                        <h3 class="text-body font-semibold text-text-primary">
-                            Visitor Check-In
-                        </h3>
-
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Allow the visitor to enter after verification is complete.
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <button
-                    type="button"
-                    id="check-in-button"
-                    disabled
-                    class="mt-md flex w-full items-center justify-center gap-sm rounded-chip bg-success px-md py-sm text-body font-semibold text-white opacity-50 transition"
-                >
-
-                    @include('admin.partials.icon', [
-                        'name' => 'login',
-                        'class' => 'h-5 w-5'
-                    ])
-
-                    Check In Visitor
-
-                </button>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    {{-- =========================================================
-        CURRENTLY CHECKED-IN VISITOR
-    ========================================================== --}}
-    <section class="cc-card">
-
-        <div class="mb-md flex flex-col gap-sm sm:flex-row sm:items-center sm:justify-between">
+        {{-- DATE + LIVE TIME --}}
+        <div class="flex items-center gap-5 sm:gap-6 text-right">
 
             <div>
-
-                <h2 class="text-card-title font-semibold text-text-primary">
-                    Currently Checked-In
-                </h2>
-
-                <p class="mt-xs text-status-label text-text-secondary">
-                    Visitors currently inside the facility.
+                <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-primary-navy">
+                    Today
                 </p>
 
+                <p id="current-date"
+                   class="mt-1 text-xs sm:text-sm font-medium text-text-secondary whitespace-nowrap">
+                    Monday, September 28, 2026
+                </p>
             </div>
 
-            <span class="inline-flex w-fit rounded-chip bg-success/10 px-sm py-xs text-status-label font-semibold text-success">
-                1 Visitor Inside
-            </span>
+            <div class="h-10 w-px bg-border"></div>
+
+            <div>
+                <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-primary-navy">
+                    Current Time
+                </p>
+
+                <p id="current-time"
+                   class="mt-1 text-base sm:text-lg font-bold text-primary-navy whitespace-nowrap">
+                    9:06:00 PM
+                </p>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    {{-- =========================================================
+        PROCESS TABS
+    ========================================================== --}}
+    <div class="mb-6">
+
+        <div class="inline-flex w-full max-w-md rounded-xl border border-border bg-white p-1 shadow-sm">
+
+            <button
+                type="button"
+                id="checkin-tab"
+                onclick="switchMode('checkin')"
+                class="mode-tab flex-1 rounded-lg bg-primary-navy px-5 py-2.5 text-xs font-semibold text-white transition">
+                Check-In
+            </button>
+
+            <button
+                type="button"
+                id="checkout-tab"
+                onclick="switchMode('checkout')"
+                class="mode-tab flex-1 rounded-lg px-5 py-2.5 text-xs font-semibold text-text-secondary transition hover:bg-slate-50">
+                Check-Out
+            </button>
+
+        </div>
+
+    </div>
+
+
+    {{-- =========================================================
+        ===================== CHECK-IN ==========================
+    ========================================================== --}}
+    <div id="checkin-process">
+
+        {{-- PROCESS TITLE --}}
+        <div class="mb-5">
+
+            <div class="flex items-center gap-3">
+
+                <span class="inline-flex h-8 items-center rounded-lg bg-primary-navy px-4 text-xs font-bold uppercase tracking-wide text-white">
+                    Check-In Process
+                </span>
+
+                <span class="hidden sm:block text-xs text-text-secondary">
+                    Step-by-step visitor entry verification
+                </span>
+
+            </div>
 
         </div>
 
 
-        <div class="overflow-x-auto">
+        {{-- PROGRESS --}}
+        <div class="mb-6 rounded-xl border border-border bg-white px-5 py-4 shadow-sm">
 
-            <table class="w-full text-left">
+            <div class="flex items-center justify-between gap-2">
 
-                <thead class="border-b border-border bg-background">
+                @foreach([
+                    ['number' => 1, 'label' => 'Scan QR Code'],
+                    ['number' => 2, 'label' => 'Verify Visitor'],
+                    ['number' => 3, 'label' => 'ID Surrender'],
+                    ['number' => 4, 'label' => 'Confirm Check-In'],
+                    ['number' => 5, 'label' => 'Successful']
+                ] as $step)
 
-                    <tr>
+                    <div class="flex min-w-0 flex-1 items-center">
 
-                        <th class="px-lg py-md text-status-label font-semibold uppercase tracking-wide text-text-secondary">
-                            Visitor
-                        </th>
+                        <div class="flex min-w-0 items-center gap-2">
 
-                        <th class="px-lg py-md text-status-label font-semibold uppercase tracking-wide text-text-secondary">
-                            PDL
-                        </th>
+                            <span
+                                id="checkin-progress-{{ $step['number'] }}"
+                                class="checkin-progress-circle flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+                                {{ $step['number'] }}
+                            </span>
 
-                        <th class="px-lg py-md text-status-label font-semibold uppercase tracking-wide text-text-secondary">
-                            Check-In
-                        </th>
+                            <span class="hidden md:block truncate text-[11px] font-semibold text-text-secondary">
+                                {{ $step['label'] }}
+                            </span>
 
-                        <th class="px-lg py-md text-status-label font-semibold uppercase tracking-wide text-text-secondary">
-                            ID Status
-                        </th>
+                        </div>
 
-                        <th class="px-lg py-md text-status-label font-semibold uppercase tracking-wide text-text-secondary">
-                            Action
-                        </th>
+                        @if($step['number'] < 5)
+                            <div class="mx-2 h-px flex-1 bg-border"></div>
+                        @endif
 
-                    </tr>
+                    </div>
 
-                </thead>
+                @endforeach
+
+            </div>
+
+        </div>
 
 
-                <tbody class="divide-y divide-border">
+        {{-- =====================================================
+            CHECK-IN STEP 1
+        ====================================================== --}}
+        <div id="checkin-step-1" class="checkin-step">
 
-                    <tr class="transition hover:bg-background">
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
 
-                        <td class="px-lg py-md">
+                {{-- QR SCANNER --}}
+                <section class="rounded-xl border border-border bg-white shadow-sm">
 
-                            <p class="text-body font-semibold text-text-primary">
+                    <div class="border-b border-border px-5 py-4">
+
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Scan Visitor QR Code
+                        </h2>
+
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            Position the visitor's approved QR code within the scanner.
+                        </p>
+
+                    </div>
+
+
+                    <div class="p-5">
+
+                        <div class="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-6">
+
+                            <div class="flex flex-col items-center text-center">
+
+                                <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+
+                                    <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                        <rect x="3" y="3" width="7" height="7" rx="1"/>
+                                        <rect x="14" y="3" width="7" height="7" rx="1"/>
+                                        <rect x="3" y="14" width="7" height="7" rx="1"/>
+                                        <path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3"/>
+                                    </svg>
+
+                                </div>
+
+                                <h3 class="mt-4 text-sm font-semibold text-primary-navy">
+                                    Scanner Ready
+                                </h3>
+
+                                <p class="mt-1 max-w-md text-xs leading-5 text-text-secondary">
+                                    Scan the visitor's approved QR code. The system will automatically retrieve the registered visitor information.
+                                </p>
+
+
+                                <button
+                                    type="button"
+                                    onclick="simulateCheckinScan()"
+                                    class="mt-5 inline-flex min-h-[42px] items-center justify-center rounded-lg bg-primary-navy px-6 py-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-90">
+
+                                    <svg class="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+                                        <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+                                        <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+                                        <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                                        <rect x="8" y="8" width="8" height="8" rx="1"/>
+                                    </svg>
+
+                                    Scan QR Code
+
+                                </button>
+
+
+                                <div class="my-4 flex w-full max-w-sm items-center gap-3">
+
+                                    <div class="h-px flex-1 bg-border"></div>
+
+                                    <span class="text-[10px] font-medium text-text-secondary">
+                                        OR
+                                    </span>
+
+                                    <div class="h-px flex-1 bg-border"></div>
+
+                                </div>
+
+
+                                <button
+                                    type="button"
+                                    onclick="goToCheckinStep(2)"
+                                    class="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-blue-200 bg-white px-5 py-2.5 text-xs font-semibold text-primary-navy transition hover:bg-blue-50">
+
+                                    Manual Verification <span class="ml-1 text-text-secondary">(Backup)</span>
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
+
+                            <p class="text-[10px] leading-4 text-blue-700">
+                                <span class="font-semibold">Automated process:</span>
+                                Visitor information is retrieved from the approved QR pass. The Front Desk Officer only verifies the displayed information and confirms the required steps.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                {{-- VISITOR PREVIEW --}}
+                <section class="rounded-xl border border-border bg-white shadow-sm">
+
+                    <div class="border-b border-border px-5 py-4">
+
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Today's Visitor
+                        </h2>
+
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            Mock visitor record for prototype presentation.
+                        </p>
+
+                    </div>
+
+
+                    <div class="p-5">
+
+                        <div class="rounded-lg border border-border bg-slate-50 p-4">
+
+                            <p class="text-[9px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                                Waiting for QR scan
+                            </p>
+
+                            <p class="mt-2 text-sm font-semibold text-primary-navy">
                                 Maria Santos
                             </p>
 
-                            <p class="text-status-label text-text-secondary">
+                            <p class="mt-0.5 text-xs text-text-secondary">
                                 VIS-00124
                             </p>
 
-                        </td>
+                        </div>
 
+                        <div class="mt-4 space-y-3">
 
-                        <td class="px-lg py-md">
+                            <div class="flex items-center justify-between border-b border-border pb-3">
+                                <span class="text-xs text-text-secondary">PDL</span>
+                                <span class="text-xs font-semibold text-primary-navy">Juan Dela Cruz</span>
+                            </div>
 
-                            <p class="text-body text-text-primary">
-                                Juan Dela Cruz
-                            </p>
+                            <div class="flex items-center justify-between border-b border-border pb-3">
+                                <span class="text-xs text-text-secondary">Schedule</span>
+                                <span class="text-xs font-semibold text-primary-navy">9:00 AM – 10:00 AM</span>
+                            </div>
 
-                            <p class="text-status-label text-text-secondary">
-                                PDL-00045
-                            </p>
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-text-secondary">Visit Type</span>
+                                <span class="text-xs font-semibold text-primary-navy">Regular Visit</span>
+                            </div>
 
-                        </td>
-
-
-                        <td class="px-lg py-md">
-
-                            <p class="text-body font-medium text-text-primary">
-                                8:52 AM
-                            </p>
-
-                        </td>
-
-
-                        <td class="px-lg py-md">
-
-                            <span class="inline-flex rounded-chip bg-warning/10 px-sm py-xs text-status-label font-semibold text-warning">
-                                Surrendered
-                            </span>
-
-                        </td>
-
-
-                        <td class="px-lg py-md">
-
-                            <button
-                                type="button"
-                                id="check-out-button"
-                                class="inline-flex items-center gap-xs rounded-chip bg-primary-navy px-md py-xs text-status-label font-semibold text-white transition hover:opacity-90"
-                            >
-
-                                @include('admin.partials.icon', [
-                                    'name' => 'logout',
-                                    'class' => 'h-4 w-4'
-                                ])
-
-                                Check Out
-
-                            </button>
-
-                        </td>
-
-                    </tr>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-
-    {{-- =========================================================
-        CHECK-OUT INFORMATION
-    ========================================================== --}}
-    <section
-        id="checkout-panel"
-        class="cc-card hidden"
-    >
-
-        <div class="mb-md">
-
-            <h2 class="text-card-title font-semibold text-text-primary">
-                Check-Out Visitor
-            </h2>
-
-            <p class="mt-xs text-status-label text-text-secondary">
-                Confirm the visitor's departure and return the surrendered ID.
-            </p>
-
-        </div>
-
-
-        <div class="grid grid-cols-1 gap-lg lg:grid-cols-2">
-
-
-            {{-- Visit Summary --}}
-            <div class="rounded-sm border border-border bg-background p-md">
-
-                <p class="text-status-label uppercase tracking-wide text-text-secondary">
-                    Visit Summary
-                </p>
-
-                <div class="mt-md space-y-sm">
-
-                    <div class="flex items-center justify-between gap-md">
-
-                        <span class="text-status-label text-text-secondary">
-                            Visitor
-                        </span>
-
-                        <span class="text-body font-semibold text-text-primary">
-                            Maria Santos
-                        </span>
+                        </div>
 
                     </div>
 
-
-                    <div class="flex items-center justify-between gap-md">
-
-                        <span class="text-status-label text-text-secondary">
-                            PDL
-                        </span>
-
-                        <span class="text-body text-text-primary">
-                            Juan Dela Cruz
-                        </span>
-
-                    </div>
-
-
-                    <div class="flex items-center justify-between gap-md">
-
-                        <span class="text-status-label text-text-secondary">
-                            Check-In
-                        </span>
-
-                        <span class="text-body text-text-primary">
-                            8:52 AM
-                        </span>
-
-                    </div>
-
-                </div>
+                </section>
 
             </div>
 
-
-            {{-- ID Return --}}
-            <div class="rounded-sm border border-border bg-background p-md">
-
-                <div class="flex items-start gap-md">
-
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-chip bg-success/10 text-success">
-
-                        @include('admin.partials.icon', [
-                            'name' => 'id-card',
-                            'class' => 'h-5 w-5'
-                        ])
-
-                    </div>
+        </div>
 
 
-                    <div>
+        {{-- =====================================================
+            CHECK-IN STEP 2
+        ====================================================== --}}
+        <div id="checkin-step-2" class="checkin-step hidden">
 
-                        <h3 class="text-body font-semibold text-text-primary">
-                            Return Visitor ID
-                        </h3>
+            <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
 
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Confirm that the surrendered ID has been returned to the visitor.
+                {{-- INFORMATION --}}
+                <section class="rounded-xl border border-border bg-white shadow-sm">
+
+                    <div class="border-b border-border px-5 py-4">
+
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Visitor Verification
+                        </h2>
+
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            Information retrieved from the visitor's approved QR pass.
                         </p>
 
                     </div>
 
-                </div>
+
+                    <div class="p-5 space-y-4">
+
+                        {{-- VISITOR INFORMATION --}}
+                        <div class="rounded-lg border border-border overflow-hidden">
+
+                            <div class="border-b border-border bg-slate-50 px-4 py-3">
+
+                                <h3 class="text-xs font-semibold text-primary-navy">
+                                    Visitor Information
+                                </h3>
+
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2">
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Visitor Name',
+                                    'value' => 'Maria Santos'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Visitor ID',
+                                    'value' => 'VIS-00124'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Contact Number',
+                                    'value' => '0917 123 4567'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Relationship to PDL',
+                                    'value' => 'Sister'
+                                ])
+
+                            </div>
+
+                        </div>
 
 
-                <label class="mt-md flex cursor-pointer items-center gap-sm">
+                        {{-- PDL INFORMATION --}}
+                        <div class="rounded-lg border border-border overflow-hidden">
 
-                    <input
-                        type="checkbox"
-                        id="id-returned"
-                        class="h-4 w-4 rounded border-border text-primary-navy focus:ring-primary-teal"
-                    >
+                            <div class="border-b border-border bg-slate-50 px-4 py-3">
 
-                    <span class="text-body text-text-primary">
-                        Visitor ID returned
-                    </span>
+                                <h3 class="text-xs font-semibold text-primary-navy">
+                                    PDL Information
+                                </h3>
 
-                </label>
+                            </div>
 
+                            <div class="grid grid-cols-1 sm:grid-cols-2">
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'PDL Name',
+                                    'value' => 'Juan Dela Cruz'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'PDL ID',
+                                    'value' => 'PDL-00045'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Facility',
+                                    'value' => 'Main Building'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Current Status',
+                                    'value' => 'Active'
+                                ])
+
+                            </div>
+
+                        </div>
+
+
+                        {{-- APPROVED SCHEDULE --}}
+                        <div class="rounded-lg border border-border overflow-hidden">
+
+                            <div class="border-b border-border bg-slate-50 px-4 py-3">
+
+                                <h3 class="text-xs font-semibold text-primary-navy">
+                                    Approved Schedule
+                                </h3>
+
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2">
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Visit Date',
+                                    'value' => 'September 28, 2026'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Scheduled Time',
+                                    'value' => '9:00 AM – 10:00 AM'
+                                ])
+
+                                @include('frontdesk.partials.info-row', [
+                                    'label' => 'Visit Type',
+                                    'value' => 'Regular Visit'
+                                ])
+
+                                <div class="px-4 py-3 border-b border-border">
+                                    <p class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                        Schedule Status
+                                    </p>
+
+                                    <span class="mt-1 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-600">
+                                        Approved
+                                    </span>
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                {{-- VERIFICATION --}}
+                <section class="rounded-xl border border-border bg-white shadow-sm">
+
+                    <div class="border-b border-border px-5 py-4">
+
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Verification Results
+                        </h2>
+
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            System automatically checks the visitor's eligibility.
+                        </p>
+
+                    </div>
+
+
+                    <div class="p-5">
+
+                        <div class="space-y-2">
+
+                            @foreach([
+                                ['Visitor Identity', 'Verified'],
+                                ['Approved Schedule', 'Within Schedule'],
+                                ['QR Code', 'Valid'],
+                                ['Registered ID', 'Matched'],
+                                ['PDL Eligibility', 'Eligible'],
+                                ['Watchlist Check', 'No Match'],
+                                ['Visit Frequency', 'Within Limit']
+                            ] as $verification)
+
+                                <div class="flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-3">
+
+                                    <div class="flex items-center gap-2">
+
+                                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                                <path d="m5 12 4 4L19 6"/>
+                                            </svg>
+
+                                        </span>
+
+                                        <span class="text-xs font-medium text-text-primary">
+                                            {{ $verification[0] }}
+                                        </span>
+
+                                    </div>
+
+                                    <span class="text-[9px] font-semibold text-emerald-600">
+                                        {{ $verification[1] }}
+                                    </span>
+
+                                </div>
+
+                            @endforeach
+
+                        </div>
+
+
+                        <div class="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+
+                            <div class="flex items-start gap-3">
+
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                        <path d="m5 12 4 4L19 6"/>
+                                    </svg>
+
+                                </span>
+
+                                <div>
+
+                                    <p class="text-xs font-bold text-emerald-700">
+                                        Eligible for Check-In
+                                    </p>
+
+                                    <p class="mt-0.5 text-[10px] leading-4 text-emerald-600">
+                                        All required verification checks have passed.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+
+            {{-- ACTIONS --}}
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 
                 <button
                     type="button"
-                    id="complete-checkout-button"
-                    disabled
-                    class="mt-md flex w-full items-center justify-center gap-sm rounded-chip bg-primary-navy px-md py-sm text-body font-semibold text-white opacity-50 transition"
-                >
+                    onclick="goToCheckinStep(1)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
 
-                    @include('admin.partials.icon', [
-                        'name' => 'logout',
-                        'class' => 'h-5 w-5'
-                    ])
-
-                    Complete Check-Out
-
+                <button
+                    type="button"
+                    onclick="goToCheckinStep(3)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Proceed to ID Surrender →
                 </button>
 
             </div>
 
         </div>
 
-    </section>
+
+        {{-- =====================================================
+            CHECK-IN STEP 3
+        ====================================================== --}}
+        <div id="checkin-step-3" class="checkin-step hidden">
+
+            <section class="mx-auto max-w-3xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="border-b border-border px-5 py-4">
+
+                    <h2 class="text-base font-semibold text-primary-navy">
+                        ID Surrender Confirmation
+                    </h2>
+
+                    <p class="mt-0.5 text-xs text-text-secondary">
+                        Confirm that the visitor's registered identification card has been surrendered.
+                    </p>
+
+                </div>
+
+
+                <div class="p-5">
+
+                    <div class="rounded-lg border border-blue-100 bg-blue-50/50 p-4 mb-5">
+
+                        <div class="flex items-start gap-3">
+
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <rect x="3" y="5" width="18" height="14" rx="2"/>
+                                    <path d="M7 9h4M7 13h7"/>
+                                </svg>
+
+                            </div>
+
+                            <div>
+
+                                <p class="text-xs font-semibold text-primary-navy">
+                                    Registered ID Found
+                                </p>
+
+                                <p class="mt-0.5 text-[10px] leading-4 text-text-secondary">
+                                    The ID information below was retrieved from the visitor's registered account.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                ID Type
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Philippine National ID
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                ID Number
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                ********4821
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Registered Name
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Maria Santos
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Surrendered By
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Front Desk Officer
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    <label class="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-white p-4">
+
+                        <input
+                            id="checkin-id-confirmed"
+                            type="checkbox"
+                            class="mt-0.5 h-4 w-4 rounded border-border text-blue-600 focus:ring-blue-500"
+                            checked>
+
+                        <span>
+
+                            <span class="block text-xs font-semibold text-text-primary">
+                                ID has been physically surrendered.
+                            </span>
+
+                            <span class="mt-0.5 block text-[10px] text-text-secondary">
+                                Confirm only after receiving the visitor's registered ID.
+                            </span>
+
+                        </span>
+
+                    </label>
+
+                </div>
+
+            </section>
+
+
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+                <button
+                    type="button"
+                    onclick="goToCheckinStep(2)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
+
+                <button
+                    type="button"
+                    onclick="goToCheckinStep(4)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Next →
+                </button>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-IN STEP 4
+        ====================================================== --}}
+        <div id="checkin-step-4" class="checkin-step hidden">
+
+            <section class="mx-auto max-w-4xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="border-b border-border px-5 py-4">
+
+                    <h2 class="text-base font-semibold text-primary-navy">
+                        Confirm Visitor Check-In
+                    </h2>
+
+                    <p class="mt-0.5 text-xs text-text-secondary">
+                        Review the automatically retrieved information before finalizing the check-in.
+                    </p>
+
+                </div>
+
+
+                <div class="p-5">
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-[180px_minmax(0,1fr)]">
+
+                        {{-- VISITOR --}}
+                        <div class="flex flex-col items-center justify-center rounded-lg border border-border bg-slate-50 p-5 text-center">
+
+                            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-primary-navy">
+                                MS
+                            </div>
+
+                            <p class="mt-3 text-sm font-bold text-primary-navy">
+                                Maria Santos
+                            </p>
+
+                            <span class="mt-1 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-600">
+                                Verified
+                            </span>
+
+                        </div>
+
+
+                        {{-- SUMMARY --}}
+                        <div class="space-y-3">
+
+                            @foreach([
+                                ['Visitor ID', 'VIS-00124'],
+                                ['PDL Name', 'Juan Dela Cruz'],
+                                ['PDL ID', 'PDL-00045'],
+                                ['Scheduled Time', '9:00 AM – 10:00 AM'],
+                                ['Current Time', '9:08 AM'],
+                                ['Visit Type', 'Regular Visit'],
+                                ['Verification Status', 'Eligible'],
+                                ['ID Status', 'Surrendered']
+                            ] as $item)
+
+                                <div class="flex flex-col gap-1 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+
+                                    <span class="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                        {{ $item[0] }}
+                                    </span>
+
+                                    <span class="text-xs font-semibold text-text-primary">
+                                        {{ $item[1] }}
+                                    </span>
+
+                                </div>
+
+                            @endforeach
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mt-5 rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+
+                        <div class="flex items-center gap-3">
+
+                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <path d="m5 12 4 4L19 6"/>
+                                </svg>
+
+                            </span>
+
+                            <div>
+
+                                <p class="text-xs font-semibold text-emerald-700">
+                                    All verification requirements have been completed.
+                                </p>
+
+                                <p class="text-[10px] text-emerald-600">
+                                    Visitor is ready to be officially checked in.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+                <button
+                    type="button"
+                    onclick="goToCheckinStep(3)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
+
+                <button
+                    type="button"
+                    onclick="goToCheckinStep(5)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Confirm Check-In →
+                </button>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-IN STEP 5
+        ====================================================== --}}
+        <div id="checkin-step-5" class="checkin-step hidden">
+
+            <section class="mx-auto max-w-xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="p-7 text-center sm:p-9">
+
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                        <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="m5 12 4 4L19 6"/>
+                        </svg>
+
+                    </div>
+
+                    <h2 class="mt-5 text-lg font-bold text-primary-navy">
+                        Check-In Successful
+                    </h2>
+
+                    <p class="mt-1 text-xs text-text-secondary">
+                        Maria Santos has been successfully checked in.
+                    </p>
+
+
+                    <div class="mt-6 rounded-lg border border-border bg-slate-50 p-4 text-left">
+
+                        @foreach([
+                            ['Visitor Name', 'Maria Santos'],
+                            ['PDL Name', 'Juan Dela Cruz'],
+                            ['Check-In Time', '8:52 AM'],
+                            ['Visit Type', 'Regular Visit'],
+                            ['ID Status', 'Surrendered'],
+                            ['Visit Status', 'Currently Inside']
+                        ] as $item)
+
+                            <div class="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+
+                                <span class="text-[10px] text-text-secondary">
+                                    {{ $item[0] }}
+                                </span>
+
+                                <span class="text-xs font-semibold text-text-primary">
+                                    {{ $item[1] }}
+                                </span>
+
+                            </div>
+
+                        @endforeach
+
+                    </div>
+
+
+                    <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+
+                        <button
+                            type="button"
+                            onclick="resetCheckin()"
+                            class="min-h-[42px] flex-1 rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                            Scan Another Visitor
+                        </button>
+
+                        <button
+                            type="button"
+                            onclick="switchMode('checkout')"
+                            class="min-h-[42px] flex-1 rounded-lg bg-primary-navy px-5 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                            Go to Check-Out
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </div>
+
+    </div>
 
 
     {{-- =========================================================
-        JAVASCRIPT
+        ===================== CHECK-OUT =========================
     ========================================================== --}}
-    @push('scripts')
+    <div id="checkout-process" class="hidden">
 
-        <script>
+        {{-- PROCESS TITLE --}}
+        <div class="mb-5">
 
-            document.addEventListener('DOMContentLoaded', function () {
+            <div class="flex items-center gap-3">
 
-                /*
-                |--------------------------------------------------------------------------
-                | QR SCANNER SIMULATION
-                |--------------------------------------------------------------------------
-                */
+                <span class="inline-flex h-8 items-center rounded-lg bg-primary-navy px-4 text-xs font-bold uppercase tracking-wide text-white">
+                    Check-Out Process
+                </span>
 
-                const scanButton = document.getElementById('scan-button');
-                const scanButtonText = document.getElementById('scan-button-text');
-                const scannerMessage = document.getElementById('scanner-message');
+                <span class="hidden sm:block text-xs text-text-secondary">
+                    Step-by-step visitor exit verification
+                </span>
 
-                if (scanButton) {
+            </div>
 
-                    scanButton.addEventListener('click', function () {
+        </div>
 
-                        scanButton.disabled = true;
 
-                        scanButtonText.textContent = 'Scanning...';
+        {{-- PROGRESS --}}
+        <div class="mb-6 rounded-xl border border-border bg-white px-5 py-4 shadow-sm">
 
-                        scannerMessage.textContent =
-                            'Scanning visitor QR code...';
+            <div class="flex items-center justify-between gap-2">
 
-                        setTimeout(function () {
+                @foreach([
+                    ['number' => 1, 'label' => 'Scan QR Code'],
+                    ['number' => 2, 'label' => 'Active Visit'],
+                    ['number' => 3, 'label' => 'ID Return'],
+                    ['number' => 4, 'label' => 'Confirm Check-Out'],
+                    ['number' => 5, 'label' => 'Successful']
+                ] as $step)
 
-                            scanButton.disabled = false;
+                    <div class="flex min-w-0 flex-1 items-center">
 
-                            scanButtonText.textContent = 'Scan QR Code';
+                        <div class="flex min-w-0 items-center gap-2">
 
-                            scannerMessage.textContent =
-                                'QR code detected. Visitor information verified.';
+                            <span
+                                id="checkout-progress-{{ $step['number'] }}"
+                                class="checkout-progress-circle flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+                                {{ $step['number'] }}
+                            </span>
 
-                        }, 1500);
+                            <span class="hidden md:block truncate text-[11px] font-semibold text-text-secondary">
+                                {{ $step['label'] }}
+                            </span>
 
-                    });
+                        </div>
 
-                }
+                        @if($step['number'] < 5)
+                            <div class="mx-2 h-px flex-1 bg-border"></div>
+                        @endif
 
+                    </div>
 
-                /*
-                |--------------------------------------------------------------------------
-                | ID SURRENDER / CHECK-IN
-                |--------------------------------------------------------------------------
-                */
+                @endforeach
 
-                const idSurrendered =
-                    document.getElementById('id-surrendered');
+            </div>
 
-                const checkInButton =
-                    document.getElementById('check-in-button');
+        </div>
 
-                if (idSurrendered && checkInButton) {
 
-                    idSurrendered.addEventListener('change', function () {
+        {{-- =====================================================
+            CHECK-OUT STEP 1
+        ====================================================== --}}
+        <div id="checkout-step-1" class="checkout-step">
 
-                        if (this.checked) {
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
 
-                            checkInButton.disabled = false;
+                <section class="rounded-xl border border-border bg-white shadow-sm">
 
-                            checkInButton.classList.remove('opacity-50');
+                    <div class="border-b border-border px-5 py-4">
 
-                        } else {
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Scan Visitor QR Code
+                        </h2>
 
-                            checkInButton.disabled = true;
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            Scan the same QR code to locate the visitor's active visit.
+                        </p>
 
-                            checkInButton.classList.add('opacity-50');
+                    </div>
 
-                        }
 
-                    });
+                    <div class="p-5">
 
+                        <div class="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-6">
 
-                    checkInButton.addEventListener('click', function () {
+                            <div class="flex flex-col items-center text-center">
 
-                        if (!idSurrendered.checked) {
-                            return;
-                        }
+                                <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
 
-                        checkInButton.textContent =
-                            'Visitor Checked In';
+                                    <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                        <rect x="3" y="3" width="7" height="7" rx="1"/>
+                                        <rect x="14" y="3" width="7" height="7" rx="1"/>
+                                        <rect x="3" y="14" width="7" height="7" rx="1"/>
+                                        <path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3"/>
+                                    </svg>
 
-                        checkInButton.disabled = true;
+                                </div>
 
-                        checkInButton.classList.remove('opacity-50');
+                                <h3 class="mt-4 text-sm font-semibold text-primary-navy">
+                                    Scanner Ready
+                                </h3>
 
-                    });
+                                <p class="mt-1 max-w-md text-xs leading-5 text-text-secondary">
+                                    Scan the visitor's QR code. The system will locate the active visit automatically.
+                                </p>
 
-                }
 
+                                <button
+                                    type="button"
+                                    onclick="goToCheckoutStep(2)"
+                                    class="mt-5 inline-flex min-h-[42px] items-center justify-center rounded-lg bg-primary-navy px-6 py-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-90">
 
-                /*
-                |--------------------------------------------------------------------------
-                | CHECK-OUT PANEL
-                |--------------------------------------------------------------------------
-                */
+                                    <svg class="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                        <path d="M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"/>
+                                    </svg>
 
-                const checkOutButton =
-                    document.getElementById('check-out-button');
+                                    Scan QR Code
 
-                const checkoutPanel =
-                    document.getElementById('checkout-panel');
+                                </button>
 
-                if (checkOutButton && checkoutPanel) {
 
-                    checkOutButton.addEventListener('click', function () {
+                                <div class="my-4 flex w-full max-w-sm items-center gap-3">
 
-                        checkoutPanel.classList.remove('hidden');
+                                    <div class="h-px flex-1 bg-border"></div>
 
-                        checkoutPanel.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start'
-                        });
+                                    <span class="text-[10px] font-medium text-text-secondary">
+                                        OR
+                                    </span>
 
-                    });
+                                    <div class="h-px flex-1 bg-border"></div>
 
-                }
+                                </div>
 
 
-                /*
-                |--------------------------------------------------------------------------
-                | ID RETURN / COMPLETE CHECK-OUT
-                |--------------------------------------------------------------------------
-                */
+                                <button
+                                    type="button"
+                                    onclick="goToCheckoutStep(2)"
+                                    class="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-blue-200 bg-white px-5 py-2.5 text-xs font-semibold text-primary-navy transition hover:bg-blue-50">
+                                    Manual Verification <span class="ml-1 text-text-secondary">(Backup)</span>
+                                </button>
 
-                const idReturned =
-                    document.getElementById('id-returned');
+                            </div>
 
-                const completeCheckoutButton =
-                    document.getElementById('complete-checkout-button');
+                        </div>
 
-                if (idReturned && completeCheckoutButton) {
 
-                    idReturned.addEventListener('change', function () {
+                        <div class="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
 
-                        if (this.checked) {
+                            <p class="text-[10px] leading-4 text-blue-700">
+                                <span class="font-semibold">Automated process:</span>
+                                The system finds the visitor's active visit using the QR pass.
+                            </p>
 
-                            completeCheckoutButton.disabled = false;
+                        </div>
 
-                            completeCheckoutButton.classList.remove(
-                                'opacity-50'
-                            );
+                    </div>
 
-                        } else {
+                </section>
 
-                            completeCheckoutButton.disabled = true;
 
-                            completeCheckoutButton.classList.add(
-                                'opacity-50'
-                            );
+                <section class="rounded-xl border border-border bg-white shadow-sm">
 
-                        }
+                    <div class="border-b border-border px-5 py-4">
 
-                    });
+                        <h2 class="text-base font-semibold text-primary-navy">
+                            Current Active Visit
+                        </h2>
 
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                            Mock active visit for prototype presentation.
+                        </p>
 
-                    completeCheckoutButton.addEventListener('click', function () {
+                    </div>
 
-                        if (!idReturned.checked) {
-                            return;
-                        }
 
-                        completeCheckoutButton.textContent =
-                            'Check-Out Completed';
+                    <div class="p-5">
 
-                        completeCheckoutButton.disabled = true;
+                        <div class="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
 
-                        completeCheckoutButton.classList.remove(
-                            'opacity-50'
-                        );
+                            <span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-semibold text-emerald-700">
+                                Currently Checked-In
+                            </span>
 
-                    });
+                            <p class="mt-3 text-sm font-bold text-primary-navy">
+                                Maria Santos
+                            </p>
 
-                }
+                            <p class="mt-0.5 text-xs text-text-secondary">
+                                VIS-00124
+                            </p>
 
-            });
+                        </div>
 
-        </script>
 
-    @endpush
+                        <div class="mt-4 space-y-3">
+
+                            <div class="flex items-center justify-between border-b border-border pb-3">
+                                <span class="text-xs text-text-secondary">PDL</span>
+                                <span class="text-xs font-semibold text-primary-navy">Juan Dela Cruz</span>
+                            </div>
+
+                            <div class="flex items-center justify-between border-b border-border pb-3">
+                                <span class="text-xs text-text-secondary">Check-In</span>
+                                <span class="text-xs font-semibold text-primary-navy">8:52 AM</span>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-text-secondary">ID Status</span>
+                                <span class="text-xs font-semibold text-emerald-600">Surrendered</span>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-OUT STEP 2
+        ====================================================== --}}
+        <div id="checkout-step-2" class="checkout-step hidden">
+
+            <section class="mx-auto max-w-4xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="border-b border-border px-5 py-4">
+
+                    <h2 class="text-base font-semibold text-primary-navy">
+                        Active Visit Found
+                    </h2>
+
+                    <p class="mt-0.5 text-xs text-text-secondary">
+                        The system located the visitor's current active visit.
+                    </p>
+
+                </div>
+
+
+                <div class="p-5">
+
+                    <div class="rounded-lg border border-emerald-100 bg-emerald-50 p-4 mb-5">
+
+                        <div class="flex items-center justify-between gap-3">
+
+                            <div>
+
+                                <p class="text-sm font-bold text-primary-navy">
+                                    Maria Santos
+                                </p>
+
+                                <p class="mt-0.5 text-xs text-text-secondary">
+                                    VIS-00124
+                                </p>
+
+                            </div>
+
+                            <span class="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-[9px] font-semibold text-emerald-700">
+                                Currently Checked-In
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                        @foreach([
+                            ['Visitor Name', 'Maria Santos'],
+                            ['Visitor ID', 'VIS-00124'],
+                            ['PDL Name', 'Juan Dela Cruz'],
+                            ['PDL ID', 'PDL-00045'],
+                            ['Check-In Time', '8:52 AM'],
+                            ['Visit Type', 'Regular Visit'],
+                            ['ID Status', 'Surrendered'],
+                            ['Current Duration', '1 hour, 6 minutes']
+                        ] as $item)
+
+                            <div class="rounded-lg border border-border px-4 py-3">
+
+                                <p class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                    {{ $item[0] }}
+                                </p>
+
+                                <p class="mt-1 text-xs font-semibold text-text-primary">
+                                    {{ $item[1] }}
+                                </p>
+
+                            </div>
+
+                        @endforeach
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(1)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(3)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Proceed to ID Return →
+                </button>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-OUT STEP 3
+        ====================================================== --}}
+        <div id="checkout-step-3" class="checkout-step hidden">
+
+            <section class="mx-auto max-w-3xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="border-b border-border px-5 py-4">
+
+                    <h2 class="text-base font-semibold text-primary-navy">
+                        ID Return Confirmation
+                    </h2>
+
+                    <p class="mt-0.5 text-xs text-text-secondary">
+                        Confirm that the visitor's registered identification card has been returned.
+                    </p>
+
+                </div>
+
+
+                <div class="p-5">
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                ID Type
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Philippine National ID
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                ID Number
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                ********4821
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Registered Name
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Maria Santos
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label class="text-[9px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Returned To
+                            </label>
+
+                            <div class="mt-1.5 flex min-h-[42px] items-center rounded-lg border border-border bg-slate-50 px-3 text-xs text-text-primary">
+                                Maria Santos
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    <label class="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-white p-4">
+
+                        <input
+                            id="checkout-id-confirmed"
+                            type="checkbox"
+                            class="mt-0.5 h-4 w-4 rounded border-border text-blue-600 focus:ring-blue-500"
+                            checked>
+
+                        <span>
+
+                            <span class="block text-xs font-semibold text-text-primary">
+                                ID has been returned to the visitor.
+                            </span>
+
+                            <span class="mt-0.5 block text-[10px] text-text-secondary">
+                                Confirm only after physically returning the registered ID.
+                            </span>
+
+                        </span>
+
+                    </label>
+
+                </div>
+
+            </section>
+
+
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(2)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(4)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Next →
+                </button>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-OUT STEP 4
+        ====================================================== --}}
+        <div id="checkout-step-4" class="checkout-step hidden">
+
+            <section class="mx-auto max-w-4xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="border-b border-border px-5 py-4">
+
+                    <h2 class="text-base font-semibold text-primary-navy">
+                        Confirm Visitor Check-Out
+                    </h2>
+
+                    <p class="mt-0.5 text-xs text-text-secondary">
+                        Review the visit details before completing the check-out.
+                    </p>
+
+                </div>
+
+
+                <div class="p-5">
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-[180px_minmax(0,1fr)]">
+
+                        <div class="flex flex-col items-center justify-center rounded-lg border border-border bg-slate-50 p-5 text-center">
+
+                            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-primary-navy">
+                                MS
+                            </div>
+
+                            <p class="mt-3 text-sm font-bold text-primary-navy">
+                                Maria Santos
+                            </p>
+
+                            <span class="mt-1 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-600">
+                                Active Visit
+                            </span>
+
+                        </div>
+
+
+                        <div class="space-y-3">
+
+                            @foreach([
+                                ['Visitor ID', 'VIS-00124'],
+                                ['PDL Name', 'Juan Dela Cruz'],
+                                ['Check-In Time', '8:52 AM'],
+                                ['Current Time', '9:58 AM'],
+                                ['Visit Duration', '1 hour, 6 minutes'],
+                                ['Visit Type', 'Regular Visit'],
+                                ['ID Status', 'Returned'],
+                                ['Visit Status', 'Ready to Complete']
+                            ] as $item)
+
+                                <div class="flex flex-col gap-1 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+
+                                    <span class="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                        {{ $item[0] }}
+                                    </span>
+
+                                    <span class="text-xs font-semibold text-text-primary">
+                                        {{ $item[1] }}
+                                    </span>
+
+                                </div>
+
+                            @endforeach
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mt-5 rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+
+                        <div class="flex items-center gap-3">
+
+                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <path d="m5 12 4 4L19 6"/>
+                                </svg>
+
+                            </span>
+
+                            <div>
+
+                                <p class="text-xs font-semibold text-emerald-700">
+                                    All check-out requirements have been completed.
+                                </p>
+
+                                <p class="text-[10px] text-emerald-600">
+                                    The visitor is ready to be checked out.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(3)"
+                    class="min-h-[42px] rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                    Back
+                </button>
+
+                <button
+                    type="button"
+                    onclick="goToCheckoutStep(5)"
+                    class="min-h-[42px] rounded-lg bg-primary-navy px-6 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                    Confirm Check-Out →
+                </button>
+
+            </div>
+
+        </div>
+
+
+        {{-- =====================================================
+            CHECK-OUT STEP 5
+        ====================================================== --}}
+        <div id="checkout-step-5" class="checkout-step hidden">
+
+            <section class="mx-auto max-w-xl rounded-xl border border-border bg-white shadow-sm">
+
+                <div class="p-7 text-center sm:p-9">
+
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+
+                        <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="m5 12 4 4L19 6"/>
+                        </svg>
+
+                    </div>
+
+                    <h2 class="mt-5 text-lg font-bold text-primary-navy">
+                        Check-Out Successful
+                    </h2>
+
+                    <p class="mt-1 text-xs text-text-secondary">
+                        Maria Santos has been successfully checked out.
+                    </p>
+
+
+                    <div class="mt-6 rounded-lg border border-border bg-slate-50 p-4 text-left">
+
+                        @foreach([
+                            ['Visitor Name', 'Maria Santos'],
+                            ['PDL Name', 'Juan Dela Cruz'],
+                            ['Check-In Time', '8:52 AM'],
+                            ['Check-Out Time', '9:58 AM'],
+                            ['Visit Duration', '1 hour, 6 minutes'],
+                            ['ID Status', 'Returned'],
+                            ['Visit Status', 'Completed']
+                        ] as $item)
+
+                            <div class="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+
+                                <span class="text-[10px] text-text-secondary">
+                                    {{ $item[0] }}
+                                </span>
+
+                                <span class="text-xs font-semibold text-text-primary">
+                                    {{ $item[1] }}
+                                </span>
+
+                            </div>
+
+                        @endforeach
+
+                    </div>
+
+
+                    <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+
+                        <button
+                            type="button"
+                            onclick="resetCheckout()"
+                            class="min-h-[42px] flex-1 rounded-lg border border-border bg-white px-5 py-2.5 text-xs font-semibold text-text-primary hover:bg-slate-50">
+                            Scan Another Visitor
+                        </button>
+
+                        <button
+                            type="button"
+                            onclick="switchMode('checkin')"
+                            class="min-h-[42px] flex-1 rounded-lg bg-primary-navy px-5 py-2.5 text-xs font-semibold text-white hover:opacity-90">
+                            Go to Check-In
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+{{-- =============================================================
+    LIVE DATE + TIME
+============================================================= --}}
+<script>
+
+    function updateFrontDeskDateTime() {
+
+        const now = new Date();
+
+        const dateElement = document.getElementById('current-date');
+        const timeElement = document.getElementById('current-time');
+
+        if (!dateElement || !timeElement) return;
+
+        dateElement.textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        timeElement.textContent = now.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+    }
+
+    updateFrontDeskDateTime();
+
+    setInterval(updateFrontDeskDateTime, 1000);
+
+
+    /* =========================================================
+       MODE SWITCH
+    ========================================================== */
+
+    function switchMode(mode) {
+
+        const checkinProcess = document.getElementById('checkin-process');
+        const checkoutProcess = document.getElementById('checkout-process');
+
+        const checkinTab = document.getElementById('checkin-tab');
+        const checkoutTab = document.getElementById('checkout-tab');
+
+        if (mode === 'checkin') {
+
+            checkinProcess.classList.remove('hidden');
+            checkoutProcess.classList.add('hidden');
+
+            checkinTab.classList.add('bg-primary-navy', 'text-white');
+            checkinTab.classList.remove('text-text-secondary');
+
+            checkoutTab.classList.remove('bg-primary-navy', 'text-white');
+            checkoutTab.classList.add('text-text-secondary');
+
+        } else {
+
+            checkinProcess.classList.add('hidden');
+            checkoutProcess.classList.remove('hidden');
+
+            checkoutTab.classList.add('bg-primary-navy', 'text-white');
+            checkoutTab.classList.remove('text-text-secondary');
+
+            checkinTab.classList.remove('bg-primary-navy', 'text-white');
+            checkinTab.classList.add('text-text-secondary');
+
+        }
+
+    }
+
+
+    /* =========================================================
+       CHECK-IN PROCESS
+    ========================================================== */
+
+    function goToCheckinStep(step) {
+
+        document.querySelectorAll('.checkin-step').forEach(function(element) {
+            element.classList.add('hidden');
+        });
+
+        const target = document.getElementById('checkin-step-' + step);
+
+        if (target) {
+            target.classList.remove('hidden');
+        }
+
+        updateCheckinProgress(step);
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+
+    }
+
+
+    function updateCheckinProgress(activeStep) {
+
+        for (let i = 1; i <= 5; i++) {
+
+            const circle = document.getElementById('checkin-progress-' + i);
+
+            if (!circle) continue;
+
+            if (i <= activeStep) {
+
+                circle.classList.remove(
+                    'bg-blue-100',
+                    'text-blue-600'
+                );
+
+                circle.classList.add(
+                    'bg-blue-600',
+                    'text-white'
+                );
+
+            } else {
+
+                circle.classList.remove(
+                    'bg-blue-600',
+                    'text-white'
+                );
+
+                circle.classList.add(
+                    'bg-blue-100',
+                    'text-blue-600'
+                );
+
+            }
+
+        }
+
+    }
+
+
+    function simulateCheckinScan() {
+
+        const button = event.currentTarget;
+
+        button.disabled = true;
+
+        button.innerHTML = `
+            <svg class="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25"/>
+                <path d="M21 12a9 9 0 0 1-9 9" stroke="currentColor" stroke-width="3"/>
+            </svg>
+            Scanning...
+        `;
+
+        setTimeout(function() {
+
+            button.disabled = false;
+
+            button.innerHTML = `
+                <svg class="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"/>
+                </svg>
+                Scan QR Code
+            `;
+
+            goToCheckinStep(2);
+
+        }, 700);
+
+    }
+
+
+    function resetCheckin() {
+
+        goToCheckinStep(1);
+
+    }
+
+
+    /* =========================================================
+       CHECK-OUT PROCESS
+    ========================================================== */
+
+    function goToCheckoutStep(step) {
+
+        document.querySelectorAll('.checkout-step').forEach(function(element) {
+            element.classList.add('hidden');
+        });
+
+        const target = document.getElementById('checkout-step-' + step);
+
+        if (target) {
+            target.classList.remove('hidden');
+        }
+
+        updateCheckoutProgress(step);
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+
+    }
+
+
+    function updateCheckoutProgress(activeStep) {
+
+        for (let i = 1; i <= 5; i++) {
+
+            const circle = document.getElementById('checkout-progress-' + i);
+
+            if (!circle) continue;
+
+            if (i <= activeStep) {
+
+                circle.classList.remove(
+                    'bg-blue-100',
+                    'text-blue-600'
+                );
+
+                circle.classList.add(
+                    'bg-blue-600',
+                    'text-white'
+                );
+
+            } else {
+
+                circle.classList.remove(
+                    'bg-blue-600',
+                    'text-white'
+                );
+
+                circle.classList.add(
+                    'bg-blue-100',
+                    'text-blue-600'
+                );
+
+            }
+
+        }
+
+    }
+
+
+    function resetCheckout() {
+
+        goToCheckoutStep(1);
+
+    }
+
+
+    /* =========================================================
+       INITIAL STATE
+    ========================================================== */
+
+    document.addEventListener('DOMContentLoaded', function() {
+
+        switchMode('checkin');
+
+        goToCheckinStep(1);
+
+        goToCheckoutStep(1);
+
+    });
+
+</script>
 
 @endsection
