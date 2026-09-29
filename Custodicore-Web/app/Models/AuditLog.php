@@ -20,9 +20,19 @@ class AuditLog extends Model
         'record_id',
         'description',
         'ip_address',
+        'created_at',
     ];
 
     const CREATED_AT = 'created_at';
+
+    // timestamps=false means Laravel won't auto-cast created_at; without this,
+    // Admin\AuditController's $log->created_at->format(...) fails on a string.
+    protected function casts(): array
+    {
+        return [
+            'created_at' => 'datetime',
+        ];
+    }
 
     /**
      * Cached module_code -> module_id lookups for this request. Fixed from

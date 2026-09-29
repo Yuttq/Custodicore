@@ -39,6 +39,15 @@ class Account extends Authenticatable
 
     protected $hidden = ['password_hash'];
 
+    // last_login_at is a custom timestamp column (not created_at/updated_at),
+    // so it must be cast or Admin\UserController's ->format() fails on a string.
+    protected function casts(): array
+    {
+        return [
+            'last_login_at' => 'datetime',
+        ];
+    }
+
     public function getAuthPassword()
     {
         return $this->password_hash;

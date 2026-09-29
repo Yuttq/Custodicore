@@ -43,25 +43,16 @@
       <div class="sidebar-footer">
         <div class="avatar">👤</div>
         <div class="who">
-          {{--
-            CONFIRMED GAP: auth()->user() currently returns Laravel's
-            default User model (the `users` table), which has no `role` or
-            display-name relationship at all — that lives on
-            accounts/staff_profiles instead, and nothing connects the two
-            yet (see the comment on App\Models\User and PdlController's
-            currentStaffId()). This will just silently show the fallback
-            text below until real auth is wired to accounts/staff_profiles.
-          --}}
-          <div class="name">{{ auth()->user()->name ?? 'Officer' }}</div>
-          <div class="role">Records Officer</div>
+          <div class="name">{{ auth()->user()?->displayName() ?? 'Officer' }}</div>
+          <div class="role">{{ auth()->user()?->role?->role_name ?? 'Records Officer' }}</div>
         </div>
-        {{--
-          NOTE: no login/logout system exists in this project yet — no
-          Breeze/Jetstream, no `logout` route. This is a placeholder until
-          real auth is built (same gap as everywhere else auth is involved).
-        --}}
-        <a href="#" class="logout" title="Log out (not wired up yet)">⏻</a>
       </div>
+      <form method="POST" action="{{ route('logout') }}" style="margin:0;">
+        @csrf
+        <button type="submit" class="support-link" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font:inherit;color:inherit;">
+          ⏻ Sign out
+        </button>
+      </form>
     </div>
   </aside>
 

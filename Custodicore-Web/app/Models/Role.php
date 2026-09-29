@@ -18,4 +18,9 @@ class Role extends Model
     {
         return $this->hasMany(Account::class, 'role_id');
     }
+
+    public function rolePermissions()
+    {
+        return $this->hasMany(RolePermission::class, 'role_id', 'role_id');
+    }
 }

@@ -1,0 +1,50 @@
+**Custodicore UI Guidelines**
+
+You can still freely improve and change the UI of your respective module. The goal is not for every page to look exactly the same. We just need to keep a common Custodicore visual style across Mobile and Web.
+
+Please follow these shared UI references when making changes:
+
+**Colors**
+
+* Navy `#0F3D7A` → branding, navigation, headers
+* Teal `#0DA58A` → primary actions/buttons
+* Green `#16A34A` → success/confirmed
+* Amber `#F59E0B` → pending/warning
+* Red `#EF4444` → errors/danger/cancelled
+* Blue `#2563EB` → information
+* Background `#F8FAFC`
+* Card `#FFFFFF`
+* Border `#E5E7EB`
+* Primary text `#111827`
+* Secondary text `#6B7280`
+
+**General style**
+
+* Keep the interface clean and simple.
+* Cards: around `16px` radius.
+* Buttons and inputs: around `12px` radius.
+* Status badges: pill-shaped.
+* Use consistent spacing such as `8px`, `16px`, `24px`, and `32px`.
+* Prefer `48px` height for main buttons and form inputs.
+* Keep typography clear with a visible heading/body hierarchy.
+* Avoid introducing random colors that conflict with the shared color meanings.
+
+**Status colors**
+
+* Confirmed/Success = Green
+* Pending/Warning = Amber
+* Cancelled/Error = Red
+* Information = Blue
+
+**Important**
+You do NOT have to copy the Mobile layout.
+
+Web modules can keep their own desktop layout, sidebar, tables, dashboards, etc. Mobile can keep its own mobile navigation and screen structure.
+
+What should be consistent is the **design language**, especially colors, typography, spacing, buttons, cards, forms, and status indicators.
+
+So feel free to modify your module's UI as needed. Just use these guidelines as the common Custodicore reference so the different modules still feel like one system.
+
+**Main rule:**
+
+> Same design language, different module layout.
