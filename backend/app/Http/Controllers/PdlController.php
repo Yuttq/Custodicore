@@ -50,7 +50,7 @@ class PdlController extends Controller
     private function logAudit(string $actionType, string $recordType, int $recordId, string $description): void
     {
         try {
-            AuditLog::record($actionType, $recordType, $recordId, $description);
+            AuditLog::record($actionType, $recordType, $recordId, $description, \App\Models\Module::CODE_PDL_MANAGEMENT);
         } catch (\Throwable $e) {
             Log::warning('Audit log write failed (main action still succeeded): ' . $e->getMessage(), [
                 'action_type' => $actionType,

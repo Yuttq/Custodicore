@@ -9,6 +9,8 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VisitorController;
 
+use App\Http\Controllers\Auth\LoginController;
+
 use App\Http\Controllers\CustodyHistoryController;
 use App\Http\Controllers\VisitationTrackingController;
 use App\Http\Controllers\EligibilityController;
@@ -20,6 +22,39 @@ use App\Http\Controllers\FrontDesk\VisitorLookupController;
 use App\Http\Controllers\FrontDesk\SettingsController as FrontDeskSettingsController;
 
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Auth
+|--------------------------------------------------------------------------
+| Session login shared by the three staff dashboards below (Warden/Admin,
+| Record Officer, Front Desk Officer) — see App\Http\Controllers\Auth\
+| LoginController. Visitor accounts are mobile-app only (Sanctum, see
+| routes/api.php) and are refused here even though they share the same
+| `accounts` table.
+*/
+
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [LoginController::class, 'login'])->name('login.attempt');
+});
+
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
+
+// The "home" page: sends a logged-in officer straight to their own
+// dashboard, and anyone else to sign in first.
+Route::get('/', function () {
+    if (! auth()->check()) {
+        return redirect()->route('login');
+    }
+
+    return match (auth()->user()->role?->role_name) {
+        'System Administrator/Warden' => redirect()->route('admin.dashboard'),
+        'Record Officer' => redirect()->route('dashboard'),
+        'Front Desk Officer' => redirect()->route('frontdesk.dashboard'),
+        default => redirect()->route('login')->with('status', 'This account type has no web dashboard — use the mobile app instead.'),
+    };
+})->name('home');
 
 /*
 |--------------------------------------------------------------------------
@@ -35,9 +70,7 @@ use Illuminate\Support\Facades\Route;
 | once wired up.
 */
 
-Route::redirect('/', '/admin');
-
-Route::prefix('admin')->name('admin.')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:System Administrator/Warden'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
@@ -76,7 +109,17 @@ Route::prefix('admin')->name('admin.')->group(function () {
 | path directly in each route instead. CustodyHistoryController and
 | VisitationTrackingController don't collide with anything, so those two
 | get normal `use` imports up top as usual.
+|
+| NOTE ON VIEWS: these controllers render view('dashboard'), view('pdl.*'),
+| view('visitor.*'), view('eligibility.index'), view('custody-history') and
+| view('visitation-tracking') — none of those Blade templates exist yet
+| under resources/views (only admin/* and frontdesk/* do). That's a
+| pre-existing gap from before this pass, not something login/auth touches
+| — logging in as a Record Officer will hit a "view not found" error until
+| those templates are built.
 */
+
+Route::middleware(['auth', 'role:Record Officer'])->group(function () {
 
 Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
     ->name('dashboard');
@@ -160,6 +203,8 @@ Route::post('/eligibility/run/{visitRequest}', [EligibilityController::class, 's
 Route::post('/eligibility/{assessment}/review', [EligibilityController::class, 'review'])
     ->name('eligibility.review');
 
+});
+
 
 /*
 |--------------------------------------------------------------------------
@@ -169,13 +214,19 @@ Route::post('/eligibility/{assessment}/review', [EligibilityController::class, '
 | check-in/check-out, today's schedule and visitor lookup.
 */
 
-Route::prefix('front-desk')->name('frontdesk.')->group(function () {
+Route::prefix('front-desk')->name('frontdesk.')->middleware(['auth', 'role:Front Desk Officer'])->group(function () {
 
     Route::get('/', [FrontDeskDashboardController::class, 'index'])
         ->name('dashboard');
 
     Route::get('/checkin-checkout', [CheckinCheckoutController::class, 'index'])
         ->name('checkin-checkout');
+
+    Route::post('/checkin-checkout/{visitRequest}/check-in', [CheckinCheckoutController::class, 'checkIn'])
+        ->name('checkin-checkout.check-in');
+
+    Route::post('/checkin-checkout/{checkin}/check-out', [CheckinCheckoutController::class, 'checkOut'])
+        ->name('checkin-checkout.check-out');
 
     Route::get('/schedule', [FrontDeskScheduleController::class, 'index'])
         ->name('schedule');

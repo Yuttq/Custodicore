@@ -48,10 +48,20 @@ class VisitRequest extends Model
         return $this->hasOne(EligibilityAssessment::class, 'visit_request_id', 'visit_request_id');
     }
 
-    // NOTE: visit_schedules' columns haven't been inspected yet — this
-    // relationship will work (it's just an FK), but there's no VisitSchedule
-    // model with real fields yet if you need to display schedule details.
-    // public function schedule() { return $this->belongsTo(VisitSchedule::class, 'schedule_id'); }
+    public function schedule()
+    {
+        return $this->belongsTo(VisitSchedule::class, 'schedule_id', 'schedule_id');
+    }
+
+    public function qrCode()
+    {
+        return $this->hasOne(QrCode::class, 'visit_request_id', 'visit_request_id');
+    }
+
+    public function checkin()
+    {
+        return $this->hasOne(VisitCheckin::class, 'visit_request_id', 'visit_request_id');
+    }
 
     public function isPending(): bool
     {

@@ -3,26 +3,33 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Pdl;
 use Illuminate\View\View;
 
 /**
  * Module 1.2 PDL Management — read-only.
  *
- * PDL custody records are not created or edited from this admin
- * dashboard, so there is nothing here to register or modify — just the
- * current sample records for reference.
+ * PDL custody records are created/edited from the Records Officer module
+ * (see \App\Http\Controllers\PdlController), not from this admin dashboard
+ * — this just displays the same real pdl_profiles rows.
  */
 class PdlController extends Controller
 {
     public function index(): View
     {
-        $pdls = [
-            ['pdl_number' => 'PDL-0032', 'full_name' => 'Ramon G. Bautista', 'classification' => 'non_drug_related', 'cell_block' => 'Dorm 3', 'custody_status' => 'active', 'active_restrictions' => 0],
-            ['pdl_number' => 'PDL-0014', 'full_name' => 'Ellen M. Cruz', 'classification' => 'drug_related', 'cell_block' => 'Dorm 1', 'custody_status' => 'active', 'active_restrictions' => 1],
-            ['pdl_number' => 'PDL-0055', 'full_name' => 'Jerome S. Villareal', 'classification' => 'drug_related', 'cell_block' => 'Dorm 2', 'custody_status' => 'active', 'active_restrictions' => 0],
-            ['pdl_number' => 'PDL-0091', 'full_name' => 'Vicente A. Torres', 'classification' => 'non_drug_related', 'cell_block' => 'Dorm 4', 'custody_status' => 'transferred', 'active_restrictions' => 0],
-            ['pdl_number' => 'PDL-0102', 'full_name' => 'Bea L. Santiago', 'classification' => 'non_drug_related', 'cell_block' => 'Dorm 5 (F)', 'custody_status' => 'active', 'active_restrictions' => 2],
-        ];
+        $pdls = Pdl::query()
+            ->withCount(['restrictions as active_restrictions' => fn ($q) => $q->where('status', 'active')])
+            ->orderBy('pdl_number')
+            ->get()
+            ->map(fn ($pdl) => [
+                'pdl_number' => $pdl->pdl_number,
+                'full_name' => $pdl->full_name,
+                'classification' => $pdl->classification,
+                'cell_block' => $pdl->cell_block,
+                'custody_status' => $pdl->custody_status,
+                'active_restrictions' => $pdl->active_restrictions,
+            ])
+            ->all();
 
         $activeCustody = count(array_filter($pdls, fn ($p) => $p['custody_status'] === 'active'));
         $withRestrictions = count(array_filter($pdls, fn ($p) => $p['active_restrictions'] > 0));

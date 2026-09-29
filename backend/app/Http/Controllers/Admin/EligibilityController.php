@@ -3,24 +3,41 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\EligibilityAssessment;
+use App\Models\VisitorFlag;
 use Illuminate\View\View;
 
-/** Module 1.6 Visitor Eligibility Assessment — flagged / manual-review queue. */
+/** Module 1.6 Visitor Eligibility Assessment — read-only view here (the Records Officer module runs/reviews checks). */
 class EligibilityController extends Controller
 {
     public function index(): View
     {
-        $assessments = [
-            ['visitor' => 'Liza P. Aquino', 'pdl' => 'Jerome S. Villareal', 'identity_check' => 'pass', 'relationship_check' => 'requires_review', 'history_check' => 'clean', 'restriction_check' => 'no_restriction', 'overall_result' => 'flagged_for_review'],
-            ['visitor' => 'Dante R. Cabrera', 'pdl' => 'Vicente A. Torres', 'identity_check' => 'flagged', 'relationship_check' => 'requires_review', 'history_check' => 'clean', 'restriction_check' => 'no_restriction', 'overall_result' => 'flagged_for_review'],
-            ['visitor' => 'Fe M. Lopez', 'pdl' => 'Bea L. Santiago', 'identity_check' => 'pass', 'relationship_check' => 'pass', 'history_check' => 'has_prior_violations', 'restriction_check' => 'no_restriction', 'overall_result' => 'flagged_for_review'],
-            ['visitor' => 'Maria D. Santos', 'pdl' => 'Ramon G. Bautista', 'identity_check' => 'pass', 'relationship_check' => 'pass', 'history_check' => 'clean', 'restriction_check' => 'no_restriction', 'overall_result' => 'eligible'],
-        ];
+        $assessments = EligibilityAssessment::query()
+            ->with(['visitRequest.visitor', 'visitRequest.pdl'])
+            ->orderByDesc('assessed_at')
+            ->get()
+            ->map(fn ($a) => [
+                'visitor' => $a->visitRequest?->visitor?->full_name ?? '—',
+                'pdl' => $a->visitRequest?->pdl?->full_name ?? '—',
+                'identity_check' => $a->identity_check_result,
+                'relationship_check' => $a->relationship_check_result,
+                'history_check' => $a->history_check_result,
+                'restriction_check' => $a->pdl_restriction_check_result,
+                'overall_result' => $a->overall_result,
+            ])
+            ->all();
 
-        $visitorFlags = [
-            ['visitor' => 'Dante R. Cabrera', 'flag_type' => 'rule_violation', 'description' => 'Attempted to bring prohibited item during previous visit', 'status' => 'active'],
-            ['visitor' => 'Fe M. Lopez', 'flag_type' => 'denied_visit', 'description' => 'Denied entry on 2026-07-02 — expired ID', 'status' => 'resolved'],
-        ];
+        $visitorFlags = VisitorFlag::query()
+            ->with('visitor')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($f) => [
+                'visitor' => $f->visitor?->full_name ?? '—',
+                'flag_type' => $f->flag_type,
+                'description' => $f->description,
+                'status' => $f->status,
+            ])
+            ->all();
 
         $eligible = count(array_filter($assessments, fn ($a) => $a['overall_result'] === 'eligible'));
         $flagged = count(array_filter($assessments, fn ($a) => $a['overall_result'] === 'flagged_for_review'));

@@ -79,11 +79,17 @@
 
                     <div class="flex items-center gap-sm">
                         <div class="hidden text-right sm:block">
-                            <p class="text-body font-semibold leading-tight">Ana R. Domingo</p>
-                            <p class="text-status-label uppercase text-text-secondary">System Administrator / Warden</p>
+                            <p class="text-body font-semibold leading-tight">{{ auth()->user()->displayName() }}</p>
+                            <p class="text-status-label uppercase text-text-secondary">{{ auth()->user()->role?->role_name }}</p>
                         </div>
-                        @include('admin.partials.avatar', ['name' => 'Ana R. Domingo', 'size' => 'h-10 w-10', 'color' => 'bg-primary-navy'])
-                        @include('admin.partials.icon', ['name' => 'chevron-down', 'class' => 'h-4 w-4 text-text-secondary'])
+                        @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-10 w-10', 'color' => 'bg-primary-navy'])
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit" title="Sign out"
+                                    class="flex h-10 w-10 items-center justify-center rounded-chip border border-border text-text-secondary transition hover:bg-background">
+                                @include('admin.partials.icon', ['name' => 'logout', 'class' => 'h-4 w-4'])
+                            </button>
+                        </form>
                     </div>
                 </div>
             </header>

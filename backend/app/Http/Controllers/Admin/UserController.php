@@ -3,27 +3,35 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Support\AuditLog;
+use App\Models\Account;
+use App\Models\AuditLog;
+use App\Models\Module;
+use App\Models\Role;
+use App\Models\StaffProfile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
- * Module 1.1 User Management — accounts table (roles: System
- * Administrator/Warden, Record Officer, Front Desk Officer, Visitor).
+ * Module 1.1 User Management — real accounts + staff_profiles rows (the
+ * same tables the Records Officer and Front Desk modules' officers log
+ * into).
  *
  * The admin's only write access on this dashboard is here: registering a
  * new BJMP officer account, and updating an existing officer's details
  * when they request a change. PDL and Visitor data (see those modules)
  * are read-only from this dashboard.
  *
- * Data lives in the session only (no database yet): creating or updating
- * an account persists for as long as your browser session lasts, and
- * resets when the session expires.
+ * New accounts get the default password "password" (same as every
+ * DatabaseSeeder-seeded account) — there's no "send an invite email" flow
+ * built yet, so tell the new officer that password out of band.
  */
 class UserController extends Controller
 {
-    public const SESSION_KEY = 'users_rows';
+    private const ROLE_NAMES = ['System Administrator/Warden', 'Record Officer', 'Front Desk Officer'];
 
     public function index(): View
     {
@@ -44,96 +52,134 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'full_name' => ['required', 'string', 'max:120'],
-            'role_name' => ['required', 'in:System Administrator/Warden,Record Officer,Front Desk Officer'],
-            'email' => ['required', 'email', 'max:150'],
+            'role_name' => ['required', 'in:' . implode(',', self::ROLE_NAMES)],
+            'email' => ['required', 'email', 'max:150', 'unique:accounts,email'],
         ]);
 
-        $accounts = self::rows();
-        $nextId = self::nextId($accounts);
+        DB::transaction(function () use ($data) {
+            $role = Role::where('role_name', $data['role_name'])->firstOrFail();
+            $username = $this->uniqueUsername($data['email']);
 
-        $accounts[] = [
-            'id' => $nextId,
-            'employee_number' => 'EMP-' . str_pad((string) (100 + $nextId), 3, '0', STR_PAD_LEFT),
-            'full_name' => $data['full_name'],
-            'role_name' => $data['role_name'],
-            'email' => $data['email'],
-            'status' => 'active',
-            'last_login_at' => 'Never',
-        ];
+            $account = Account::create([
+                'role_id' => $role->role_id,
+                'username' => $username,
+                'email' => $data['email'],
+                'password_hash' => Hash::make('password'),
+                'status' => 'active',
+            ]);
 
-        session([self::SESSION_KEY => $accounts]);
+            StaffProfile::create([
+                'account_id' => $account->account_id,
+                'employee_number' => $this->nextEmployeeNumber(),
+                'full_name' => $data['full_name'],
+                'position' => $data['role_name'],
+                'assigned_facility' => 'BJMP Facility — Main',
+            ]);
 
-        AuditLog::record('create', 'User Management', "Registered BJMP officer account for {$data['full_name']} ({$data['role_name']})");
+            AuditLog::record(
+                'create',
+                'accounts',
+                $account->account_id,
+                "Registered BJMP officer account for {$data['full_name']} ({$data['role_name']})",
+                Module::CODE_USER_MANAGEMENT
+            );
+        });
 
-        return redirect()->route('admin.users.index')->with('status', "Account created for {$data['full_name']}.");
+        return redirect()->route('admin.users.index')->with('status', "Account created for {$data['full_name']}. Default password: password");
     }
 
     public function update(Request $request, int $id): RedirectResponse
     {
         $data = $request->validate([
             'full_name' => ['required', 'string', 'max:120'],
-            'role_name' => ['required', 'in:System Administrator/Warden,Record Officer,Front Desk Officer'],
-            'email' => ['required', 'email', 'max:150'],
+            'role_name' => ['required', 'in:' . implode(',', self::ROLE_NAMES)],
+            'email' => ['required', 'email', 'max:150', 'unique:accounts,email,' . $id . ',account_id'],
         ]);
 
-        $accounts = self::rows();
+        $account = Account::findOrFail($id);
 
-        foreach ($accounts as &$account) {
-            if ($account['id'] === $id) {
-                $account['full_name'] = $data['full_name'];
-                $account['role_name'] = $data['role_name'];
-                $account['email'] = $data['email'];
-                AuditLog::record('update', 'User Management', "Updated account details for {$data['full_name']} (requested update)");
-                break;
+        DB::transaction(function () use ($account, $data) {
+            $role = Role::where('role_name', $data['role_name'])->firstOrFail();
+
+            $account->update(['email' => $data['email'], 'role_id' => $role->role_id]);
+
+            if ($account->staffProfile) {
+                $account->staffProfile->update(['full_name' => $data['full_name'], 'position' => $data['role_name']]);
+            } else {
+                StaffProfile::create([
+                    'account_id' => $account->account_id,
+                    'employee_number' => $this->nextEmployeeNumber(),
+                    'full_name' => $data['full_name'],
+                    'position' => $data['role_name'],
+                ]);
             }
-        }
-        unset($account);
 
-        session([self::SESSION_KEY => $accounts]);
+            AuditLog::record(
+                'update',
+                'accounts',
+                $account->account_id,
+                "Updated account details for {$data['full_name']} (requested update)",
+                Module::CODE_USER_MANAGEMENT
+            );
+        });
 
         return redirect()->route('admin.users.index')->with('status', "Updated {$data['full_name']}'s account.");
     }
 
     public function toggleStatus(int $id): RedirectResponse
     {
-        $accounts = self::rows();
+        $account = Account::with('staffProfile')->findOrFail($id);
 
-        foreach ($accounts as &$account) {
-            if ($account['id'] === $id) {
-                $account['status'] = $account['status'] === 'active' ? 'inactive' : 'active';
-                AuditLog::record('update', 'User Management', "Set {$account['full_name']}'s account to {$account['status']}");
-                break;
-            }
-        }
-        unset($account);
+        $account->status = $account->status === 'active' ? 'inactive' : 'active';
+        $account->save();
 
-        session([self::SESSION_KEY => $accounts]);
+        AuditLog::record(
+            'update',
+            'accounts',
+            $account->account_id,
+            "Set {$account->displayName()}'s account to {$account->status}",
+            Module::CODE_USER_MANAGEMENT
+        );
 
         return redirect()->route('admin.users.index')->with('status', 'Account status updated.');
     }
 
-    public static function rows(): array
+    private static function rows(): array
     {
-        if (! session()->has(self::SESSION_KEY)) {
-            session([self::SESSION_KEY => self::defaultRows()]);
+        return Account::query()
+            ->with(['role', 'staffProfile'])
+            ->whereHas('role', fn ($q) => $q->whereIn('role_name', self::ROLE_NAMES))
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn ($account) => [
+                'id' => $account->account_id,
+                'employee_number' => $account->staffProfile?->employee_number ?? '—',
+                'full_name' => $account->displayName(),
+                'role_name' => $account->role?->role_name ?? '—',
+                'email' => $account->email,
+                'status' => $account->status,
+                'last_login_at' => $account->last_login_at?->format('Y-m-d H:i') ?? 'Never',
+            ])
+            ->all();
+    }
+
+    private function nextEmployeeNumber(): string
+    {
+        $maxId = StaffProfile::max('staff_id') ?? 0;
+
+        return 'EMP-' . str_pad((string) ($maxId + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    private function uniqueUsername(string $email): string
+    {
+        $base = Str::before($email, '@');
+        $username = $base;
+        $suffix = 1;
+
+        while (Account::where('username', $username)->exists()) {
+            $username = $base . $suffix++;
         }
 
-        return session(self::SESSION_KEY);
-    }
-
-    private static function nextId(array $rows): int
-    {
-        return $rows === [] ? 1 : max(array_column($rows, 'id')) + 1;
-    }
-
-    private static function defaultRows(): array
-    {
-        return [
-            ['id' => 1, 'employee_number' => 'EMP-001', 'full_name' => 'Warden Ana R. Domingo', 'role_name' => 'System Administrator/Warden', 'email' => 'a.domingo@bjmp.gov.ph', 'status' => 'active', 'last_login_at' => '2026-09-22 07:58'],
-            ['id' => 2, 'employee_number' => 'EMP-014', 'full_name' => 'Rico P. Salcedo', 'role_name' => 'Record Officer', 'email' => 'r.salcedo@bjmp.gov.ph', 'status' => 'active', 'last_login_at' => '2026-09-22 08:02'],
-            ['id' => 3, 'employee_number' => 'EMP-022', 'full_name' => 'Grace T. Manalo', 'role_name' => 'Record Officer', 'email' => 'g.manalo@bjmp.gov.ph', 'status' => 'active', 'last_login_at' => '2026-09-21 17:40'],
-            ['id' => 4, 'employee_number' => 'EMP-031', 'full_name' => 'Noel D. Fernandez', 'role_name' => 'Front Desk Officer', 'email' => 'n.fernandez@bjmp.gov.ph', 'status' => 'active', 'last_login_at' => '2026-09-22 09:00'],
-            ['id' => 5, 'employee_number' => 'EMP-037', 'full_name' => 'Jhoana C. Reyes', 'role_name' => 'Front Desk Officer', 'email' => 'j.reyes@bjmp.gov.ph', 'status' => 'inactive', 'last_login_at' => '2026-08-30 15:11'],
-        ];
+        return $username;
     }
 }

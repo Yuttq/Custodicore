@@ -32,7 +32,7 @@ class VisitorController extends Controller
     private function logAudit(string $actionType, string $recordType, int $recordId, string $description): void
     {
         try {
-            AuditLog::record($actionType, $recordType, $recordId, $description);
+            AuditLog::record($actionType, $recordType, $recordId, $description, \App\Models\Module::CODE_VISITOR_MANAGEMENT);
         } catch (\Throwable $e) {
             Log::warning('Audit log write failed: ' . $e->getMessage());
         }

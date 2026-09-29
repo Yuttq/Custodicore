@@ -3,26 +3,47 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Module;
+use App\Models\Role;
+use App\Models\SystemSetting;
 use Illuminate\View\View;
 
-/** System settings + the role -> module access matrix (Module 1.1). */
+/** System settings + the role -> module access matrix (Module 1.1) — both real tables now. */
 class SettingsController extends Controller
 {
     public function index(): View
     {
-        $settings = [
-            ['key' => 'visit.max_per_week', 'value' => '2', 'description' => 'Maximum visits a single visitor may attend per week'],
-            ['key' => 'visit.confirmation_window_hours', 'value' => '48', 'description' => 'Hours a visitor has to confirm an assigned schedule'],
-            ['key' => 'qr.expiry_minutes', 'value' => '180', 'description' => 'Minutes a generated QR code stays valid'],
-            ['key' => 'schedule.slot_capacity_default', 'value' => '30', 'description' => 'Default visitor capacity per time slot'],
-        ];
+        $settings = SystemSetting::query()
+            ->orderBy('setting_key')
+            ->get()
+            ->map(fn ($s) => [
+                'key' => $s->setting_key,
+                'value' => $s->setting_value,
+                'description' => $s->description(),
+            ])
+            ->all();
 
-        $roles = [
-            ['role_name' => 'System Administrator/Warden', 'access' => 'Full access — every module'],
-            ['role_name' => 'Record Officer', 'access' => 'PDL, Visitor, Scheduling, Eligibility (view/create/edit); Audit & Reporting (view only)'],
-            ['role_name' => 'Front Desk Officer', 'access' => 'Scheduling (view only); QR Check-In/Out (view/create/edit)'],
-            ['role_name' => 'Visitor', 'access' => 'Own profile, own schedules and QR (mobile app only)'],
-        ];
+        $roles = Role::with(['rolePermissions.module'])->orderBy('role_id')->get()->map(function ($role) {
+            if ($role->role_name === 'Visitor') {
+                return ['role_name' => $role->role_name, 'access' => 'Own profile, own schedules and QR (mobile app only)'];
+            }
+
+            $full = $role->rolePermissions->filter(fn ($p) => $p->can_create || $p->can_edit)->pluck('module.module_name')->filter()->all();
+            $viewOnly = $role->rolePermissions->filter(fn ($p) => $p->can_view && ! $p->can_create && ! $p->can_edit)->pluck('module.module_name')->filter()->all();
+
+            $parts = [];
+            if ($full) {
+                $parts[] = implode(', ', $full) . ' (view/create/edit)';
+            }
+            if ($viewOnly) {
+                $parts[] = implode(', ', $viewOnly) . ' (view only)';
+            }
+
+            return [
+                'role_name' => $role->role_name,
+                'access' => $parts ? implode('; ', $parts) : 'No module access configured yet',
+            ];
+        })->all();
 
         $summary = [
             ['label' => 'Configured Settings', 'value' => (string) count($settings), 'icon' => 'cog', 'accent' => 'info'],
