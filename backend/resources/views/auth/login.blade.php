@@ -17,10 +17,7 @@
             </div>
 
             <div class="cc-card">
-                <h1 class="mb-xs text-card-title">Staff Sign In</h1>
-                <p class="mb-lg text-metadata text-text-secondary">
-                    For the Warden, Record Officer and Front Desk dashboards. Visitors, please use the CustodiCore mobile app instead.
-                </p>
+                <h1 class="mb-lg text-card-title">Staff Sign In</h1>
 
                 @if ($errors->any())
                     <div class="mb-md border-l-4 border-l-danger bg-danger/5 p-md rounded-sm">

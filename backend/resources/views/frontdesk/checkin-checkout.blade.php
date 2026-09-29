@@ -39,7 +39,8 @@
                             <p class="text-body font-semibold">{{ $checkin->visitRequest?->visitor?->full_name ?? '—' }}</p>
                             <p class="text-metadata text-text-secondary">In since {{ $checkin->check_in_time?->format('h:i A') }}</p>
                         </div>
-                        <form method="POST" action="{{ route('frontdesk.checkin-checkout.check-out', $checkin->checkin_id) }}">
+                        <form method="POST" action="{{ route('frontdesk.checkin-checkout.check-out', $checkin->checkin_id) }}"
+                              data-confirm="Check out {{ $checkin->visitRequest?->visitor?->full_name ?? 'this visitor' }} and complete the visit?">
                             @csrf
                             <button type="submit" class="cc-btn-secondary">Check Out</button>
                         </form>

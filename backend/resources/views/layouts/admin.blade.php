@@ -83,7 +83,7 @@
                             <p class="text-status-label uppercase text-text-secondary">{{ auth()->user()->role?->role_name }}</p>
                         </div>
                         @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-10 w-10', 'color' => 'bg-primary-navy'])
-                        <form method="POST" action="{{ route('logout') }}">
+                        <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">
                             @csrf
                             <button type="submit" title="Sign out"
                                     class="flex h-10 w-10 items-center justify-center rounded-chip border border-border text-text-secondary transition hover:bg-background">

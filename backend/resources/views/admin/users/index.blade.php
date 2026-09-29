@@ -56,7 +56,8 @@
                                     <button type="button" class="cc-btn-ghost" onclick="document.getElementById('edit-account-modal-{{ $account['id'] }}').showModal()">
                                         Edit
                                     </button>
-                                    <form method="POST" action="{{ route('admin.users.toggle-status', $account['id']) }}">
+                                    <form method="POST" action="{{ route('admin.users.toggle-status', $account['id']) }}"
+                                          data-confirm="{{ $account['status'] === 'active' ? 'Deactivate' : 'Activate' }} {{ $account['full_name'] }}'s account?">
                                         @csrf
                                         @method('PATCH')
                                         <button type="submit" class="cc-btn-ghost">

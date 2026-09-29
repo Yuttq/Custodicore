@@ -15,14 +15,34 @@ export default {
     ],
     theme: {
         extend: {
-            // 1:1 with src/designSystem/tokens/colors.js
+            // Trimmed to 2 brand hues (navy + teal) plus neutral gray/white
+            // so every page in the web app reads as one consistent product,
+            // instead of the 6-hue palette this used to be (navy, teal,
+            // green, amber, red, blue).
+            //
+            // The 4 semantic keys below (success/warning/danger/info) are
+            // KEPT — Blade views and controllers all over the app already
+            // reference them by name (`cc-chip-success`, `$stat['accent']
+            // => 'danger'`, etc.) and none of that had to change. Only the
+            // hex values changed, so status is now told apart by shade +
+            // the text label next to it, not by a separate hue:
+            //   success -> primary-teal exactly   (positive: active, verified, eligible, completed)
+            //   warning -> a lighter blue, same navy family (caution: pending, awaiting review)
+            //   danger  -> primary-navy exactly    (needs attention: inactive, rejected, restricted)
+            //   info    -> text-secondary exactly  (neutral/informational, no action needed)
+            //
+            // NOTE: this file was "1:1 with src/designSystem/tokens/colors.js"
+            // (the mobile app's own tokens) before this pass — that's no
+            // longer true after this trim. This pass covers the web app
+            // only; the mobile app's colors.js hasn't been touched, so the
+            // two are now out of sync until someone does the same pass there.
             colors: {
                 'primary-navy': '#0F3D7A',
                 'primary-teal': '#0DA58A',
-                success: '#16A34A',
-                warning: '#F59E0B',
-                danger: '#EF4444',
-                info: '#2563EB',
+                success: '#0DA58A',
+                warning: '#2563EB',
+                danger: '#0F3D7A',
+                info: '#6B7280',
                 background: '#F8FAFC',
                 card: '#FFFFFF',
                 border: '#E5E7EB',
