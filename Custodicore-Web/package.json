@@ -6,7 +6,8 @@
         "build": "vite build"
     },
     "dependencies": {
-        "chart.js": "^4.4.4"
+        "chart.js": "^4.4.4",
+        "html5-qrcode": "^2.3.8"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.20",

@@ -11,8 +11,12 @@ class VisitorId extends Model
     public $timestamps = false; // has uploaded_at instead
 
     const TYPES = [
-        'national_id', 'drivers_license', 'passport',
-        'voters_id', 'philhealth_id', 'umid',
+        'national_id',
+        'drivers_license',
+        'passport',
+        'voters_id',
+        'philhealth_id',
+        'umid',
     ];
 
     protected $fillable = [
@@ -21,6 +25,7 @@ class VisitorId extends Model
         'id_number',
         'file_path',
         'verification_status',
+        'reason',
         'verified_by',
         'verified_at',
     ];
@@ -32,16 +37,26 @@ class VisitorId extends Model
 
     public function visitor()
     {
-        return $this->belongsTo(VisitorProfile::class, 'visitor_id', 'visitor_id');
+        return $this->belongsTo(
+            VisitorProfile::class,
+            'visitor_id',
+            'visitor_id'
+        );
     }
 
     public function verifiedBy()
     {
-        return $this->belongsTo(StaffProfile::class, 'verified_by', 'staff_id');
+        return $this->belongsTo(
+            StaffProfile::class,
+            'verified_by',
+            'staff_id'
+        );
     }
 
     public function typeLabel(): string
     {
-        return ucwords(str_replace('_', ' ', $this->id_type));
+        return ucwords(
+            str_replace('_', ' ', $this->id_type)
+        );
     }
 }
