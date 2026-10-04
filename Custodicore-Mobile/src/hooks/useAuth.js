@@ -17,7 +17,9 @@ import client, {
   persistToken,
   register as apiRegister,
   TOKEN_KEY,
+  updateMe as apiUpdateMe,
 } from '../services/api';
+import { uploadGovernmentId } from '../repositories/verificationRepository';
 import {
   authenticateWithGoogle,
   GoogleSignInCancelledError,
@@ -82,6 +84,14 @@ function normalizeUser(raw) {
     fullName: raw.fullName ?? raw.full_name ?? null,
     role: raw.role ?? null,
     verificationStatus: raw.verificationStatus ?? raw.verification_status ?? null,
+    verifiedAt: raw.verifiedAt ?? null,
+    dateOfBirth: raw.dateOfBirth ?? null,
+    gender: raw.gender ?? null,
+    address: raw.address ?? null,
+    contactNumber: raw.contactNumber ?? null,
+    emergencyContactName: raw.emergencyContactName ?? null,
+    emergencyContactNumber: raw.emergencyContactNumber ?? null,
+    relationshipHint: raw.relationshipHint ?? null,
   };
 }
 
@@ -316,6 +326,29 @@ export function AuthProvider({ children }) {
           throw new Error('Registration succeeded but no session token was returned.');
         }
 
+        // The account exists now — upload the government ID picked during
+        // registration (POST /api/documents, stored as pending). Relationship
+        // documents can't be uploaded yet: staff must first link the visitor
+        // to a PDL. A failed upload does not undo registration; the visitor
+        // can retry from Verification Documents.
+        await persistToken(data.token);
+        const governmentId = payload?.documents?.government_id;
+        if (governmentId?.uri) {
+          try {
+            await uploadGovernmentId({
+              uri: governmentId.uri,
+              fileName: governmentId.fileName,
+              documentType: governmentId.idType,
+            });
+          } catch {
+            summary.documents = summary.documents.map((doc) =>
+              doc.label === 'Government ID'
+                ? { ...doc, detail: 'Upload failed — re-upload from Verification Documents' }
+                : doc,
+            );
+          }
+        }
+
         await AsyncStorage.setItem(REGISTRATION_SUMMARY_KEY, JSON.stringify(summary));
         setRegistrationSummary(summary);
 
@@ -329,6 +362,27 @@ export function AuthProvider({ children }) {
       }
     },
     [applySession],
+  );
+
+  /** Stores a fresh /me payload without touching token or pendingVerification. */
+  const storeUser = useCallback(async (rawUser) => {
+    const normalized = normalizeUser(rawUser);
+    if (!normalized) return null;
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(normalized));
+    setUser(normalized);
+    return normalized;
+  }, []);
+
+  /** Re-reads GET /api/me (profile + verification status). */
+  const refreshUser = useCallback(async () => {
+    if (USE_MOCK_AUTH || !token) return user;
+    return storeUser(await getMe());
+  }, [token, user, storeUser]);
+
+  /** PATCH /api/me with editable fields; returns the updated user. */
+  const updateProfile = useCallback(
+    async (fields) => storeUser(await apiUpdateMe(fields)),
+    [storeUser],
   );
 
   const completeVerificationReview = useCallback(async () => {
@@ -366,8 +420,12 @@ export function AuthProvider({ children }) {
       completeVerificationReview,
       logout,
       clearLocalSession,
+      refreshUser,
+      updateProfile,
     }),
     [
+      refreshUser,
+      updateProfile,
       token,
       user,
       initializing,

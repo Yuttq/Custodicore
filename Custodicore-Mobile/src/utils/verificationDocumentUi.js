@@ -56,6 +56,25 @@ export function getVerificationSummaryTitle(documents, overallStatus) {
 }
 
 /**
+ * Maps document status to StatusChip keys (Pending, Under Review, Verified, Rejected).
+ * @param {DocumentUploadStatus} uploadStatus
+ */
+export function documentWorkflowStatusToChip(uploadStatus) {
+  switch (uploadStatus) {
+    case 'uploaded':
+    case 'under_review':
+      return 'document_under_review';
+    case 'verified':
+      return 'document_verified';
+    case 'rejected':
+      return 'document_rejected';
+    case 'pending':
+    default:
+      return 'document_pending';
+  }
+}
+
+/**
  * @param {DocumentUploadStatus} uploadStatus
  */
 export function isDocumentVerified(uploadStatus) {

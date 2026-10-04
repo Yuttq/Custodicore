@@ -247,7 +247,12 @@ From comments in `routes/api.php`:
 
 | Method | Path |
 |--------|------|
+| `GET` | `/api/me` |
+| `PATCH` | `/api/me` |
+| `GET` | `/api/documents` |
 | `POST` | `/api/documents` |
+| `POST` | `/api/relationships/{relationship}/supporting-document` |
+| `GET` | `/api/visits` |
 | `GET` | `/api/visits/upcoming` |
 | `GET` | `/api/visits/history` |
 | `POST` | `/api/schedules/{visitRequest}/confirm` |

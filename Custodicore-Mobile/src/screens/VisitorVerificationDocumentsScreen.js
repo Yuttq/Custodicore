@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -10,15 +10,14 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { EmptyState } from '../components';
+import { EmptyState, LoadingSpinner } from '../components';
 import VerificationProgressCard from '../components/VerificationProgressCard';
-import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
-import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
+import useVisitorVerification from '../hooks/useVisitorVerification';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 
 /**
  * @param {object} props
- * @param {import('../mock/visitorVerificationDocuments.mock').MockVerificationDocument} props.document
+ * @param {import('../repositories/verificationRepository').VerificationDocument} props.document
  * @param {boolean} props.isLast
  * @param {() => void} props.onPress
  */
@@ -45,27 +44,17 @@ function DocumentCompactRow({ document: doc, isLast, onPress }) {
 }
 
 /**
- * Visitor verification documents — main document management screen (v2.1 / BJMP).
+ * Visitor verification documents — real statuses from GET /api/documents (v2.1 / BJMP).
  */
-export default function VisitorVerificationDocumentsScreen({ navigation, route }) {
-  const relationshipId =
-    route.params?.relationshipId ?? DEFAULT_LOCAL_PROFILE.relationshipToPdl ?? 'spouse';
-
-  const verification = useMemo(
-    () => getMockVisitorVerification(relationshipId),
-    [relationshipId],
-  );
-
-  const documents = verification.documents;
+export default function VisitorVerificationDocumentsScreen({ navigation }) {
+  const { verification, loading, error, reload } = useVisitorVerification();
+  const documents = verification?.documents ?? [];
 
   const openDocument = useCallback(
     (doc) => {
-      navigation.navigate('VerificationDocumentDetail', {
-        relationshipId,
-        documentKey: doc.key,
-      });
+      navigation.navigate('VerificationDocumentDetail', { documentKey: doc.key });
     },
-    [navigation, relationshipId],
+    [navigation],
   );
 
   return (
@@ -77,28 +66,39 @@ export default function VisitorVerificationDocumentsScreen({ navigation, route }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {documents.length === 0 ? (
+        {loading && !verification ? (
+          <LoadingSpinner message="Loading verification status…" compact />
+        ) : error && !verification ? (
           <EmptyState
-            title="No Documents Uploaded"
-            message="Upload required documents to begin verification."
+            title="Couldn't load documents"
+            message={error}
+            iconName="cloud-offline-outline"
+            iconColor={colors.danger}
+            emphasis="error"
+            style={styles.documentsEmpty}
+          >
+            <Button title="Retry" onPress={reload} accessibilityLabel="Retry loading documents" />
+          </EmptyState>
+        ) : documents.length === 0 ? (
+          <EmptyState
+            title="No Documents Required"
+            message="There are no verification documents to show right now."
             iconName="document-text-outline"
             iconColor={colors.primaryTeal}
             style={styles.documentsEmpty}
-          >
-            <Button
-              title="Upload Document"
-              onPress={() =>
-                navigation.navigate('UploadID', { relationshipId })
-              }
-              accessibilityLabel="Upload verification document"
-            />
-          </EmptyState>
+          />
         ) : (
           <>
             <VerificationProgressCard
               documents={documents}
               overallStatus={verification.verificationStatus}
             />
+
+            {documents.every((doc) => doc.uploadStatus === 'pending') ? (
+              <Text style={styles.noneSubmitted}>
+                No documents submitted yet. Upload them below to begin verification.
+              </Text>
+            ) : null}
 
             <Text style={styles.sectionEyebrow}>Required Documents</Text>
             <View style={styles.docList}>
@@ -123,6 +123,11 @@ const styles = StyleSheet.create({
     ...typography.sectionLabel,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+  },
+  noneSubmitted: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   documentsEmpty: {
     paddingVertical: spacing.md,

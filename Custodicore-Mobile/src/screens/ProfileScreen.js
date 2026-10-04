@@ -22,9 +22,12 @@ import {
 } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
 import { getMockFacilityContact } from '../mock/assignedVisits.mock';
-import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
 import { loadLocalProfile, persistLocalProfile } from '../services/localProfileStorage';
+import { getVerificationBadge } from '../utils/verificationStatusUi';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
+
+/** Only the profile photo is device-local — the backend has no photo field. */
+const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
 
 const MENU_ITEMS = [
   {
@@ -140,27 +143,33 @@ function MenuRow({ icon, label, destructive, isLast, onPress }) {
  * Visitor profile — account management (v2.1 / BJMP).
  */
 export default function ProfileScreen({ navigation }) {
-  const { logout, pendingVerification, registrationSummary, user } = useAuth();
-  const [profile, setProfile] = useState(DEFAULT_LOCAL_PROFILE);
+  const { logout, registrationSummary, user, refreshUser } = useAuth();
+  const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
+  const [profileError, setProfileError] = useState(/** @type {string | null} */ (null));
 
   const visitorName =
-    user?.fullName?.trim() ||
-    profile.fullName?.trim() ||
-    registrationSummary?.fullName?.trim() ||
-    DEFAULT_LOCAL_PROFILE.fullName;
-  const isVerified = !pendingVerification && profile.registrationStatus === 'approved';
+    user?.fullName?.trim() || registrationSummary?.fullName?.trim() || 'Visitor';
+  // Backend value (pending | verified | rejected) from GET /api/me is the source of truth.
+  const verificationBadge = getVerificationBadge(user?.verificationStatus);
   const tabBarInset = useTabBarScrollInset();
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      loadLocalProfile(DEFAULT_LOCAL_PROFILE).then((loaded) => {
+      loadLocalProfile(LOCAL_PHOTO_DEFAULTS).then((loaded) => {
         if (!cancelled) setProfile(loaded);
+      });
+      setProfileError(null);
+      refreshUser().catch((e) => {
+        // 401 clears the session globally; other failures keep the cached profile.
+        if (!cancelled && e?.status !== 401) {
+          setProfileError(e?.message || 'Could not refresh your profile.');
+        }
       });
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [refreshUser]),
   );
 
   const persistProfilePhoto = useCallback(async (photoUri) => {
@@ -223,9 +232,7 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
       if (key === 'documents') {
-        navigation.navigate('VisitorVerificationDocuments', {
-          relationshipId: profile.relationshipToPdl ?? 'spouse',
-        });
+        navigation.navigate('VisitorVerificationDocuments');
         return;
       }
       if (key === 'history') {
@@ -259,7 +266,7 @@ export default function ProfileScreen({ navigation }) {
         onLogout();
       }
     },
-    [navigation, profile.relationshipToPdl, onLogout],
+    [navigation, onLogout],
   );
 
   return (
@@ -280,16 +287,18 @@ export default function ProfileScreen({ navigation }) {
             onPress={onAvatarPress}
           />
           <Text style={styles.visitorName}>{visitorName}</Text>
+          {user?.email ? <Text style={styles.visitorEmail}>{user.email}</Text> : null}
           <View style={styles.badgeRow}>
-            {isVerified ? (
+            {verificationBadge.verified ? (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-circle" size={14} color={colors.success} />
                 <Text style={styles.verifiedBadgeText}>Verified Visitor</Text>
               </View>
             ) : (
-              <StatusChip status="pending_verification" label="Pending Verification" />
+              <StatusChip status={verificationBadge.chip} label={verificationBadge.label} />
             )}
           </View>
+          {profileError ? <Text style={styles.profileError}>{profileError}</Text> : null}
         </View>
 
         <Text style={styles.sectionHeading}>ACCOUNT</Text>
@@ -370,6 +379,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.sm,
+  },
+  visitorEmail: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  profileError: {
+    ...typography.metadata,
+    color: colors.danger,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
   badgeRow: {
     alignSelf: 'center',

@@ -186,8 +186,9 @@
       <button class="btn btn-blue" type="submit">Assign Visit →</button>
     </form>
 
-    <script type="application/json" id="schedulesByClassification">@json(
-      collect($schedulesByClassification ?? [])->map(function ($schedules) {
+    {{-- Built in a PHP block first: Blade's json directive cannot parse a multi-line closure argument. --}}
+    @php
+      $scheduleOptionsByClassification = collect($schedulesByClassification ?? [])->map(function ($schedules) {
         return $schedules->map(function ($s) {
           $date = $s->schedule_date?->format('M j, Y');
           $start = substr((string) $s->time_slot_start, 0, 5);
@@ -197,8 +198,9 @@
             'label' => "{$date} · {$start}–{$end} · {$s->capacityLabel()} open",
           ];
         })->values();
-      })
-    )</script>
+      });
+    @endphp
+    <script type="application/json" id="schedulesByClassification">@json($scheduleOptionsByClassification)</script>
     <script>
       (function () {
         const relationshipSelect = document.getElementById('relationshipSelect');

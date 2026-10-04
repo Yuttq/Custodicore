@@ -63,6 +63,10 @@ export function inferNotificationCategory(raw) {
     if (category === 'visits' || category === 'updates' || category === 'system') {
       return category;
     }
+    // Backend notification_type values are kept as-is (e.g. `visit_confirmed`);
+    // map visit-related types onto the Visits filter.
+    if (category.startsWith('visit')) return 'visits';
+    if (category.startsWith('verification') || category.startsWith('document')) return 'updates';
   }
   if (typeof raw.type === 'string') {
     const type = raw.type.toLowerCase();

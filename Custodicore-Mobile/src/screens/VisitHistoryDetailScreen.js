@@ -17,7 +17,7 @@ import { useVisits } from '../context/VisitsContext';
 import { goBackOr } from '../utils/safeNavigation';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
 
-/** @typedef {import('../mock/visitationHistory.mock').MOCK_VISITATION_HISTORY[number]} HistoryRecord */
+/** @typedef {ReturnType<typeof import('../utils/visitHistoryNormalize').normalizeVisitHistoryRecord>} HistoryRecord */
 
 function DetailField({ label, value }) {
   return (
@@ -37,20 +37,27 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
   const [record, setRecord] = useState(/** @type {HistoryRecord | null} */ (null));
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       setNotFound(false);
+      setLoadError(null);
       try {
         const data = await fetchVisitationHistory();
         if (cancelled) return;
-        const match = data.find((row) => row.id === visitId) ?? null;
+        const match = data.find((row) => String(row.id) === String(visitId)) ?? null;
         setRecord(match);
         setNotFound(!match);
-      } catch {
-        if (!cancelled) setNotFound(true);
+      } catch (e) {
+        if (!cancelled) {
+          setLoadError(
+            e instanceof Error && e.message.trim() ? e.message : 'Unable to load this visit record.',
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -58,7 +65,16 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
     return () => {
       cancelled = true;
     };
-  }, [visitId]);
+  }, [visitId, reloadKey]);
+
+  const onViewTimeline = useCallback(() => {
+    if (!record) return;
+    navigation.navigate('Timeline', {
+      scheduleId: record.id,
+      visitId: record.id,
+      visitStatus: record.status,
+    });
+  }, [navigation, record]);
 
   const canOpenVisitDetails = useMemo(
     () => record?.status === 'completed' && Boolean(record && getVisitById(record.id)),
@@ -79,6 +95,21 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
           <ActivityIndicator size="large" color={colors.primaryTeal} />
           <Text style={styles.loadingLabel}>Loading visit record…</Text>
         </View>
+      ) : loadError ? (
+        <EmptyState
+          title="Unable to load visit record"
+          message={loadError}
+          iconName="cloud-offline-outline"
+          iconColor={colors.danger}
+          emphasis="error"
+          style={styles.centered}
+        >
+          <Button
+            title="Retry"
+            onPress={() => setReloadKey((k) => k + 1)}
+            accessibilityLabel="Retry loading visit record"
+          />
+        </EmptyState>
       ) : notFound || !record ? (
         <EmptyState
           title="Visit Record Not Found"
@@ -115,9 +146,11 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
               <DetailField label="Visit Type" value={record.visitType} />
             ) : null}
 
-            {record.status === 'cancelled' && record.cancellationReason ? (
+            {record.status !== 'completed' && record.cancellationReason ? (
               <View style={styles.cancellationBox}>
-                <Text style={styles.cancellationTitle}>Cancellation Reason</Text>
+                <Text style={styles.cancellationTitle}>
+                  {record.status === 'declined' ? 'Decline Reason' : 'Cancellation Reason'}
+                </Text>
                 <Text style={styles.cancellationBody}>{record.cancellationReason}</Text>
               </View>
             ) : null}
@@ -129,6 +162,15 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
                 accessibilityLabel="Open full visit details"
               />
             ) : null}
+
+            <View style={canOpenVisitDetails ? styles.secondaryAction : null}>
+              <Button
+                title="View Visit Timeline"
+                variant="secondary"
+                onPress={onViewTimeline}
+                accessibilityLabel="View visit timeline"
+              />
+            </View>
           </Card>
         </ScrollView>
       )}
@@ -192,5 +234,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     lineHeight: 20,
+  },
+  secondaryAction: {
+    marginTop: spacing.sm,
   },
 });

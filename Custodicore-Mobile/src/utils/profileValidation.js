@@ -29,11 +29,14 @@ export function validateProfileFields(fields) {
     errors.fullName = 'Name cannot be empty';
   }
 
-  const email = String(fields.email ?? '').trim();
-  if (!email) {
-    errors.email = 'Email is required';
-  } else if (!isValidEmail(email)) {
-    errors.email = 'Enter a valid email address';
+  // Email is validated only when the caller edits it (it is read-only in Personal Information).
+  if (fields.email !== undefined) {
+    const email = String(fields.email ?? '').trim();
+    if (!email) {
+      errors.email = 'Email is required';
+    } else if (!isValidEmail(email)) {
+      errors.email = 'Enter a valid email address';
+    }
   }
 
   const phone = String(fields.phone ?? '').trim();

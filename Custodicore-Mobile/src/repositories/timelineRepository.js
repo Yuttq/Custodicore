@@ -2,24 +2,22 @@ import { USE_MOCK_TIMELINE } from '../mock/devFlags';
 import { mockNetworkDelay } from '../mock/mockDelay';
 import { getMockVisitTrackingTimeline } from '../mock/visitTrackingTimeline.mock';
 import * as api from '../services/api';
+import { normalizeTimelineResponse } from '../utils/visitProgressSnapshot';
 
 /**
- * Visit timeline data access: mock 11-step BJMP workflow or live API.
- * `TimelineScreen` should import from here only.
+ * Visit timeline data access: mock BJMP workflow or live API.
+ * Screens should use `useVisitTimeline` (or import from here), not `api` directly.
  *
- * @param {string} scheduleId
+ * @param {string} scheduleId — visit_requests.visit_request_id
  * @param {string | undefined} visitStatus
- * @returns {Promise<{ source: 'mock', steps: ReturnType<typeof getMockVisitTrackingTimeline> } | { source: 'api', data: unknown }>}
+ * @returns {Promise<import('../utils/visitProgressSnapshot').TimelineEvent[]>}
  */
 export async function fetchVisitTimeline(scheduleId, visitStatus) {
   if (USE_MOCK_TIMELINE) {
     await mockNetworkDelay(420);
-    return {
-      source: 'mock',
-      steps: getMockVisitTrackingTimeline(scheduleId, visitStatus),
-    };
+    return normalizeTimelineResponse(getMockVisitTrackingTimeline(scheduleId, visitStatus));
   }
 
   const data = await api.getTimeline(scheduleId);
-  return { source: 'api', data };
+  return normalizeTimelineResponse(data);
 }

@@ -72,7 +72,11 @@ function toRequestError(error) {
   if (isAxiosError(error)) {
     const status = error.response?.status;
     const body = error.response?.data;
-    let message = formatLaravelErrors(body);
+    // Never surface raw server exception text (Laravel debug messages) to visitors.
+    let message =
+      status >= 500
+        ? 'The server ran into a problem. Please try again in a moment.'
+        : formatLaravelErrors(body);
 
     if (!message) {
       if (status === 401) message = 'Your session has expired. Please sign in again.';
@@ -177,14 +181,65 @@ export async function logout() {
 }
 
 /**
- * Uploads an identification document (multipart body in production).
+ * Updates the visitor's own editable profile fields — PATCH /api/me
+ * @param {Record<string, unknown>} fields
+ */
+export async function updateMe(fields) {
+  try {
+    const { data } = await client.patch('/me', fields);
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/** Uploads can be slow on mobile data (files up to 10 MB). */
+const UPLOAD_TIMEOUT_MS = 90000;
+
+/**
+ * Uploads a government ID — POST /api/documents (multipart: documentType, file, idNumber?)
  * @param {FormData} formData
  */
 export async function uploadDocument(formData) {
   try {
     const { data } = await client.post('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: UPLOAD_TIMEOUT_MS,
     });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * The visitor's own government IDs and relationship document state — GET /api/documents
+ */
+export async function getDocuments() {
+  try {
+    const { data } = await client.get('/documents');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Uploads the supporting document for one of the visitor's own relationships —
+ * POST /api/relationships/{relationshipId}/supporting-document (multipart: file)
+ * @param {string} relationshipId
+ * @param {FormData} formData
+ */
+export async function uploadSupportingDocument(relationshipId, formData) {
+  try {
+    const { data } = await client.post(
+      `/relationships/${encodeURIComponent(relationshipId)}/supporting-document`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: UPLOAD_TIMEOUT_MS,
+      },
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);

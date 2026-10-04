@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CompactVisitTimeline from '../components/CompactVisitTimeline';
-import { EmptyState } from '../components';
+import { EmptyState, LoadingSpinner } from '../components';
 import {
   Button,
   Card,
@@ -27,7 +27,7 @@ import {
   VISITATION_GUIDELINE_SECTIONS,
   canRespondToVisit,
 } from '../mock/assignedVisits.mock';
-import { getCompactVisitSteps } from '../utils/visitProgressSnapshot';
+import useVisitTimeline from '../hooks/useVisitTimeline';
 
 const DETAIL_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -77,10 +77,12 @@ export default function VisitDetailsScreen({ navigation, route }) {
   const showQrPass =
     visit && (visit.status === 'confirmed' || visit.status === 'checked_in');
 
-  const compactSteps = useMemo(
-    () => (visit ? getCompactVisitSteps(visit.id, visit.status) : []),
-    [visit],
-  );
+  // Real events from GET /api/schedules/{id}/timeline (refetches when the status changes).
+  const {
+    steps: compactSteps,
+    loading: timelineLoading,
+    error: timelineError,
+  } = useVisitTimeline(visit?.id ?? null, visit?.status);
 
   const onConfirm = useCallback(async () => {
     if (!visit || submitting) return;
@@ -220,7 +222,19 @@ export default function VisitDetailsScreen({ navigation, route }) {
         ) : null}
 
         {activeTab === 'timeline' ? (
-          <CompactVisitTimeline steps={compactSteps} />
+          timelineLoading && compactSteps.length === 0 ? (
+            <LoadingSpinner message="Loading timeline…" compact />
+          ) : timelineError ? (
+            <EmptyState title="Couldn't load timeline" message={timelineError} emphasis="error" />
+          ) : compactSteps.length === 0 ? (
+            <EmptyState
+              title="No timeline events yet"
+              message="Events will appear here as your visit progresses."
+              iconName="git-commit-outline"
+            />
+          ) : (
+            <CompactVisitTimeline steps={compactSteps} />
+          )
         ) : null}
 
         {activeTab === 'guidelines' ? (

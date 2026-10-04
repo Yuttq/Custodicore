@@ -45,6 +45,9 @@ export function normalizeVisitHistoryRecord(raw, index) {
     }
   }
 
+  const visitType =
+    (typeof raw.visitType === 'string' && raw.visitType) || null;
+
   return {
     id,
     scheduledAt,
@@ -53,9 +56,36 @@ export function normalizeVisitHistoryRecord(raw, index) {
     pdlName,
     facility,
     referenceNumber,
+    visitType,
     status,
     cancellationReason,
   };
+}
+
+/** Final backend statuses shown in Visitation History (GET /api/visits/history). */
+export const HISTORY_FINAL_STATUSES = ['completed', 'declined', 'cancelled', 'no_show'];
+
+/** Friendly labels for canonical backend statuses (backend values are never changed). */
+const HISTORY_STATUS_LABELS = {
+  completed: 'Completed',
+  declined: 'Declined',
+  cancelled: 'Cancelled',
+  no_show: 'No Show',
+};
+
+/**
+ * History screen tab for a backend status: completed visits vs. everything that
+ * ended without a visit (declined / cancelled / no_show).
+ * @param {string} status
+ * @returns {'completed' | 'cancelled'}
+ */
+export function getHistoryTab(status) {
+  return status === 'completed' ? 'completed' : 'cancelled';
+}
+
+/** @param {string} status */
+export function getHistoryStatusLabel(status) {
+  return HISTORY_STATUS_LABELS[status] ?? String(status || '—');
 }
 
 /**
@@ -75,7 +105,7 @@ export function normalizeVisitHistoryResponse(data) {
   return [];
 }
 
-/** History screen only shows terminal visitation outcomes. */
+/** History screen only shows final visitation outcomes. */
 export function filterVisitationHistoryRecords(records) {
-  return records.filter((r) => r.status === 'completed' || r.status === 'cancelled');
+  return records.filter((r) => HISTORY_FINAL_STATUSES.includes(r.status));
 }

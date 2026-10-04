@@ -11,14 +11,12 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
-import {
-  documentWorkflowStatusToChip,
-  getMockVisitorVerification,
-} from '../mock/visitorVerificationDocuments.mock';
+import { LoadingSpinner } from '../components';
+import useVisitorVerification from '../hooks/useVisitorVerification';
 import { formatDate, formatTime } from '../utils';
 import { goBackOr } from '../utils/safeNavigation';
 import {
+  documentWorkflowStatusToChip,
   getDocumentDetailAction,
   getDocumentDetailActionLabel,
   isDocumentVerified,
@@ -44,32 +42,43 @@ function DetailField({ label, value }) {
 }
 
 /**
- * Single verification document — view details; upload actions by status only (v2.1).
+ * Single verification document — real status from GET /api/documents; upload actions by status only (v2.1).
  */
 export default function VerificationDocumentDetailScreen({ navigation, route }) {
-  const relationshipId =
-    route.params?.relationshipId ?? DEFAULT_LOCAL_PROFILE.relationshipToPdl ?? 'spouse';
   const documentKey = route.params?.documentKey;
+  const { verification, loading, error, reload } = useVisitorVerification();
 
-  const document = useMemo(() => {
-    const verification = getMockVisitorVerification(relationshipId);
-    return verification.documents.find((doc) => doc.key === documentKey) ?? null;
-  }, [relationshipId, documentKey]);
+  const document = useMemo(
+    () => verification?.documents.find((doc) => doc.key === documentKey) ?? null,
+    [verification, documentKey],
+  );
 
-  const detailAction = document ? getDocumentDetailAction(document.uploadStatus) : null;
-  const actionLabel = document ? getDocumentDetailActionLabel(document.uploadStatus) : null;
+  if (loading && !verification) {
+    return (
+      <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
+        <StackScreenHeader title="Document Details" navigation={navigation} />
+        <View style={styles.missingWrap}>
+          <LoadingSpinner message="Loading document…" compact />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!document) {
     return (
       <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
         <StackScreenHeader title="Document Details" navigation={navigation} />
         <View style={styles.missingWrap}>
-          <Text style={styles.missingText}>Document not found.</Text>
-          <Button title="Go Back" onPress={() => goBackOr(navigation)} />
+          <Text style={styles.missingText}>{error || 'Document not found.'}</Text>
+          {error ? <Button title="Retry" onPress={reload} /> : null}
+          <Button title="Go Back" variant="secondary" onPress={() => goBackOr(navigation)} />
         </View>
       </SafeAreaView>
     );
   }
+
+  const detailAction = document.canUpload ? getDocumentDetailAction(document.uploadStatus) : null;
+  const actionLabel = document.canUpload ? getDocumentDetailActionLabel(document.uploadStatus) : null;
 
   const uploadDate =
     document.uploadStatus === 'pending'
@@ -86,10 +95,7 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
       );
       return;
     }
-    navigation.navigate('UploadID', {
-      relationshipId,
-      documentKey: document.key,
-    });
+    navigation.navigate('UploadID', { documentKey: document.key });
   };
 
   return (
@@ -107,15 +113,23 @@ export default function VerificationDocumentDetailScreen({ navigation, route }) 
             <StatusChip status={documentWorkflowStatusToChip(document.uploadStatus)} />
           </View>
 
+          {document.detail ? <DetailField label="Details" value={document.detail} /> : null}
           <DetailField label="Upload Date" value={uploadDate} />
           <DetailField label="Verification Date" value={verificationDate} />
           <DetailField label="Officer Remarks" value={officerRemarks} />
 
-          {document.uploadStatus === 'rejected' && document.rejectionReason ? (
+          {document.uploadStatus === 'rejected' ? (
             <View style={styles.rejectionBox}>
-              <Text style={styles.rejectionTitle}>Reason</Text>
-              <Text style={styles.rejectionBody}>{document.rejectionReason}</Text>
+              <Text style={styles.rejectionTitle}>Rejected</Text>
+              <Text style={styles.rejectionBody}>
+                {document.rejectionReason ||
+                  'Facility staff rejected this document. Please upload a new, clear copy or contact the facility.'}
+              </Text>
             </View>
+          ) : null}
+
+          {document.unavailableReason ? (
+            <Text style={styles.detailValue}>{document.unavailableReason}</Text>
           ) : null}
 
           {detailAction && actionLabel ? (

@@ -158,6 +158,51 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
+             * CHECK-OUT SCAN (frontdesk-checkin.js sends mode=checkout).
+             *
+             * Check-in marks the QR as `used`, so the exit scan must accept
+             * a used QR — but only to look up the visitor's ACTIVE check-in.
+             * The actual check-out still goes through checkOut(), which
+             * re-validates the check-in status.
+             */
+            if ($request->input('mode') === 'checkout') {
+                $visitRequest = $qr->visitRequest;
+                $checkin = $visitRequest?->checkin;
+
+                if (! $visitRequest || ! $checkin || $checkin->status !== 'checked_in') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This visitor is not currently checked in.',
+                        'status' => $checkin?->status,
+                    ], 422);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Checked-in visitor found.',
+                    'visit_request_id' => $visitRequest->visit_request_id,
+                    'checkin_id' => $checkin->checkin_id,
+                    'visitor' => [
+                        'visitor_id' => $visitRequest->visitor?->visitor_id,
+                        'name' => $visitRequest->visitor?->full_name ?? '—',
+                        'pdl' => $visitRequest->pdl?->full_name ?? '—',
+                        'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
+                    ],
+                    'checkin' => [
+                        'checkin_id' => $checkin->checkin_id,
+                        'visitor_name' => $visitRequest->visitor?->full_name ?? '—',
+                        'pdl_name' => $visitRequest->pdl?->full_name ?? '—',
+                        'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
+                        'check_in_time' => $checkin->check_in_time
+                            ? Carbon::parse($checkin->check_in_time)->format('M d, Y h:i A')
+                            : null,
+                        'id_surrendered_type' => $checkin->id_surrendered_type,
+                        'status' => 'checked_in',
+                    ],
+                ]);
+            }
+
+            /*
              * QR must still be active.
              */
             if ($qr->status !== 'active') {

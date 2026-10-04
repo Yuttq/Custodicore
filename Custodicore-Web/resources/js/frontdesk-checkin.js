@@ -1630,6 +1630,25 @@ function initializeFrontDeskScanner() {
 
 
             /*
+             * The Blade page builds the check-out form from the scanned
+             * check-in id — tell it which check-in was found.
+             */
+            if (checkoutCheckinId) {
+                window.dispatchEvent(
+                    new CustomEvent(
+                        "custodicore:checkout-scanned",
+                        {
+                            detail: {
+                                checkinId:
+                                    checkoutCheckinId,
+                            },
+                        }
+                    )
+                );
+            }
+
+
+            /*
              * If the backend successfully verifies the visitor but does
              * not return the check-in record ID, we cannot safely submit
              * the checkout because the existing checkout route requires
@@ -2674,6 +2693,23 @@ function initializeFrontDeskScanner() {
             }
 
 
+            /*
+             * The current check-in page has no "ID matches / does not match"
+             * buttons — step 4 shows the registered ID and an "ID has been
+             * physically surrendered" checkbox. A checked box means the
+             * registered ID was presented and surrendered.
+             */
+            if (
+                !idMatchStatus &&
+                !idMatchesBtn &&
+                !idDoesNotMatchBtn &&
+                document.getElementById("idSurrendered")?.checked
+            ) {
+                idMatchStatus =
+                    "matched";
+            }
+
+
             if (!idMatchStatus) {
 
                 showError(
@@ -2686,17 +2722,26 @@ function initializeFrontDeskScanner() {
             }
 
 
+            // Without a type field on the page, the surrendered ID is the registered one.
+            const matchedIdType =
+                idSurrenderedType?.value ||
+                registeredIds[0]?.type ||
+                "";
+
+
             if (
                 idMatchStatus ===
                 "matched"
             ) {
 
                 if (
-                    !idSurrenderedType?.value
+                    !matchedIdType
                 ) {
 
                     showError(
-                        "Please select the ID type surrendered by the visitor."
+                        idSurrenderedType
+                            ? "Please select the ID type surrendered by the visitor."
+                            : "This visitor has no verified registered ID on file. Use Manual Check-In."
                     );
 
                     idSurrenderedType?.focus();
@@ -2812,7 +2857,7 @@ function initializeFrontDeskScanner() {
                 idMatchStatus ===
                 "replaced"
                     ? newIdType.value
-                    : idSurrenderedType.value;
+                    : matchedIdType;
 
 
             confirmCheckInBtn.disabled =

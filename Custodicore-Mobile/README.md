@@ -10,7 +10,7 @@ This app is for **visitors** (sign in, registration, documents, visits, QR, noti
 - This mobile app calls that API through `src/services/api.js` when not using local mocks.
 - API paths in `src/services/api.js` match Custodicore-Web `routes/api.php` (for example `/auth/login`, `/visits/upcoming`, `/notifications`).
 - Set `EXPO_PUBLIC_API_URL` in `.env` to point at your running Laravel server (see [API Configuration](#api-configuration)).
-- Some flows still use mock data controlled by flags in `src/mock/devFlags.js` (`USE_MOCK_NOTIFICATIONS`, `USE_MOCK_QR`, `USE_MOCK_VISIT_HISTORY`, `USE_MOCK_TIMELINE`). Those flags are currently `true` in the repo — set a flag to `false` when that backend endpoint is ready.
+- All visitor features use the real API. The `USE_MOCK_*` flags in `src/mock/devFlags.js` are all `false`; set one to `true` only for offline UI work.
 
 ---
 
@@ -164,14 +164,9 @@ Always keep Custodicore-Web running (`php artisan serve` and MySQL) when testing
 
 ### Mock flags vs real API
 
-Even with a correct `EXPO_PUBLIC_API_URL`, these flags in `src/mock/devFlags.js` currently force mock data for some features:
+Every flag in `src/mock/devFlags.js` (`USE_MOCK_AUTH`, `USE_MOCK_VISITS`, `USE_MOCK_NOTIFICATIONS`, `USE_MOCK_QR`, `USE_MOCK_VISIT_HISTORY`, `USE_MOCK_TIMELINE`) is `false`: all visitor features call the real Custodicore-Web API. Profile, Personal Information and verification documents have no mock mode — they always use `GET/PATCH /api/me` and `GET/POST /api/documents`.
 
-- `USE_MOCK_NOTIFICATIONS = true`
-- `USE_MOCK_QR = true`
-- `USE_MOCK_VISIT_HISTORY = true`
-- `USE_MOCK_TIMELINE = true`
-
-Set a flag to `false` only when that backend endpoint is ready (as commented in that file).
+Setting a flag to `true` switches that feature to local mock data for offline UI work only — a mock QR, for example, cannot be scanned by the Front Desk.
 
 ---
 

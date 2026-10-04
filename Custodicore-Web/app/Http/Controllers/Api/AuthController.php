@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Models\AuditLog;
+use App\Models\Module;
 use App\Models\Role;
 use App\Models\VisitorProfile;
 use Illuminate\Http\JsonResponse;
@@ -174,6 +176,94 @@ class AuthController extends Controller
         return response()->json($this->userPayload($account));
     }
 
+    /**
+     * Updates the authenticated visitor's own profile (mobile Personal
+     * Information). Only existing visitor_profiles contact/identity columns
+     * are editable — role, account status, email and every verification
+     * field stay under staff control and are rejected outright.
+     *
+     * Full name / date of birth are locked once the visitor is verified, so
+     * a verified identity cannot be changed from the app.
+     */
+    public function updateMe(Request $request): JsonResponse
+    {
+        $account = $request->user();
+        $profile = $account?->visitorProfile;
+        abort_unless($profile, 403, 'This account has no visitor profile.');
+
+        // Accept camelCase and snake_case, as register() does.
+        $aliases = [
+            'fullName' => 'full_name',
+            'dateOfBirth' => 'date_of_birth',
+            'contactNumber' => 'contact_number',
+            'emergencyContactName' => 'emergency_contact_name',
+            'emergencyContactNumber' => 'emergency_contact_number',
+        ];
+        foreach ($aliases as $camel => $snake) {
+            if (! $request->has($camel) && $request->has($snake)) {
+                $request->merge([$camel => $request->input($snake)]);
+            }
+        }
+
+        $prohibited = [
+            'email', 'password', 'role', 'role_id', 'status', 'account_id',
+            'verificationStatus', 'verification_status', 'verifiedBy', 'verified_by',
+            'verifiedAt', 'verified_at', 'relationshipHint', 'relationship_hint',
+        ];
+
+        $rules = [
+            'fullName' => ['sometimes', 'required', 'string', 'max:150'],
+            'dateOfBirth' => ['sometimes', 'required', 'date_format:Y-m-d', 'before:today'],
+            'gender' => ['sometimes', 'nullable', 'string', Rule::in([
+                'male', 'female', 'other',
+                'prefer_not_to_say', 'Prefer not to say', 'prefer not to say',
+            ])],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'contactNumber' => ['sometimes', 'required', 'string', 'max:20'],
+            'emergencyContactName' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'emergencyContactNumber' => ['sometimes', 'nullable', 'string', 'max:20'],
+        ];
+        foreach ($prohibited as $field) {
+            $rules[$field] = ['prohibited'];
+        }
+
+        $data = $request->validate($rules, [
+            'prohibited' => 'The :attribute field cannot be changed from the mobile app.',
+        ]);
+
+        $updates = [];
+        if (array_key_exists('fullName', $data)) $updates['full_name'] = trim($data['fullName']);
+        if (array_key_exists('dateOfBirth', $data)) $updates['date_of_birth'] = $data['dateOfBirth'];
+        if (array_key_exists('gender', $data)) $updates['gender'] = $this->normalizeGender($data['gender']);
+        if (array_key_exists('address', $data)) $updates['address'] = $data['address'] !== null ? trim($data['address']) : null;
+        if (array_key_exists('contactNumber', $data)) $updates['contact_number'] = trim($data['contactNumber']);
+        if (array_key_exists('emergencyContactName', $data)) $updates['emergency_contact_name'] = $data['emergencyContactName'];
+        if (array_key_exists('emergencyContactNumber', $data)) $updates['emergency_contact_number'] = $data['emergencyContactNumber'];
+
+        if ($profile->verification_status === 'verified') {
+            $identityChanged =
+                (isset($updates['full_name']) && $updates['full_name'] !== $profile->full_name)
+                || (isset($updates['date_of_birth']) && $updates['date_of_birth'] !== $profile->date_of_birth?->format('Y-m-d'));
+
+            if ($identityChanged) {
+                return response()->json([
+                    'message' => 'Your name and date of birth are locked after verification. Contact facility staff to correct them.',
+                ], 409);
+            }
+        }
+
+        if ($updates) {
+            $profile->update($updates);
+            AuditLog::record('update', 'visitor_profiles', $profile->visitor_id,
+                'Visitor updated own profile via mobile app (' . implode(', ', array_keys($updates)) . ')',
+                Module::CODE_VISITOR_MANAGEMENT);
+        }
+
+        $account->unsetRelation('visitorProfile');
+
+        return response()->json($this->userPayload($account));
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $request->user()?->currentAccessToken()?->delete();
@@ -184,13 +274,23 @@ class AuthController extends Controller
     private function userPayload(Account $account): array
     {
         $account->loadMissing('visitorProfile', 'role');
+        $profile = $account->visitorProfile;
 
         return [
             'id' => (string) $account->account_id,
             'email' => $account->email,
             'fullName' => $account->displayName(),
             'role' => $account->role?->role_name,
-            'verificationStatus' => $account->visitorProfile?->verification_status,
+            'verificationStatus' => $profile?->verification_status,
+            'verifiedAt' => $profile?->verified_at?->toIso8601String(),
+            'dateOfBirth' => $profile?->date_of_birth?->format('Y-m-d'),
+            'gender' => $profile?->gender,
+            'address' => $profile?->address,
+            // register() stores 'N/A' when no number was given — surface as null.
+            'contactNumber' => ($profile && $profile->contact_number !== 'N/A') ? $profile->contact_number : null,
+            'emergencyContactName' => $profile?->emergency_contact_name,
+            'emergencyContactNumber' => $profile?->emergency_contact_number,
+            'relationshipHint' => $profile?->relationship_hint,
         ];
     }
 

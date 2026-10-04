@@ -16,14 +16,26 @@ export const USE_MOCK_AUTH = false;
  */
 export const USE_MOCK_VISITS = false;
 
-/** When true, notification list / unread count / mark-read use local mock data (no HTTP). */
-export const USE_MOCK_NOTIFICATIONS = true;
+/**
+ * When true, notification list / unread count / mark-read use local mock data (no HTTP).
+ * Phase 4: false — wired to GET /api/notifications, unread-count, PATCH read.
+ */
+export const USE_MOCK_NOTIFICATIONS = false;
 
-/** When true, QR schedule resolution and gate token use local mock data (no HTTP). */
-export const USE_MOCK_QR = true;
+/**
+ * When true, QR schedule resolution and gate token use local mock data (no HTTP).
+ * Phase 5: false — a mock token cannot be verified by Front Desk; wired to GET /api/schedules/{id}/qr.
+ */
+export const USE_MOCK_QR = false;
 
-/** When true, visitation history uses local mock data (no HTTP). */
-export const USE_MOCK_VISIT_HISTORY = true;
+/**
+ * When true, visitation history uses local mock data (no HTTP).
+ * Phase 4: false — wired to GET /api/visits/history.
+ */
+export const USE_MOCK_VISIT_HISTORY = false;
 
-/** When true, visit progress timeline uses local mock data (no HTTP). */
-export const USE_MOCK_TIMELINE = true;
+/**
+ * When true, visit progress timeline uses local mock data (no HTTP).
+ * Phase 4: false — wired to GET /api/schedules/{id}/timeline.
+ */
+export const USE_MOCK_TIMELINE = false;

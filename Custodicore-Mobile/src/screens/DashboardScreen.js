@@ -15,10 +15,12 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
-import { DEFAULT_LOCAL_PROFILE } from '../mock/profile.mock';
-import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
+import useVisitTimeline from '../hooks/useVisitTimeline';
+import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
-import { getCompactVisitSteps } from '../utils/visitProgressSnapshot';
+
+/** Only the avatar photo is device-local — the backend has no photo field. */
+const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
 
 const GRAY_UPCOMING = '#9CA3AF';
 
@@ -49,14 +51,13 @@ function getInitials(fullName) {
 }
 
 /**
- * @param {string} relationshipId
- * @param {boolean} pendingVerification
- * @param {string} registrationStatus
+ * Maps the real verification state (GET /api/documents, falling back to the
+ * /api/me status) onto the existing strip styles.
+ * @param {string | null | undefined} verificationStatus — verification_* UI key
+ * @param {string | null | undefined} backendStatus — pending | verified | rejected
  */
-function resolveVerificationDisplay(relationshipId, pendingVerification, registrationStatus) {
-  const { verificationStatus } = getMockVisitorVerification(relationshipId);
-
-  if (verificationStatus === 'verification_verified') {
+function resolveVerificationDisplay(verificationStatus, backendStatus) {
+  if (verificationStatus === 'verification_verified' || backendStatus === 'verified') {
     return {
       label: 'Verified Visitor',
       icon: 'shield-checkmark',
@@ -64,20 +65,23 @@ function resolveVerificationDisplay(relationshipId, pendingVerification, registr
       bg: 'rgba(22, 163, 74, 0.1)',
     };
   }
-  if (verificationStatus === 'verification_under_review') {
+  if (verificationStatus === 'verification_rejected' || backendStatus === 'rejected') {
+    return {
+      label: 'Verification Rejected',
+      icon: 'close-circle-outline',
+      accent: colors.danger,
+      bg: 'rgba(239, 68, 68, 0.08)',
+    };
+  }
+  if (
+    verificationStatus === 'verification_under_review' ||
+    (!verificationStatus && backendStatus === 'pending')
+  ) {
     return {
       label: 'Documents Under Review',
       icon: 'time-outline',
       accent: colors.primaryNavy,
       bg: 'rgba(15, 61, 122, 0.08)',
-    };
-  }
-  if (!pendingVerification && registrationStatus === 'approved') {
-    return {
-      label: 'Verified Visitor',
-      icon: 'shield-checkmark',
-      accent: colors.success,
-      bg: 'rgba(22, 163, 74, 0.1)',
     };
   }
   return {
@@ -208,21 +212,13 @@ function TextLink({ label, onPress, accessibilityLabel }) {
  * Visitor home dashboard — verification, upcoming visit, progress snapshot (v2.1).
  */
 export default function DashboardScreen({ navigation }) {
-  const { registrationSummary, pendingVerification, user } = useAuth();
+  const { registrationSummary, user } = useAuth();
   const { visits } = useVisits();
-  const [profile, setProfile] = useState(DEFAULT_LOCAL_PROFILE);
+  const { verification } = useVisitorVerification();
+  const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
 
   const visitorName =
-    user?.fullName?.trim() ||
-    registrationSummary?.fullName?.trim() ||
-    profile.fullName ||
-    DEFAULT_LOCAL_PROFILE.fullName;
-
-  const relationshipId =
-    registrationSummary?.relationship ??
-    profile.relationshipToPdl ??
-    DEFAULT_LOCAL_PROFILE.relationshipToPdl ??
-    'spouse';
+    user?.fullName?.trim() || registrationSummary?.fullName?.trim() || 'Visitor';
 
   const greeting = useMemo(() => getTimeGreeting(), []);
   const initials = useMemo(() => getInitials(visitorName), [visitorName]);
@@ -230,11 +226,10 @@ export default function DashboardScreen({ navigation }) {
   const verificationDisplay = useMemo(
     () =>
       resolveVerificationDisplay(
-        relationshipId,
-        pendingVerification,
-        profile.registrationStatus,
+        verification?.verificationStatus,
+        verification?.backendStatus ?? user?.verificationStatus,
       ),
-    [relationshipId, pendingVerification, profile.registrationStatus],
+    [verification, user?.verificationStatus],
   );
 
   const nextVisit = useMemo(() => {
@@ -251,19 +246,22 @@ export default function DashboardScreen({ navigation }) {
     )[0];
   }, [visits]);
 
-  const timelineSteps = useMemo(() => {
-    if (!nextVisit) return [];
-    return getCompactVisitSteps(String(nextVisit.id), nextVisit.status).map((step) => ({
-      ...step,
-      label: HOME_STEP_LABELS[step.id] ?? step.label,
-    }));
-  }, [nextVisit]);
+  // Real timeline for the next visit (GET /api/schedules/{id}/timeline).
+  const { steps: nextVisitSteps } = useVisitTimeline(nextVisit?.id ?? null, nextVisit?.status);
+  const timelineSteps = useMemo(
+    () =>
+      nextVisitSteps.map((step) => ({
+        ...step,
+        label: HOME_STEP_LABELS[step.id] ?? step.label,
+      })),
+    [nextVisitSteps],
+  );
 
   const tabBarInset = useTabBarScrollInset();
 
   useEffect(() => {
     let cancelled = false;
-    loadLocalProfile(DEFAULT_LOCAL_PROFILE).then((loaded) => {
+    loadLocalProfile(LOCAL_PHOTO_DEFAULTS).then((loaded) => {
       if (!cancelled) setProfile(loaded);
     });
     return () => {
@@ -272,10 +270,8 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const onViewDocuments = useCallback(() => {
-    navigation.navigate('VisitorVerificationDocuments', {
-      relationshipId,
-    });
-  }, [navigation, relationshipId]);
+    navigation.navigate('VisitorVerificationDocuments');
+  }, [navigation]);
 
   const onViewVisit = useCallback(() => {
     if (!nextVisit) return;

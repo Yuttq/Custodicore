@@ -19,15 +19,18 @@ import {
 } from '../designSystem';
 import { EmptyState } from '../components';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
+import {
+  getHistoryStatusLabel,
+  getHistoryTab,
+} from '../utils/visitHistoryNormalize';
 
+/** "Cancelled" groups every visit that ended without happening (declined / cancelled / no_show). */
 const TABS = [
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
 
-const LOADING_MS = 520;
-
-/** @typedef {import('../mock/visitationHistory.mock').MOCK_VISITATION_HISTORY[number]} HistoryRecord */
+/** @typedef {ReturnType<typeof import('../utils/visitHistoryNormalize').normalizeVisitHistoryRecord>} HistoryRecord */
 
 function HistorySkeleton() {
   return (
@@ -49,7 +52,7 @@ function HistorySkeleton() {
  * @param {HistoryRecord} item
  */
 function getStatusLabel(item) {
-  return item.status === 'completed' ? 'Completed' : 'Cancelled';
+  return getHistoryStatusLabel(item.status);
 }
 
 /**
@@ -107,7 +110,6 @@ export default function VisitHistoryScreen({ navigation }) {
     setError(null);
     try {
       const data = await fetchVisitationHistory();
-      if (!isRefresh) await new Promise((r) => setTimeout(r, LOADING_MS));
       setItems(data);
     } catch (e) {
       const message =
@@ -127,7 +129,7 @@ export default function VisitHistoryScreen({ navigation }) {
   }, [loadHistory]);
 
   const filteredItems = useMemo(
-    () => items.filter((r) => r.status === activeTab),
+    () => items.filter((r) => getHistoryTab(r.status) === activeTab),
     [items, activeTab],
   );
 
@@ -197,7 +199,7 @@ export default function VisitHistoryScreen({ navigation }) {
       return (
         <EmptyState
           title="Unable to load history"
-          message="Please check your connection and try again."
+          message={error || 'Please check your connection and try again.'}
           iconName="cloud-offline-outline"
           iconColor={colors.danger}
           emphasis="error"

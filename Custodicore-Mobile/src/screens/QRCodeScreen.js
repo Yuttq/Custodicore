@@ -140,7 +140,13 @@ function isNoActiveQrPassError(message) {
   return (
     normalized.includes('no upcoming visit') ||
     normalized.includes('no active qr') ||
-    normalized.includes('no confirmed visit')
+    normalized.includes('no confirmed visit') ||
+    // 409 responses from GET /api/schedules/{id}/qr (visit not confirmed / closed / pass used)
+    normalized.includes('confirm your visit attendance') ||
+    normalized.includes('qr pass is not available') ||
+    normalized.includes('only available once your visit is confirmed') ||
+    normalized.includes('already checked in') ||
+    normalized.includes('already been used')
   );
 }
 

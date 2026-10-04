@@ -25,19 +25,16 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { useAuth } from '../hooks/useAuth';
-import { getMockVisitorVerification } from '../mock/visitorVerificationDocuments.mock';
+import { LoadingSpinner } from '../components';
+import useVisitorVerification from '../hooks/useVisitorVerification';
 import {
-  canModifyDocument,
-  getDocumentStatusDisplay,
-} from '../utils/verificationDocumentUi';
+  GOVERNMENT_ID_TYPES,
+  uploadGovernmentId,
+  uploadSupportingDocument,
+} from '../repositories/verificationRepository';
+import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 import { goBackOr } from '../utils/safeNavigation';
-import {
-  ACCEPTED_GOVERNMENT_IDS,
-  GOVERNMENT_ID_KEY,
-  getRequiredVerificationDocuments,
-  isDocumentUploaded,
-} from '../utils/visitorVerificationDocuments';
+import { GOVERNMENT_ID_KEY, isDocumentUploaded } from '../utils/visitorVerificationDocuments';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -109,13 +106,25 @@ function DocTypeBadge({ label }) {
 /**
  * @param {object} props
  * @param {string} props.id
+ * @param {boolean} props.selected
+ * @param {() => void} props.onPress
  */
-function AcceptedIdChip({ id }) {
+function AcceptedIdChip({ id, selected, onPress }) {
   return (
-    <View style={styles.idChip}>
-      <Ionicons name="card-outline" size={14} color={colors.primaryNavy} />
+    <Pressable
+      onPress={onPress}
+      style={[styles.idChip, selected && styles.idChipSelected]}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${id}${selected ? ', selected' : ''}`}
+    >
+      <Ionicons
+        name={selected ? 'checkmark-circle' : 'card-outline'}
+        size={14}
+        color={selected ? colors.primaryTeal : colors.primaryNavy}
+      />
       <Text style={styles.idChipText}>{id}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -320,51 +329,39 @@ function UploadDocumentCard({ uri, fileName, docLabel, onTakePhoto, onChooseGall
  * Verified documents cannot be selected or replaced.
  */
 export default function UploadIDScreen({ navigation, route }) {
-  const { registrationSummary } = useAuth();
-  const relationshipId =
-    route.params?.relationshipId ?? registrationSummary?.relationship ?? 'spouse';
   const initialDocumentKey = route.params?.documentKey ?? null;
+  const {
+    verification,
+    loading: loadingVerification,
+    error: verificationError,
+    reload,
+  } = useVisitorVerification();
 
-  const verification = useMemo(
-    () => getMockVisitorVerification(relationshipId),
-    [relationshipId],
-  );
+  const documents = useMemo(() => verification?.documents ?? [], [verification]);
+  // Verified documents are locked; supporting documents need a staff-linked relationship.
+  const uploadableDocs = useMemo(() => documents.filter((doc) => doc.canUpload), [documents]);
+  const allVerified = documents.length > 0 && documents.every((d) => d.uploadStatus === 'verified');
 
-  const uploadableDocs = useMemo(() => {
-    const required = getRequiredVerificationDocuments(relationshipId);
-    return required
-      .map((doc) => {
-        const mockDoc = verification.documents.find((d) => d.key === doc.key);
-        return {
-          ...doc,
-          uploadStatus: mockDoc?.uploadStatus ?? 'pending',
-        };
-      })
-      .filter((doc) => canModifyDocument(doc.uploadStatus));
-  }, [relationshipId, verification.documents]);
-
-  const [activeDocKey, setActiveDocKey] = useState(() => {
-    if (!initialDocumentKey) return null;
-    const mockDoc = verification.documents.find((d) => d.key === initialDocumentKey);
-    if (mockDoc && !canModifyDocument(mockDoc.uploadStatus)) return null;
-    return initialDocumentKey;
-  });
-
+  const [activeDocKey, setActiveDocKey] = useState(initialDocumentKey);
   const [entry, setEntry] = useState({ uri: null, status: 'pending', fileName: null });
+  const [idType, setIdType] = useState(/** @type {string | null} */ (null));
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!initialDocumentKey) return;
-    const mockDoc = verification.documents.find((d) => d.key === initialDocumentKey);
-    if (mockDoc && !canModifyDocument(mockDoc.uploadStatus)) {
+    if (!initialDocumentKey || !verification) return;
+    const doc = verification.documents.find((d) => d.key === initialDocumentKey);
+    if (doc && !doc.canUpload) {
+      const locked = doc.uploadStatus === 'verified';
       Alert.alert(
-        'Document locked',
-        'This document is verified and cannot be replaced.',
+        locked ? 'Document locked' : 'Not available yet',
+        locked
+          ? 'This document is verified and cannot be replaced.'
+          : (doc.unavailableReason ?? 'This document cannot be uploaded right now.'),
         [{ text: 'OK', onPress: () => goBackOr(navigation) }],
       );
     }
-  }, [initialDocumentKey, verification.documents, navigation]);
+  }, [initialDocumentKey, verification, navigation]);
 
   const activeDoc = useMemo(
     () => uploadableDocs.find((doc) => doc.key === activeDocKey) ?? null,
@@ -381,7 +378,7 @@ export default function UploadIDScreen({ navigation, route }) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setEntry({
           uri: picked.uri,
-          fileName: picked.fileName ?? 'Photo attached',
+          fileName: picked.fileName ?? null,
           status: 'uploaded',
         });
         setError('');
@@ -391,31 +388,51 @@ export default function UploadIDScreen({ navigation, route }) {
   );
 
   const onSubmit = useCallback(async () => {
-    if (submitting || !activeDocKey) return;
+    if (submitting || !activeDoc) return;
     if (!isDocumentUploaded(entry)) {
       setError('Please add a photo before submitting.');
       return;
     }
+    const isGovernmentId = activeDoc.key === GOVERNMENT_ID_KEY;
+    if (isGovernmentId && !idType) {
+      setError('Select which government ID you are uploading.');
+      return;
+    }
 
     setSubmitting(true);
+    setError('');
     try {
-      await new Promise((r) => setTimeout(r, 600));
+      if (isGovernmentId) {
+        await uploadGovernmentId({ uri: entry.uri, fileName: entry.fileName, documentType: idType });
+      } else {
+        await uploadSupportingDocument({
+          relationshipRecordId: activeDoc.relationshipRecordId,
+          uri: entry.uri,
+          fileName: entry.fileName,
+        });
+      }
+      reload();
       Alert.alert(
         'Document submitted',
-        `${activeDoc?.label ?? 'Document'} received for review.`,
+        `${activeDoc.label} was uploaded and is now pending staff review.`,
         [{ text: 'OK', onPress: () => goBackOr(navigation) }],
       );
-    } catch {
-      Alert.alert('Submission failed', 'Please try again.');
+    } catch (e) {
+      // 401 is handled globally (session cleared); 409/422/network/server
+      // messages come from toRequestError in services/api.js.
+      setError(
+        e instanceof Error && e.message.trim() ? e.message : 'Upload failed. Please try again.',
+      );
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, activeDocKey, entry, activeDoc, navigation]);
+  }, [submitting, activeDoc, entry, idType, reload, navigation]);
 
   const onBack = useCallback(() => {
     if (activeDocKey && !initialDocumentKey) {
       setActiveDocKey(null);
       setEntry({ uri: null, status: 'pending', fileName: null });
+      setIdType(null);
       setError('');
     } else {
       goBackOr(navigation);
@@ -445,16 +462,26 @@ export default function UploadIDScreen({ navigation, route }) {
       >
         <ScreenIntro title={screenTitle} subtitle={screenSubtitle} />
 
-        {!activeDocKey ? (
+        {loadingVerification && !verification ? (
+          <LoadingSpinner message="Loading documents…" compact />
+        ) : verificationError && !verification ? (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>{"Couldn't load documents"}</Text>
+            <Text style={styles.emptyMessage}>{verificationError}</Text>
+            <Button title="Retry" onPress={reload} accessibilityLabel="Retry loading documents" />
+          </Card>
+        ) : !activeDocKey ? (
           <>
             {uploadableDocs.length === 0 ? (
               <Card style={styles.emptyCard}>
                 <View style={styles.emptyIconWrap}>
                   <Ionicons name="checkmark-done-outline" size={28} color={colors.success} />
                 </View>
-                <Text style={styles.emptyTitle}>All set</Text>
+                <Text style={styles.emptyTitle}>{allVerified ? 'All set' : 'Nothing to upload yet'}</Text>
                 <Text style={styles.emptyMessage}>
-                  All required documents are verified. No uploads are needed.
+                  {allVerified
+                    ? 'All required documents are verified. No uploads are needed.'
+                    : 'Your submitted documents are under review. Remaining documents can be uploaded once facility staff link your account to a PDL.'}
                 </Text>
               </Card>
             ) : (
@@ -466,6 +493,7 @@ export default function UploadIDScreen({ navigation, route }) {
                     onPress={() => {
                       setActiveDocKey(doc.key);
                       setEntry({ uri: null, status: 'pending', fileName: null });
+                      setIdType(null);
                       setError('');
                     }}
                   />
@@ -487,10 +515,18 @@ export default function UploadIDScreen({ navigation, route }) {
 
             {activeDocKey === GOVERNMENT_ID_KEY ? (
               <View style={styles.acceptedIdsSection}>
-                <Text style={styles.acceptedIdsLabel}>Accepted IDs</Text>
-                <View style={styles.chipGrid}>
-                  {ACCEPTED_GOVERNMENT_IDS.map((id) => (
-                    <AcceptedIdChip key={id} id={id} />
+                <Text style={styles.acceptedIdsLabel}>Select your ID type</Text>
+                <View style={styles.chipGrid} accessibilityRole="radiogroup">
+                  {GOVERNMENT_ID_TYPES.map((type) => (
+                    <AcceptedIdChip
+                      key={type.key}
+                      id={type.label}
+                      selected={idType === type.key}
+                      onPress={() => {
+                        setIdType(type.key);
+                        setError('');
+                      }}
+                    />
                   ))}
                 </View>
               </View>
@@ -501,7 +537,7 @@ export default function UploadIDScreen({ navigation, route }) {
         )}
       </ScrollView>
 
-      {activeDocKey ? (
+      {activeDoc ? (
         <View style={styles.footer}>
           {error ? (
             <Text style={commonStyles.fieldError} accessibilityRole="alert">
@@ -513,7 +549,7 @@ export default function UploadIDScreen({ navigation, route }) {
             onPress={onSubmit}
             loading={submitting}
             disabled={submitting}
-            accessibilityLabel={`Submit ${activeDoc?.label}`}
+            accessibilityLabel={submitting ? 'Uploading document' : `Submit ${activeDoc?.label}`}
           />
         </View>
       ) : null}
@@ -616,6 +652,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     rowGap: spacing.xs,
+  },
+  idChipSelected: {
+    borderColor: colors.primaryTeal,
+    backgroundColor: 'rgba(13, 165, 138, 0.1)',
   },
   idChip: {
     flexDirection: 'row',

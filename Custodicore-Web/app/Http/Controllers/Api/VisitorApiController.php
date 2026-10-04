@@ -8,11 +8,13 @@ use App\Models\Module;
 use App\Models\Notification;
 use App\Models\QrCode;
 use App\Models\VisitorId;
+use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -70,11 +72,18 @@ class VisitorApiController extends Controller
         return response()->json(['visits' => $visits->values()]);
     }
 
+    /** Final outcomes shown in the mobile Visitation History screen. */
+    public const HISTORY_STATUSES = ['completed', 'declined', 'cancelled', 'no_show'];
+
+    /**
+     * Past visits only (final statuses). Active visits come from index().
+     */
     public function history(Request $request): JsonResponse
     {
         $visitor = $this->currentVisitor($request);
 
         $visits = VisitRequest::where('visitor_id', $visitor->visitor_id)
+            ->whereIn('status', self::HISTORY_STATUSES)
             ->with(['pdl', 'schedule'])
             ->orderByDesc('assigned_at')
             ->get()
@@ -242,8 +251,27 @@ class VisitorApiController extends Controller
 
         $isTerminal = in_array($visitRequest->status, ['declined', 'cancelled', 'no_show']);
 
+        // Closing event for visits that ended without completing. Uses the
+        // real cancelled_at timestamp; no_show has no dedicated column, so
+        // its time is left null rather than guessed.
+        if ($isTerminal) {
+            $terminal = [
+                'declined' => ['visit_declined', 'Visit Declined', 'You declined this assigned visit.'],
+                'cancelled' => ['visit_cancelled', 'Visit Cancelled', 'This visit was cancelled.'],
+                'no_show' => ['visit_no_show', 'No Show', 'The visit was recorded as a no-show.'],
+            ][$visitRequest->status];
+
+            $steps[] = [
+                'id' => $terminal[0],
+                'title' => $terminal[1],
+                'description' => $visitRequest->cancellation_reason ?: $terminal[2],
+                'occurredAt' => $visitRequest->status === 'no_show' ? null : $visitRequest->cancelled_at,
+                'terminal' => true,
+            ];
+        }
+
         $steps = array_map(function ($step, $i) use ($lastCompletedIndex, $isTerminal) {
-            if ($step['occurredAt']) {
+            if ($step['occurredAt'] || ! empty($step['terminal'])) {
                 $stepState = 'completed';
             } elseif (! $isTerminal && $i === $lastCompletedIndex + 1) {
                 $stepState = 'current';
@@ -256,7 +284,8 @@ class VisitorApiController extends Controller
                 'stepState' => $stepState,
                 'title' => $step['title'],
                 'description' => $step['description'],
-                'occurredAt' => $step['occurredAt'] ? $step['occurredAt']->toIso8601String() : null,
+                // Some sources are uncast strings (e.g. visitor_pdl_relationships.verified_at).
+                'occurredAt' => $step['occurredAt'] ? \Carbon\Carbon::parse($step['occurredAt'])->toIso8601String() : null,
                 'officerNote' => null,
             ];
         }, $steps, array_keys($steps));
@@ -264,37 +293,140 @@ class VisitorApiController extends Controller
         return response()->json(['steps' => $steps]);
     }
 
+    /** Accepted upload formats for government IDs and supporting documents. */
+    private const DOCUMENT_FILE_RULES = ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'];
+
+    /**
+     * Uploads a government ID for the authenticated visitor. Always stored
+     * as `pending` — only staff (VisitorController::verifyId/rejectId) can
+     * change verification_status.
+     */
     public function storeDocument(Request $request): JsonResponse
     {
         $visitor = $this->currentVisitor($request);
 
-        $data = $request->validate([
-            'documentType' => ['required', 'string'],
-            'idNumber' => ['nullable', 'string', 'max:50'],
-            'file' => ['required', 'file', 'max:10240'],
-        ]);
+        // Accept the stored key (national_id) or its display label (National ID).
+        $labelToType = [];
+        foreach (VisitorId::TYPES as $type) {
+            $labelToType[strtolower((new VisitorId(['id_type' => $type]))->typeLabel())] = $type;
+        }
+        $labelToType += [
+            "driver's license" => 'drivers_license', "voter's id" => 'voters_id',
+            'philhealth' => 'philhealth_id', 'philhealth id' => 'philhealth_id', 'umid' => 'umid',
+        ];
+        $rawType = (string) $request->input('documentType', '');
+        if (! in_array($rawType, VisitorId::TYPES, true) && isset($labelToType[strtolower(trim($rawType))])) {
+            $request->merge(['documentType' => $labelToType[strtolower(trim($rawType))]]);
+        }
 
-        $idTypeMap = array_flip([
-            'national_id' => 'National ID', 'drivers_license' => "Driver's License", 'passport' => 'Passport',
-            'voters_id' => "Voter's ID", 'philhealth_id' => 'PhilHealth ID', 'umid' => 'UMID',
+        $data = $request->validate([
+            'documentType' => ['required', 'string', Rule::in(VisitorId::TYPES)],
+            'idNumber' => ['nullable', 'string', 'max:50'],
+            'file' => self::DOCUMENT_FILE_RULES,
+        ], [
+            'documentType.in' => 'Choose one of the accepted government ID types.',
+            'file.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'file.max' => 'The file is too large. Maximum size is 10 MB.',
         ]);
-        $idType = in_array($data['documentType'], VisitorId::TYPES, true) ? $data['documentType'] : 'national_id';
 
         $path = $request->file('file')->store('visitor-ids', 'public');
 
         $document = VisitorId::create([
             'visitor_id' => $visitor->visitor_id,
-            'id_type' => $idType,
+            'id_type' => $data['documentType'],
             'id_number' => $data['idNumber'] ?? 'PENDING',
             'file_path' => $path,
             'verification_status' => 'pending',
         ]);
 
+        AuditLog::record('create', 'visitor_ids', $document->visitor_id_doc_id,
+            "Visitor uploaded {$document->typeLabel()} via mobile app", Module::CODE_VISITOR_MANAGEMENT);
+
+        return response()->json($this->governmentIdPayload($document->fresh()), 201);
+    }
+
+    /**
+     * The authenticated visitor's own verification documents: government
+     * IDs (visitor_ids) and the supporting-document state of each
+     * visitor↔PDL relationship. File paths and ID numbers are not exposed.
+     */
+    public function documents(Request $request): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+        $visitor->load([
+            'idDocuments' => fn ($q) => $q->orderByDesc('uploaded_at')->orderByDesc('visitor_id_doc_id'),
+            'relationships' => fn ($q) => $q->with('pdl')->orderByDesc('created_at'),
+        ]);
+
         return response()->json([
-            'id' => $document->visitor_id_doc_id,
-            'documentType' => $document->id_type,
-            'status' => $document->verification_status,
-        ], 201);
+            'verificationStatus' => $visitor->verification_status,
+            'verifiedAt' => $visitor->verified_at?->toIso8601String(),
+            'relationshipHint' => $visitor->relationship_hint,
+            'governmentIds' => $visitor->idDocuments->map(fn ($d) => $this->governmentIdPayload($d))->values(),
+            'relationships' => $visitor->relationships->map(fn ($r) => $this->relationshipPayload($r))->values(),
+        ]);
+    }
+
+    /**
+     * Uploads the supporting document (e.g. marriage certificate) for one of
+     * the visitor's own relationships, using the existing
+     * visitor_pdl_relationships.supporting_document_path column. Does not
+     * change the relationship's verification_status — staff review it.
+     */
+    public function storeSupportingDocument(Request $request, VisitorPdlRelationship $relationship): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+        abort_unless((int) $relationship->visitor_id === (int) $visitor->visitor_id, 404);
+
+        if ($relationship->verification_status === 'verified') {
+            return response()->json([
+                'message' => 'This relationship is already verified. Its supporting document cannot be replaced.',
+                'status' => 'verified',
+            ], 409);
+        }
+
+        $request->validate([
+            'file' => self::DOCUMENT_FILE_RULES,
+        ], [
+            'file.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'file.max' => 'The file is too large. Maximum size is 10 MB.',
+        ]);
+
+        // Private disk — supporting documents are never publicly served.
+        $path = $request->file('file')->store('supporting-documents', 'local');
+
+        $relationship->update(['supporting_document_path' => $path]);
+
+        AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
+            'Visitor uploaded supporting document via mobile app', Module::CODE_VISITOR_MANAGEMENT);
+
+        return response()->json($this->relationshipPayload($relationship->fresh('pdl')), 201);
+    }
+
+    private function governmentIdPayload(VisitorId $d): array
+    {
+        return [
+            'id' => (string) $d->visitor_id_doc_id,
+            'documentType' => $d->id_type,
+            'documentTypeLabel' => $d->typeLabel(),
+            'status' => $d->verification_status,
+            'uploadedAt' => $d->uploaded_at?->toIso8601String(),
+            'verifiedAt' => $d->verified_at?->toIso8601String(),
+            'hasFile' => (bool) $d->file_path,
+        ];
+    }
+
+    private function relationshipPayload(VisitorPdlRelationship $r): array
+    {
+        return [
+            'id' => (string) $r->relationship_id,
+            'relationshipType' => $r->relationship_type,
+            'relationshipLabel' => $r->relationshipLabel(),
+            'pdlName' => $r->pdl?->full_name,
+            'status' => $r->verification_status,
+            'verifiedAt' => $r->verified_at ? \Carbon\Carbon::parse($r->verified_at)->toIso8601String() : null,
+            'hasSupportingDocument' => (bool) $r->supporting_document_path,
+        ];
     }
 
     // -----------------------------------------------------------------
