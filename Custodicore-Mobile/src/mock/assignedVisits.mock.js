@@ -210,13 +210,21 @@ export const UNABLE_TO_ATTEND_REASONS = [
 
 /** @param {string} status */
 export function getVisitListTab(status) {
-  if (status === 'completed') return 'completed';
-  if (status === 'cancelled' || status === 'unable_to_attend') return 'cancelled';
+  if (
+    status === 'completed' ||
+    status === 'cancelled' ||
+    status === 'declined' ||
+    status === 'no_show' ||
+    status === 'unable_to_attend'
+  ) {
+    return 'cancelled';
+  }
   return 'assigned';
 }
 
 /**
  * My Visits screen tabs: Upcoming | Pending | Completed.
+ * Backend statuses are canonical; UI-friendly grouping only.
  * @param {string} status
  * @returns {'upcoming' | 'pending' | 'completed'}
  */
@@ -225,16 +233,26 @@ export function getMyVisitsTab(status) {
     status === 'completed' ||
     status === 'checked_out' ||
     status === 'cancelled' ||
+    status === 'declined' ||
+    status === 'no_show' ||
     status === 'unable_to_attend'
   ) {
     return 'completed';
   }
-  if (status === 'pending_confirmation' || status === 'scheduled') {
+  if (
+    status === 'pending_confirmation' ||
+    status === 'assigned' ||
+    status === 'scheduled'
+  ) {
     return 'pending';
   }
   return 'upcoming';
 }
 
 export function canRespondToVisit(status) {
-  return status === 'pending_confirmation' || status === 'scheduled';
+  return (
+    status === 'pending_confirmation' ||
+    status === 'assigned' ||
+    status === 'scheduled'
+  );
 }

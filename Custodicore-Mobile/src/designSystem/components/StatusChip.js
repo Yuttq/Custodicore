@@ -5,10 +5,15 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const VARIANTS = {
-  confirmed: { label: 'Attendance Confirmed', bg: colors.success, fg: colors.white },
+  confirmed: { label: 'Confirmed', bg: colors.success, fg: colors.white },
   pending: { label: 'Pending', bg: colors.warning, fg: colors.textPrimary },
   pending_confirmation: {
-    label: 'Pending Confirmation',
+    label: 'Awaiting Confirmation',
+    bg: colors.warning,
+    fg: colors.textPrimary,
+  },
+  assigned: {
+    label: 'Assigned',
     bg: colors.warning,
     fg: colors.textPrimary,
   },
@@ -19,13 +24,19 @@ const VARIANTS = {
   },
   checked_in: { label: 'Checked-In', bg: colors.success, fg: colors.white },
   scheduled: {
-    label: 'Scheduled',
+    label: 'Awaiting Confirmation',
     bg: 'rgba(37, 99, 235, 0.12)',
     fg: colors.info,
   },
   cancelled: { label: 'Cancelled', bg: colors.danger, fg: colors.white },
+  declined: { label: 'Declined', bg: colors.danger, fg: colors.white },
+  no_show: {
+    label: 'No Show',
+    bg: 'rgba(107, 114, 128, 0.2)',
+    fg: colors.textPrimary,
+  },
   unable_to_attend: {
-    label: 'Unable To Attend',
+    label: 'Declined',
     bg: colors.danger,
     fg: colors.white,
   },

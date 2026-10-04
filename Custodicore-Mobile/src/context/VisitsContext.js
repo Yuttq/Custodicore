@@ -2,66 +2,148 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
-import { MOCK_ASSIGNED_VISITS } from '../mock/assignedVisits.mock';
+import { useAuth } from '../hooks/useAuth';
+import {
+  confirmAssignedVisit,
+  declineAssignedVisit,
+  fetchAssignedVisits,
+} from '../repositories/visitsRepository';
 
 const VisitsContext = createContext(null);
 
 /**
- * Local mock visit state shared across My Assigned Visits, Visit Details, and Unable To Attend.
- * Replace with API + cache when backend is available.
+ * Visit state for My Assigned Visits, Visit Details, and Unable To Attend.
+ * Phase 2: loads from GET /api/visits when USE_MOCK_VISITS is false.
  */
 export function VisitsProvider({ children }) {
-  const [visits, setVisits] = useState(() =>
-    MOCK_ASSIGNED_VISITS.map((v) => ({ ...v })),
-  );
+  const { token } = useAuth();
+  const [visits, setVisits] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const clearVisits = useCallback(() => {
+    setVisits([]);
+    setError(null);
+  }, []);
+
+  const refreshVisits = useCallback(async () => {
+    if (!token) {
+      clearVisits();
+      return [];
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await fetchAssignedVisits();
+      setVisits(list);
+      return list;
+    } catch (e) {
+      const message = e?.message ?? 'Could not load visits.';
+      setError(message);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, [token, clearVisits]);
+
+  // Load visits when session appears; clear when logged out
+  useEffect(() => {
+    if (!token) {
+      clearVisits();
+      return;
+    }
+    refreshVisits().catch(() => {
+      // error already stored in state
+    });
+  }, [token, refreshVisits, clearVisits]);
 
   const getVisitById = useCallback(
-    (id) => visits.find((v) => v.id === id) ?? null,
+    (id) => visits.find((v) => String(v.id) === String(id)) ?? null,
     [visits],
   );
 
-  const updateVisit = useCallback((id, patch) => {
-    setVisits((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, ...patch } : v)),
-    );
+  const upsertVisit = useCallback((visit) => {
+    if (!visit?.id) return;
+    setVisits((prev) => {
+      const idx = prev.findIndex((v) => String(v.id) === String(visit.id));
+      if (idx === -1) return [visit, ...prev];
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...visit };
+      return next;
+    });
   }, []);
 
   const confirmVisit = useCallback(
     async (id) => {
-      await new Promise((r) => setTimeout(r, 300));
-      updateVisit(id, { status: 'confirmed' });
+      const existing = getVisitById(id);
+      const scheduleId = existing?.scheduleId || id;
+      const updated = await confirmAssignedVisit(scheduleId);
+      if (updated) {
+        upsertVisit(updated);
+        return updated;
+      }
+      // Fallback if mock returned minimal payload
+      upsertVisit({ ...(existing || { id }), status: 'confirmed' });
+      return { id, status: 'confirmed' };
     },
-    [updateVisit],
+    [getVisitById, upsertVisit],
   );
 
   const submitUnableToAttend = useCallback(
     async (id, { reason, notes }) => {
-      await new Promise((r) => setTimeout(r, 350));
-      updateVisit(id, {
-        status: 'unable_to_attend',
+      const existing = getVisitById(id);
+      const scheduleId = existing?.scheduleId || id;
+      const updated = await declineAssignedVisit(scheduleId, { reason, notes });
+      if (updated) {
+        upsertVisit({
+          ...updated,
+          status: updated.status || 'declined',
+          unableReason: reason,
+          unableNotes: notes?.trim() || null,
+          cancellationReason:
+            updated.cancellationReason ||
+            [reason, notes?.trim()].filter(Boolean).join(' — ') ||
+            null,
+        });
+        return updated;
+      }
+      upsertVisit({
+        ...(existing || { id }),
+        status: 'declined',
         unableReason: reason,
         unableNotes: notes?.trim() || null,
       });
+      return { id, status: 'declined' };
     },
-    [updateVisit],
+    [getVisitById, upsertVisit],
   );
-
-  const refreshVisits = useCallback(async () => {
-    await new Promise((r) => setTimeout(r, 400));
-  }, []);
 
   const value = useMemo(
     () => ({
       visits,
+      loading,
+      error,
       getVisitById,
       confirmVisit,
       submitUnableToAttend,
       refreshVisits,
+      clearVisits,
     }),
-    [visits, getVisitById, confirmVisit, submitUnableToAttend, refreshVisits],
+    [
+      visits,
+      loading,
+      error,
+      getVisitById,
+      confirmVisit,
+      submitUnableToAttend,
+      refreshVisits,
+      clearVisits,
+    ],
   );
 
   return (

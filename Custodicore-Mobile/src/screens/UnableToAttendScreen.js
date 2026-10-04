@@ -49,7 +49,7 @@ export default function UnableToAttendScreen({ navigation, route }) {
       await submitUnableToAttend(visit.id, { reason, notes });
       Alert.alert(
         'Submitted',
-        'Your response has been recorded. Status: Unable To Attend.',
+        'Your response has been recorded. Status: Declined.',
         [
           {
             text: 'OK',
@@ -59,8 +59,12 @@ export default function UnableToAttendScreen({ navigation, route }) {
           },
         ],
       );
-    } catch {
-      Alert.alert('Error', 'Could not submit your response. Please try again.');
+    } catch (e) {
+      const message =
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : 'Could not submit your response. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setSubmitting(false);
     }

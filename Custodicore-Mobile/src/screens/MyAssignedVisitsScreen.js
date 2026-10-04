@@ -35,6 +35,7 @@ const LOADING_MS = 500;
 /** Maps visit status to StatusChip keys for the BJMP visitation workflow. */
 const VISIT_STATUS_CHIP = {
   pending_confirmation: 'pending_confirmation',
+  assigned: 'assigned',
   scheduled: 'pending_confirmation',
   confirmed: 'confirmed',
   qr_ready: 'qr_ready',
@@ -42,7 +43,9 @@ const VISIT_STATUS_CHIP = {
   checked_out: 'completed',
   completed: 'completed',
   cancelled: 'cancelled',
-  unable_to_attend: 'unable_to_attend',
+  declined: 'declined',
+  no_show: 'no_show',
+  unable_to_attend: 'declined',
 };
 
 /**
@@ -164,17 +167,25 @@ function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnable
  * My Visits — upcoming, pending confirmation, and completed visits (v2.1 / BJMP).
  */
 export default function MyAssignedVisitsScreen({ navigation }) {
-  const { visits, confirmVisit, refreshVisits } = useVisits();
+  const { visits, confirmVisit, refreshVisits, error: visitsError } = useVisits();
   const [activeTab, setActiveTab] = useState('upcoming');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const fetchVisits = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(null);
     try {
       await refreshVisits();
       if (!isRefresh) await new Promise((r) => setTimeout(r, LOADING_MS));
+    } catch (e) {
+      setLoadError(
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : 'Could not load visits. Pull to refresh or try again.',
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -213,8 +224,12 @@ export default function MyAssignedVisitsScreen({ navigation }) {
           'Attendance confirmed',
           'Your attendance has been recorded. Please arrive on time with valid ID.',
         );
-      } catch {
-        Alert.alert('Error', 'Could not confirm attendance. Please try again.');
+      } catch (e) {
+        const message =
+          typeof e?.message === 'string' && e.message.trim()
+            ? e.message
+            : 'Could not confirm attendance. Please try again.';
+        Alert.alert('Error', message);
       }
     },
     [confirmVisit],
@@ -308,6 +323,11 @@ export default function MyAssignedVisitsScreen({ navigation }) {
               ? [styles.emptyList, { paddingBottom: tabBarInset }]
               : [styles.list, { paddingBottom: tabBarInset }]
           }
+          ListHeaderComponent={
+            loadError || visitsError ? (
+              <Text style={styles.loadErrorText}>{loadError || visitsError}</Text>
+            ) : null
+          }
           ListEmptyComponent={
             <VisitListEmpty
               tab={activeTab}
@@ -387,5 +407,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: layout.screenPadding,
+  },
+  loadErrorText: {
+    ...typography.metadata,
+    color: colors.danger,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
 });

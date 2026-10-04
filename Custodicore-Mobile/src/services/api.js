@@ -2,15 +2,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { isAxiosError } from 'axios';
 
 /**
- * Visitor API base URL — replace when the BJMP backend is available.
- * In Expo, you can set `EXPO_PUBLIC_API_URL` in `.env` (no trailing slash).
+ * Visitor API base URL.
+ * Set `EXPO_PUBLIC_API_URL` in `.env` to `http://YOUR-PC-LAN-IP:8000/api` (no trailing slash).
+ * Paths below are relative to that base (e.g. `/auth/login` → `…/api/auth/login`).
  */
 const BASE_URL = (
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL) ||
-  'https://api.custodicore.placeholder'
+    'https://api.custodicore.placeholder'
 ).replace(/\/$/, '');
 
-const TOKEN_KEY = '@custodicore/auth_token';
+export const TOKEN_KEY = '@custodicore/auth_token';
 
 // axios.create is the documented API; eslint-plugin-import flags default.create.
 // eslint-disable-next-line import/no-named-as-default-member -- axios public API
@@ -18,6 +19,8 @@ const client = axios.create({
   baseURL: BASE_URL,
   timeout: 20000,
   headers: { 'Content-Type': 'application/json' },
+  // Laravel validation errors use Accept application/json
+  validateStatus: (status) => status >= 200 && status < 300,
 });
 
 /** Attaches `Authorization: Bearer <token>` when a stored session exists. */
@@ -34,35 +37,83 @@ client.interceptors.request.use(async (config) => {
 });
 
 /**
+ * Flatten Laravel `{ errors: { field: ["msg"] } }` into a single message.
+ * @param {unknown} body
+ * @returns {string|null}
+ */
+function formatLaravelErrors(body) {
+  if (!body || typeof body !== 'object') return null;
+  if (typeof body.message === 'string' && body.message.trim() && !body.errors) {
+    return body.message.trim();
+  }
+  const errors = body.errors;
+  if (errors && typeof errors === 'object' && !Array.isArray(errors)) {
+    const parts = Object.values(errors)
+      .flat()
+      .map((x) => (typeof x === 'string' ? x : null))
+      .filter(Boolean);
+    if (parts.length) return parts.join(' ');
+  }
+  if (typeof body.message === 'string' && body.message.trim()) {
+    return body.message.trim();
+  }
+  if (typeof body.error === 'string' && body.error.trim()) {
+    return body.error.trim();
+  }
+  return null;
+}
+
+/**
  * Normalizes axios failures into a plain `Error` for alerts and logging.
  * @param {unknown} error
- * @returns {Error}
+ * @returns {Error & { status?: number; errors?: Record<string, string[]> }}
  */
 function toRequestError(error) {
   if (isAxiosError(error)) {
+    const status = error.response?.status;
     const body = error.response?.data;
-    const fromBody =
-      (typeof body?.message === 'string' && body.message) ||
-      (typeof body?.error === 'string' && body.error);
-    const combined =
-      fromBody ||
-      (Array.isArray(body?.errors) &&
-        body.errors
-          .map((x) => (typeof x?.message === 'string' ? x.message : null))
-          .filter(Boolean)
-          .join(' ')) ||
-      error.message;
-    const err = new Error(String(combined || 'Request failed').trim());
-    err.status = error.response?.status;
+    let message = formatLaravelErrors(body);
+
+    if (!message) {
+      if (status === 401) message = 'Your session has expired. Please sign in again.';
+      else if (status === 403) message = 'You do not have access to this resource.';
+      else if (status === 404) message = 'The requested visit or resource was not found.';
+      else if (status === 409) message = 'This visit can no longer be updated.';
+      else if (!error.response) {
+        message =
+          'Unable to reach the server. Check that your phone and PC are on the same Wi‑Fi and the API URL is correct.';
+      } else {
+        message = error.message || 'Request failed';
+      }
+    }
+
+    const err = new Error(String(message).trim());
+    err.status = status;
+    if (body?.errors && typeof body.errors === 'object') {
+      err.errors = body.errors;
+    }
     return err;
   }
   if (error instanceof Error) return error;
   return new Error('Request failed');
 }
 
+export async function persistToken(token) {
+  if (token) {
+    await AsyncStorage.setItem(TOKEN_KEY, String(token));
+  }
+}
+
+export async function clearStoredToken() {
+  await AsyncStorage.removeItem(TOKEN_KEY);
+}
+
+export async function getStoredToken() {
+  return AsyncStorage.getItem(TOKEN_KEY);
+}
+
 /**
- * Logs in a visitor and returns the API payload (e.g. `{ token, user }`).
- * Persist `token` with AsyncStorage from the caller after success.
+ * Logs in a visitor and returns `{ token, user }`.
  * @param {string} email
  * @param {string} password
  */
@@ -76,9 +127,8 @@ export async function login(email, password) {
 }
 
 /**
- * Exchanges a Google ID token for a CustodiCore session (OAuth 2.0 / OpenID Connect).
+ * Exchanges a Google ID token for a CustodiCore session (deferred — backend returns 501).
  * @param {{ idToken: string; accessToken?: string }} payload
- * @returns {Promise<{ token: string; user?: Record<string, unknown> }>}
  */
 export async function loginWithGoogle(payload) {
   try {
@@ -90,7 +140,7 @@ export async function loginWithGoogle(payload) {
 }
 
 /**
- * Registers a new visitor account (name, email, password, etc. per backend contract).
+ * Registers a new visitor account.
  * @param {Record<string, unknown>} payload
  */
 export async function register(payload) {
@@ -103,14 +153,51 @@ export async function register(payload) {
 }
 
 /**
+ * Authenticated visitor profile — GET /api/me
+ */
+export async function getMe() {
+  try {
+    const { data } = await client.get('/me');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Revokes the current Sanctum token — POST /api/auth/logout
+ */
+export async function logout() {
+  try {
+    const { data } = await client.post('/auth/logout');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Uploads an identification document (multipart body in production).
- * @param {FormData} formData — fields such as `documentType`, `expiresAt`, `file`
+ * @param {FormData} formData
  */
 export async function uploadDocument(formData) {
   try {
     const { data } = await client.post('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Full visit list for the authenticated visitor — GET /api/visits
+ * @returns {Promise<{ visits: object[] }>}
+ */
+export async function getVisits() {
+  try {
+    const { data } = await client.get('/visits');
     return data;
   } catch (error) {
     throw toRequestError(error);
@@ -130,12 +217,16 @@ export async function getUpcomingSchedule() {
 }
 
 /**
- * Confirms attendance for a pending schedule the visitor was assigned.
+ * Confirms attendance for a pending visit request.
+ * Backend route: POST /api/schedules/{visitRequest}/confirm
+ * (`scheduleId` in the mobile app is visit_requests.visit_request_id.)
  * @param {string} scheduleId
  */
 export async function confirmSchedule(scheduleId) {
   try {
-    const { data } = await client.post(`/schedules/${scheduleId}/confirm`);
+    const { data } = await client.post(
+      `/schedules/${encodeURIComponent(scheduleId)}/confirm`,
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);
@@ -143,12 +234,19 @@ export async function confirmSchedule(scheduleId) {
 }
 
 /**
- * Declines a pending schedule (visitor cannot attend).
+ * Declines a pending visit request.
+ * Backend route: POST /api/schedules/{visitRequest}/decline
  * @param {string} scheduleId
+ * @param {{ reason?: string }=} options
  */
-export async function declineSchedule(scheduleId) {
+export async function declineSchedule(scheduleId, options = {}) {
   try {
-    const { data } = await client.post(`/schedules/${scheduleId}/decline`);
+    const body = {};
+    if (options.reason) body.reason = options.reason;
+    const { data } = await client.post(
+      `/schedules/${encodeURIComponent(scheduleId)}/decline`,
+      body,
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);
@@ -156,7 +254,7 @@ export async function declineSchedule(scheduleId) {
 }
 
 /**
- * Returns paginated or list history of past visits for the signed-in visitor.
+ * Returns list history of past visits for the signed-in visitor.
  */
 export async function getVisitHistory() {
   try {
@@ -183,21 +281,20 @@ export async function getQrToken(scheduleId) {
 }
 
 /**
- * Returns timeline events for a specific schedule (approvals, check-in, etc.).
+ * Returns timeline events for a specific schedule.
  * @param {string} scheduleId
  */
 export async function getTimeline(scheduleId) {
   try {
-    const { data } = await client.get(`/schedules/${scheduleId}/timeline`);
+    const { data } = await client.get(
+      `/schedules/${encodeURIComponent(scheduleId)}/timeline`,
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);
   }
 }
 
-/**
- * Lists in-app notifications for the visitor (approvals, rejections, reminders).
- */
 export async function getNotifications() {
   try {
     const { data } = await client.get('/notifications');
@@ -207,9 +304,6 @@ export async function getNotifications() {
   }
 }
 
-/**
- * Returns unread notification count for tab badge / polling.
- */
 export async function getUnreadNotificationCount() {
   try {
     const { data } = await client.get('/notifications/unread-count');
@@ -219,17 +313,16 @@ export async function getUnreadNotificationCount() {
   }
 }
 
-/**
- * Marks a single notification as read (updates badge / unread state server-side).
- * @param {string} notificationId
- */
 export async function markNotificationRead(notificationId) {
   try {
-    const { data } = await client.patch(`/notifications/${notificationId}/read`);
+    const { data } = await client.patch(
+      `/notifications/${encodeURIComponent(notificationId)}/read`,
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);
   }
 }
 
+export { BASE_URL };
 export default client;

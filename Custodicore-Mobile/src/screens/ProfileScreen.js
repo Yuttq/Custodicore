@@ -140,10 +140,11 @@ function MenuRow({ icon, label, destructive, isLast, onPress }) {
  * Visitor profile — account management (v2.1 / BJMP).
  */
 export default function ProfileScreen({ navigation }) {
-  const { logout, pendingVerification, registrationSummary } = useAuth();
+  const { logout, pendingVerification, registrationSummary, user } = useAuth();
   const [profile, setProfile] = useState(DEFAULT_LOCAL_PROFILE);
 
   const visitorName =
+    user?.fullName?.trim() ||
     profile.fullName?.trim() ||
     registrationSummary?.fullName?.trim() ||
     DEFAULT_LOCAL_PROFILE.fullName;

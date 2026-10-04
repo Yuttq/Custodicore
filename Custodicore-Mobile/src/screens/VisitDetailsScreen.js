@@ -92,8 +92,12 @@ export default function VisitDetailsScreen({ navigation, route }) {
         'Your attendance has been recorded. Please arrive on time with valid ID.',
         [{ text: 'OK', onPress: () => goBackOr(navigation) }],
       );
-    } catch {
-      Alert.alert('Error', 'Could not confirm attendance. Please try again.');
+    } catch (e) {
+      const message =
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : 'Could not confirm attendance. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setSubmitting(false);
     }
@@ -180,6 +184,9 @@ export default function VisitDetailsScreen({ navigation, route }) {
               <InfoRow label="PDL Name" value={visit.pdlName} />
               <InfoRow label="Visit Type" value={visit.visitType} />
               <InfoRow label="Reference Number" value={visit.referenceNumber} />
+              {visit.cancellationReason ? (
+                <InfoRow label="Cancellation Reason" value={visit.cancellationReason} />
+              ) : null}
             </Card>
 
             {showQrPass ? (

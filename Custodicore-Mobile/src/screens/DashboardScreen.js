@@ -208,11 +208,12 @@ function TextLink({ label, onPress, accessibilityLabel }) {
  * Visitor home dashboard — verification, upcoming visit, progress snapshot (v2.1).
  */
 export default function DashboardScreen({ navigation }) {
-  const { registrationSummary, pendingVerification } = useAuth();
+  const { registrationSummary, pendingVerification, user } = useAuth();
   const { visits } = useVisits();
   const [profile, setProfile] = useState(DEFAULT_LOCAL_PROFILE);
 
   const visitorName =
+    user?.fullName?.trim() ||
     registrationSummary?.fullName?.trim() ||
     profile.fullName ||
     DEFAULT_LOCAL_PROFILE.fullName;
@@ -241,6 +242,7 @@ export default function DashboardScreen({ navigation }) {
       (v) =>
         v.status === 'confirmed' ||
         v.status === 'pending_confirmation' ||
+        v.status === 'assigned' ||
         v.status === 'scheduled',
     );
     if (assigned.length === 0) return null;

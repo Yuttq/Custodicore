@@ -5,45 +5,196 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-// Phase 4: import * as api from '../services/api';
+import { USE_MOCK_AUTH } from '../mock/devFlags';
+import client, {
+  getMe,
+  getStoredToken,
+  login as apiLogin,
+  logout as apiLogout,
+  persistToken,
+  register as apiRegister,
+  TOKEN_KEY,
+} from '../services/api';
 import {
   authenticateWithGoogle,
   GoogleSignInCancelledError,
   GoogleSignInNotConfiguredError,
 } from '../services/socialAuthHandlers';
 
-const TOKEN_KEY = '@custodicore/auth_token';
 const PENDING_VERIFICATION_KEY = '@custodicore/pending_verification';
 const REGISTRATION_SUMMARY_KEY = '@custodicore/registration_summary';
+const USER_KEY = '@custodicore/auth_user';
 
 const AuthContext = createContext(null);
 
+/**
+ * Map registration gender UI labels onto the Laravel contract.
+ * "Prefer not to say" → prefer_not_to_say (backend stores NULL).
+ * @param {string} gender
+ */
+function mapGenderForApi(gender) {
+  const g = String(gender || '').trim().toLowerCase();
+  if (!g) return undefined;
+  if (g === 'prefer not to say') return 'prefer_not_to_say';
+  if (g === 'male' || g === 'female' || g === 'other') return g;
+  return g;
+}
+
+/**
+ * Build POST /api/auth/register body from RegisterScreen payload.
+ * Does NOT send PDL IDs or create visitor-PDL relationships.
+ * @param {Record<string, unknown>} payload
+ */
+function buildRegisterBody(payload) {
+  const body = {
+    fullName: String(payload.fullName || '').trim(),
+    email: String(payload.email || '').trim(),
+    password: payload.password,
+    password_confirmation: payload.password_confirmation || payload.password,
+    dateOfBirth: payload.dateOfBirth || payload.birthdate,
+    gender: mapGenderForApi(payload.gender),
+    address: payload.address ? String(payload.address).trim() : undefined,
+    contactNumber: payload.contactNumber
+      ? String(payload.contactNumber).trim()
+      : undefined,
+    relationshipHint:
+      payload.relationshipHint ||
+      payload.relationshipLabel ||
+      payload.relationship ||
+      undefined,
+  };
+
+  Object.keys(body).forEach((key) => {
+    if (body[key] === undefined || body[key] === '') delete body[key];
+  });
+
+  return body;
+}
+
+function normalizeUser(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    id: raw.id != null ? String(raw.id) : null,
+    email: raw.email ?? null,
+    fullName: raw.fullName ?? raw.full_name ?? null,
+    role: raw.role ?? null,
+    verificationStatus: raw.verificationStatus ?? raw.verification_status ?? null,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
+  const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [registrationSummary, setRegistrationSummary] = useState(null);
+  const clearingRef = useRef(false);
 
+  const clearLocalSession = useCallback(async () => {
+    if (clearingRef.current) return;
+    clearingRef.current = true;
+    try {
+      await AsyncStorage.multiRemove([
+        TOKEN_KEY,
+        PENDING_VERIFICATION_KEY,
+        REGISTRATION_SUMMARY_KEY,
+        USER_KEY,
+      ]);
+      setToken(null);
+      setUser(null);
+      setPendingVerification(false);
+      setRegistrationSummary(null);
+    } finally {
+      clearingRef.current = false;
+    }
+  }, []);
+
+  const applySession = useCallback(async (sessionToken, sessionUser, options = {}) => {
+    const normalized = normalizeUser(sessionUser);
+    await persistToken(sessionToken);
+    if (normalized) {
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(normalized));
+    }
+
+    const isPending =
+      options.forcePendingVerification === true ||
+      normalized?.verificationStatus === 'pending';
+
+    if (isPending) {
+      await AsyncStorage.setItem(PENDING_VERIFICATION_KEY, '1');
+    } else {
+      await AsyncStorage.removeItem(PENDING_VERIFICATION_KEY);
+    }
+
+    setToken(sessionToken);
+    setUser(normalized);
+    setPendingVerification(isPending);
+  }, []);
+
+  // Restore session on launch: token → GET /api/me
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [storedToken, pending, summaryJson] = await Promise.all([
-          AsyncStorage.getItem(TOKEN_KEY),
+        const [storedToken, pending, summaryJson, userJson] = await Promise.all([
+          getStoredToken(),
           AsyncStorage.getItem(PENDING_VERIFICATION_KEY),
           AsyncStorage.getItem(REGISTRATION_SUMMARY_KEY),
+          AsyncStorage.getItem(USER_KEY),
         ]);
-        if (!cancelled) {
+
+        if (cancelled) return;
+
+        if (summaryJson) {
+          try {
+            setRegistrationSummary(JSON.parse(summaryJson));
+          } catch {
+            setRegistrationSummary(null);
+          }
+        }
+
+        if (!storedToken) {
+          setToken(null);
+          setUser(null);
+          setPendingVerification(false);
+          return;
+        }
+
+        if (USE_MOCK_AUTH) {
           setToken(storedToken);
           setPendingVerification(pending === '1');
-          if (summaryJson) {
+          if (userJson) {
             try {
-              setRegistrationSummary(JSON.parse(summaryJson));
+              setUser(JSON.parse(userJson));
             } catch {
-              setRegistrationSummary(null);
+              setUser(null);
+            }
+          }
+          return;
+        }
+
+        try {
+          const me = await getMe();
+          if (cancelled) return;
+          await applySession(storedToken, me);
+        } catch (e) {
+          if (cancelled) return;
+          if (e?.status === 401 || e?.status === 403) {
+            await clearLocalSession();
+          } else {
+            // Network blip: keep token, hydrate cached user if available
+            setToken(storedToken);
+            setPendingVerification(pending === '1');
+            if (userJson) {
+              try {
+                setUser(JSON.parse(userJson));
+              } catch {
+                setUser(null);
+              }
             }
           }
         }
@@ -54,37 +205,67 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applySession, clearLocalSession]);
 
-  const persistSession = useCallback(async (sessionToken) => {
-    await AsyncStorage.setItem(TOKEN_KEY, sessionToken);
-    setToken(sessionToken);
-  }, []);
+  // Clear local session on 401 from any authenticated request
+  useEffect(() => {
+    const id = client.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error?.response?.status === 401 && token) {
+          await clearLocalSession();
+        }
+        return Promise.reject(error);
+      },
+    );
+    return () => client.interceptors.response.eject(id);
+  }, [token, clearLocalSession]);
 
   const login = useCallback(
     async (email, password) => {
       setError(null);
       try {
-        // Phase 4: const data = await api.login(email, password); await persistSession(data.token);
-        await new Promise((r) => setTimeout(r, 350));
-        if (!String(email || '').trim() || !password) {
-          throw new Error('Please enter your email address and password.');
+        if (USE_MOCK_AUTH) {
+          await new Promise((r) => setTimeout(r, 350));
+          if (!String(email || '').trim() || !password) {
+            throw new Error('Please enter your email address and password.');
+          }
+          await applySession('placeholder-token', {
+            id: 'mock',
+            email,
+            fullName: 'Mock Visitor',
+            role: 'Visitor',
+            verificationStatus: 'verified',
+          });
+          return;
         }
-        await persistSession('placeholder-token');
+
+        const data = await apiLogin(email, password);
+        if (!data?.token) {
+          throw new Error('Login succeeded but no session token was returned.');
+        }
+        await applySession(data.token, data.user);
+        // Refresh from /me when login payload is thin
+        try {
+          const me = await getMe();
+          await applySession(data.token, me);
+        } catch {
+          // login user payload is enough
+        }
       } catch (e) {
         const message = e?.message ?? 'Login failed';
         setError(message);
         throw e;
       }
     },
-    [persistSession],
+    [applySession],
   );
 
   const loginWithGoogle = useCallback(async () => {
     setError(null);
     try {
       const session = await authenticateWithGoogle();
-      await persistSession(session.token);
+      await applySession(session.token, session.user);
     } catch (e) {
       if (e instanceof GoogleSignInCancelledError) {
         return;
@@ -96,36 +277,59 @@ export function AuthProvider({ children }) {
       setError(message);
       throw e;
     }
-  }, [persistSession]);
+  }, [applySession]);
 
-  const register = useCallback(async (payload) => {
-    setError(null);
-    try {
-      // Phase 4: await api.register(payload)
-      await new Promise((r) => setTimeout(r, 350));
+  const register = useCallback(
+    async (payload) => {
+      setError(null);
+      try {
+        const summary = {
+          fullName: payload?.fullName,
+          relationship: payload?.relationship,
+          relationshipLabel: payload?.relationshipLabel,
+          documents: payload?.documentsSummary ?? [],
+        };
 
-      const summary = {
-        fullName: payload?.fullName,
-        relationship: payload?.relationship,
-        relationshipLabel: payload?.relationshipLabel,
-        documents: payload?.documentsSummary ?? [],
-      };
+        if (USE_MOCK_AUTH) {
+          await new Promise((r) => setTimeout(r, 350));
+          await AsyncStorage.multiSet([
+            [TOKEN_KEY, 'placeholder-token'],
+            [PENDING_VERIFICATION_KEY, '1'],
+            [REGISTRATION_SUMMARY_KEY, JSON.stringify(summary)],
+          ]);
+          setRegistrationSummary(summary);
+          setPendingVerification(true);
+          setToken('placeholder-token');
+          setUser({
+            id: 'mock',
+            email: payload?.email ?? null,
+            fullName: payload?.fullName ?? null,
+            role: 'Visitor',
+            verificationStatus: 'pending',
+          });
+          return;
+        }
 
-      await AsyncStorage.multiSet([
-        [TOKEN_KEY, 'placeholder-token'],
-        [PENDING_VERIFICATION_KEY, '1'],
-        [REGISTRATION_SUMMARY_KEY, JSON.stringify(summary)],
-      ]);
+        const body = buildRegisterBody(payload);
+        const data = await apiRegister(body);
+        if (!data?.token) {
+          throw new Error('Registration succeeded but no session token was returned.');
+        }
 
-      setRegistrationSummary(summary);
-      setPendingVerification(true);
-      setToken('placeholder-token');
-    } catch (e) {
-      const message = e?.message ?? 'Registration failed';
-      setError(message);
-      throw e;
-    }
-  }, []);
+        await AsyncStorage.setItem(REGISTRATION_SUMMARY_KEY, JSON.stringify(summary));
+        setRegistrationSummary(summary);
+
+        await applySession(data.token, data.user, {
+          forcePendingVerification: true,
+        });
+      } catch (e) {
+        const message = e?.message ?? 'Registration failed';
+        setError(message);
+        throw e;
+      }
+    },
+    [applySession],
+  );
 
   const completeVerificationReview = useCallback(async () => {
     await AsyncStorage.removeItem(PENDING_VERIFICATION_KEY);
@@ -134,19 +338,23 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     setError(null);
-    await AsyncStorage.multiRemove([
-      TOKEN_KEY,
-      PENDING_VERIFICATION_KEY,
-      REGISTRATION_SUMMARY_KEY,
-    ]);
-    setToken(null);
-    setPendingVerification(false);
-    setRegistrationSummary(null);
-  }, []);
+    try {
+      if (!USE_MOCK_AUTH && token) {
+        try {
+          await apiLogout();
+        } catch {
+          // Token may already be invalid — still clear local session.
+        }
+      }
+    } finally {
+      await clearLocalSession();
+    }
+  }, [token, clearLocalSession]);
 
   const value = useMemo(
     () => ({
       token,
+      user,
       initializing,
       error,
       setError,
@@ -157,9 +365,11 @@ export function AuthProvider({ children }) {
       register,
       completeVerificationReview,
       logout,
+      clearLocalSession,
     }),
     [
       token,
+      user,
       initializing,
       error,
       pendingVerification,
@@ -169,6 +379,7 @@ export function AuthProvider({ children }) {
       register,
       completeVerificationReview,
       logout,
+      clearLocalSession,
     ],
   );
 
