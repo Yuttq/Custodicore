@@ -67,6 +67,11 @@ function buildRegisterBody(payload) {
       payload.relationshipLabel ||
       payload.relationship ||
       undefined,
+    // Consent given on the first registration screen (Terms & Conditions +
+    // Privacy Policy). The backend rejects registration without both.
+    acceptedTerms: payload.acceptedTerms === true ? true : undefined,
+    acceptedPrivacy: payload.acceptedPrivacy === true ? true : undefined,
+    consentVersion: payload.consentVersion,
   };
 
   Object.keys(body).forEach((key) => {

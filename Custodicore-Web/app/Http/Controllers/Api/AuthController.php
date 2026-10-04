@@ -89,7 +89,16 @@ class AuthController extends Controller
         $address = $request->input('address');
         $relationshipHint = $request->input('relationshipHint', $request->input('relationship_hint'));
 
+        // Consent (Terms & Conditions + Privacy Policy) — accepted before any
+        // details are collected; camelCase (mobile) or snake_case.
+        $acceptedTerms = $request->input('acceptedTerms', $request->input('accepted_terms'));
+        $acceptedPrivacy = $request->input('acceptedPrivacy', $request->input('accepted_privacy'));
+        $consentVersion = $request->input('consentVersion', $request->input('consent_version'));
+
         $request->merge([
+            'acceptedTerms' => $acceptedTerms,
+            'acceptedPrivacy' => $acceptedPrivacy,
+            'consentVersion' => $consentVersion,
             'email' => $email,
             'password' => $password,
             'fullName' => $fullName,
@@ -117,7 +126,18 @@ class AuthController extends Controller
             ])],
             'address' => ['nullable', 'string', 'max:255'],
             'relationshipHint' => ['nullable', 'string', 'max:100'],
+            'acceptedTerms' => ['accepted'],
+            'acceptedPrivacy' => ['accepted'],
+            // If the app says which version it showed, it must be the current one.
+            'consentVersion' => ['nullable', 'string', Rule::in([(string) config('legal.version')])],
+        ], [
+            'acceptedTerms.accepted' => 'You must accept the Terms and Conditions to register.',
+            'acceptedPrivacy.accepted' => 'You must accept the Privacy Policy to register.',
+            'consentVersion.in' => 'The Terms and Privacy Policy were updated. Please review and accept the latest version.',
         ]);
+
+        $consentAt = now();
+        $consentVersionStored = (string) config('legal.version');
 
         $gender = $this->normalizeGender($genderRaw);
         $visitorRole = Role::where('role_name', 'Visitor')->firstOrFail();
@@ -131,7 +151,9 @@ class AuthController extends Controller
             $dateOfBirth,
             $gender,
             $address,
-            $relationshipHint
+            $relationshipHint,
+            $consentAt,
+            $consentVersionStored
         ) {
             $account = Account::create([
                 'role_id' => $visitorRole->role_id,
@@ -139,6 +161,9 @@ class AuthController extends Controller
                 'email' => $email,
                 'password_hash' => Hash::make($password),
                 'status' => 'active',
+                'terms_accepted_at' => $consentAt,
+                'privacy_accepted_at' => $consentAt,
+                'consent_version' => $consentVersionStored,
             ]);
 
             // Intentionally does NOT create visitor_pdl_relationships —

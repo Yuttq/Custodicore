@@ -7,7 +7,9 @@
     $name = trim((string) ($name ?? ''));
     $size = $size ?? 'h-9 w-9';
 
-    $palette = ['bg-primary-navy', 'bg-primary-teal', 'bg-info', 'bg-warning', 'bg-danger', 'bg-success'];
+    // Brand/neutral colors only — success/warning/danger are reserved for
+    // status meaning (shared UI guideline), so an avatar never looks like an alert.
+    $palette = ['bg-primary-navy', 'bg-primary-teal', 'bg-info'];
 
     if (!empty($color)) {
         $bg = $color;

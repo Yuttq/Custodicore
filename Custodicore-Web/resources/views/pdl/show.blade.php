@@ -22,7 +22,9 @@
 {{-- ================= CORE PROFILE ================= --}}
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Profile</h2></div>
-  <form method="POST" action="{{ route('pdl.update', $pdl->pdl_id) }}">
+  {{-- Final step on save: the officer re-enters their own password (data-password-confirm → partials/password-confirm). --}}
+  <form method="POST" action="{{ route('pdl.update', $pdl->pdl_id) }}"
+        data-password-confirm="Save changes to {{ $pdl->full_name }}'s profile? Enter your password to confirm.">
     @csrf
     @method('PUT')
     <div class="row cols-3">
@@ -31,9 +33,10 @@
       <div class="field-m">
         <label>Gender</label>
         <select name="gender">
-          <option value="male" {{ $pdl->gender === 'male' ? 'selected' : '' }}>Male</option>
-          <option value="female" {{ $pdl->gender === 'female' ? 'selected' : '' }}>Female</option>
-          <option value="other" {{ $pdl->gender === 'other' ? 'selected' : '' }}>Other</option>
+          {{-- old() first so a rejected password doesn't throw away the officer's edits --}}
+          <option value="male" {{ old('gender', $pdl->gender) === 'male' ? 'selected' : '' }}>Male</option>
+          <option value="female" {{ old('gender', $pdl->gender) === 'female' ? 'selected' : '' }}>Female</option>
+          <option value="other" {{ old('gender', $pdl->gender) === 'other' ? 'selected' : '' }}>Other</option>
         </select>
       </div>
     </div>
@@ -45,8 +48,8 @@
              (drug_related -> Thu/Sat, non_drug_related -> Fri/Sun) per the
              migration's own comment. --}}
         <select name="classification">
-          <option value="drug_related" {{ $pdl->classification === 'drug_related' ? 'selected' : '' }}>Drug-related</option>
-          <option value="non_drug_related" {{ $pdl->classification === 'non_drug_related' ? 'selected' : '' }}>Non-drug-related</option>
+          <option value="drug_related" {{ old('classification', $pdl->classification) === 'drug_related' ? 'selected' : '' }}>Drug-related</option>
+          <option value="non_drug_related" {{ old('classification', $pdl->classification) === 'non_drug_related' ? 'selected' : '' }}>Non-drug-related</option>
         </select>
       </div>
       <div class="field-m"><label>Cell/Block</label><input type="text" name="cell_block" value="{{ old('cell_block', $pdl->cell_block) }}" placeholder="e.g. Block A - 102"></div>
@@ -57,7 +60,7 @@
         <label>Custody Status</label>
         <select name="custody_status">
           @foreach (['active' => 'Active', 'released' => 'Released', 'transferred' => 'Transferred', 'deceased' => 'Deceased'] as $value => $label)
-            <option value="{{ $value }}" {{ $pdl->custody_status === $value ? 'selected' : '' }}>{{ $label }}</option>
+            <option value="{{ $value }}" {{ old('custody_status', $pdl->custody_status) === $value ? 'selected' : '' }}>{{ $label }}</option>
           @endforeach
         </select>
       </div>

@@ -56,8 +56,9 @@
                                     <button type="button" class="cc-btn-ghost" onclick="document.getElementById('edit-account-modal-{{ $account['id'] }}').showModal()">
                                         Edit
                                     </button>
+                                    {{-- Password popup replaces the plain confirm(): same question, plus re-entering your own password. --}}
                                     <form method="POST" action="{{ route('admin.users.toggle-status', $account['id']) }}"
-                                          data-confirm="{{ $account['status'] === 'active' ? 'Deactivate' : 'Activate' }} {{ $account['full_name'] }}'s account?">
+                                          data-password-confirm="{{ $account['status'] === 'active' ? 'Deactivate' : 'Activate' }} {{ $account['full_name'] }}'s account? Enter your password to confirm.">
                                         @csrf
                                         @method('PATCH')
                                         <button type="submit" class="cc-btn-ghost">
@@ -90,30 +91,35 @@
                 <p class="mb-md text-metadata text-danger">{{ $errors->first() }}</p>
             @endif
 
-            <div class="space-y-sm">
-                <div>
-                    <label class="cc-label">Full Name</label>
-                    <input type="text" name="full_name" value="{{ old('_edit_id') ? '' : old('full_name') }}" required class="cc-input" placeholder="e.g. Juan D. Dela Cruz" />
-                </div>
-                <div>
-                    <label class="cc-label">Role</label>
-                    <select name="role_name" required class="cc-input">
-                        <option value="" selected disabled>Select a role…</option>
-                        <option value="System Administrator/Warden" @selected(old('role_name') === 'System Administrator/Warden')>System Administrator/Warden</option>
-                        <option value="Record Officer" @selected(old('role_name') === 'Record Officer')>Record Officer</option>
-                        <option value="Front Desk Officer" @selected(old('role_name') === 'Front Desk Officer')>Front Desk Officer</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="cc-label">Email</label>
-                    <input type="email" name="email" value="{{ old('_edit_id') ? '' : old('email') }}" required class="cc-input" placeholder="name@bjmp.gov.ph" />
-                </div>
-            </div>
+            {{-- Step 1: Terms & Privacy consent — the details below stay locked until both are ticked. --}}
+            @include('partials.consent-gate', ['target' => 'new-account-fields', 'id' => 'new-account-consent', 'subject' => 'the officer being registered'])
 
-            <div class="mt-lg flex justify-end gap-sm">
-                <button type="button" class="cc-btn-secondary" onclick="document.getElementById('new-account-modal').close()">Cancel</button>
-                <button type="submit" class="cc-btn-primary">Create Account</button>
-            </div>
+            <fieldset id="new-account-fields" style="border:0;margin:0;padding:0;min-width:0;">
+                <div class="space-y-sm">
+                    <div>
+                        <label class="cc-label">Full Name</label>
+                        <input type="text" name="full_name" value="{{ old('_edit_id') ? '' : old('full_name') }}" required class="cc-input" placeholder="e.g. Juan D. Dela Cruz" />
+                    </div>
+                    <div>
+                        <label class="cc-label">Role</label>
+                        <select name="role_name" required class="cc-input">
+                            <option value="" selected disabled>Select a role…</option>
+                            <option value="System Administrator/Warden" @selected(old('role_name') === 'System Administrator/Warden')>System Administrator/Warden</option>
+                            <option value="Record Officer" @selected(old('role_name') === 'Record Officer')>Record Officer</option>
+                            <option value="Front Desk Officer" @selected(old('role_name') === 'Front Desk Officer')>Front Desk Officer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="cc-label">Email</label>
+                        <input type="email" name="email" value="{{ old('_edit_id') ? '' : old('email') }}" required class="cc-input" placeholder="name@bjmp.gov.ph" />
+                    </div>
+                </div>
+
+                <div class="mt-lg flex justify-end gap-sm">
+                    <button type="button" class="cc-btn-secondary" onclick="document.getElementById('new-account-modal').close()">Cancel</button>
+                    <button type="submit" class="cc-btn-primary">Create Account</button>
+                </div>
+            </fieldset>
         </form>
     </dialog>
 
@@ -122,7 +128,9 @@
          per row, pre-filled with that account's current details. --}}
     @foreach ($accounts as $account)
         <dialog id="edit-account-modal-{{ $account['id'] }}" class="cc-modal">
-            <form method="POST" action="{{ route('admin.users.update', $account['id']) }}">
+            {{-- Final step on save: the admin re-enters their own password (data-password-confirm → partials/password-confirm). --}}
+            <form method="POST" action="{{ route('admin.users.update', $account['id']) }}"
+                  data-password-confirm="Save changes to {{ $account['full_name'] }}'s account? Enter your password to confirm.">
                 @csrf
                 @method('PATCH')
                 <input type="hidden" name="_edit_id" value="{{ $account['id'] }}" />
@@ -173,7 +181,9 @@
     @if ($errors->any())
         @if (old('_edit_id'))
             <script>document.getElementById('edit-account-modal-{{ old('_edit_id') }}').showModal();</script>
-        @else
+        @elseif (! $errors->has('current_password'))
+            {{-- A rejected password on Activate/Deactivate has no modal to reopen — the
+                 banner from partials/password-confirm explains it instead. --}}
             <script>document.getElementById('new-account-modal').showModal();</script>
         @endif
     @endif

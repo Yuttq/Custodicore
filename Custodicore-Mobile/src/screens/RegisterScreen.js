@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -25,6 +25,7 @@ import {
 } from '../designSystem';
 import { formatBirthdateDisplay } from '../utils/formatDate';
 import { useAuth } from '../hooks/useAuth';
+import { getLegal } from '../services/api';
 import {
   ACCEPTED_ID_TYPES,
   GENDER_OPTIONS,
@@ -167,6 +168,33 @@ export default function RegisterScreen({ navigation }) {
   const [genderModalVisible, setGenderModalVisible] = useState(false);
   const [idTypeModal, setIdTypeModal] = useState({ visible: false, docKey: null });
 
+  // Consent comes BEFORE any details are collected: the wizard below is not
+  // shown until the visitor accepts both the Terms & Conditions and the
+  // Privacy Policy (same text as the web /terms and /privacy pages).
+  const [consentDone, setConsentDone] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [legal, setLegal] = useState(null);
+  const [legalError, setLegalError] = useState(null);
+  const [legalDoc, setLegalDoc] = useState(null); // 'terms' | 'privacy' | null (modal)
+
+  const loadLegal = useCallback(async () => {
+    setLegalError(null);
+    try {
+      setLegal(await getLegal());
+    } catch (e) {
+      setLegalError(
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : 'Could not load the document. Check your connection and try again.',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLegal();
+  }, [loadLegal]);
+
   const requiredDocs = useMemo(
     () => (relationship ? getRequiredDocuments(relationship) : []),
     [relationship],
@@ -178,8 +206,25 @@ export default function RegisterScreen({ navigation }) {
       setErrors({});
       return;
     }
+    if (consentDone) {
+      // Back from the first details step returns to the consent screen.
+      setConsentDone(false);
+      setErrors({});
+      return;
+    }
     navigation.navigate('Login');
-  }, [step, navigation]);
+  }, [step, consentDone, navigation]);
+
+  const onConsentContinue = useCallback(() => {
+    if (!acceptTerms || !acceptPrivacy) {
+      setErrors({
+        consent: 'Please accept both the Terms and Conditions and the Privacy Policy to continue.',
+      });
+      return;
+    }
+    setErrors({});
+    setConsentDone(true);
+  }, [acceptTerms, acceptPrivacy]);
 
   const validateStep1 = useCallback(() => {
     const next = {};
@@ -303,6 +348,9 @@ export default function RegisterScreen({ navigation }) {
         documents,
         documentsSummary,
         certified,
+        acceptedTerms: acceptTerms,
+        acceptedPrivacy: acceptPrivacy,
+        consentVersion: legal?.version,
       });
     } catch (e) {
       const message =
@@ -328,6 +376,9 @@ export default function RegisterScreen({ navigation }) {
     documents,
     certified,
     requiredDocs,
+    acceptTerms,
+    acceptPrivacy,
+    legal,
   ]);
 
   const renderStep1 = () => (
@@ -596,6 +647,148 @@ export default function RegisterScreen({ navigation }) {
     </>
   );
 
+  // ── Consent screen (shown first, before any details are collected) ──────
+  const renderLegalModal = () => {
+    const doc = legalDoc && legal ? legal[legalDoc] : null;
+    const fallbackTitle = legalDoc === 'privacy' ? 'Privacy Policy' : 'Terms and Conditions';
+    return (
+      <Modal
+        visible={legalDoc !== null}
+        animationType="slide"
+        onRequestClose={() => setLegalDoc(null)}
+      >
+        <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+          <View style={legalStyles.header}>
+            <Text style={legalStyles.headerTitle}>{doc?.title ?? fallbackTitle}</Text>
+            <Pressable
+              onPress={() => setLegalDoc(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={10}
+            >
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={legalStyles.scroll}>
+            {doc ? (
+              <>
+                <Text style={legalStyles.meta}>
+                  Version {legal.version} · Effective {legal.effectiveDate}
+                </Text>
+                {legal.draft ? (
+                  <Text style={legalStyles.draft}>
+                    Draft — pending legal review by the facility.
+                  </Text>
+                ) : null}
+                <Text style={legalStyles.body}>{doc.intro}</Text>
+                {doc.sections.map((section) => (
+                  <View key={section.heading}>
+                    <Text style={legalStyles.heading}>{section.heading}</Text>
+                    {section.body.map((paragraph, i) => (
+                      <Text key={i} style={legalStyles.body}>
+                        {paragraph}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+              </>
+            ) : legalError ? (
+              <>
+                <Text style={styles.stepError}>{legalError}</Text>
+                <Button title="Try again" onPress={loadLegal} accessibilityLabel="Try again" />
+              </>
+            ) : (
+              <Text style={legalStyles.body}>Loading…</Text>
+            )}
+          </ScrollView>
+          <View style={legalStyles.footer}>
+            <Button
+              title="Close"
+              onPress={() => setLegalDoc(null)}
+              accessibilityLabel="Close document"
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
+
+  const renderConsentRow = (checked, toggle, linkLabel, docKey, suffix = '') => (
+    <Pressable
+      onPress={() => {
+        toggle((v) => !v);
+        setErrors({});
+      }}
+      style={styles.consentRow}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+    >
+      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+        {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+      </View>
+      <Text style={styles.certifyText}>
+        I have read and accept the{' '}
+        <Text
+          style={styles.linkText}
+          onPress={() => setLegalDoc(docKey)}
+          accessibilityRole="link"
+        >
+          {linkLabel}
+        </Text>
+        {suffix}.
+      </Text>
+    </Pressable>
+  );
+
+  const renderConsent = () => (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
+        </Pressable>
+
+        <Text style={styles.screenTitle}>Before you begin</Text>
+        <Text style={styles.stepSubtitle}>
+          Please review and accept our Terms and Conditions and Privacy Policy before you
+          provide any of your details. Tap a document name to read it.
+        </Text>
+
+        <Card style={styles.card}>
+          {renderConsentRow(acceptTerms, setAcceptTerms, 'Terms and Conditions', 'terms')}
+          {renderConsentRow(
+            acceptPrivacy,
+            setAcceptPrivacy,
+            'Privacy Policy',
+            'privacy',
+            ' (Data Privacy Act of 2012)',
+          )}
+        </Card>
+        {errors.consent ? <Text style={styles.stepError}>{errors.consent}</Text> : null}
+        {legal?.version ? (
+          <Text style={styles.acceptedIds}>Version {legal.version}</Text>
+        ) : null}
+
+        <View style={styles.footerBtn}>
+          <Button
+            title="Continue"
+            onPress={onConsentContinue}
+            disabled={!acceptTerms || !acceptPrivacy}
+            accessibilityLabel="Continue to registration"
+          />
+        </View>
+      </ScrollView>
+      {renderLegalModal()}
+    </SafeAreaView>
+  );
+
+  if (!consentDone) return renderConsent();
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView
@@ -750,6 +943,50 @@ const stepperStyles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+});
+
+const legalStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  headerTitle: { ...typography.cardTitle, color: colors.textPrimary, flex: 1 },
+  scroll: { padding: layout.screenPadding, paddingBottom: spacing.xl },
+  meta: { ...typography.metadata, color: colors.textSecondary, marginBottom: spacing.sm },
+  draft: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: layout.buttonRadius,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  heading: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  body: {
+    ...typography.body,
+    color: colors.textPrimary,
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+  footer: {
+    padding: layout.screenPadding,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.white,
   },
 });
 
@@ -989,6 +1226,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footerBtn: { marginTop: spacing.md },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  linkText: {
+    color: colors.primaryTeal,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 61, 122, 0.45)',

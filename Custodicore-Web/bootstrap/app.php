@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // route group in routes/web.php.
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRoleAccess::class,
+            // 'reauth' — the signed-in staff member must re-enter THEIR OWN
+            // password (current_password field) before a change to someone
+            // else's details goes through. See ConfirmActorPassword.
+            'reauth' => \App\Http\Middleware\ConfirmActorPassword::class,
         ]);
 
         // Send a not-logged-in visitor to /login instead of Laravel's

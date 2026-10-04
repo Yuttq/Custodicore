@@ -42,7 +42,7 @@
           <td>{{ $doc->typeLabel() }}</td>
           <td class="muted-cell">{{ $doc->id_number }}</td>
           <td>
-            <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'released' : 'transferred') }}">
+            <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
               <span class="dot"></span>{{ strtoupper($doc->verification_status) }}
             </span>
           </td>
@@ -100,7 +100,7 @@
             @endif
           </td>
           <td>
-            <span class="badge {{ $rel->verification_status === 'verified' ? 'active' : ($rel->verification_status === 'rejected' ? 'released' : 'transferred') }}">
+            <span class="badge {{ $rel->verification_status === 'verified' ? 'active' : ($rel->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
               <span class="dot"></span>{{ strtoupper($rel->verification_status) }}
             </span>
           </td>

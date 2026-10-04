@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationApiController;
 use App\Http\Controllers\Api\VisitorApiController;
+use App\Http\Controllers\LegalController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,8 +34,12 @@ Route::prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });
 
+// Public: the registration screen shows these BEFORE the visitor has an
+// account. Same text as the web /terms and /privacy pages (config/legal.php).
+Route::get('/legal', [LegalController::class, 'api']);
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/me',[AuthController::class, 'me']);
     Route::patch('/me', [AuthController::class, 'updateMe']);
 
     Route::get('/documents', [VisitorApiController::class, 'documents']);

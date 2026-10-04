@@ -65,7 +65,7 @@
       @foreach ($pdls as $pdl)
       <tr>
         <td>
-          <a href="{{ route('pdl.show', $pdl->pdl_id) }}" style="color:var(--blue);font-weight:700;text-decoration:none;">
+          <a href="{{ route('pdl.show', $pdl->pdl_id) }}" style="color:var(--teal);font-weight:700;text-decoration:none;">
             {{ $pdl->pdl_number }}
           </a>
         </td>

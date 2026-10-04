@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\VisitorController;
 
 use App\Http\Controllers\Auth\LoginController;
 
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\CustodyHistoryController;
 use App\Http\Controllers\VisitationTrackingController;
 use App\Http\Controllers\EligibilityController;
@@ -42,6 +43,17 @@ Route::middleware('guest')->group(function () {
 Route::post('/logout', [LoginController::class, 'logout'])
     ->name('logout')
     ->middleware('auth');
+
+/*
+|--------------------------------------------------------------------------
+| Terms & Conditions / Privacy Policy
+|--------------------------------------------------------------------------
+| Public on purpose — people read these BEFORE registering. Text comes from
+| config/legal.php (the mobile app gets the same text from GET /api/legal).
+*/
+
+Route::get('/terms', [LegalController::class, 'terms'])->name('legal.terms');
+Route::get('/privacy', [LegalController::class, 'privacy'])->name('legal.privacy');
 
 /*
 |--------------------------------------------------------------------------
@@ -106,10 +118,14 @@ Route::prefix('admin')
         Route::post('/users', [UserController::class, 'store'])
             ->name('users.store');
 
+        // Changing an existing officer's details / status requires the
+        // admin to re-enter their own password as the final step.
         Route::patch('/users/{id}', [UserController::class, 'update'])
+            ->middleware('reauth')
             ->name('users.update');
 
         Route::patch('/users/{id}/toggle-status', [UserController::class, 'toggleStatus'])
+            ->middleware('reauth')
             ->name('users.toggle-status');
 
 
@@ -251,10 +267,12 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'show']
     )->name('pdl.show');
 
+    // Editing a PDL's details requires the Record Officer to re-enter
+    // their own password as the final step.
     Route::put(
         '/pdls/{pdl}',
         [\App\Http\Controllers\PdlController::class, 'update']
-    )->name('pdl.update');
+    )->middleware('reauth')->name('pdl.update');
 
     Route::post(
         '/pdls/{pdl}/legal-records',

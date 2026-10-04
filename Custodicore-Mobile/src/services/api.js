@@ -157,6 +157,23 @@ export async function register(payload) {
 }
 
 /**
+ * Terms & Conditions + Privacy Policy text (public — shown BEFORE the visitor
+ * has an account) — GET /api/legal. Same wording as the web /terms and
+ * /privacy pages (config/legal.php on the backend).
+ * @returns {Promise<{ version: string, effectiveDate: string, draft: boolean,
+ *   terms: LegalDoc, privacy: LegalDoc }>}
+ *   where LegalDoc = { title, intro, sections: { heading, body: string[] }[] }
+ */
+export async function getLegal() {
+  try {
+    const { data } = await client.get('/legal');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Authenticated visitor profile — GET /api/me
  */
 export async function getMe() {

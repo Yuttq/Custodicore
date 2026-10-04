@@ -14,9 +14,11 @@
         @apply bg-card border border-border rounded-card shadow-card p-md;
     }
 
-    /* Mirrors src/designSystem/components/Button.js primary variant */
+    /* Mirrors src/designSystem/components/Button.js primary variant.
+       Teal = primary actions (shared UI guideline); navy is reserved for
+       branding/navigation/headers. */
     .cc-btn-primary {
-        @apply inline-flex items-center justify-center gap-sm rounded-button bg-primary-navy px-lg text-body font-semibold text-white transition hover:bg-primary-navy/90;
+        @apply inline-flex items-center justify-center gap-sm rounded-button bg-primary-teal px-lg text-body font-semibold text-white transition hover:bg-primary-teal/90;
         height: 48px; /* layout.buttonHeight */
     }
 
@@ -52,8 +54,8 @@
         @apply block text-status-label uppercase text-text-secondary;
     }
     .cc-input {
-        @apply mt-xs w-full rounded-button border border-border bg-white px-md text-body text-text-primary;
-        height: 44px;
+        @apply mt-xs w-full rounded-button border border-border bg-white px-md text-body text-text-primary focus:border-primary-teal focus:outline-none focus:ring-2 focus:ring-primary-teal/20;
+        height: 48px; /* shared UI guideline: 48px main inputs and buttons */
     }
 
     /* Native <dialog>-based modal. The browser centers and backdrops a

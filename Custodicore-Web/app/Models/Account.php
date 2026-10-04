@@ -35,7 +35,11 @@ class Account extends Authenticatable
     protected $table = 'accounts';
     protected $primaryKey = 'account_id';
 
-    protected $fillable = ['role_id', 'username', 'email', 'password_hash', 'status'];
+    protected $fillable = [
+        'role_id', 'username', 'email', 'password_hash', 'status',
+        // Consent recorded at registration (see config/legal.php for the version).
+        'terms_accepted_at', 'privacy_accepted_at', 'consent_version',
+    ];
 
     protected $hidden = ['password_hash'];
 
@@ -45,6 +49,8 @@ class Account extends Authenticatable
     {
         return [
             'last_login_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'privacy_accepted_at' => 'datetime',
         ];
     }
 

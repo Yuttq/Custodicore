@@ -103,5 +103,9 @@
   </main>
 
 </div>
+
+{{-- "Enter your password to finish" popup for forms marked data-password-confirm.
+     This layout's flash modal already lists $errors, so no extra banner. --}}
+@include('partials.password-confirm', ['banner' => false])
 </body>
 </html>

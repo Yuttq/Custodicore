@@ -112,5 +112,8 @@
          DOMContentLoaded before touching window.Chart — see dashboard's
          script block for the pattern. --}}
     @stack('scripts')
+
+    {{-- "Enter your password to finish" popup for forms marked data-password-confirm. --}}
+    @include('partials.password-confirm', ['banner' => true])
 </body>
 </html>
