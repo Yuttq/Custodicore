@@ -67,13 +67,28 @@ class VisitorController extends Controller
     }
 
     // -----------------------------------------------------------------
-    // DETAIL / SHOW — profile + ID docs + relationships + flags
+    // DETAIL / SHOW — profile + ID docs + relationships + flags + assign
     // -----------------------------------------------------------------
     public function show(VisitorProfile $visitor)
     {
-        $visitor->load(['idDocuments', 'relationships.pdl', 'flags' => fn ($q) => $q->orderBy('created_at', 'desc')]);
+        $visitor->load([
+            'account',
+            'idDocuments',
+            'relationships.pdl',
+            'flags' => fn ($q) => $q->orderBy('created_at', 'desc'),
+            'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule'])->orderByDesc('assigned_at')->limit(10),
+        ]);
 
-        return view('visitor.show', compact('visitor'));
+        $assignableRelationships = $visitor->relationships
+            ->filter(fn ($rel) => $rel->verification_status !== 'rejected' && $rel->pdl)
+            ->values();
+
+        $schedulesByClassification = [];
+        foreach ($assignableRelationships->pluck('pdl.classification')->unique()->filter() as $classification) {
+            $schedulesByClassification[$classification] = VisitAssignmentController::openSchedulesForClassification($classification);
+        }
+
+        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification'));
     }
 
     // -----------------------------------------------------------------

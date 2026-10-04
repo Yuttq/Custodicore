@@ -13,13 +13,18 @@
   <div class="panel-header"><h2>Profile</h2></div>
   <div class="row cols-3" style="margin-bottom:0;">
     <div><div class="stat-label">Date of Birth</div><div>{{ $visitor->date_of_birth->format('M d, Y') }}</div></div>
-    <div><div class="stat-label">Gender</div><div>{{ ucfirst($visitor->gender) }}</div></div>
+    <div><div class="stat-label">Gender</div><div>{{ $visitor->gender ? ucfirst($visitor->gender) : 'Prefer not to say' }}</div></div>
     <div><div class="stat-label">Contact Number</div><div>{{ $visitor->contact_number }}</div></div>
   </div>
   <div class="row cols-2" style="margin-top:16px;margin-bottom:0;">
     <div><div class="stat-label">Address</div><div>{{ $visitor->address ?? '—' }}</div></div>
     <div><div class="stat-label">Emergency Contact</div><div>{{ $visitor->emergency_contact_name ?? '—' }} {{ $visitor->emergency_contact_number ? '('.$visitor->emergency_contact_number.')' : '' }}</div></div>
   </div>
+  @if ($visitor->relationship_hint)
+  <div class="row" style="margin-top:16px;margin-bottom:0;">
+    <div><div class="stat-label">Relationship Hint (from registration)</div><div>{{ $visitor->relationship_hint }}</div></div>
+  </div>
+  @endif
 </div>
 
 {{-- ================= IDENTITY VERIFICATION ================= --}}
@@ -121,6 +126,153 @@
     </table>
   @endif
 </div>
+
+{{-- ================= ASSIGN VISIT ================= --}}
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header"><h2>Assign Visit</h2></div>
+
+  @if ($visitor->verification_status === 'rejected')
+    <p class="empty-note">This visitor was rejected and cannot be assigned a visit.</p>
+  @elseif ($visitor->account && $visitor->account->status !== 'active')
+    <p class="empty-note">This visitor account is not active and cannot be assigned a visit.</p>
+  @elseif ($assignableRelationships->isEmpty())
+    <p class="empty-note">Register and verify a visitor↔PDL relationship before assigning a visit.</p>
+  @else
+    <form method="POST" action="{{ route('visitor.visits.assign', $visitor->visitor_id) }}" id="assignVisitForm">
+      @csrf
+
+      <div class="row cols-2">
+        <div class="field-m">
+          <label>Relationship / PDL</label>
+          <select name="relationship_id" id="relationshipSelect" required>
+            <option value="">— Select relationship —</option>
+            @foreach ($assignableRelationships as $rel)
+              <option
+                value="{{ $rel->relationship_id }}"
+                data-pdl-id="{{ $rel->pdl_id }}"
+                data-classification="{{ $rel->pdl->classification }}"
+                {{ (string) old('relationship_id') === (string) $rel->relationship_id ? 'selected' : '' }}
+              >
+                {{ $rel->pdl->full_name }} — {{ $rel->relationshipLabel() }}
+                ({{ strtoupper($rel->verification_status) }})
+              </option>
+            @endforeach
+          </select>
+          <input type="hidden" name="pdl_id" id="pdlIdInput" value="{{ old('pdl_id') }}">
+        </div>
+
+        <div class="field-m">
+          <label>Visit Schedule</label>
+          <select name="schedule_id" id="scheduleSelect" required>
+            <option value="">— Select a relationship first —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row cols-2">
+        <div class="field-m">
+          <label>Confirmation Deadline (optional)</label>
+          <input type="datetime-local" name="confirmation_deadline" value="{{ old('confirmation_deadline') }}">
+          <div class="muted-cell" style="margin-top:6px;font-size:12px;">
+            Leave blank to use the facility default confirmation window.
+          </div>
+        </div>
+        <div class="field-m">
+          <label>Initial Status</label>
+          <input type="text" value="pending_confirmation" disabled>
+        </div>
+      </div>
+
+      <button class="btn btn-blue" type="submit">Assign Visit →</button>
+    </form>
+
+    <script type="application/json" id="schedulesByClassification">@json(
+      collect($schedulesByClassification ?? [])->map(function ($schedules) {
+        return $schedules->map(function ($s) {
+          $date = $s->schedule_date?->format('M j, Y');
+          $start = substr((string) $s->time_slot_start, 0, 5);
+          $end = substr((string) $s->time_slot_end, 0, 5);
+          return [
+            'id' => $s->schedule_id,
+            'label' => "{$date} · {$start}–{$end} · {$s->capacityLabel()} open",
+          ];
+        })->values();
+      })
+    )</script>
+    <script>
+      (function () {
+        const relationshipSelect = document.getElementById('relationshipSelect');
+        const scheduleSelect = document.getElementById('scheduleSelect');
+        const pdlIdInput = document.getElementById('pdlIdInput');
+        const schedules = JSON.parse(document.getElementById('schedulesByClassification').textContent || '{}');
+        const oldScheduleId = @json(old('schedule_id'));
+
+        function refreshSchedules() {
+          const option = relationshipSelect.options[relationshipSelect.selectedIndex];
+          const classification = option ? option.getAttribute('data-classification') : null;
+          const pdlId = option ? option.getAttribute('data-pdl-id') : '';
+          pdlIdInput.value = pdlId || '';
+
+          scheduleSelect.innerHTML = '';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = classification ? '— Select schedule —' : '— Select a relationship first —';
+          scheduleSelect.appendChild(placeholder);
+
+          const list = (classification && schedules[classification]) ? schedules[classification] : [];
+          if (!list.length && classification) {
+            const empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = 'No open schedules for this PDL classification';
+            empty.disabled = true;
+            scheduleSelect.appendChild(empty);
+            return;
+          }
+
+          list.forEach(function (item) {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = item.label;
+            if (String(oldScheduleId) === String(item.id)) opt.selected = true;
+            scheduleSelect.appendChild(opt);
+          });
+        }
+
+        relationshipSelect.addEventListener('change', refreshSchedules);
+        refreshSchedules();
+      })();
+    </script>
+  @endif
+</div>
+
+{{-- ================= RECENT ASSIGNMENTS ================= --}}
+@if (($visitor->visitRequests ?? collect())->isNotEmpty())
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header"><h2>Recent Visit Assignments</h2></div>
+  <table>
+    <thead><tr><th>PDL</th><th>Schedule</th><th>Status</th><th>Assigned</th></tr></thead>
+    <tbody>
+      @foreach ($visitor->visitRequests as $vr)
+      <tr>
+        <td>{{ $vr->pdl?->full_name ?? '—' }}</td>
+        <td class="muted-cell">
+          @if ($vr->schedule)
+            {{ $vr->schedule->schedule_date->format('M d, Y') }}
+            · {{ substr($vr->schedule->time_slot_start, 0, 5) }}–{{ substr($vr->schedule->time_slot_end, 0, 5) }}
+          @else
+            —
+          @endif
+        </td>
+        <td>
+          <span class="badge transferred"><span class="dot"></span>{{ strtoupper(str_replace('_', ' ', $vr->status)) }}</span>
+        </td>
+        <td class="muted-cell">{{ optional($vr->assigned_at)->format('M d, Y') ?? '—' }}</td>
+      </tr>
+      @endforeach
+    </tbody>
+  </table>
+</div>
+@endif
 
 {{-- ================= VISITOR HISTORY / FLAGS ================= --}}
 <div class="panel">

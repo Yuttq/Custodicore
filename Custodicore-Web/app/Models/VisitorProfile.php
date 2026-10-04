@@ -15,6 +15,7 @@ class VisitorProfile extends Model
         'date_of_birth',
         'gender',
         'address',
+        'relationship_hint',
         'contact_number',
         'emergency_contact_name',
         'emergency_contact_number',

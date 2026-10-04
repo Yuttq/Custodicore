@@ -323,6 +323,11 @@ Route::middleware([
         [App\Http\Controllers\VisitorController::class, 'resolveFlag']
     )->name('visitor.flags.resolve');
 
+    Route::post(
+        '/visitors/{visitor}/visits/assign',
+        [\App\Http\Controllers\VisitAssignmentController::class, 'store']
+    )->name('visitor.visits.assign');
+
 
     /*
     |--------------------------------------------------------------------------

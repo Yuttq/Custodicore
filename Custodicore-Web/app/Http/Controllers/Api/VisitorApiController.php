@@ -54,6 +54,22 @@ class VisitorApiController extends Controller
         return response()->json($this->visitPayload($visit));
     }
 
+    /**
+     * Full visit list for the authenticated visitor (mobile visit cards).
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+
+        $visits = VisitRequest::where('visitor_id', $visitor->visitor_id)
+            ->with(['pdl', 'schedule'])
+            ->orderByDesc('assigned_at')
+            ->get()
+            ->map(fn ($v) => $this->visitPayload($v));
+
+        return response()->json(['visits' => $visits->values()]);
+    }
+
     public function history(Request $request): JsonResponse
     {
         $visitor = $this->currentVisitor($request);
@@ -105,6 +121,9 @@ class VisitorApiController extends Controller
             'cancelled_at' => now(),
             'cancellation_reason' => $request->input('reason', 'Visitor unable to attend (declined via mobile app)'),
         ]);
+
+        $visitRequest->loadMissing('schedule');
+        $visitRequest->schedule?->releaseSlot();
 
         AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
             'Visitor declined assigned visit via mobile app', Module::CODE_VISIT_SCHEDULING);
@@ -248,20 +267,50 @@ class VisitorApiController extends Controller
     private function visitPayload(VisitRequest $v): array
     {
         $schedule = $v->schedule;
+        $start = $schedule?->time_slot_start;
+        $end = $schedule?->time_slot_end;
+        $date = $schedule?->schedule_date;
+
+        $scheduledAt = null;
+        $endAt = null;
+        if ($date && $start) {
+            $scheduledAt = $date->format('Y-m-d') . 'T' . $this->normalizeTime($start) . '+08:00';
+        }
+        if ($date && $end) {
+            $endAt = $date->format('Y-m-d') . 'T' . $this->normalizeTime($end) . '+08:00';
+        }
 
         return [
             'id' => (string) $v->visit_request_id,
             'scheduleId' => (string) $v->visit_request_id,
-            'scheduledAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $schedule->time_slot_start : null,
-            'endAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $schedule->time_slot_end : null,
-            'dateDisplay' => $schedule?->schedule_date?->format('M j'),
-            'timeLabel' => $schedule ? substr($schedule->time_slot_start, 0, 5) . ' – ' . substr($schedule->time_slot_end, 0, 5) : null,
+            'scheduledAt' => $scheduledAt,
+            'endAt' => $endAt,
+            'dateDisplay' => $date?->format('F j, Y'),
+            'timeLabel' => ($start && $end)
+                ? $this->formatTimeLabel($start) . ' - ' . $this->formatTimeLabel($end)
+                : null,
             'pdlName' => $v->pdl?->full_name,
-            'facility' => 'BJMP Facility — Main',
+            'facility' => 'BJMP Facility',
             'referenceNumber' => $this->referenceNumber($v),
-            'visitType' => 'Standard Visitation',
+            'visitType' => 'regular',
             'status' => $v->status,
             'cancellationReason' => $v->cancellation_reason,
         ];
+    }
+
+    private function normalizeTime(string $time): string
+    {
+        // Ensure HH:MM:SS for ISO-ish timestamps
+        $parts = explode(':', substr($time, 0, 8));
+        return sprintf('%02d:%02d:%02d', (int) ($parts[0] ?? 0), (int) ($parts[1] ?? 0), (int) ($parts[2] ?? 0));
+    }
+
+    private function formatTimeLabel(string $time): string
+    {
+        try {
+            return \Carbon\Carbon::createFromFormat('H:i:s', $this->normalizeTime($time))->format('g:i A');
+        } catch (\Throwable) {
+            return substr($time, 0, 5);
+        }
     }
 }

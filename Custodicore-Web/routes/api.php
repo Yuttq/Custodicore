@@ -34,8 +34,11 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/me', [AuthController::class, 'me']);
+
     Route::post('/documents', [VisitorApiController::class, 'storeDocument']);
 
+    Route::get('/visits', [VisitorApiController::class, 'index']);
     Route::get('/visits/upcoming', [VisitorApiController::class, 'upcoming']);
     Route::get('/visits/history', [VisitorApiController::class, 'history']);
 

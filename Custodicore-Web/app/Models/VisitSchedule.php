@@ -43,4 +43,32 @@ class VisitSchedule extends Model
     {
         return "{$this->slots_taken} / {$this->max_capacity}";
     }
+
+    /**
+     * Reserve one capacity slot after a successful visit assignment.
+     * Flips status to `full` when capacity is reached.
+     */
+    public function reserveSlot(): void
+    {
+        $taken = min($this->slots_taken + 1, $this->max_capacity);
+        $this->update([
+            'slots_taken' => $taken,
+            'status' => $taken >= $this->max_capacity ? 'full' : $this->status,
+        ]);
+    }
+
+    /**
+     * Free one capacity slot (e.g. after decline/cancel) when the schedule
+     * still tracks taken seats. Re-opens a previously full schedule.
+     */
+    public function releaseSlot(): void
+    {
+        $taken = max($this->slots_taken - 1, 0);
+        $this->update([
+            'slots_taken' => $taken,
+            'status' => $this->status === 'full' && $taken < $this->max_capacity
+                ? 'open'
+                : $this->status,
+        ]);
+    }
 }
