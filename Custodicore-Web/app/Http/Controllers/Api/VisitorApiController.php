@@ -135,14 +135,56 @@ class VisitorApiController extends Controller
     {
         $this->authorizeOwnership($request, $visitRequest);
 
-        if ($visitRequest->status !== 'confirmed') {
-            throw ValidationException::withMessages(['status' => 'A QR pass is only available once your visit is confirmed.']);
+        $status = $visitRequest->status;
+
+        if (in_array($status, ['pending_confirmation', 'assigned'], true)) {
+            return response()->json([
+                'message' => 'Confirm your visit attendance before a QR pass can be issued.',
+                'status' => $status,
+            ], 409);
+        }
+
+        if (in_array($status, ['declined', 'cancelled', 'completed', 'no_show'], true)) {
+            return response()->json([
+                'message' => 'A QR pass is not available for this visit.',
+                'status' => $status,
+            ], 409);
+        }
+
+        if ($status !== 'confirmed') {
+            return response()->json([
+                'message' => 'A QR pass is only available once your visit is confirmed.',
+                'status' => $status,
+            ], 409);
+        }
+
+        $visitRequest->loadMissing(['pdl', 'schedule', 'qrCode', 'checkin']);
+
+        // Already checked in / QR consumed — do not re-issue a gate pass.
+        if ($visitRequest->checkin && $visitRequest->checkin->status === 'checked_in') {
+            return response()->json([
+                'message' => 'You are already checked in. A new QR pass is not available.',
+                'status' => 'checked_in',
+            ], 409);
+        }
+
+        if ($visitRequest->qrCode && $visitRequest->qrCode->status === 'used') {
+            return response()->json([
+                'message' => 'This QR pass has already been used at the gate.',
+                'status' => 'used',
+            ], 409);
         }
 
         $expiryMinutes = (int) \App\Models\SystemSetting::value('qr.expiry_minutes', '180');
-        $qr = QrCode::generateFor($visitRequest, $expiryMinutes);
 
-        $visitRequest->loadMissing(['pdl', 'schedule']);
+        // Reuse an existing active, non-expired token; otherwise generate/refresh.
+        $existing = $visitRequest->qrCode;
+        if ($existing && $existing->isValid()) {
+            $qr = $existing;
+        } else {
+            $qr = QrCode::generateFor($visitRequest, $expiryMinutes);
+        }
+
         $schedule = $visitRequest->schedule;
 
         return response()->json([
@@ -150,14 +192,17 @@ class VisitorApiController extends Controller
             'expiresAt' => optional($qr->expires_at)->toIso8601String(),
             'referenceNumber' => $this->referenceNumber($visitRequest),
             'schedule' => [
-                'scheduledAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $schedule->time_slot_start : null,
-                'endAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $schedule->time_slot_end : null,
-                'dateDisplay' => $schedule?->schedule_date?->format('M j, Y'),
-                'timeLabel' => $schedule ? substr($schedule->time_slot_start, 0, 5) . ' – ' . substr($schedule->time_slot_end, 0, 5) : null,
+                'scheduledAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $this->normalizeTime((string) $schedule->time_slot_start) . '+08:00' : null,
+                'endAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $this->normalizeTime((string) $schedule->time_slot_end) . '+08:00' : null,
+                'dateDisplay' => $schedule?->schedule_date?->format('F j, Y'),
+                'timeLabel' => ($schedule && $schedule->time_slot_start && $schedule->time_slot_end)
+                    ? $this->formatTimeLabel((string) $schedule->time_slot_start) . ' - ' . $this->formatTimeLabel((string) $schedule->time_slot_end)
+                    : null,
                 'pdlName' => $visitRequest->pdl?->full_name,
-                'facilityName' => 'BJMP Facility — Main',
+                'facilityName' => 'BJMP Facility',
             ],
             'scheduleId' => (string) $visitRequest->visit_request_id,
+            'status' => $visitRequest->status,
         ]);
     }
 
