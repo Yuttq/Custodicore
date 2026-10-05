@@ -62,10 +62,7 @@ Edit `.env` for your machine (see below). **Restart Expo after changing `.env`**
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
 | `EXPO_PUBLIC_API_URL` | Yes, when calling the real API | Laravel API base URL. Must include `/api`. No trailing slash after `/api`. |
-| `EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID` | Optional | Google Sign-In (leave blank to disable) |
-| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | Optional | Google Sign-In |
-| `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` | Optional | Google Sign-In |
-| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Optional | Google Sign-In |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Optional | Google Cloud **Web** OAuth client ID for native Google Sign-In (Android dev/production builds only). Must also be in the backend's `GOOGLE_CLIENT_IDS`. Leave blank to hide the Google button. |
 
 Example template value from `.env.example`:
 
@@ -335,7 +332,7 @@ Rules:
 - Never commit secrets, private keys, or production credentials.
 - Do not hardcode private API keys in source (use `EXPO_PUBLIC_*` only for values meant for the client, as this project already does).
 - Teammates must create their own `.env` and set at least `EXPO_PUBLIC_API_URL` for real API testing.
-- Google Sign-In stays disabled until `EXPO_PUBLIC_GOOGLE_*` values are filled (`isGoogleSignInConfigured()` in `src/config/authConfig.js`).
+- Google Sign-In is a native module: the button only appears on Android in a development/production build with `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` set (`isGoogleSignInConfigured()` in `src/config/authConfig.js`). It is hidden in Expo Go.
 
 ---
 

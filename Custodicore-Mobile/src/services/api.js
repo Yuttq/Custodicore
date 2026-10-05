@@ -66,7 +66,7 @@ function formatLaravelErrors(body) {
 /**
  * Normalizes axios failures into a plain `Error` for alerts and logging.
  * @param {unknown} error
- * @returns {Error & { status?: number; errors?: Record<string, string[]> }}
+ * @returns {Error & { status?: number; code?: string; errors?: Record<string, string[]> }}
  */
 function toRequestError(error) {
   if (isAxiosError(error)) {
@@ -93,6 +93,10 @@ function toRequestError(error) {
 
     const err = new Error(String(message).trim());
     err.status = status;
+    // Machine-readable backend code (e.g. Google auth `link_required`).
+    if (typeof body?.code === 'string' && body.code) {
+      err.code = body.code;
+    }
     if (body?.errors && typeof body.errors === 'object') {
       err.errors = body.errors;
     }
@@ -131,12 +135,30 @@ export async function login(email, password) {
 }
 
 /**
- * Exchanges a Google ID token for a CustodiCore session (deferred — backend returns 501).
- * @param {{ idToken: string; accessToken?: string }} payload
+ * Exchanges a Google ID token for a CustodiCore decision — POST /auth/google.
+ * Only the ID token is sent; the backend reads identity from the verified token.
+ * Returns `{ status: 'authenticated', token, user }` or
+ * `{ status: 'registration_required', profile: { email, fullName }, consentVersion }`.
+ * Other outcomes arrive as errors with `err.code` (e.g. `link_required`).
+ * @param {string} idToken
  */
-export async function loginWithGoogle(payload) {
+export async function loginWithGoogle(idToken) {
   try {
-    const { data } = await client.post('/auth/google', payload);
+    const { data } = await client.post('/auth/google', { idToken });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Links a Google identity to the existing visitor account after `/auth/google`
+ * answered `link_required` — POST /auth/google/link. Returns `{ status, token, user }`.
+ * @param {{ idToken: string; password: string }} payload
+ */
+export async function linkGoogleAccount({ idToken, password }) {
+  try {
+    const { data } = await client.post('/auth/google/link', { idToken, password });
     return data;
   } catch (error) {
     throw toRequestError(error);

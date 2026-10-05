@@ -26,12 +26,36 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import { isGoogleSignInConfigured } from '../config/authConfig';
 import { useAuth } from '../hooks/useAuth';
 import { GoogleSignInCancelledError } from '../services/socialAuthHandlers';
 import { validateEmail, validatePassword, validateRequired } from '../utils';
 
 const LOGO_ASPECT = 819 / 1024;
 const CONTENT_MAX_WIDTH = 440;
+
+/** Fixed for the life of the binary — false in Expo Go and without a Web Client ID. */
+const GOOGLE_SIGN_IN_AVAILABLE = isGoogleSignInConfigured();
+
+/** Backend `code` → visitor-facing copy. Raw server text is never shown for these. */
+const GOOGLE_ERROR_MESSAGES = {
+  link_required:
+    'This email already has a CustodiCore account. Google can’t be connected to it automatically — please sign in with your email and password.',
+  not_visitor_account:
+    'Google sign-in is only available for visitor accounts.',
+  account_inactive: 'This account is not active. Contact facility staff.',
+  invalid_google_token: 'Google Sign-In failed. Please try again.',
+  google_unavailable:
+    'Google Sign-In is temporarily unavailable. Please sign in with your email and password.',
+};
+
+function googleErrorMessage(e) {
+  if (e?.code && GOOGLE_ERROR_MESSAGES[e.code]) return GOOGLE_ERROR_MESSAGES[e.code];
+  if (e?.status === 429) return 'Too many sign-in attempts. Please wait a minute and try again.';
+  return typeof e?.message === 'string' && e.message.trim()
+    ? e.message
+    : 'Google Sign-In is not available. Please sign in with your email and password.';
+}
 
 export default function LoginScreen({ navigation }) {
   const { width: windowWidth } = useWindowDimensions();
@@ -103,18 +127,25 @@ export default function LoginScreen({ navigation }) {
 
     setGoogleSubmitting(true);
     try {
-      await loginWithGoogle();
+      const result = await loginWithGoogle();
+      // authenticated → AuthProvider's token switches the navigator; null → cancelled.
+      if (result?.status === 'registration_required') {
+        // Phase 5: RegisterScreen consumes `googleProfile`.
+        navigation.navigate('Register', {
+          googleProfile: {
+            email: result.profile.email,
+            fullName: result.profile.fullName,
+            consentVersion: result.consentVersion,
+          },
+        });
+      }
     } catch (e) {
       if (e instanceof GoogleSignInCancelledError) return;
-      const message =
-        typeof e?.message === 'string' && e.message.trim()
-          ? e.message
-          : 'Google Sign-In is not available. Please sign in with your email and password.';
-      Alert.alert('Google Sign-In', message);
+      Alert.alert('Google Sign-In', googleErrorMessage(e));
     } finally {
       setGoogleSubmitting(false);
     }
-  }, [loginWithGoogle, submitting, googleSubmitting]);
+  }, [loginWithGoogle, navigation, submitting, googleSubmitting]);
 
   const authBusy = submitting || googleSubmitting;
 
@@ -247,14 +278,16 @@ export default function LoginScreen({ navigation }) {
               />
             </Card>
 
-            <View style={styles.altAuthSection}>
-              <AuthDivider />
-              <GoogleSignInButton
-                onPress={onGoogleSignIn}
-                loading={googleSubmitting}
-                disabled={authBusy}
-              />
-            </View>
+            {GOOGLE_SIGN_IN_AVAILABLE ? (
+              <View style={styles.altAuthSection}>
+                <AuthDivider />
+                <GoogleSignInButton
+                  onPress={onGoogleSignIn}
+                  loading={googleSubmitting}
+                  disabled={authBusy}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.registerRow}>
               <Text style={styles.registerPrompt}>Don&apos;t have an account?</Text>

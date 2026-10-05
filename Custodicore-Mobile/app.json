@@ -55,7 +55,8 @@
           "resizeMode": "contain",
           "imageWidth": 300
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {

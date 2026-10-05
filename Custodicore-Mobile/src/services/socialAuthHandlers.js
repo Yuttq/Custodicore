@@ -1,44 +1,65 @@
+import { loginWithGoogle as apiLoginWithGoogle } from './api';
 import {
+  GooglePlayServicesUnavailableError,
   GoogleSignInCancelledError,
   GoogleSignInNotConfiguredError,
   signInWithGoogle,
 } from './googleAuthService';
 
 /**
- * @typedef {object} SocialAuthSession
+ * @typedef {object} GoogleAuthenticatedResult
+ * @property {'authenticated'} status
  * @property {string} token — CustodiCore API session token (Bearer)
- * @property {string} email
- * @property {string} [fullName]
- * @property {'google' | 'email'} provider
+ * @property {object} user
  */
 
 /**
- * Reusable handler: Google OAuth → backend session.
- * Preserves separation between UI, OAuth SDK, and existing REST auth.
+ * @typedef {object} GoogleRegistrationRequiredResult
+ * @property {'registration_required'} status
+ * @property {{ email: string, fullName: string|null }} profile — verified Google claims
+ * @property {string} consentVersion — Terms/Privacy version to accept at registration
+ */
+
+/**
+ * Reusable handler: native Google Sign-In → `{ idToken }` → POST /auth/google.
+ * Keeps UI, the native Google SDK, and the REST API separate. Does not apply
+ * a session — the caller decides what to do with the result.
  *
- * @returns {Promise<SocialAuthSession>}
+ * Backend rejections (`link_required`, `not_visitor_account`, `account_inactive`,
+ * `invalid_google_token`, `google_unavailable`, 429) propagate as request
+ * errors carrying `status` and `code`.
+ *
+ * @returns {Promise<GoogleAuthenticatedResult | GoogleRegistrationRequiredResult>}
  */
 export async function authenticateWithGoogle() {
-  const googleUser = await signInWithGoogle();
+  const { idToken } = await signInWithGoogle();
+  const data = await apiLoginWithGoogle(idToken);
 
-  // INTEGRATION POINT — wire to BJMP backend when endpoint is available:
-  // import * as api from './api';
-  // const data = await api.loginWithGoogle({
-  //   idToken: googleUser.idToken,
-  //   accessToken: googleUser.accessToken,
-  // });
-  // return {
-  //   token: data.token,
-  //   email: data.user?.email ?? googleUser.email,
-  //   fullName: data.user?.fullName ?? googleUser.name,
-  //   provider: 'google',
-  // };
+  if (data?.status === 'authenticated') {
+    if (!data.token) {
+      throw new Error('Google Sign-In succeeded but no session token was returned.');
+    }
+    return { status: 'authenticated', token: data.token, user: data.user };
+  }
 
-  throw new GoogleSignInNotConfiguredError(
-    'Google Sign-In succeeded at the OAuth layer, but backend exchange is not implemented. Add api.loginWithGoogle and uncomment socialAuthHandlers.js.',
-  );
+  if (data?.status === 'registration_required') {
+    return {
+      status: 'registration_required',
+      profile: {
+        email: data.profile?.email ?? '',
+        fullName: data.profile?.fullName ?? null,
+      },
+      consentVersion: data.consentVersion,
+    };
+  }
+
+  throw new Error('Google Sign-In returned an unexpected response. Please try again.');
 }
 
-export { GoogleSignInCancelledError, GoogleSignInNotConfiguredError };
+export {
+  GooglePlayServicesUnavailableError,
+  GoogleSignInCancelledError,
+  GoogleSignInNotConfiguredError,
+};
 
 export default authenticateWithGoogle;

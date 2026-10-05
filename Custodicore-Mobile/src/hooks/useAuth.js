@@ -25,6 +25,7 @@ import {
   GoogleSignInCancelledError,
   GoogleSignInNotConfiguredError,
 } from '../services/socialAuthHandlers';
+import { signOutGoogle } from '../services/googleAuthService';
 
 const PENDING_VERIFICATION_KEY = '@custodicore/pending_verification';
 const REGISTRATION_SUMMARY_KEY = '@custodicore/registration_summary';
@@ -276,14 +277,25 @@ export function AuthProvider({ children }) {
     [applySession],
   );
 
+  /**
+   * Native Google Sign-In → POST /auth/google.
+   * - authenticated: session applied; navigation follows from `token`.
+   * - registration_required: no session exists — returns
+   *   `{ status, profile, consentVersion }` for the caller to route to Register.
+   * - cancelled: returns null.
+   * Backend rejections are rethrown with `status`/`code` intact.
+   */
   const loginWithGoogle = useCallback(async () => {
     setError(null);
     try {
-      const session = await authenticateWithGoogle();
-      await applySession(session.token, session.user);
+      const result = await authenticateWithGoogle();
+      if (result.status === 'authenticated') {
+        await applySession(result.token, result.user);
+      }
+      return result;
     } catch (e) {
       if (e instanceof GoogleSignInCancelledError) {
-        return;
+        return null;
       }
       const message =
         e instanceof GoogleSignInNotConfiguredError
@@ -405,6 +417,8 @@ export function AuthProvider({ children }) {
           // Token may already be invalid — still clear local session.
         }
       }
+      // Best effort: clears the native Google session (no-op when unavailable).
+      await signOutGoogle().catch(() => {});
     } finally {
       await clearLocalSession();
     }
