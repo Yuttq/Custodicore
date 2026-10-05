@@ -1,4 +1,4 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
+import GoogleGLogo from './GoogleGLogo';
 import React from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { colors, layout, spacing, typography } from '../designSystem';
@@ -43,7 +43,7 @@ export default function GoogleSignInButton({
         <ActivityIndicator color={colors.primaryNavy} />
       ) : (
         <>
-          <Ionicons name="logo-google" size={20} color="#4285F4" style={styles.icon} />
+          <GoogleGLogo size={20} style={styles.icon} />
           <Text style={styles.label}>Continue with Google</Text>
         </>
       )}

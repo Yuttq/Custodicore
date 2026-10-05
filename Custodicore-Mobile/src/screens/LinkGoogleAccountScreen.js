@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import GoogleGLogo from '../components/GoogleGLogo';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -147,7 +148,7 @@ export default function LinkGoogleAccountScreen({ navigation, route }) {
               <View style={styles.field}>
                 <Text style={formStyles.label}>Google Account</Text>
                 <View style={styles.emailRow}>
-                  <Ionicons name="logo-google" size={18} color={colors.textSecondary} />
+                  <GoogleGLogo size={18} />
                   <Text style={styles.emailText} numberOfLines={1} accessibilityLabel={`Google account ${email}`}>
                     {email}
                   </Text>

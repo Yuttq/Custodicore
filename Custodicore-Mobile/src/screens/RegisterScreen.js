@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import GoogleGLogo from '../components/GoogleGLogo';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -592,7 +593,7 @@ export default function RegisterScreen({ navigation, route }) {
             accessible
             accessibilityLabel={`Email address ${email}, from your Google account, cannot be changed`}
           >
-            <Ionicons name="logo-google" size={18} color={colors.textSecondary} />
+            <GoogleGLogo size={18} />
             <Text style={fieldStyles.readOnlyText} numberOfLines={1}>
               {email}
             </Text>
@@ -854,7 +855,7 @@ export default function RegisterScreen({ navigation, route }) {
   const renderGoogleBadge = () =>
     isGoogle ? (
       <View style={styles.googleBadge} accessibilityLabel="Signing up with Google">
-        <Ionicons name="logo-google" size={14} color={colors.primaryNavy} />
+        <GoogleGLogo size={14} />
         <Text style={styles.googleBadgeText}>Signing up with Google</Text>
       </View>
     ) : null;
