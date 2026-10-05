@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/google', [AuthController::class, 'loginWithGoogle']);
+    // Throttled: each call may fetch Google's signing keys.
+    Route::post('/google', [AuthController::class, 'loginWithGoogle'])->middleware('throttle:10,1');
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });

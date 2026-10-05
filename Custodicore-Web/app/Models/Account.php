@@ -41,7 +41,10 @@ class Account extends Authenticatable
         'terms_accepted_at', 'privacy_accepted_at', 'consent_version',
     ];
 
-    protected $hidden = ['password_hash'];
+    // google_id (verified Google `sub`, see the 2026_10_05 migration) is
+    // deliberately NOT fillable: it must only ever be set explicitly from a
+    // server-verified Google ID token, never mass-assigned from request data.
+    protected $hidden = ['password_hash', 'google_id'];
 
     // last_login_at is a custom timestamp column (not created_at/updated_at),
     // so it must be cast or Admin\UserController's ->format() fails on a string.
@@ -95,5 +98,11 @@ class Account extends Authenticatable
     public function isRole(string $roleName): bool
     {
         return $this->role?->role_name === $roleName;
+    }
+
+    /** Only Visitor accounts may authenticate through the mobile API. */
+    public function isVisitor(): bool
+    {
+        return $this->isRole('Visitor');
     }
 }

@@ -8,10 +8,14 @@ use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\Role;
 use App\Models\VisitorProfile;
+use App\Services\Auth\GoogleIdTokenVerifier;
+use App\Services\Auth\GoogleSignInUnavailableException;
+use App\Services\Auth\InvalidGoogleIdTokenException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -37,11 +41,23 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => 'Invalid email or password.']);
         }
 
+        // The mobile API is for visitors only. Staff (Admin/Warden, Record
+        // Officer, Front Desk) sign in through the web console's session
+        // login; they must never receive a mobile bearer token. Checked only
+        // after the password, so it reveals nothing to someone without it.
+        if (! $account->isVisitor()) {
+            throw ValidationException::withMessages([
+                'email' => 'Staff accounts cannot sign in to the mobile app. Use the web console.',
+            ]);
+        }
+
         if ($account->status !== 'active') {
             throw ValidationException::withMessages(['email' => 'This account is not active. Contact facility staff.']);
         }
 
-        $account->update(['last_login_at' => now()]);
+        // forceFill: last_login_at is not fillable, so update() silently dropped it
+        // (same as Auth\LoginController).
+        $account->forceFill(['last_login_at' => now()])->save();
 
         $token = $account->createToken('mobile')->plainTextToken;
 
@@ -52,17 +68,47 @@ class AuthController extends Controller
     }
 
     /**
-     * Not implemented — verifying a Google ID token server-side needs the
-     * `google/apiclient` (or similar) package and a configured OAuth client,
-     * neither of which are wired up yet. Returning a clear error here
-     * instead of a broken/fake success, so the mobile app's existing
-     * "Google Sign-In failed" handling (see socialAuthHandlers.js) shows
-     * something honest rather than silently pretending to work.
+     * Google Sign-In, phase 1: verification only.
+     *
+     * Verifies the Google ID token server-side (GoogleIdTokenVerifier) but
+     * deliberately does NOT create, find or link an account and does NOT
+     * issue a Sanctum token yet — a valid token still gets 501, so the
+     * mobile app's existing "Google Sign-In failed" handling (see
+     * socialAuthHandlers.js) stays honest until sign-in is completed.
+     *
+     * Only the token is read from the request; any email/name the client
+     * sends is ignored. The token is never logged.
+     *
+     *   422 idToken missing/not a string
+     *   401 token failed verification (signature, issuer, audience, expiry,
+     *       required claims, unverified email)
+     *   503 Google Sign-In not configured / Google keys unreachable
+     *   501 token valid, sign-in not enabled yet
      */
-    public function loginWithGoogle(Request $request): JsonResponse
+    public function loginWithGoogle(Request $request, GoogleIdTokenVerifier $verifier): JsonResponse
     {
+        // camelCase (mobile) or snake_case, as register() accepts.
+        if (! $request->has('idToken') && $request->has('id_token')) {
+            $request->merge(['idToken' => $request->input('id_token')]);
+        }
+
+        $data = $request->validate([
+            'idToken' => ['required', 'string'],
+        ]);
+
+        try {
+            $verifier->verify($data['idToken']);
+        } catch (InvalidGoogleIdTokenException) {
+            return response()->json(['message' => 'Google Sign-In failed. Please try again.'], 401);
+        } catch (GoogleSignInUnavailableException $e) {
+            // Exception class/message only — never the token.
+            Log::warning('Google Sign-In unavailable: '.$e->getMessage());
+
+            return response()->json(['message' => 'Google Sign-In is temporarily unavailable.'], 503);
+        }
+
         return response()->json([
-            'message' => 'Google Sign-In is not wired up on the backend yet.',
+            'message' => 'Google Sign-In is not available yet. Please sign in with your email and password.',
         ], 501);
     }
 

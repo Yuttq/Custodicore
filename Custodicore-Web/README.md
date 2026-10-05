@@ -231,6 +231,15 @@ From comments in `routes/api.php`:
 - Tokens are issued by `POST /api/auth/login` and `POST /api/auth/register`.
 - Staff web login and visitor mobile login both use the same `accounts` table (`App\Models\Account`).
 - Visitors are mobile-only; staff dashboards refuse Visitor accounts at web login.
+- Staff are web-only; `POST /api/auth/login` refuses non-Visitor accounts (no mobile token for staff).
+
+### Google Sign-In (backend phase 1: verification only)
+
+- `POST /api/auth/google` takes `{ "idToken": "<Google ID token>" }` (`id_token` also accepted). Any email/name sent alongside it is ignored.
+- The token is verified server-side by `App\Services\Auth\GoogleIdTokenVerifier`: RS256 signature against Google's published keys, issuer, audience, expiry, required claims (`sub`, `email`, `email_verified`, `exp`, `iat`), and `email_verified = true`. Tokens are never logged.
+- Phase 1 does **not** create, find or link accounts and does **not** issue a Sanctum token. Responses: `401` invalid token, `422` missing token, `503` not configured / Google unreachable, `501` valid token (sign-in not enabled yet). Throttled to 10 requests/minute.
+- Configure with `GOOGLE_CLIENT_IDS` in `.env`: comma-separated OAuth client IDs accepted as the token's `aud`. Leave it empty to disable Google Sign-In. No client secret is needed.
+- `accounts.google_id` (nullable, unique) will hold the verified Google `sub`. It is not mass-assignable.
 
 ### Endpoints that exist in this project
 
