@@ -13,6 +13,7 @@ use App\Services\Auth\GoogleAuthService;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use App\Services\Auth\GoogleSignInUnavailableException;
 use App\Services\Auth\InvalidGoogleIdTokenException;
+use App\Services\Auth\VerifiedGoogleIdentity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -91,17 +92,72 @@ class AuthController extends Controller
      */
     public function loginWithGoogle(Request $request, GoogleIdTokenVerifier $verifier, GoogleAuthService $googleAuth): JsonResponse
     {
-        // camelCase (mobile) or snake_case, as register() accepts.
-        if (! $request->has('idToken') && $request->has('id_token')) {
-            $request->merge(['idToken' => $request->input('id_token')]);
-        }
+        $this->aliasIdToken($request);
 
         $data = $request->validate([
             'idToken' => ['required', 'string'],
         ]);
 
+        $identity = $this->verifyGoogleIdToken($verifier, $data['idToken']);
+        if ($identity instanceof JsonResponse) {
+            return $identity;
+        }
+
+        return $this->googleDecisionResponse($googleAuth->decide($identity));
+    }
+
+    /**
+     * Explicit Google linking (after /auth/google answered link_required):
+     * the verified Google identity is linked to the existing Visitor account
+     * with the same verified email only once its Custodicore password is
+     * confirmed. See GoogleAuthService::link() for the order of checks.
+     *
+     * Only idToken/id_token and password are read; any email/name/Google ID/
+     * account ID the client sends is ignored. Neither the token nor the
+     * password is ever logged or echoed back.
+     *
+     *   200 authenticated            {status, token, user} — linked now, or
+     *                                already linked to this same identity
+     *   404 account_not_found        no account has the verified email
+     *   403 not_visitor_account      matched account is Staff
+     *   403 account_inactive         matched Visitor account is not active
+     *   401 invalid_password         wrong Custodicore password
+     *   409 google_account_mismatch  Google identity linked to another
+     *                                account, or account linked to another
+     *                                Google identity
+     *   422 idToken/password missing or not a string
+     *   401 invalid_google_token / 503 google_unavailable — as /auth/google
+     */
+    public function linkGoogle(Request $request, GoogleIdTokenVerifier $verifier, GoogleAuthService $googleAuth): JsonResponse
+    {
+        $this->aliasIdToken($request);
+
+        $data = $request->validate([
+            'idToken' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $identity = $this->verifyGoogleIdToken($verifier, $data['idToken']);
+        if ($identity instanceof JsonResponse) {
+            return $identity;
+        }
+
+        return $this->googleDecisionResponse($googleAuth->link($identity, $data['password']));
+    }
+
+    /** camelCase (mobile) or snake_case, as register() accepts. */
+    private function aliasIdToken(Request $request): void
+    {
+        if (! $request->has('idToken') && $request->has('id_token')) {
+            $request->merge(['idToken' => $request->input('id_token')]);
+        }
+    }
+
+    /** The verified identity, or the error response to return as-is. */
+    private function verifyGoogleIdToken(GoogleIdTokenVerifier $verifier, string $idToken): VerifiedGoogleIdentity|JsonResponse
+    {
         try {
-            $identity = $verifier->verify($data['idToken']);
+            return $verifier->verify($idToken);
         } catch (InvalidGoogleIdTokenException) {
             return response()->json([
                 'message' => 'Google Sign-In failed. Please try again.',
@@ -116,8 +172,11 @@ class AuthController extends Controller
                 'code' => 'google_unavailable',
             ], 503);
         }
+    }
 
-        $decision = $googleAuth->decide($identity);
+    private function googleDecisionResponse(GoogleAuthDecision $decision): JsonResponse
+    {
+        $identity = $decision->identity;
 
         return match ($decision->outcome) {
             GoogleAuthDecision::AUTHENTICATED => response()->json([
@@ -147,6 +206,18 @@ class AuthController extends Controller
                 'message' => 'This account is not active. Contact facility staff.',
                 'code' => GoogleAuthDecision::ACCOUNT_INACTIVE,
             ], 403),
+            GoogleAuthDecision::ACCOUNT_NOT_FOUND => response()->json([
+                'message' => 'No existing Custodicore account was found for this Google account.',
+                'code' => GoogleAuthDecision::ACCOUNT_NOT_FOUND,
+            ], 404),
+            GoogleAuthDecision::INVALID_PASSWORD => response()->json([
+                'message' => 'The provided password is incorrect.',
+                'code' => GoogleAuthDecision::INVALID_PASSWORD,
+            ], 401),
+            GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH => response()->json([
+                'message' => 'This Google account is already linked to another Custodicore account.',
+                'code' => GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH,
+            ], 409),
         };
     }
 

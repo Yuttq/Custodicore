@@ -3,6 +3,9 @@
 namespace App\Services\Auth;
 
 use App\Models\Account;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * Google Sign-In account decision flow for the mobile (visitor) API.
@@ -19,13 +22,14 @@ use App\Models\Account;
  *       inactive Visitor → account_inactive
  *       active Visitor   → link_required — NEVER auto-linked on email
  *                          alone; linking needs the account password
- *                          (a later phase).
+ *                          (link(), POST /api/auth/google/link).
  *  3. else              → registration_required. Nothing is created: no
  *                          Account, VisitorProfile, token or stored `sub`
  *                          until the full registration form is submitted.
  *
  * Role/status always come from the database account. Apart from
- * last_login_at on a successful sign-in, no account is ever modified here.
+ * last_login_at on a successful sign-in, decide() never modifies an account;
+ * only link() ever sets google_id.
  */
 class GoogleAuthService
 {
@@ -40,18 +44,10 @@ class GoogleAuthService
                 return $rejection;
             }
 
-            // forceFill: last_login_at is not fillable (same as AuthController::login).
-            $linked->forceFill(['last_login_at' => now()])->save();
-            $token = $linked->createToken(self::TOKEN_NAME)->plainTextToken;
-
-            return GoogleAuthDecision::authenticated($identity, $linked, $token);
+            return $this->authenticate($linked, $identity);
         }
 
-        // MySQL's default collation already compares case-insensitively;
-        // LOWER() makes that explicit (and true on SQLite in tests).
-        $byEmail = Account::with('role')
-            ->whereRaw('LOWER(email) = ?', [mb_strtolower($identity->email)])
-            ->first();
+        $byEmail = $this->findByEmail($identity);
 
         if ($byEmail) {
             return $this->rejection($byEmail, $identity)
@@ -59,6 +55,94 @@ class GoogleAuthService
         }
 
         return GoogleAuthDecision::rejected(GoogleAuthDecision::REGISTRATION_REQUIRED, $identity);
+    }
+
+    /**
+     * Explicit linking of a verified Google identity to the existing Visitor
+     * account with the same (verified) email, proven by its Custodicore
+     * password. Order:
+     *
+     *  1. accounts.email = verified email (case-insensitive), else
+     *       account_not_found — nothing is created
+     *  2. Staff → not_visitor_account; inactive → account_inactive
+     *       (before the password, so linking is never a staff auth path)
+     *  3. already linked to this same `sub` → authenticated, unchanged
+     *       (idempotent; the verified token alone already proves it, exactly
+     *       as on /auth/google)
+     *  4. password must match password_hash (Hash::check) → invalid_password
+     *  5. `sub` linked to another account, or this account linked to another
+     *       `sub` → google_account_mismatch; a Google identity is never moved
+     *       or replaced
+     *  6. in one transaction: google_id = `sub`, last_login_at, Sanctum token
+     *
+     * Only the `sub` is stored — never the Google email, name, picture or token.
+     */
+    public function link(VerifiedGoogleIdentity $identity, string $password): GoogleAuthDecision
+    {
+        $account = $this->findByEmail($identity);
+
+        if (! $account) {
+            return GoogleAuthDecision::rejected(GoogleAuthDecision::ACCOUNT_NOT_FOUND, $identity);
+        }
+
+        if ($rejection = $this->rejection($account, $identity)) {
+            return $rejection;
+        }
+
+        if ($account->google_id !== null && hash_equals($account->google_id, $identity->googleId)) {
+            return $this->authenticate($account, $identity);
+        }
+
+        if (! Hash::check($password, $account->password_hash)) {
+            return GoogleAuthDecision::rejected(GoogleAuthDecision::INVALID_PASSWORD, $identity, $account);
+        }
+
+        try {
+            return DB::transaction(function () use ($account, $identity) {
+                // Re-read under lock so a concurrent link can't slip in between
+                // the checks and the write.
+                $locked = Account::with('role')->lockForUpdate()->findOrFail($account->account_id);
+
+                $subTaken = Account::where('google_id', $identity->googleId)
+                    ->where('account_id', '!=', $locked->account_id)
+                    ->exists();
+
+                if ($subTaken || $locked->google_id !== null) {
+                    return GoogleAuthDecision::rejected(GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH, $identity, $locked);
+                }
+
+                // forceFill: google_id is deliberately not fillable.
+                $locked->forceFill([
+                    'google_id' => $identity->googleId,
+                    'last_login_at' => now(),
+                ])->save();
+
+                $token = $locked->createToken(self::TOKEN_NAME)->plainTextToken;
+
+                return GoogleAuthDecision::authenticated($identity, $locked, $token);
+            });
+        } catch (UniqueConstraintViolationException) {
+            // Lost a race on accounts.google_id's unique index; rolled back.
+            return GoogleAuthDecision::rejected(GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH, $identity, $account);
+        }
+    }
+
+    private function authenticate(Account $account, VerifiedGoogleIdentity $identity): GoogleAuthDecision
+    {
+        // forceFill: last_login_at is not fillable (same as AuthController::login).
+        $account->forceFill(['last_login_at' => now()])->save();
+        $token = $account->createToken(self::TOKEN_NAME)->plainTextToken;
+
+        return GoogleAuthDecision::authenticated($identity, $account, $token);
+    }
+
+    private function findByEmail(VerifiedGoogleIdentity $identity): ?Account
+    {
+        // MySQL's default collation already compares case-insensitively;
+        // LOWER() makes that explicit (and true on SQLite in tests).
+        return Account::with('role')
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($identity->email)])
+            ->first();
     }
 
     /** Role first, then status — the same order as the password login. */

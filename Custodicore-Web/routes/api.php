@@ -31,6 +31,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     // Throttled: each call may fetch Google's signing keys.
     Route::post('/google', [AuthController::class, 'loginWithGoogle'])->middleware('throttle:10,1');
+    // Also throttled against password guessing (a valid Google token is required too).
+    Route::post('/google/link', [AuthController::class, 'linkGoogle'])->middleware('throttle:10,1');
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });

@@ -25,6 +25,18 @@ final class GoogleAuthDecision
     /** Matched Visitor account is inactive/suspended. */
     public const ACCOUNT_INACTIVE = 'account_inactive';
 
+    /** Linking: no account has the verified Google email. */
+    public const ACCOUNT_NOT_FOUND = 'account_not_found';
+
+    /** Linking: the Custodicore password did not match. */
+    public const INVALID_PASSWORD = 'invalid_password';
+
+    /**
+     * Linking: the Google `sub` is already linked to another account, or the
+     * account is already linked to another Google identity.
+     */
+    public const GOOGLE_ACCOUNT_MISMATCH = 'google_account_mismatch';
+
     private function __construct(
         public readonly string $outcome,
         public readonly VerifiedGoogleIdentity $identity,
