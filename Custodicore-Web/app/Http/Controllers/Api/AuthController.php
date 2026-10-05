@@ -8,6 +8,8 @@ use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\Role;
 use App\Models\VisitorProfile;
+use App\Services\Auth\GoogleAuthDecision;
+use App\Services\Auth\GoogleAuthService;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use App\Services\Auth\GoogleSignInUnavailableException;
 use App\Services\Auth\InvalidGoogleIdTokenException;
@@ -68,24 +70,26 @@ class AuthController extends Controller
     }
 
     /**
-     * Google Sign-In, phase 1: verification only.
+     * Google Sign-In: verifies the Google ID token server-side
+     * (GoogleIdTokenVerifier), then GoogleAuthService decides what the
+     * verified identity may do. Never creates or links an account.
      *
-     * Verifies the Google ID token server-side (GoogleIdTokenVerifier) but
-     * deliberately does NOT create, find or link an account and does NOT
-     * issue a Sanctum token yet — a valid token still gets 501, so the
-     * mobile app's existing "Google Sign-In failed" handling (see
-     * socialAuthHandlers.js) stays honest until sign-in is completed.
+     * Only the token is read from the request; any email/name/Google ID the
+     * client sends is ignored. The token is never logged or echoed back.
      *
-     * Only the token is read from the request; any email/name the client
-     * sends is ignored. The token is never logged.
-     *
+     *   200 authenticated          {status, token, user} — linked active Visitor
+     *   200 registration_required  {status, profile{email, fullName}, consentVersion}
+     *                              — unknown Google user; nothing was created
+     *   409 link_required          email has an account not linked to this
+     *                              Google identity (never auto-linked)
+     *   403 not_visitor_account    matched account is Staff
+     *   403 account_inactive       matched Visitor account is not active
      *   422 idToken missing/not a string
-     *   401 token failed verification (signature, issuer, audience, expiry,
-     *       required claims, unverified email)
-     *   503 Google Sign-In not configured / Google keys unreachable
-     *   501 token valid, sign-in not enabled yet
+     *   401 invalid_google_token   failed verification (signature, issuer,
+     *                              audience, expiry, claims, unverified email)
+     *   503 google_unavailable     not configured / Google keys unreachable
      */
-    public function loginWithGoogle(Request $request, GoogleIdTokenVerifier $verifier): JsonResponse
+    public function loginWithGoogle(Request $request, GoogleIdTokenVerifier $verifier, GoogleAuthService $googleAuth): JsonResponse
     {
         // camelCase (mobile) or snake_case, as register() accepts.
         if (! $request->has('idToken') && $request->has('id_token')) {
@@ -97,19 +101,53 @@ class AuthController extends Controller
         ]);
 
         try {
-            $verifier->verify($data['idToken']);
+            $identity = $verifier->verify($data['idToken']);
         } catch (InvalidGoogleIdTokenException) {
-            return response()->json(['message' => 'Google Sign-In failed. Please try again.'], 401);
+            return response()->json([
+                'message' => 'Google Sign-In failed. Please try again.',
+                'code' => 'invalid_google_token',
+            ], 401);
         } catch (GoogleSignInUnavailableException $e) {
             // Exception class/message only — never the token.
             Log::warning('Google Sign-In unavailable: '.$e->getMessage());
 
-            return response()->json(['message' => 'Google Sign-In is temporarily unavailable.'], 503);
+            return response()->json([
+                'message' => 'Google Sign-In is temporarily unavailable.',
+                'code' => 'google_unavailable',
+            ], 503);
         }
 
-        return response()->json([
-            'message' => 'Google Sign-In is not available yet. Please sign in with your email and password.',
-        ], 501);
+        $decision = $googleAuth->decide($identity);
+
+        return match ($decision->outcome) {
+            GoogleAuthDecision::AUTHENTICATED => response()->json([
+                'status' => GoogleAuthDecision::AUTHENTICATED,
+                'token' => $decision->token,
+                'user' => $this->userPayload($decision->account),
+            ]),
+            GoogleAuthDecision::REGISTRATION_REQUIRED => response()->json([
+                'status' => GoogleAuthDecision::REGISTRATION_REQUIRED,
+                // Verified token claims only — prefills the registration form.
+                'profile' => [
+                    'email' => $identity->email,
+                    'fullName' => $identity->name,
+                ],
+                'consentVersion' => (string) config('legal.version'),
+            ]),
+            GoogleAuthDecision::LINK_REQUIRED => response()->json([
+                'message' => 'This email already has a Custodicore account. Confirm your Custodicore password before linking Google.',
+                'code' => GoogleAuthDecision::LINK_REQUIRED,
+            ], 409),
+            GoogleAuthDecision::NOT_VISITOR_ACCOUNT => response()->json([
+                'message' => 'Google sign-in is only available for visitor accounts.',
+                'code' => GoogleAuthDecision::NOT_VISITOR_ACCOUNT,
+            ], 403),
+            GoogleAuthDecision::ACCOUNT_INACTIVE => response()->json([
+                // Same wording as the password login.
+                'message' => 'This account is not active. Contact facility staff.',
+                'code' => GoogleAuthDecision::ACCOUNT_INACTIVE,
+            ], 403),
+        };
     }
 
     /**

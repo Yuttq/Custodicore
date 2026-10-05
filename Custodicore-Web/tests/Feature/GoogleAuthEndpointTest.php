@@ -13,9 +13,10 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * POST /api/auth/google — phase 1 is verification ONLY: no account is
- * created/found/linked and no Sanctum token is issued, even for a valid
- * Google ID token.
+ * POST /api/auth/google — token verification and request handling. The
+ * account decision flow (authenticate / registration_required /
+ * link_required / staff / inactive) is covered by GoogleAuthDecisionFlowTest.
+ * No path here may create or link an account.
  */
 class GoogleAuthEndpointTest extends TestCase
 {
@@ -42,13 +43,16 @@ class GoogleAuthEndpointTest extends TestCase
         $this->assertSame(0, Account::whereNotNull('google_id')->count());
     }
 
-    public function test_valid_token_is_verified_but_issues_no_token_and_creates_no_account(): void
+    public function test_valid_token_for_unknown_user_issues_no_token_and_creates_no_account(): void
     {
         $accountsBefore = Account::count();
 
         $response = $this->postJson('/api/auth/google', ['idToken' => $this->googleIdToken()]);
 
-        $response->assertStatus(501)->assertJsonMissingPath('token')->assertJsonMissingPath('user');
+        $response->assertOk()
+            ->assertJsonPath('status', 'registration_required')
+            ->assertJsonMissingPath('token')
+            ->assertJsonMissingPath('user');
         $this->assertNoAccountOrTokenCreated($accountsBefore);
         $this->assertCount(1, $this->jwksRequests, 'Token should have gone through real verification.');
     }
@@ -56,7 +60,8 @@ class GoogleAuthEndpointTest extends TestCase
     public function test_accepts_snake_case_id_token(): void
     {
         $this->postJson('/api/auth/google', ['id_token' => $this->googleIdToken()])
-            ->assertStatus(501);
+            ->assertOk()
+            ->assertJsonPath('status', 'registration_required');
     }
 
     public function test_does_not_link_existing_account_with_matching_email(): void
@@ -65,7 +70,8 @@ class GoogleAuthEndpointTest extends TestCase
         $token = $this->googleIdToken(['email' => 'maria.santos@example.com']);
 
         $this->postJson('/api/auth/google', ['idToken' => $token])
-            ->assertStatus(501)
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'link_required')
             ->assertJsonMissingPath('token');
 
         $this->assertNull($this->visitorAccount->fresh()->google_id);
