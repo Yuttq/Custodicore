@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/custodicore-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#F8FAFC"
     },
@@ -51,7 +51,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#F8FAFC",
-          "image": "./assets/splash.png",
+          "image": "./assets/custodicore-logo.png",
           "resizeMode": "contain",
           "imageWidth": 300
         }
