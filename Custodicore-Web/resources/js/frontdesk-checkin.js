@@ -448,6 +448,10 @@ function initializeFrontDeskScanner() {
 
     let newIdSaved = false;
 
+    // Shared state for the Blade summary step.
+    window.frontDeskCheckinIdMatchStatus = null;
+    window.frontDeskCheckinNewIdSaved = false;
+
 
     /*
     |--------------------------------------------------------------------------
@@ -781,6 +785,9 @@ function initializeFrontDeskScanner() {
         idMatchStatus =
             null;
 
+        window.frontDeskCheckinIdMatchStatus = null;
+        window.frontDeskCheckinNewIdSaved = false;
+
         registeredIds =
             [];
 
@@ -931,6 +938,113 @@ function initializeFrontDeskScanner() {
             )
         );
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | TEMPORARY DEMO SCAN
+    |--------------------------------------------------------------------------
+    | Lets the Front Desk officer test the complete check-in flow without a
+    | real QR code. This is UI/demo data only and must not be used for a real
+    | check-in.
+    */
+
+    window.addEventListener(
+        "custodicore:demo-checkin-scan",
+        () => {
+
+            hideError();
+
+            // Reset any previous test state first.
+            resetScanResult();
+
+            // Fake values are used only to unlock the demo flow.
+            scannedToken = "DEMO-QR-TEST";
+            scannedVisitRequestId = "DEMO-VISIT-001";
+
+            const demoData = {
+                visitor: {
+                    name: "Demo Visitor",
+                    pdl: "Demo PDL",
+                    pdl_number: "PDL-DEMO-001"
+                },
+                schedule: {
+                    display: "Today • 10:00 AM – 11:00 AM"
+                },
+                registered_ids: [
+                    {
+                        type: "Philippine Passport",
+                        number: "DEMO-P1234567",
+                        status: "verified"
+                    }
+                ]
+            };
+
+            // Populate the same UI used by a successful real QR scan.
+            showScanResult(demoData);
+
+            // Populate fields used later by the ID Verification/Summary UI.
+            setText(
+                document.getElementById("resultRelationship"),
+                "Family Member"
+            );
+
+            setText(
+                document.getElementById("resultPdlNumber"),
+                "PDL-DEMO-001"
+            );
+
+            setText(
+                document.getElementById("resultPdlStatus"),
+                "Eligible"
+            );
+
+            setText(
+                document.getElementById("resultScheduleTime"),
+                "10:00 AM – 11:00 AM"
+            );
+
+            setText(
+                document.getElementById("resultScheduleBuilding"),
+                "Main Building"
+            );
+
+            setText(
+                document.getElementById("resultScheduleClassification"),
+                "Regular"
+            );
+
+            setText(
+                document.getElementById("resultVisitStatus"),
+                "Approved"
+            );
+
+            setText(
+                document.getElementById("verifyRegisteredIdType"),
+                "Philippine Passport"
+            );
+
+            setText(
+                document.getElementById("verifyRegisteredIdNumber"),
+                "DEMO-P1234567"
+            );
+
+            setScannerStatus(
+                "Demo QR scan successful. Continue to Visitor Info to test the check-in flow."
+            );
+
+            window.dispatchEvent(
+                new CustomEvent(
+                    "custodicore:checkin-progress",
+                    {
+                        detail: {
+                            step: 2
+                        }
+                    }
+                )
+            );
+        }
+    );
 
 
     /*
@@ -1630,25 +1744,6 @@ function initializeFrontDeskScanner() {
 
 
             /*
-             * The Blade page builds the check-out form from the scanned
-             * check-in id — tell it which check-in was found.
-             */
-            if (checkoutCheckinId) {
-                window.dispatchEvent(
-                    new CustomEvent(
-                        "custodicore:checkout-scanned",
-                        {
-                            detail: {
-                                checkinId:
-                                    checkoutCheckinId,
-                            },
-                        }
-                    )
-                );
-            }
-
-
-            /*
              * If the backend successfully verifies the visitor but does
              * not return the check-in record ID, we cannot safely submit
              * the checkout because the existing checkout route requires
@@ -1993,6 +2088,75 @@ function initializeFrontDeskScanner() {
 
     /*
     |--------------------------------------------------------------------------
+    | TEMPORARY CHECK-OUT DEMO SCAN
+    |--------------------------------------------------------------------------
+    */
+
+    document
+        .getElementById("checkoutDemoScanBtn")
+        ?.addEventListener(
+            "click",
+            function () {
+
+                const demoData = {
+
+                    checkin_id:
+                        "DEMO-CHECKOUT-001",
+
+                    visitor: {
+                        full_name:
+                            "Demo Visitor",
+                        visitor_id:
+                            "VIS-0001"
+                    },
+
+                    pdl: {
+                        full_name:
+                            "Demo PDL",
+                        pdl_number:
+                            "PDL-0001"
+                    },
+
+                    check_in_time:
+                        "October 5, 2026 — 01:30 PM",
+
+                    status:
+                        "Inside Facility",
+
+                    surrendered_id: {
+                        type:
+                            "Driver's License",
+                        number:
+                            "DL-DEMO-001"
+                    }
+                };
+
+
+                checkoutCheckinId =
+                    "DEMO-CHECKOUT-001";
+
+                checkoutScannedToken =
+                    "DEMO-CHECKOUT-QR";
+
+                checkoutScanData =
+                    demoData;
+
+
+                showCheckoutScanResult(
+                    demoData,
+                    demoData
+                );
+
+
+                setCheckoutScannerStatus(
+                    "Demo scan successful. Review the active visit."
+                );
+            }
+        );
+
+
+    /*
+    |--------------------------------------------------------------------------
     | START CHECK-OUT SCANNER
     |--------------------------------------------------------------------------
     */
@@ -2309,8 +2473,13 @@ function initializeFrontDeskScanner() {
             idMatchStatus =
                 "matched";
 
+            window.frontDeskCheckinIdMatchStatus =
+                "matched";
 
             newIdSaved =
+                false;
+
+            window.frontDeskCheckinNewIdSaved =
                 false;
 
 
@@ -2326,10 +2495,11 @@ function initializeFrontDeskScanner() {
             );
 
 
-            matchedIdSection?.classList.remove(
+            // A matching ID is already registered and verified.
+            // Do NOT ask the officer to select the ID type again.
+            matchedIdSection?.classList.add(
                 "hidden"
             );
-
 
             newIdSection?.classList.add(
                 "hidden"
@@ -2381,7 +2551,7 @@ function initializeFrontDeskScanner() {
 
 
             setScannerStatus(
-                "ID matched. Select the physical ID surrendered by the visitor."
+                "ID matched. Confirm that the physical ID has been surrendered below."
             );
 
 
@@ -2425,8 +2595,13 @@ function initializeFrontDeskScanner() {
             idMatchStatus =
                 "replaced";
 
+            window.frontDeskCheckinIdMatchStatus =
+                "replaced";
 
             newIdSaved =
+                false;
+
+            window.frontDeskCheckinNewIdSaved =
                 false;
 
 
@@ -2652,6 +2827,8 @@ function initializeFrontDeskScanner() {
             newIdSaved =
                 true;
 
+            window.frontDeskCheckinNewIdSaved =
+                true;
 
             saveNewIdBtn.disabled =
                 true;
@@ -2693,23 +2870,6 @@ function initializeFrontDeskScanner() {
             }
 
 
-            /*
-             * The current check-in page has no "ID matches / does not match"
-             * buttons — step 4 shows the registered ID and an "ID has been
-             * physically surrendered" checkbox. A checked box means the
-             * registered ID was presented and surrendered.
-             */
-            if (
-                !idMatchStatus &&
-                !idMatchesBtn &&
-                !idDoesNotMatchBtn &&
-                document.getElementById("idSurrendered")?.checked
-            ) {
-                idMatchStatus =
-                    "matched";
-            }
-
-
             if (!idMatchStatus) {
 
                 showError(
@@ -2719,35 +2879,6 @@ function initializeFrontDeskScanner() {
                 idMatchesBtn?.focus();
 
                 return;
-            }
-
-
-            // Without a type field on the page, the surrendered ID is the registered one.
-            const matchedIdType =
-                idSurrenderedType?.value ||
-                registeredIds[0]?.type ||
-                "";
-
-
-            if (
-                idMatchStatus ===
-                "matched"
-            ) {
-
-                if (
-                    !matchedIdType
-                ) {
-
-                    showError(
-                        idSurrenderedType
-                            ? "Please select the ID type surrendered by the visitor."
-                            : "This visitor has no verified registered ID on file. Use Manual Check-In."
-                    );
-
-                    idSurrenderedType?.focus();
-
-                    return;
-                }
             }
 
 
@@ -2857,7 +2988,12 @@ function initializeFrontDeskScanner() {
                 idMatchStatus ===
                 "replaced"
                     ? newIdType.value
-                    : matchedIdType;
+                    : (
+                        registeredIds?.[0]?.type ||
+                        registeredIds?.[0]?.type_label ||
+                        registeredIdType?.textContent?.trim() ||
+                        null
+                    );
 
 
             confirmCheckInBtn.disabled =

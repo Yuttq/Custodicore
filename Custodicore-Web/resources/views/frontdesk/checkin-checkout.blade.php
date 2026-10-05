@@ -80,65 +80,32 @@
             {{-- PROGRESS --}}
             <div class="mt-lg border-t border-border pt-lg">
 
-                <div class="grid grid-cols-4 gap-sm">
+                <div class="flex items-start">
 
-                    <div
-                        id="checkinProgress1"
-                        class="checkin-progress-step text-center">
-
-                        <div class="checkin-progress-circle mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">
-                            1
-                        </div>
-
-                        <p class="mt-xs text-status-label font-semibold text-text-primary">
-                            Scan QR
-                        </p>
-
+                    <div id="checkinProgress1" class="checkin-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">1</div>
+                        <p class="mt-xs text-status-label font-semibold text-text-primary">Scan QR</p>
                     </div>
 
+                    <span id="checkinConnector1" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div
-                        id="checkinProgress2"
-                        class="checkin-progress-step text-center">
-
-                        <div class="checkin-progress-circle mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-                            2
-                        </div>
-
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Visitor Info
-                        </p>
-
+                    <div id="checkinProgress2" class="checkin-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">2</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Visitor Info</p>
                     </div>
 
+                    <span id="checkinConnector2" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div
-                        id="checkinProgress3"
-                        class="checkin-progress-step text-center">
-
-                        <div class="checkin-progress-circle mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-                            3
-                        </div>
-
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Verify Visitor
-                        </p>
-
+                    <div id="checkinProgress3" class="checkin-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">3</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Verify ID</p>
                     </div>
 
+                    <span id="checkinConnector3" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div
-                        id="checkinProgress4"
-                        class="checkin-progress-step text-center">
-
-                        <div class="checkin-progress-circle mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-                            4
-                        </div>
-
-                        <p class="mt-xs text-status-label text-text-secondary">
-                            Verify ID
-                        </p>
-
+                    <div id="checkinProgress4" class="checkin-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">4</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Summary</p>
                     </div>
 
                 </div>
@@ -189,6 +156,17 @@
                         </button>
 
 
+                        {{-- TEMPORARY DEMO BUTTON: remove when real QR test data is available. --}}
+                        <button
+                            type="button"
+                            id="demoScanBtn"
+                            class="cc-btn-secondary">
+
+                            Demo Scan
+
+                        </button>
+
+
                         <button
                             type="button"
                             id="stopScannerBtn"
@@ -201,6 +179,10 @@
                     </div>
 
                 </div>
+
+                <p class="mt-sm text-metadata text-text-secondary">
+                    <span class="font-semibold">Demo Scan</span> is temporary and only for testing the check-in flow until you have a real visitor QR code.
+                </p>
 
 
                 {{-- SCANNER --}}
@@ -772,37 +754,33 @@
                             APPROVED VISIT SCHEDULE
                         </p>
 
-                        <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                        <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-4">
 
                             <div>
-
-                                <p class="text-section-label text-text-secondary">
-                                    DATE
-                                </p>
-
-                                <p
-                                    id="resultSchedule"
-                                    class="mt-xs text-body font-semibold">
-                                    —
-                                </p>
-
+                                <p class="text-section-label text-text-secondary">DATE</p>
+                                <p id="resultSchedule" class="mt-xs text-body font-semibold">—</p>
                             </div>
-
 
                             <div>
-
-                                <p class="text-section-label text-text-secondary">
-                                    TIME
-                                </p>
-
-                                <p
-                                    id="resultScheduleTime"
-                                    class="mt-xs text-body font-semibold">
-                                    —
-                                </p>
-
+                                <p class="text-section-label text-text-secondary">TIME</p>
+                                <p id="resultScheduleTime" class="mt-xs text-body font-semibold">—</p>
                             </div>
 
+                            <div>
+                                <p class="text-section-label text-text-secondary">BUILDING</p>
+                                <p id="resultScheduleBuilding" class="mt-xs text-body font-semibold">—</p>
+                            </div>
+
+                            <div>
+                                <p class="text-section-label text-text-secondary">CLASSIFICATION</p>
+                                <p id="resultScheduleClassification" class="mt-xs text-body font-semibold">—</p>
+                            </div>
+
+                        </div>
+
+                        <div class="mt-md">
+                            <p class="text-section-label text-text-secondary">VISIT STATUS</p>
+                            <p id="resultVisitStatus" class="mt-xs text-body font-semibold text-primary-teal">Approved</p>
                         </div>
 
                     </div>
@@ -865,20 +843,18 @@
                     </div>
 
 
-                    <div class="mt-lg flex justify-end">
+                    <div class="mt-lg flex flex-col-reverse gap-sm border-t border-border pt-lg sm:flex-row sm:justify-between">
 
-                        <button
-                            type="button"
-                            id="visitorInfoNextBtn"
-                            class="cc-btn-primary">
+                        <button type="button" id="backToScanBtn" class="cc-btn-secondary">
+                            Back
+                        </button>
 
-                            Continue to Verification
-
+                        <button type="button" id="visitorInfoNextBtn" class="cc-btn-primary">
+                            Continue to ID Verification
                             @include('admin.partials.icon', [
                                 'name' => 'arrow-right',
                                 'class' => 'h-4 w-4'
                             ])
-
                         </button>
 
                     </div>
@@ -891,445 +867,188 @@
 
 
         {{-- ========================================================
-            CHECK-IN STEP 3
+            CHECK-IN STEP 3 — ID VERIFICATION
         ========================================================= --}}
-        <div
-            id="checkinStep3"
-            class="checkin-step hidden mt-lg">
-
+        <div id="checkinStep3" class="checkin-step hidden mt-lg">
             <div class="cc-card">
-
                 <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        3
-                    </span>
-
+                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">3</span>
                     <div>
-
-                        <p class="text-card-title">
-                            Verify Visitor
-                        </p>
-
-                        <p class="text-metadata text-text-secondary">
-                            Confirm that the visitor and visit meet the required conditions.
-                        </p>
-
+                        <p class="text-card-title">ID Verification</p>
+                        <p class="text-metadata text-text-secondary">Compare the presented physical ID with the registered ID before check-in.</p>
                     </div>
-
                 </div>
-
-
-                <div class="mt-lg space-y-sm">
-
-                    <div class="rounded-xl border border-border bg-background p-md">
-
-                        <div class="flex items-start gap-md">
-
-                            <input
-                                type="checkbox"
-                                id="verifyVisitorIdentity"
-                                class="mt-1 h-4 w-4">
-
-                            <div>
-
-                                <p class="text-body font-semibold">
-                                    Visitor Identity
-                                </p>
-
-                                <p class="mt-xs text-metadata text-text-secondary">
-                                    Visitor matches the registered visitor account.
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="rounded-xl border border-border bg-background p-md">
-
-                        <div class="flex items-start gap-md">
-
-                            <input
-                                type="checkbox"
-                                id="verifySchedule"
-                                class="mt-1 h-4 w-4">
-
-                            <div>
-
-                                <p class="text-body font-semibold">
-                                    Schedule Verification
-                                </p>
-
-                                <p class="mt-xs text-metadata text-text-secondary">
-                                    The visit is approved for the current schedule.
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="rounded-xl border border-border bg-background p-md">
-
-                        <div class="flex items-start gap-md">
-
-                            <input
-                                type="checkbox"
-                                id="verifyPdlEligibility"
-                                class="mt-1 h-4 w-4">
-
-                            <div>
-
-                                <p class="text-body font-semibold">
-                                    PDL Eligibility
-                                </p>
-
-                                <p class="mt-xs text-metadata text-text-secondary">
-                                    The PDL is eligible to receive the visitor.
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="mt-lg flex justify-end">
-
-                    <button
-                        type="button"
-                        id="visitorVerificationNextBtn"
-                        class="cc-btn-primary">
-
-                        Continue to ID Verification
-
-                        @include('admin.partials.icon', [
-                            'name' => 'arrow-right',
-                            'class' => 'h-4 w-4'
-                        ])
-
-                    </button>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        {{-- ========================================================
-            CHECK-IN STEP 4
-        ========================================================= --}}
-        <div
-            id="checkinStep4"
-            class="checkin-step hidden mt-lg">
-
-            <div class="cc-card">
-
-                <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        4
-                    </span>
-
-                    <div>
-
-                        <p class="text-card-title">
-                            ID Verification
-                        </p>
-
-                        <p class="text-metadata text-text-secondary">
-                            Verify and record the visitor's surrendered identification.
-                        </p>
-
-                    </div>
-
-                </div>
-
 
                 <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-section-label text-text-secondary">REGISTERED ID</p>
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                        <div>
+                            <p class="text-section-label text-text-secondary">ID TYPE</p>
+                            <p id="verifyRegisteredIdType" class="mt-xs text-body font-semibold">—</p>
+                        </div>
+                        <div>
+                            <p class="text-section-label text-text-secondary">ID NUMBER</p>
+                            <p id="verifyRegisteredIdNumber" class="mt-xs text-body font-semibold">—</p>
+                        </div>
+                    </div>
+                </div>
 
-                    <p class="text-section-label text-text-secondary">
-                        REGISTERED ID
-                    </p>
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-card-title">Does the presented ID match the registered ID?</p>
+                    <p class="mt-xs text-metadata text-text-secondary">Select the result after physically checking the visitor's identification.</p>
 
                     <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
-
-                        <div>
-
-                            <p class="text-section-label text-text-secondary">
-                                ID TYPE
-                            </p>
-
-                            <p
-                                id="verifyRegisteredIdType"
-                                class="mt-xs text-body font-semibold">
-                                —
-                            </p>
-
-                        </div>
-
-
-                        <div>
-
-                            <p class="text-section-label text-text-secondary">
-                                ID NUMBER
-                            </p>
-
-                            <p
-                                id="verifyRegisteredIdNumber"
-                                class="mt-xs text-body font-semibold">
-                                —
-                            </p>
-
-                        </div>
-
+                        <button type="button" id="idMatchesBtn" aria-pressed="false" class="group cursor-pointer rounded-xl border-2 border-border bg-surface p-md text-left transition-all duration-150 hover:border-primary-blue hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2">
+                            <div class="flex items-start gap-sm"><span id="idMatchesIndicator" class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border text-xs font-bold text-white"></span><div><p class="text-body font-semibold">ID Matches Registered ID</p>
+                            <p class="mt-xs text-metadata text-text-secondary">The ID type and number correspond to the registered record.</p></div></div>
+                        </button>
+                        <button type="button" id="idDoesNotMatchBtn" aria-pressed="false" class="group cursor-pointer rounded-xl border-2 border-border bg-surface p-md text-left transition-all duration-150 hover:border-primary-blue hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2">
+                            <div class="flex items-start gap-sm"><span id="idDoesNotMatchIndicator" class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border text-xs font-bold text-white"></span><div><p class="text-body font-semibold">ID Does Not Match</p>
+                            <p class="mt-xs text-metadata text-text-secondary">The visitor presented a different identification document.</p></div></div>
+                        </button>
                     </div>
-
                 </div>
 
+                <div id="newIdSection" class="hidden mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-card-title">Different ID Presented</p>
+                    <p class="mt-xs text-metadata text-text-secondary">Record the ID actually presented without deleting the previous registered ID.</p>
 
-                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                        <div>
+                            <label for="new_id_type" class="text-section-label text-text-secondary">NEW ID TYPE</label>
+                            <select id="new_id_type" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                                <option value="">Select ID type</option>
+                                <option value="national_id">National ID</option>
+                                <option value="drivers_license">Driver's License</option>
+                                <option value="passport">Passport</option>
+                                <option value="umid">UMID</option>
+                                <option value="philhealth_id">PhilHealth ID</option>
+                                <option value="voters_id">Voter's ID</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="new_id_number" class="text-section-label text-text-secondary">NEW ID NUMBER</label>
+                            <input type="text" id="new_id_number" placeholder="Enter the new ID number" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                        </div>
+                    </div>
 
-                    <label class="flex items-start gap-sm">
+                    <div class="mt-md">
+                        <label for="new_id_reason" class="text-section-label text-text-secondary">REASON</label>
+                        <select id="new_id_reason" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                            <option value="">Select reason</option>
+                            <option value="lost">Lost / Misplaced</option>
+                            <option value="expired">Expired</option>
+                            <option value="damaged">Damaged</option>
+                            <option value="updated">Updated / Replaced</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
 
-                        <input
-                            type="checkbox"
-                            id="idSurrendered"
-                            class="mt-1 h-4 w-4">
+                    <div id="otherReasonContainer" class="hidden mt-md">
+                        <textarea id="new_id_other_reason" rows="3" placeholder="Explain the reason for the new ID." class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body"></textarea>
+                    </div>
 
-                        <span>
-
-                            <span class="block text-body font-semibold">
-                                ID has been physically surrendered.
-                            </span>
-
-                            <span class="mt-xs block text-metadata text-text-secondary">
-                                Confirm that the physical identification card is now held at the gate.
-                            </span>
-
-                        </span>
-
+                    <label class="mt-md flex items-start gap-sm rounded-lg border border-border p-md">
+                        <input type="checkbox" id="newIdVerified" class="mt-1 h-4 w-4">
+                        <span class="text-body">I have physically verified the new ID and confirmed that it belongs to the visitor.</span>
                     </label>
 
+                    <div class="mt-md">
+                        <button type="button" id="saveNewIdBtn" class="cc-btn-secondary">Verify & Add New ID</button>
+                    </div>
                 </div>
 
-
-                <div
-                    id="newIdSection"
-                    class="hidden mt-lg border-t border-border pt-lg">
-
-                    <p class="text-card-title">
-                        New ID Presented
-                    </p>
-
-                    <p class="mt-xs text-metadata text-text-secondary">
-                        Record the new physical ID without deleting the previous registered ID.
-                    </p>
-
-
-                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
-
-                        <div>
-
-                            <label
-                                for="new_id_type"
-                                class="text-section-label text-text-secondary">
-
-                                NEW ID TYPE
-
-                            </label>
-
-                            <select
-                                id="new_id_type"
-                                class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
-
-                                <option value="">
-                                    Select ID type
-                                </option>
-
-                                <option value="national_id">
-                                    National ID
-                                </option>
-
-                                <option value="drivers_license">
-                                    Driver's License
-                                </option>
-
-                                <option value="passport">
-                                    Passport
-                                </option>
-
-                                <option value="umid">
-                                    UMID
-                                </option>
-
-                                <option value="philhealth_id">
-                                    PhilHealth ID
-                                </option>
-
-                                <option value="voters_id">
-                                    Voter's ID
-                                </option>
-
-                                <option value="other">
-                                    Other
-                                </option>
-
-                            </select>
-
-                        </div>
-
-
-                        <div>
-
-                            <label
-                                for="new_id_number"
-                                class="text-section-label text-text-secondary">
-
-                                NEW ID NUMBER
-
-                            </label>
-
-                            <input
-                                type="text"
-                                id="new_id_number"
-                                placeholder="Enter the new ID number"
-                                class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="mt-md">
-
-                        <label
-                            for="new_id_reason"
-                            class="text-section-label text-text-secondary">
-
-                            REASON
-
-                        </label>
-
-                        <select
-                            id="new_id_reason"
-                            class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
-
-                            <option value="">
-                                Select reason
-                            </option>
-
-                            <option value="lost">
-                                Lost / Misplaced
-                            </option>
-
-                            <option value="expired">
-                                Expired
-                            </option>
-
-                            <option value="damaged">
-                                Damaged
-                            </option>
-
-                            <option value="updated">
-                                Updated / Replaced
-                            </option>
-
-                            <option value="other">
-                                Other
-                            </option>
-
-                        </select>
-
-                    </div>
-
-
-                    <div
-                        id="otherReasonContainer"
-                        class="hidden mt-md">
-
-                        <textarea
-                            id="new_id_other_reason"
-                            rows="3"
-                            placeholder="Explain the reason for the new ID."
-                            class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body"></textarea>
-
-                    </div>
-
-
-                    <div class="mt-md rounded-lg border border-border bg-background p-md">
-
-                        <label class="flex items-start gap-sm">
-
-                            <input
-                                type="checkbox"
-                                id="newIdVerified"
-                                class="mt-1">
-
-                            <span class="text-body">
-                                I have physically verified the new ID and confirmed that it belongs to the visitor.
-                            </span>
-
-                        </label>
-
-                    </div>
-
-
-                    <div class="mt-md">
-
-                        <button
-                            type="button"
-                            id="saveNewIdBtn"
-                            class="cc-btn-secondary">
-
-                            Verify & Add New ID
-
-                        </button>
-
-                    </div>
-
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <label class="flex items-start gap-sm">
+                        <input type="checkbox" id="idSurrendered" class="mt-1 h-4 w-4">
+                        <span>
+                            <span class="block text-body font-semibold">ID has been physically surrendered.</span>
+                            <span class="mt-xs block text-metadata text-text-secondary">Confirm that the physical identification card presented by the visitor is now held at the gate.</span>
+                        </span>
+                    </label>
                 </div>
-
 
                 <div class="mt-lg flex flex-col-reverse gap-sm border-t border-border pt-lg sm:flex-row sm:justify-between">
-
-                    <button
-                        type="button"
-                        id="backToVisitorVerificationBtn"
-                        class="cc-btn-secondary">
-
-                        Back
-
+                    <button type="button" id="backToVisitorInfoBtn" class="cc-btn-secondary">Back</button>
+                    <button type="button" id="continueToSummaryBtn" class="cc-btn-primary">
+                        Continue to Summary
+                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
                     </button>
+                </div>
+            </div>
+        </div>
 
-
-                    <button
-                        type="button"
-                        id="confirmCheckInBtn"
-                        class="cc-btn-primary">
-
-                        Confirm Check-In
-
-                        @include('admin.partials.icon', [
-                            'name' => 'arrow-right',
-                            'class' => 'h-4 w-4'
-                        ])
-
-                    </button>
-
+        {{-- ========================================================
+            CHECK-IN STEP 4 — SUMMARY
+        ========================================================= --}}
+        <div id="checkinStep4" class="checkin-step hidden mt-lg">
+            <div class="cc-card">
+                <div class="flex items-center gap-sm">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">4</span>
+                    <div>
+                        <p class="text-card-title">Check-In Summary</p>
+                        <p class="text-metadata text-text-secondary">Review all visit, visitor, PDL, and ID details before confirming check-in.</p>
+                    </div>
                 </div>
 
-            </div>
+                <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
+                    <div class="rounded-xl border border-border bg-background p-md">
+                        <p class="text-section-label text-text-secondary">VISITOR</p>
+                        <p id="summaryVisitor" class="mt-md text-lg font-semibold">—</p>
+                        <div class="mt-lg grid grid-cols-2 gap-md">
+                            <div><p class="text-section-label text-text-secondary">VISITOR ID</p><p id="summaryVisitorId" class="mt-xs text-body font-semibold">—</p></div>
+                            <div><p class="text-section-label text-text-secondary">RELATIONSHIP</p><p id="summaryRelationship" class="mt-xs text-body font-semibold">—</p></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-border bg-background p-md">
+                        <p class="text-section-label text-text-secondary">PDL</p>
+                        <p id="summaryPdl" class="mt-md text-lg font-semibold">—</p>
+                        <div class="mt-lg grid grid-cols-2 gap-md">
+                            <div><p class="text-section-label text-text-secondary">PDL NUMBER</p><p id="summaryPdlNumber" class="mt-xs text-body font-semibold">—</p></div>
+                            <div><p class="text-section-label text-text-secondary">ELIGIBILITY</p><p id="summaryPdlEligibility" class="mt-xs text-body font-semibold">—</p></div>
+                        </div>
+                    </div>
+                </div>
 
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-section-label text-text-secondary">APPROVED VISIT SCHEDULE</p>
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-4">
+                        <div><p class="text-section-label text-text-secondary">DATE</p><p id="summarySchedule" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">TIME</p><p id="summaryScheduleTime" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">BUILDING</p><p id="summaryScheduleBuilding" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">CLASSIFICATION</p><p id="summaryScheduleClassification" class="mt-xs text-body font-semibold">—</p></div>
+                    </div>
+                    <div class="mt-md"><p class="text-section-label text-text-secondary">VISIT STATUS</p><p id="summaryVisitStatus" class="mt-xs text-body font-semibold">—</p></div>
+                </div>
+
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-section-label text-text-secondary">VERIFICATION CHECKLIST</p>
+                    <div class="mt-md grid grid-cols-1 gap-sm md:grid-cols-2">
+                        <div id="summaryCheckVisitor" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">Visitor identity</span><span id="summaryCheckVisitorText" class="float-right text-body font-semibold">Pending</span></div>
+                        <div id="summaryCheckSchedule" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">Schedule compliance</span><span id="summaryCheckScheduleText" class="float-right text-body font-semibold">Pending</span></div>
+                        <div id="summaryCheckPdl" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">PDL eligibility</span><span id="summaryCheckPdlText" class="float-right text-body font-semibold">Pending</span></div>
+                        <div id="summaryCheckId" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">ID verification</span><span id="summaryCheckIdText" class="float-right text-body font-semibold">Pending</span></div>
+                    </div>
+                </div>
+
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-section-label text-text-secondary">IDENTIFICATION</p>
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-3">
+                        <div><p class="text-section-label text-text-secondary">ID TYPE</p><p id="summaryIdType" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">ID NUMBER</p><p id="summaryIdNumber" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">STATUS</p><p id="summaryIdStatus" class="mt-xs text-body font-semibold">—</p></div>
+                    </div>
+                </div>
+
+                <div class="mt-lg flex flex-col-reverse gap-sm border-t border-border pt-lg sm:flex-row sm:justify-between">
+                    <button type="button" id="backToIdVerificationBtn" class="cc-btn-secondary">Back</button>
+                    <button type="button" id="confirmCheckInBtn" class="cc-btn-primary">
+                        Confirm Check-In
+                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
+                    </button>
+                </div>
+            </div>
         </div>
 
     </section>
@@ -1371,89 +1090,32 @@
             {{-- PROGRESS --}}
             <div class="mt-lg border-t border-border pt-lg">
 
-                <div class="grid grid-cols-4 gap-sm">
+                <div class="flex items-start">
 
-                    <div class="text-center">
-
-                        <div
-                            id="checkoutCircle1"
-                            class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">
-
-                            1
-
-                        </div>
-
-                        <p
-                            id="checkoutStep1Label"
-                            class="mt-xs text-status-label font-semibold text-text-primary">
-
-                            Scan QR
-
-                        </p>
-
+                    <div id="checkoutProgress1" class="checkout-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">1</div>
+                        <p class="mt-xs text-status-label font-semibold text-text-primary">Scan QR</p>
                     </div>
 
+                    <span id="checkoutConnector1" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div class="text-center">
-
-                        <div
-                            id="checkoutCircle2"
-                            class="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-
-                            2
-
-                        </div>
-
-                        <p
-                            id="checkoutStep2Label"
-                            class="mt-xs text-status-label text-text-secondary">
-
-                            Active Visit
-
-                        </p>
-
+                    <div id="checkoutProgress2" class="checkout-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">2</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Active Visit</p>
                     </div>
 
+                    <span id="checkoutConnector2" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div class="text-center">
-
-                        <div
-                            id="checkoutCircle3"
-                            class="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-
-                            3
-
-                        </div>
-
-                        <p
-                            id="checkoutStep3Label"
-                            class="mt-xs text-status-label text-text-secondary">
-
-                            Return ID
-
-                        </p>
-
+                    <div id="checkoutProgress3" class="checkout-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">3</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Return ID</p>
                     </div>
 
+                    <span id="checkoutConnector3" class="mt-4 h-0.5 flex-1 bg-border"></span>
 
-                    <div class="text-center">
-
-                        <div
-                            id="checkoutCircle4"
-                            class="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">
-
-                            4
-
-                        </div>
-
-                        <p
-                            id="checkoutStep4Label"
-                            class="mt-xs text-status-label text-text-secondary">
-
-                            Confirm
-
-                        </p>
-
+                    <div id="checkoutProgress4" class="checkout-progress-step min-w-0 flex-1 text-center">
+                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">4</div>
+                        <p class="mt-xs text-status-label text-text-secondary">Summary</p>
                     </div>
 
                 </div>
@@ -1466,6 +1128,7 @@
         {{-- ========================================================
             CHECKOUT STEP 1 — SCAN
         ========================================================= --}}
+
         <div
             id="checkoutStepContent1"
             class="checkout-content-step mt-lg">
@@ -1502,6 +1165,16 @@
                             Start QR Scanner
 
                         </button>
+                        <button
+                            type="button"
+                            id="checkoutDemoScanBtn"
+                            class="cc-btn-secondary">
+
+                            Demo Scan
+
+                        </button>
+
+
 
 
                         <button
@@ -1517,6 +1190,10 @@
 
                 </div>
 
+
+                <p class="mt-sm text-metadata text-text-secondary">
+                    <span class="font-semibold">Demo Scan</span> is temporary and only for testing the check-out flow until real visitor QR test data is available.
+                </p>
 
                 {{-- CHECKOUT SCANNER --}}
                 <div
@@ -1735,80 +1412,280 @@
                     {{-- ACTIVE VISIT INFORMATION --}}
                     <div
                         id="checkoutActiveVisit"
-                        class="hidden mt-lg border-t border-border pt-lg">
+                        class="hidden mt-lg">
 
                         <p class="text-card-title">
                             Active Visit Information
                         </p>
 
                         <p class="mt-xs text-metadata text-text-secondary">
-                            Confirm the visitor's active visit before returning the ID.
+                            Review the same visitor, PDL, schedule, and registered ID information retrieved during check-in.
                         </p>
 
 
-                        <div class="mt-md grid grid-cols-1 gap-md lg:grid-cols-2">
+                        {{-- VISITOR + PDL --}}
+                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
 
-                            <div class="rounded-lg border border-border bg-background p-md">
+                            <div class="rounded-xl border border-border bg-background p-md">
 
                                 <p class="text-section-label text-text-secondary">
-                                    VISITOR
+                                    VISITOR INFORMATION
                                 </p>
 
                                 <p
                                     id="checkoutInfoVisitor"
-                                    class="mt-xs text-body font-semibold">
+                                    class="mt-md text-lg font-semibold">
                                     —
-                                </p>
-
-                            </div>
-
-
-                            <div class="rounded-lg border border-border bg-background p-md">
-
-                                <p class="text-section-label text-text-secondary">
-                                    VISITOR ID
                                 </p>
 
                                 <p
-                                    id="checkoutInfoVisitorId"
-                                    class="mt-xs text-body font-semibold">
+                                    id="checkoutInfoVisitorDetails"
+                                    class="mt-xs text-metadata text-text-secondary">
                                     —
                                 </p>
+
+
+                                <div class="mt-lg grid grid-cols-2 gap-md">
+
+                                    <div>
+
+                                        <p class="text-section-label text-text-secondary">
+                                            VISITOR ID
+                                        </p>
+
+                                        <p
+                                            id="checkoutInfoVisitorId"
+                                            class="mt-xs text-body font-semibold">
+                                            —
+                                        </p>
+
+                                    </div>
+
+
+                                    <div>
+
+                                        <p class="text-section-label text-text-secondary">
+                                            RELATIONSHIP
+                                        </p>
+
+                                        <p
+                                            id="checkoutInfoRelationship"
+                                            class="mt-xs text-body font-semibold">
+                                            —
+                                        </p>
+
+                                    </div>
+
+                                </div>
 
                             </div>
 
 
-                            <div class="rounded-lg border border-border bg-background p-md">
+                            <div class="rounded-xl border border-border bg-background p-md">
 
                                 <p class="text-section-label text-text-secondary">
-                                    VISITING PDL
+                                    PDL INFORMATION
                                 </p>
 
                                 <p
                                     id="checkoutInfoPdl"
-                                    class="mt-xs text-body font-semibold">
+                                    class="mt-md text-lg font-semibold">
                                     —
                                 </p>
+
+                                <p class="mt-xs text-metadata text-text-secondary">
+                                    Person Deprived of Liberty
+                                </p>
+
+
+                                <div class="mt-lg grid grid-cols-2 gap-md">
+
+                                    <div>
+
+                                        <p class="text-section-label text-text-secondary">
+                                            PDL NUMBER
+                                        </p>
+
+                                        <p
+                                            id="checkoutInfoPdlNumber"
+                                            class="mt-xs text-body font-semibold">
+                                            —
+                                        </p>
+
+                                    </div>
+
+
+                                    <div>
+
+                                        <p class="text-section-label text-text-secondary">
+                                            STATUS
+                                        </p>
+
+                                        <p
+                                            id="checkoutInfoPdlStatus"
+                                            class="mt-xs text-body font-semibold text-primary-teal">
+                                            Eligible
+                                        </p>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        {{-- APPROVED VISIT SCHEDULE --}}
+                        <div class="mt-lg rounded-xl border border-border bg-background p-md">
+
+                            <p class="text-section-label text-text-secondary">
+                                APPROVED VISIT SCHEDULE
+                            </p>
+
+                            <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-4">
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        DATE
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoScheduleDate"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
+
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        TIME
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoScheduleTime"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
+
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        BUILDING
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoScheduleBuilding"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
+
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        CLASSIFICATION
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoScheduleClassification"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
 
                             </div>
 
 
-                            <div class="rounded-lg border border-border bg-background p-md">
+                            <div class="mt-md">
 
                                 <p class="text-section-label text-text-secondary">
-                                    PDL NUMBER
+                                    VISIT STATUS
                                 </p>
 
                                 <p
-                                    id="checkoutInfoPdlNumber"
-                                    class="mt-xs text-body font-semibold">
+                                    id="checkoutInfoVisitStatus"
+                                    class="mt-xs text-body font-semibold text-primary-teal">
+                                    Approved
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        {{-- REGISTERED ID --}}
+                        <div class="mt-lg rounded-xl border border-border bg-background p-md">
+
+                            <p class="text-section-label text-text-secondary">
+                                REGISTERED ID
+                            </p>
+
+                            <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        ID TYPE
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoRegisteredIdType"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
+
+
+                                <div>
+
+                                    <p class="text-section-label text-text-secondary">
+                                        ID NUMBER
+                                    </p>
+
+                                    <p
+                                        id="checkoutInfoRegisteredIdNumber"
+                                        class="mt-xs text-body font-semibold">
+                                        —
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="mt-md">
+
+                                <p class="text-section-label text-text-secondary">
+                                    ID STATUS
+                                </p>
+
+                                <p
+                                    id="checkoutInfoRegisteredIdStatus"
+                                    class="mt-xs text-body font-semibold text-primary-teal">
                                     —
                                 </p>
 
                             </div>
 
+                        </div>
 
-                            <div class="rounded-lg border border-border bg-background p-md">
+
+                        {{-- CHECK-IN RECORD --}}
+                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
+
+                            <div class="rounded-xl border border-border bg-background p-md">
 
                                 <p class="text-section-label text-text-secondary">
                                     CHECK-IN TIME
@@ -1823,7 +1700,7 @@
                             </div>
 
 
-                            <div class="rounded-lg border border-border bg-background p-md">
+                            <div class="rounded-xl border border-border bg-background p-md">
 
                                 <p class="text-section-label text-text-secondary">
                                     CURRENT STATUS
@@ -1963,96 +1840,61 @@
                 <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
 
                     <div class="rounded-xl border border-border bg-background p-md">
-
-                        <p class="text-section-label text-text-secondary">
-                            VISITOR INFORMATION
-                        </p>
-
-                        <p
-                            id="qrCheckoutVisitorName"
-                            class="mt-md text-lg font-semibold">
-                            —
-                        </p>
-
-                        <p
-                            id="qrCheckoutVisitorId"
-                            class="mt-xs text-metadata text-text-secondary">
-                            Visitor ID: —
-                        </p>
-
+                        <p class="text-section-label text-text-secondary">VISITOR INFORMATION</p>
+                        <p id="qrCheckoutVisitorName" class="mt-md text-lg font-semibold">—</p>
+                        <p id="qrCheckoutVisitorDetails" class="mt-xs text-metadata text-text-secondary">—</p>
+                        <div class="mt-lg grid grid-cols-2 gap-md">
+                            <div>
+                                <p class="text-section-label text-text-secondary">VISITOR ID</p>
+                                <p id="qrCheckoutVisitorId" class="mt-xs text-body font-semibold">—</p>
+                            </div>
+                            <div>
+                                <p class="text-section-label text-text-secondary">RELATIONSHIP</p>
+                                <p id="qrCheckoutRelationship" class="mt-xs text-body font-semibold">—</p>
+                            </div>
+                        </div>
                     </div>
 
-
                     <div class="rounded-xl border border-border bg-background p-md">
-
-                        <p class="text-section-label text-text-secondary">
-                            VISITING PDL
-                        </p>
-
-                        <p
-                            id="qrCheckoutPdlName"
-                            class="mt-md text-lg font-semibold">
-                            —
-                        </p>
-
-                        <p
-                            id="qrCheckoutPdlNumber"
-                            class="mt-xs text-metadata text-text-secondary">
-                            PDL No.: —
-                        </p>
-
-                    </div>
-
-
-                    <div class="rounded-xl border border-border bg-background p-md">
-
-                        <p class="text-section-label text-text-secondary">
-                            CHECK-IN TIME
-                        </p>
-
-                        <p
-                            id="qrCheckoutCheckinTime"
-                            class="mt-xs text-body font-semibold">
-                            —
-                        </p>
-
-                    </div>
-
-
-                    <div class="rounded-xl border border-border bg-background p-md">
-
-                        <p class="text-section-label text-text-secondary">
-                            CURRENT STATUS
-                        </p>
-
-                        <p
-                            id="qrCheckoutStatus"
-                            class="mt-xs text-body font-semibold text-primary-teal">
-                            Inside Facility
-                        </p>
-
+                        <p class="text-section-label text-text-secondary">PDL INFORMATION</p>
+                        <p id="qrCheckoutPdlName" class="mt-md text-lg font-semibold">—</p>
+                        <p class="mt-xs text-metadata text-text-secondary">Person Deprived of Liberty</p>
+                        <div class="mt-lg grid grid-cols-2 gap-md">
+                            <div>
+                                <p class="text-section-label text-text-secondary">PDL NUMBER</p>
+                                <p id="qrCheckoutPdlNumber" class="mt-xs text-body font-semibold">—</p>
+                            </div>
+                            <div>
+                                <p class="text-section-label text-text-secondary">STATUS</p>
+                                <p id="qrCheckoutPdlStatus" class="mt-xs text-body font-semibold text-primary-teal">Eligible</p>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
 
+                <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                    <p class="text-section-label text-text-secondary">APPROVED VISIT SCHEDULE</p>
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-4">
+                        <div><p class="text-section-label text-text-secondary">DATE</p><p id="qrCheckoutScheduleDate" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">TIME</p><p id="qrCheckoutScheduleTime" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">BUILDING</p><p id="qrCheckoutScheduleBuilding" class="mt-xs text-body font-semibold">—</p></div>
+                        <div><p class="text-section-label text-text-secondary">CLASSIFICATION</p><p id="qrCheckoutScheduleClassification" class="mt-xs text-body font-semibold">—</p></div>
+                    </div>
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                        <div><p class="text-section-label text-text-secondary">VISIT STATUS</p><p id="qrCheckoutVisitStatus" class="mt-xs text-body font-semibold text-primary-teal">Approved</p></div>
+                        <div><p class="text-section-label text-text-secondary">CHECK-IN TIME</p><p id="qrCheckoutCheckinTime" class="mt-xs text-body font-semibold">—</p></div>
+                    </div>
+                </div>
 
                 <div class="mt-lg flex justify-end">
-
-                    <button
-                        type="button"
-                        id="checkoutToReturnIdBtn"
-                        class="cc-btn-primary">
-
+                    <button type="button" id="checkoutToReturnIdBtn" class="cc-btn-primary">
                         Continue to Return ID
-
-                        @include('admin.partials.icon', [
-                            'name' => 'arrow-right',
-                            'class' => 'h-4 w-4'
-                        ])
-
+                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
                     </button>
-
                 </div>
+
+
 
             </div>
 
@@ -2328,112 +2170,274 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     /* ============================================================
-       CHECK-IN PROGRESS
-    ============================================================ */
+   CHECK-IN PROGRESS
+============================================================ */
 
-    function updateCheckinProgress(step) {
+function updateCheckinProgress(step) {
 
-        for (let i = 1; i <= 4; i++) {
+    /*
+     * Connected horizontal stepper
+     *
+     * Step 1 = Scan QR
+     * Step 2 = Visitor & PDL
+     * Step 3 = Verify ID
+     * Step 4 = Summary
+     */
 
-            const wrapper =
-                document.getElementById(
-                    'checkinProgress' + i
+    for (let i = 1; i <= 4; i++) {
+
+        const wrapper =
+            document.getElementById(
+                'checkinProgress' + i
+            );
+
+        if (!wrapper) {
+            continue;
+        }
+
+        const circle =
+            wrapper.querySelector(
+                '.checkin-progress-circle'
+            );
+
+        const label =
+            wrapper.querySelector('p');
+
+
+        /*
+         * COMPLETED STEP
+         */
+        if (i < step) {
+
+            wrapper.classList.remove(
+                'checkin-progress-current'
+            );
+
+            wrapper.classList.add(
+                'checkin-progress-completed'
+            );
+
+
+            circle?.classList.remove(
+                'border',
+                'border-border',
+                'bg-surface',
+                'text-text-secondary',
+                'bg-primary-navy'
+            );
+
+            circle?.classList.add(
+                'bg-primary-navy',
+                'text-white'
+            );
+
+
+            /*
+             * Show check mark instead of number
+             */
+            if (circle) {
+
+                circle.innerHTML = '✓';
+
+                circle.classList.add(
+                    'font-bold'
                 );
 
-            if (!wrapper) {
-                continue;
             }
 
-            const circle =
-                wrapper.querySelector(
-                    '.checkin-progress-circle'
-                );
 
-            const label =
-                wrapper.querySelector('p');
+            label?.classList.remove(
+                'text-text-secondary'
+            );
+
+            label?.classList.add(
+                'font-semibold',
+                'text-text-primary'
+            );
+
+        }
 
 
-            if (i <= step) {
+        /*
+         * CURRENT STEP
+         */
+        else if (i === step) {
 
-                circle?.classList.remove(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
-                );
+            wrapper.classList.remove(
+                'checkin-progress-completed'
+            );
 
-                circle?.classList.add(
-                    'bg-primary-navy',
-                    'text-white'
-                );
+            wrapper.classList.add(
+                'checkin-progress-current'
+            );
 
-                label?.classList.remove(
-                    'text-text-secondary'
-                );
 
-                label?.classList.add(
-                    'font-semibold',
-                    'text-text-primary'
-                );
+            circle?.classList.remove(
+                'border',
+                'border-border',
+                'bg-surface',
+                'text-text-secondary',
+                'bg-primary-navy'
+            );
 
-            } else {
+            circle?.classList.add(
+                'bg-primary-navy',
+                'text-white'
+            );
 
-                circle?.classList.remove(
-                    'bg-primary-navy',
-                    'text-white'
-                );
 
-                circle?.classList.add(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
-                );
+            /*
+             * Keep the original step number
+             */
+            if (circle) {
 
-                label?.classList.remove(
-                    'font-semibold',
-                    'text-text-primary'
-                );
+                circle.innerHTML = i;
 
-                label?.classList.add(
-                    'text-text-secondary'
+                circle.classList.remove(
+                    'font-bold'
                 );
 
             }
+
+
+            label?.classList.remove(
+                'text-text-secondary'
+            );
+
+            label?.classList.add(
+                'font-semibold',
+                'text-text-primary'
+            );
+
+        }
+
+
+        /*
+         * UPCOMING STEP
+         */
+        else {
+
+            wrapper.classList.remove(
+                'checkin-progress-completed',
+                'checkin-progress-current'
+            );
+
+
+            circle?.classList.remove(
+                'bg-primary-navy',
+                'text-white',
+                'font-bold'
+            );
+
+            circle?.classList.add(
+                'border',
+                'border-border',
+                'bg-surface',
+                'text-text-secondary'
+            );
+
+
+            /*
+             * Restore the step number
+             */
+            if (circle) {
+
+                circle.innerHTML = i;
+
+            }
+
+
+            label?.classList.remove(
+                'font-semibold',
+                'text-text-primary'
+            );
+
+            label?.classList.add(
+                'text-text-secondary'
+            );
 
         }
 
     }
 
 
-    function showCheckinStep(step) {
+    /*
+     * Update the connecting lines.
+     *
+     * Each connector represents the progress between
+     * the four steps.
+     */
+    for (let i = 1; i <= 3; i++) {
 
-        checkinSteps.forEach(function (element) {
+        const connector =
+            document.getElementById(
+                'checkinConnector' + i
+            );
 
-            element?.classList.add('hidden');
+        if (!connector) {
+            continue;
+        }
 
+
+        if (i < step) {
+
+            connector.classList.remove(
+                'bg-border'
+            );
+
+            connector.classList.add(
+                'bg-primary-navy'
+            );
+
+        } else {
+
+            connector.classList.remove(
+                'bg-primary-navy'
+            );
+
+            connector.classList.add(
+                'bg-border'
+            );
+
+        }
+
+    }
+
+}
+
+
+function showCheckinStep(step) {
+
+    checkinSteps.forEach(function (element) {
+
+        element?.classList.add('hidden');
+
+    });
+
+
+    const target =
+        checkinSteps[step - 1];
+
+
+    if (target) {
+
+        target.classList.remove('hidden');
+
+        target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
         });
 
-
-        const target =
-            checkinSteps[step - 1];
-
-
-        if (target) {
-
-            target.classList.remove('hidden');
-
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-
-        }
-
-
-        updateCheckinProgress(step);
-
     }
+
+
+    /*
+     * This already controls the progress bar.
+     * Keep this call exactly here.
+     */
+    updateCheckinProgress(step);
+
+}
 
 
     /* ============================================================
@@ -2442,38 +2446,64 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function updateCheckoutProgress(step) {
 
+        /*
+         * CHECK-OUT PROGRESS
+         *
+         * This matches the actual checkout markup:
+         * checkoutProgress1 ... checkoutProgress4
+         * .checkout-progress-circle
+         */
+
         for (let i = 1; i <= 4; i++) {
 
-            const circle =
+            const wrapper =
                 document.getElementById(
-                    'checkoutCircle' + i
+                    'checkoutProgress' + i
                 );
 
-            const label =
-                document.getElementById(
-                    'checkoutStep' + i + 'Label'
-                );
-
-
-            if (!circle) {
+            if (!wrapper) {
                 continue;
             }
 
+            const circle =
+                wrapper.querySelector(
+                    '.checkout-progress-circle'
+                );
 
-            if (i <= step) {
+            const label =
+                wrapper.querySelector('p');
 
-                circle.classList.remove(
+
+            /* COMPLETED STEP */
+            if (i < step) {
+
+                wrapper.classList.remove(
+                    'checkout-progress-current'
+                );
+
+                wrapper.classList.add(
+                    'checkout-progress-completed'
+                );
+
+                circle?.classList.remove(
                     'border',
                     'border-border',
                     'bg-surface',
                     'text-text-secondary'
                 );
 
-                circle.classList.add(
+                circle?.classList.add(
                     'bg-primary-navy',
                     'text-white'
                 );
 
+                if (circle) {
+                    circle.textContent = '✓';
+
+                    circle.classList.add(
+                        'font-bold'
+                    );
+                }
 
                 label?.classList.remove(
                     'text-text-secondary'
@@ -2482,36 +2512,127 @@ document.addEventListener('DOMContentLoaded', function () {
                 label?.classList.add(
                     'font-semibold',
                     'text-text-primary'
+                );
+            }
+
+
+            /* CURRENT STEP */
+            else if (i === step) {
+
+                wrapper.classList.remove(
+                    'checkout-progress-completed'
+                );
+
+                wrapper.classList.add(
+                    'checkout-progress-current'
+                );
+
+                circle?.classList.remove(
+                    'border',
+                    'border-border',
+                    'bg-surface',
+                    'text-text-secondary'
+                );
+
+                circle?.classList.add(
+                    'bg-primary-navy',
+                    'text-white'
+                );
+
+                if (circle) {
+                    circle.textContent = String(i);
+
+                    circle.classList.remove(
+                        'font-bold'
+                    );
+                }
+
+                label?.classList.remove(
+                    'text-text-secondary'
+                );
+
+                label?.classList.add(
+                    'font-semibold',
+                    'text-text-primary'
+                );
+            }
+
+
+            /* UPCOMING STEP */
+            else {
+
+                wrapper.classList.remove(
+                    'checkout-progress-completed',
+                    'checkout-progress-current'
+                );
+
+                circle?.classList.remove(
+                    'bg-primary-navy',
+                    'text-white',
+                    'font-bold'
+                );
+
+                circle?.classList.add(
+                    'border',
+                    'border-border',
+                    'bg-surface',
+                    'text-text-secondary'
+                );
+
+                if (circle) {
+                    circle.textContent = String(i);
+                }
+
+                label?.classList.remove(
+                    'font-semibold',
+                    'text-text-primary'
+                );
+
+                label?.classList.add(
+                    'text-text-secondary'
+                );
+            }
+        }
+
+
+        /*
+         * Connected horizontal lines.
+         * These are optional; the code simply ignores them
+         * if the Blade does not contain connector elements.
+         */
+
+        for (let i = 1; i <= 3; i++) {
+
+            const connector =
+                document.getElementById(
+                    'checkoutConnector' + i
+                );
+
+            if (!connector) {
+                continue;
+            }
+
+            if (i < step) {
+
+                connector.classList.remove(
+                    'bg-border'
+                );
+
+                connector.classList.add(
+                    'bg-primary-navy'
                 );
 
             } else {
 
-                circle.classList.remove(
-                    'bg-primary-navy',
-                    'text-white'
+                connector.classList.remove(
+                    'bg-primary-navy'
                 );
 
-                circle.classList.add(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
+                connector.classList.add(
+                    'bg-border'
                 );
-
-
-                label?.classList.remove(
-                    'font-semibold',
-                    'text-text-primary'
-                );
-
-                label?.classList.add(
-                    'text-text-secondary'
-                );
-
             }
-
         }
-
     }
 
 
@@ -2543,6 +2664,38 @@ document.addEventListener('DOMContentLoaded', function () {
         updateCheckoutProgress(step);
 
     }
+
+
+    /*
+     * CHECKOUT STEP EVENT BRIDGE
+     *
+     * The QR scanner lives in frontdesk-checkin.js, which is
+     * loaded as a JavaScript module. Its functions are not
+     * directly visible inside this Blade script.
+     *
+     * When the scanner successfully finds an active visit,
+     * it dispatches custodicore:checkout-progress.
+     *
+     * This listener receives that event and actually changes
+     * the visible checkout page and progress bar.
+     */
+    window.addEventListener(
+        'custodicore:checkout-progress',
+        function (event) {
+
+            const step =
+                Number(
+                    event.detail?.step || 1
+                );
+
+            if (event.detail?.checkinId) {
+                selectedCheckinId = event.detail.checkinId;
+            }
+
+            showCheckoutStep(step);
+
+        }
+    );
 
 
     /* ============================================================
@@ -2715,6 +2868,21 @@ document.addEventListener('DOMContentLoaded', function () {
     );
 
 
+    /* TEMPORARY DEMO SCAN — used only while testing without a real QR code. */
+    document.getElementById('demoScanBtn')?.addEventListener(
+        'click',
+        function () {
+
+            window.dispatchEvent(
+                new CustomEvent(
+                    'custodicore:demo-checkin-scan'
+                )
+            );
+
+        }
+    );
+
+
     /* ============================================================
        CHECK-IN MANUAL BACKUP
     ============================================================ */
@@ -2848,175 +3016,135 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     /* ============================================================
-       CHECK-IN STEP 2
+       CHECK-IN STEP 2 → STEP 3
     ============================================================ */
 
-    document
-        .getElementById('visitorInfoNextBtn')
-        ?.addEventListener(
-            'click',
-            function () {
+    document.getElementById('backToScanBtn')?.addEventListener('click', function () {
+        showCheckinStep(1);
+    });
 
-                showCheckinStep(3);
+    document.getElementById('visitorInfoNextBtn')?.addEventListener('click', function () {
+        const verifyType = document.getElementById('verifyRegisteredIdType');
+        const verifyNumber = document.getElementById('verifyRegisteredIdNumber');
+        const registeredType = document.getElementById('registeredIdType')?.textContent.trim() || '—';
+        const registeredNumber = document.getElementById('registeredIdNumber')?.textContent.trim() || '—';
 
+        if (verifyType) verifyType.textContent = registeredType;
+        if (verifyNumber) verifyNumber.textContent = registeredNumber;
 
-                window.dispatchEvent(
-                    new CustomEvent(
-                        'custodicore:checkin-progress',
-                        {
-                            detail: {
-                                step: 3
-                            }
-                        }
-                    )
-                );
-
-            }
-        );
-
+        showCheckinStep(3);
+    });
 
     /* ============================================================
-       CHECK-IN STEP 3
+       CHECK-IN STEP 3 — ID VERIFICATION → SUMMARY
     ============================================================ */
 
-    document
-        .getElementById(
-            'visitorVerificationNextBtn'
-        )
-        ?.addEventListener(
-            'click',
-            function () {
+    document.getElementById('backToVisitorInfoBtn')?.addEventListener('click', function () {
+        showCheckinStep(2);
+    });
 
-                const identity =
-                    document.getElementById(
-                        'verifyVisitorIdentity'
-                    );
+    document.getElementById('continueToSummaryBtn')?.addEventListener('click', function () {
+        window.dispatchEvent(new CustomEvent('custodicore:prepare-checkin-summary'));
+    });
 
-                const schedule =
-                    document.getElementById(
-                        'verifySchedule'
-                    );
+    document.getElementById('backToIdVerificationBtn')?.addEventListener('click', function () {
+        showCheckinStep(3);
+    });
 
-                const eligibility =
-                    document.getElementById(
-                        'verifyPdlEligibility'
-                    );
+    window.addEventListener('custodicore:prepare-checkin-summary', function () {
+        const match = document.getElementById('idMatchesBtn');
+        const mismatch = document.getElementById('idDoesNotMatchBtn');
+        const surrendered = document.getElementById('idSurrendered');
+        const idMatchStatus = window.frontDeskCheckinIdMatchStatus;
 
+        if (!match || !mismatch) {
+            showCheckinStep(3);
+            return;
+        }
 
-                if (
-                    !identity?.checked ||
-                    !schedule?.checked ||
-                    !eligibility?.checked
-                ) {
+        if (!idMatchStatus) {
+            match?.classList.add('ring-2', 'ring-red-500', 'ring-offset-2');
+            setTimeout(() => {
+                match?.classList.remove('ring-2', 'ring-red-500', 'ring-offset-2');
+            }, 1200);
+            match?.focus();
+            return;
+        }
 
-                    alert(
-                        'Please complete all visitor verification items before continuing.'
-                    );
+        if (!surrendered?.checked) {
+            surrendered?.focus();
+            return;
+        }
 
-                    return;
+        if (idMatchStatus === 'replaced' && !window.frontDeskCheckinNewIdSaved) {
+            document.getElementById('saveNewIdBtn')?.focus();
+            return;
+        }
 
-                }
+        const text = id => document.getElementById(id)?.textContent.trim() || '—';
+        const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value || '—'; };
 
+        set('summaryVisitor', text('visitorName'));
+        set('summaryVisitorId', text('resultVisitor'));
+        set('summaryRelationship', text('resultRelationship'));
+        set('summaryPdl', text('resultPdl'));
+        set('summaryPdlNumber', text('resultPdlNumber'));
+        set('summaryPdlEligibility', text('resultPdlStatus'));
+        set('summarySchedule', text('resultSchedule'));
+        set('summaryScheduleTime', text('resultScheduleTime'));
+        set('summaryScheduleBuilding', text('resultScheduleBuilding'));
+        set('summaryScheduleClassification', text('resultScheduleClassification'));
+        set('summaryVisitStatus', text('resultVisitStatus'));
 
-                const registeredType =
-                    document.getElementById(
-                        'registeredIdType'
-                    )?.textContent;
+        let idType = '—';
+        let idNumber = '—';
+        let idStatus = 'Verified';
 
+        if (idMatchStatus === 'replaced') {
+            idType = document.getElementById('new_id_type')?.selectedOptions?.[0]?.textContent.trim() || '—';
+            idNumber = document.getElementById('new_id_number')?.value.trim() || '—';
+            idStatus = 'Different ID verified & surrendered';
+        } else {
+            idType = text('verifyRegisteredIdType');
+            idNumber = text('verifyRegisteredIdNumber');
+            idStatus = 'Matched & surrendered';
+        }
 
-                const registeredNumber =
-                    document.getElementById(
-                        'registeredIdNumber'
-                    )?.textContent;
+        set('summaryIdType', idType);
+        set('summaryIdNumber', idNumber);
+        set('summaryIdStatus', idStatus);
 
+        const checks = [
+            ['summaryCheckVisitor', 'summaryCheckVisitorText', true, 'Verified'],
+            ['summaryCheckSchedule', 'summaryCheckScheduleText', text('resultVisitStatus').toLowerCase() === 'approved', 'Verified'],
+            ['summaryCheckPdl', 'summaryCheckPdlText', /eligible/i.test(text('resultPdlStatus')), 'Eligible'],
+            ['summaryCheckId', 'summaryCheckIdText', true, idStatus]
+        ];
 
-                const verifyType =
-                    document.getElementById(
-                        'verifyRegisteredIdType'
-                    );
-
-                const verifyNumber =
-                    document.getElementById(
-                        'verifyRegisteredIdNumber'
-                    );
-
-
-                if (verifyType) {
-
-                    verifyType.textContent =
-                        registeredType?.trim() || '—';
-
-                }
-
-
-                if (verifyNumber) {
-
-                    verifyNumber.textContent =
-                        registeredNumber?.trim() || '—';
-
-                }
-
-
-                showCheckinStep(4);
-
+        checks.forEach(([boxId, textId, ok, label]) => {
+            const box = document.getElementById(boxId);
+            const status = document.getElementById(textId);
+            const dot = box?.querySelector('.summary-status-dot');
+            box?.classList.remove('border-green-200','bg-green-50','border-red-200','bg-red-50','border-border','bg-surface');
+            if (ok) {
+                box?.classList.add('border-green-200','bg-green-50');
+                dot?.classList.remove('bg-gray-400','bg-red-500');
+                dot?.classList.add('bg-green-500');
+                status?.classList.remove('text-red-600');
+                status?.classList.add('text-green-600');
+                if (status) status.textContent = label;
+            } else {
+                box?.classList.add('border-red-200','bg-red-50');
+                dot?.classList.remove('bg-gray-400','bg-green-500');
+                dot?.classList.add('bg-red-500');
+                status?.classList.remove('text-green-600');
+                status?.classList.add('text-red-600');
+                if (status) status.textContent = 'Failed';
             }
-        );
+        });
 
-
-    /* ============================================================
-       BACK TO VISITOR VERIFICATION
-    ============================================================ */
-
-    document
-        .getElementById(
-            'backToVisitorVerificationBtn'
-        )
-        ?.addEventListener(
-            'click',
-            function () {
-
-                showCheckinStep(3);
-
-            }
-        );
-
-
-    /* ============================================================
-       CONFIRM CHECK-IN
-    ============================================================ */
-
-    document
-        .getElementById('confirmCheckInBtn')
-        ?.addEventListener(
-            'click',
-            function () {
-
-                const surrendered =
-                    document.getElementById(
-                        'idSurrendered'
-                    );
-
-
-                if (!surrendered?.checked) {
-
-                    alert(
-                        'Please confirm that the visitor ID has been surrendered before completing check-in.'
-                    );
-
-                    return;
-
-                }
-
-
-                window.dispatchEvent(
-                    new CustomEvent(
-                        'custodicore:confirm-checkin'
-                    )
-                );
-
-            }
-        );
-
+        showCheckinStep(4);
+    });
 
     /* ============================================================
        CHECKOUT SCANNER
@@ -4099,6 +4227,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 </script>
+
 
 @endpush
 
