@@ -9,7 +9,7 @@
 @if ($noVisitCount > 0)
 <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--amber-bg);border-color:#f2dcae;margin-bottom:18px;">
   <div>
-    <div style="font-weight:700;font-size:14px;">⚠ PDLs with No Visit Record: {{ $noVisitCount }}</div>
+    <div style="font-weight:700;font-size:14px;">PDLs with No Visit Record: {{ $noVisitCount }}</div>
     <div class="muted-cell" style="margin-top:4px;">These PDLs have had no authorized visits since intake and may need follow-up.</div>
   </div>
 </div>
@@ -47,7 +47,7 @@
             @endswitch
           </td>
           <td>
-            <a class="row-action" href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}">View History →</a>
+            <a class="row-action" href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}">View History</a>
           </td>
         </tr>
         @endforeach

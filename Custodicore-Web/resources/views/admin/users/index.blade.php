@@ -18,7 +18,6 @@
             <div class="flex items-center gap-sm">
                 @include('admin.partials.search-box', ['placeholder' => 'Search by name or email…'])
                 <button type="button" class="cc-btn-primary shrink-0" onclick="document.getElementById('new-account-modal').showModal()">
-                    @include('admin.partials.icon', ['name' => 'plus', 'class' => 'h-4 w-4'])
                     Register Officer
                 </button>
             </div>
@@ -83,7 +82,7 @@
             <div class="mb-md flex items-center justify-between">
                 <p class="text-card-title">Register BJMP Officer</p>
                 <button type="button" class="cc-modal-close" onclick="document.getElementById('new-account-modal').close()">
-                    @include('admin.partials.icon', ['name' => 'x', 'class' => 'h-4 w-4'])
+                    Close
                 </button>
             </div>
 
@@ -91,10 +90,6 @@
                 <p class="mb-md text-metadata text-danger">{{ $errors->first() }}</p>
             @endif
 
-            {{-- Step 1: Terms & Privacy consent — the details below stay locked until both are ticked. --}}
-            @include('partials.consent-gate', ['target' => 'new-account-fields', 'id' => 'new-account-consent', 'subject' => 'the officer being registered'])
-
-            <fieldset id="new-account-fields" style="border:0;margin:0;padding:0;min-width:0;">
                 <div class="space-y-sm">
                     <div>
                         <label class="cc-label">Full Name</label>
@@ -119,7 +114,6 @@
                     <button type="button" class="cc-btn-secondary" onclick="document.getElementById('new-account-modal').close()">Cancel</button>
                     <button type="submit" class="cc-btn-primary">Create Account</button>
                 </div>
-            </fieldset>
         </form>
     </dialog>
 
@@ -138,7 +132,7 @@
                 <div class="mb-md flex items-center justify-between">
                     <p class="text-card-title">Update Officer Details</p>
                     <button type="button" class="cc-modal-close" onclick="document.getElementById('edit-account-modal-{{ $account['id'] }}').close()">
-                        @include('admin.partials.icon', ['name' => 'x', 'class' => 'h-4 w-4'])
+                    Close
                     </button>
                 </div>
 

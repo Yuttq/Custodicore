@@ -32,6 +32,9 @@ export default {
             colors: {
                 'primary-navy': '#0F3D7A',
                 'primary-teal': '#0DA58A',
+                // Buttons (everything except the sidebar) use this green — same as the
+                // "Attendance Confirmed" green in the mobile app.
+                'primary-green': '#16A34A',
                 success: '#16A34A',
                 warning: '#F59E0B',
                 danger: '#EF4444',
@@ -56,16 +59,30 @@ export default {
                 sm: '8px',         // layout.borderRadiusSm
                 chip: '9999px',    // layout.chipRadius
             },
-            // 1:1 with src/designSystem/tokens/typography.js
+            // One font family for every web page (Admin, Record Officer, Front Desk).
+            // Same stack as public/css/styles.css, so the Tailwind pages and the
+            // Record Officer pages render in exactly the same typeface.
+            fontFamily: {
+                sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+            },
+            // One compact size scale for every web page. These sizes match the
+            // Record Officer dashboard (public/css/styles.css): 20px page title,
+            // 14px card title, 13px body/table text, 12px secondary text, 11px labels.
+            // The default Tailwind names (text-xs / text-sm / text-lg) are pinned to the
+            // same scale so no page can drift to a different size.
             fontSize: {
-                'page-title': ['30px', { lineHeight: '36px', fontWeight: '700' }],
-                'section-label': ['14px', { lineHeight: '20px', fontWeight: '600', letterSpacing: '0.6px' }],
-                'card-title': ['18px', { lineHeight: '24px', fontWeight: '600' }],
-                'screen-header': ['20px', { lineHeight: '24px', fontWeight: '700' }],
-                eyebrow: ['14px', { lineHeight: '20px', fontWeight: '600', letterSpacing: '0.6px' }],
-                body: ['16px', { lineHeight: '24px', fontWeight: '400' }],
-                metadata: ['14px', { lineHeight: '20px', fontWeight: '400' }],
-                'status-label': ['12px', { lineHeight: '16px', fontWeight: '600', letterSpacing: '0.2px' }],
+                'page-title': ['20px', { lineHeight: '28px', fontWeight: '700' }],
+                'stat-value': ['24px', { lineHeight: '32px', fontWeight: '700' }],
+                'section-label': ['10.5px', { lineHeight: '16px', fontWeight: '700', letterSpacing: '0.04em' }],
+                'card-title': ['14px', { lineHeight: '20px', fontWeight: '700' }],
+                'screen-header': ['20px', { lineHeight: '28px', fontWeight: '700' }],
+                eyebrow: ['11px', { lineHeight: '16px', fontWeight: '700', letterSpacing: '0.04em' }],
+                body: ['13px', { lineHeight: '20px', fontWeight: '400' }],
+                metadata: ['12px', { lineHeight: '16px', fontWeight: '400' }],
+                'status-label': ['11px', { lineHeight: '16px', fontWeight: '600', letterSpacing: '0.2px' }],
+                xs: ['11px', { lineHeight: '16px' }],
+                sm: ['12px', { lineHeight: '16px' }],
+                lg: ['14px', { lineHeight: '20px' }],
             },
             // src/designSystem/tokens/shadows.js `card` — subtle, 1px border + soft lift
             boxShadow: {

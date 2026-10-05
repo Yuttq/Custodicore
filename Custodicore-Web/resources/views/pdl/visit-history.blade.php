@@ -5,7 +5,7 @@
 <div class="topbar">
   <h1>Visit History — {{ $pdl->full_name }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h1>
   <div class="right">
-    <a class="btn btn-outline-neutral" href="{{ route('visitation-tracking.index') }}">← Back to Visitation Tracking</a>
+    <a class="btn btn-outline-neutral" href="{{ route('visitation-tracking.index') }}">Back to Visitation Tracking</a>
   </div>
 </div>
 
@@ -30,7 +30,7 @@
         </div>
         @if ($rel->visitor)
           <a class="row-action" href="{{ route('visitor.show', $rel->visitor->visitor_id) }}" style="margin-left:auto;">
-            View in Visitor Management →
+            View in Visitor Management
           </a>
         @endif
       </div>
@@ -81,7 +81,7 @@
             <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin-top:4px;">
               @csrf
               <button type="submit" class="row-action">
-                {{ $visit->eligibilityAssessment ? 'Re-run →' : 'Run Check →' }}
+                {{ $visit->eligibilityAssessment ? 'Re-run' : 'Run Check' }}
               </button>
             </form>
           </td>

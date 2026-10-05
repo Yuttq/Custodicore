@@ -47,7 +47,6 @@
                     </div>
 
                     <button type="submit" class="cc-btn-primary w-full">
-                        @include('admin.partials.icon', ['name' => 'lock', 'class' => 'h-4 w-4'])
                         Sign In
                     </button>
                 </form>

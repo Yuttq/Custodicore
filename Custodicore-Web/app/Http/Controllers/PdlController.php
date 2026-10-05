@@ -114,17 +114,7 @@ class PdlController extends Controller
             'classification' => ['required', 'in:drug_related,non_drug_related'],
             'cell_block' => ['nullable', 'string', 'max:100'],
             'admission_date' => ['required', 'date'],
-            // Consent comes first: the form is locked until both are ticked
-            // (partials/consent-gate.blade.php) and re-checked here.
-            'accepted_terms' => ['accepted'],
-            'accepted_privacy' => ['accepted'],
-        ], [
-            'accepted_terms.accepted' => 'Confirm the Terms & Conditions before registering a PDL.',
-            'accepted_privacy.accepted' => 'Confirm the Privacy Policy before registering a PDL.',
         ]);
-
-        // Not pdl_profiles columns — only recorded in the audit trail below.
-        unset($validated['accepted_terms'], $validated['accepted_privacy']);
 
         try {
             $pdl = Pdl::create([
@@ -145,8 +135,7 @@ class PdlController extends Controller
             'create',
             'pdl_profiles',
             $pdl->pdl_id,
-            "Registered new PDL: {$pdl->full_name} ({$pdl->pdl_number}); "
-            . 'Terms & Privacy (v' . config('legal.version') . ') confirmed before details were entered'
+            "Registered new PDL: {$pdl->full_name} ({$pdl->pdl_number})"
         );
 
         return redirect()

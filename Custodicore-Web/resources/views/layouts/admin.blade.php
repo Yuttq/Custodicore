@@ -8,93 +8,65 @@
 </head>
 <body class="min-h-screen bg-background text-text-primary">
     <div class="flex min-h-screen">
-        {{-- Sidebar --}}
-        <aside class="hidden w-64 shrink-0 flex-col border-r border-border bg-primary-navy text-white lg:flex">
-            <div class="flex items-center gap-sm px-lg py-lg">
-                <div class="flex h-10 w-10 items-center justify-center rounded-sm bg-white/10 text-card-title font-bold">CC</div>
+        {{-- Sidebar: white, text-only buttons, teal when active (same as the Record Officer sidebar) --}}
+        <aside class="hidden w-[220px] shrink-0 flex-col border-r border-border bg-white px-[14px] py-5 lg:flex">
+            <div class="flex items-center gap-[10px] px-2 pb-[22px] pt-[6px]">
+                <div class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-button bg-primary-navy text-body font-bold text-white">CC</div>
                 <div>
-                    <p class="text-card-title font-bold leading-tight">CustodiCore</p>
-                    <p class="text-status-label uppercase tracking-wide text-white/60">BJMP Admin</p>
+                    <p class="text-card-title leading-tight text-primary-navy">CustodiCore</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-secondary">BJMP Admin</p>
                 </div>
             </div>
 
-            <nav class="flex-1 space-y-xs px-sm py-md">
+            <nav class="mt-[6px] flex flex-col gap-[2px]">
                 @php
                     $links = [
-                        ['route' => 'admin.dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard'],
-                        ['route' => 'admin.users.index', 'label' => 'User Management', 'icon' => 'users'],
-                        ['route' => 'admin.pdls.index', 'label' => 'PDL Management', 'icon' => 'identification'],
-                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Management', 'icon' => 'visitor'],
-                        ['route' => 'admin.schedules.index', 'label' => 'Visit Scheduling', 'icon' => 'calendar'],
-                        ['route' => 'admin.checkins.index', 'label' => 'Check-In / Check-Out', 'icon' => 'qrcode'],
-                        ['route' => 'admin.audit.index', 'label' => 'Audit Trail', 'icon' => 'clipboard'],
+                        ['route' => 'admin.dashboard', 'label' => 'Dashboard'],
+                        ['route' => 'admin.users.index', 'label' => 'User Management'],
+                        ['route' => 'admin.pdls.index', 'label' => 'PDL Management'],
+                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Management'],
+                        ['route' => 'admin.schedules.index', 'label' => 'Visit Scheduling'],
+                        ['route' => 'admin.checkins.index', 'label' => 'Check-In / Check-Out'],
+                        ['route' => 'admin.audit.index', 'label' => 'Audit Trail'],
                     ];
                 @endphp
 
                 @foreach ($links as $link)
                     <a href="{{ route($link['route']) }}"
-                       class="flex items-center rounded-sm border-l-2 px-md py-sm text-body transition
-                              {{ request()->routeIs($link['route']) ? 'border-l-primary-teal bg-white/15 font-semibold text-white' : 'border-l-transparent text-white/75 hover:bg-white/10 hover:text-white' }}">
-                        <span class="flex items-center gap-sm">
-                            @include('admin.partials.icon', ['name' => $link['icon'], 'class' => 'h-5 w-5 shrink-0'])
-                            <span>{{ $link['label'] }}</span>
-                        </span>
+                       class="cc-nav-link {{ request()->routeIs($link['route']) ? 'cc-nav-link-active' : '' }}">
+                        {{ $link['label'] }}
                     </a>
                 @endforeach
             </nav>
 
-            <div class="border-t border-white/10 px-md py-md">
+            <div class="mt-auto flex flex-col gap-[14px]">
                 <a href="{{ route('admin.settings.index') }}"
-                   class="flex items-center rounded-sm border-l-2 px-md py-sm text-body transition
-                          {{ request()->routeIs('admin.settings.index') ? 'border-l-primary-teal bg-white/15 font-semibold text-white' : 'border-l-transparent text-white/75 hover:bg-white/10 hover:text-white' }}">
-                    <span class="flex items-center gap-sm">
-                        @include('admin.partials.icon', ['name' => 'cog', 'class' => 'h-5 w-5 shrink-0'])
-                        <span>Settings</span>
-                    </span>
+                   class="cc-nav-link {{ request()->routeIs('admin.settings.index') ? 'cc-nav-link-active' : '' }}">
+                    Settings
                 </a>
+                <div class="flex items-center gap-[10px] border-t border-border pt-[14px]">
+                    @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-8 w-8', 'color' => 'bg-primary-navy'])
+                    <div class="min-w-0">
+                        <p class="truncate text-body font-semibold leading-tight">{{ auth()->user()->displayName() }}</p>
+                        <p class="text-[11px] text-text-secondary">{{ auth()->user()->role?->role_name }}</p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">
+                    @csrf
+                    <button type="submit" class="w-full px-[10px] text-left text-body font-medium text-[#4b5568]">Sign out</button>
+                </form>
             </div>
         </aside>
 
         {{-- Main column --}}
-        <div class="flex min-h-screen flex-1 flex-col">
-            {{-- Topbar --}}
-            <header class="flex items-center justify-between border-b border-border bg-card px-lg py-md">
-                <div>
-                    <h1 class="text-page-title">@yield('title', 'Dashboard')</h1>
-                </div>
-                <div class="flex items-center gap-md">
-                    <div class="relative hidden md:block">
-                        <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-sm text-text-secondary">
-                            @include('admin.partials.icon', ['name' => 'search', 'class' => 'h-4 w-4'])
-                        </span>
-                        <input type="text" placeholder="Search PDLs, visitors, records…" disabled
-                               class="w-56 rounded-button border border-border bg-background py-sm pl-xl pr-md text-body text-text-secondary placeholder:text-text-secondary/60 xl:w-72" />
-                    </div>
-
-                    <button type="button"
-                            class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-chip border border-border text-text-secondary transition hover:bg-background">
-                        @include('admin.partials.icon', ['name' => 'bell', 'class' => 'h-5 w-5'])
-                        <span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-danger"></span>
-                    </button>
-
-                    <div class="flex items-center gap-sm">
-                        <div class="hidden text-right sm:block">
-                            <p class="text-body font-semibold leading-tight">{{ auth()->user()->displayName() }}</p>
-                            <p class="text-status-label uppercase text-text-secondary">{{ auth()->user()->role?->role_name }}</p>
-                        </div>
-                        @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-10 w-10', 'color' => 'bg-primary-navy'])
-                        <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">
-                            @csrf
-                            <button type="submit" title="Sign out"
-                                    class="flex h-10 w-10 items-center justify-center rounded-chip border border-border text-text-secondary transition hover:bg-background">
-                                @include('admin.partials.icon', ['name' => 'logout', 'class' => 'h-4 w-4'])
-                            </button>
-                        </form>
-                    </div>
-                </div>
+        <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+            {{-- Topbar: title on the left, date on the right (same as the Record Officer dashboard) --}}
+            <header class="flex flex-wrap items-center gap-5 px-7 pt-[22px]">
+                <h1 class="whitespace-nowrap text-page-title">@yield('title', 'Dashboard')</h1>
+                <p class="ml-auto whitespace-nowrap text-body">{{ now()->format('l, j F Y') }}</p>
             </header>
 
-            <main class="flex-1 space-y-lg px-lg py-lg">
+            <main class="flex-1 space-y-lg px-7 py-[22px]">
                 @if (session('status'))
                     <div class="cc-card border-l-4 border-l-info">
                         {{ session('status') }}

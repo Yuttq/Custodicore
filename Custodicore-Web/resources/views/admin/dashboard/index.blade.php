@@ -41,7 +41,6 @@
                             </div>
                         </div>
                         <span class="flex items-center gap-xs text-body font-semibold text-primary-navy">
-                            @include('admin.partials.icon', ['name' => 'trend-up', 'class' => 'h-4 w-4'])
                             {{ $pdl['visits_this_month'] }}
                         </span>
                     </li>

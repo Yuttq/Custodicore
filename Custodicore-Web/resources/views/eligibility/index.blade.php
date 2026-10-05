@@ -37,12 +37,12 @@
               <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}">
                 @csrf
                 <input type="hidden" name="decision" value="eligible">
-                <button type="submit" class="row-action" style="color:var(--green);">Approve →</button>
+                <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
               </form>
               <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}">
                 @csrf
                 <input type="hidden" name="decision" value="rejected">
-                <button type="submit" class="row-action" style="color:var(--red);">Reject →</button>
+                <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
               </form>
             </div>
           </td>

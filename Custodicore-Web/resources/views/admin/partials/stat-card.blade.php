@@ -11,7 +11,7 @@
     <div class="flex items-start justify-between gap-sm">
         <div class="min-w-0">
             <p class="truncate text-section-label text-text-secondary">{{ $label }}</p>
-            <p class="mt-xs text-page-title">{{ $value }}</p>
+            <p class="mt-xs text-stat-value">{{ $value }}</p>
             @if (!empty($hint))
                 <p class="mt-xs text-metadata text-{{ $accent }}">{{ $hint }}</p>
             @endif

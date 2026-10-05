@@ -5,9 +5,7 @@
 <div class="topbar">
   <h1>PDL Management</h1>
   <div class="right">
-    <div class="icon-btn">🔔</div>
-    <div class="icon-btn">⚙</div>
-    <a class="btn btn-primary" href="{{ route('pdl.create') }}">+ Register New PDL</a>
+    <a class="btn btn-primary" href="{{ route('pdl.create') }}">Register New PDL</a>
   </div>
 </div>
 
@@ -15,7 +13,7 @@
   <div class="field">
     <label for="q">Search Records</label>
     <div class="input">
-      🔍 <input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name, alias, or PDL number">
+      <input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name, alias, or PDL number">
     </div>
   </div>
 
@@ -65,7 +63,7 @@
       @foreach ($pdls as $pdl)
       <tr>
         <td>
-          <a href="{{ route('pdl.show', $pdl->pdl_id) }}" style="color:var(--teal);font-weight:700;text-decoration:none;">
+          <a href="{{ route('pdl.show', $pdl->pdl_id) }}" style="color:var(--green);font-weight:700;text-decoration:none;">
             {{ $pdl->pdl_number }}
           </a>
         </td>

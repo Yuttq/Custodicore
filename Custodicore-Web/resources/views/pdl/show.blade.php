@@ -5,7 +5,7 @@
 <div class="topbar">
   <h1>{{ $pdl->full_name }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h1>
   <div class="right">
-    <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}">← Back to PDL Management</a>
+    <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}">Back to PDL Management</a>
   </div>
 </div>
 
@@ -16,7 +16,7 @@
       <span class="dot"></span>{{ $eligibilityStatus['label'] }}
     </span>
   </div>
-  <a class="row-action" href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}">View Visit History →</a>
+  <a class="row-action" href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}">View Visit History</a>
 </div>
 
 {{-- ================= CORE PROFILE ================= --}}
@@ -94,7 +94,7 @@
   @endif
 
   <details style="margin-top:14px;">
-    <summary class="row-action" style="cursor:pointer;">+ Add Legal Record</summary>
+    <summary class="row-action" style="cursor:pointer;">Add Legal Record</summary>
     <form method="POST" action="{{ route('pdl.legal-records.store', $pdl->pdl_id) }}" style="margin-top:12px;">
       @csrf
       <div class="row cols-3">
@@ -126,7 +126,7 @@
           <td class="muted-cell">{{ $record->incident_date->format('M d, Y') }}</td>
           <td>{{ $record->description }}</td>
           <td class="muted-cell">{{ $record->action_taken ?? '—' }}</td>
-          <td>{{ $record->triggers_restriction ? '⚠ Yes' : 'No' }}</td>
+          <td>{{ $record->triggers_restriction ? 'Yes' : 'No' }}</td>
         </tr>
         @endforeach
       </tbody>
@@ -134,7 +134,7 @@
   @endif
 
   <details style="margin-top:14px;">
-    <summary class="row-action" style="cursor:pointer;">+ Add Disciplinary Record</summary>
+    <summary class="row-action" style="cursor:pointer;">Add Disciplinary Record</summary>
     <form method="POST" action="{{ route('pdl.disciplinary-records.store', $pdl->pdl_id) }}" style="margin-top:12px;">
       @csrf
       <div class="row cols-2">
@@ -177,7 +177,7 @@
             @if ($restriction->isActive())
               <form method="POST" action="{{ route('pdl.restrictions.lift', [$pdl->pdl_id, $restriction->restriction_id]) }}">
                 @csrf
-                <button type="submit" class="row-action">Lift →</button>
+                <button type="submit" class="row-action">Lift</button>
               </form>
             @endif
           </td>
@@ -188,7 +188,7 @@
   @endif
 
   <details style="margin-top:14px;">
-    <summary class="row-action" style="cursor:pointer;">+ Add Restriction</summary>
+    <summary class="row-action" style="cursor:pointer;">Add Restriction</summary>
     <form method="POST" action="{{ route('pdl.restrictions.store', $pdl->pdl_id) }}" style="margin-top:12px;">
       @csrf
       <div class="row cols-3">

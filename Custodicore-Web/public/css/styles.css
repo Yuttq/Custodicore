@@ -1,7 +1,7 @@
 :root{
   /* Same palette as the mobile app (designSystem/tokens/colors.js) and the
      Admin/Front Desk Tailwind config. Meaning of each colour:
-       navy  -> branding, headings      teal  -> primary actions, active nav, links
+       navy  -> branding, headings      teal  -> active nav, links; green -> buttons
        green -> success / verified      amber -> pending / warning
        red   -> error / rejected        blue  -> information            */
   --navy:#0F3D7A;
@@ -66,10 +66,10 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 
 /* Buttons */
 .btn{border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;}
-.btn-primary{background:var(--teal);color:#fff;}
-.btn-outline{background:#fff;color:var(--teal);border:1px solid var(--teal);}
+.btn-primary{background:var(--green);color:#fff;}
+.btn-outline{background:#fff;color:var(--green);border:1px solid var(--green);}
 .btn-outline-neutral{background:#fff;color:var(--text);border:1px solid var(--border);}
-.btn-blue{background:var(--teal);color:#fff;}  /* name kept for existing views; it is the primary (teal) action */
+.btn-blue{background:var(--green);color:#fff;}  /* name kept for existing views; it is the primary (green) action */
 .btn-primary:hover,.btn-blue:hover,.btn-export:hover{filter:brightness(.95);}
 
 /* Stat cards (dashboard) */
@@ -156,25 +156,25 @@ tbody tr:last-child td{border-bottom:none;}
 .table-footer{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:12.5px;color:var(--muted);flex-wrap:wrap;gap:10px;}
 .pagination{display:flex;align-items:center;gap:6px;}
 .pagination button{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted);font-size:12.5px;cursor:pointer;}
-.pagination button.active{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700;}
+.pagination button.active{background:var(--green);color:#fff;border-color:var(--green);font-weight:700;}
 .pagination .ellipsis{color:var(--muted);padding:0 2px;}
 
 .stat-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
 .stat-strip .stat-card{padding:14px 16px;display:flex;align-items:center;gap:12px;}
 
 /* Row action button (View / Edit) */
-.row-action{background:none;border:none;color:var(--teal);font-weight:700;font-size:12.5px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;}
+.row-action{background:none;border:none;color:var(--green);font-weight:700;font-size:12.5px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;}
 
 /* Custody History specific */
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:14px;}
 .tabs{display:flex;background:#fff;border:1px solid var(--border);border-radius:12px;padding:3px;}
 .tabs button{border:none;background:none;padding:8px 18px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;}
-.tabs button.active{background:var(--teal);color:#fff;}
+.tabs button.active{background:var(--green);color:#fff;}
 .window-block{display:flex;flex-direction:column;gap:6px;}
 .window-label{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.05em;}
 .window-range{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;}
 .window-range .to{color:var(--muted);font-weight:500;}
-.btn-export{margin-left:auto;background:var(--teal);color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px;cursor:pointer;}
+.btn-export{margin-left:auto;background:var(--green);color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px;cursor:pointer;}
 .status-flow{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
 .pill.released{background:var(--green-bg);color:var(--green);}
 .pill.cell-transfer{background:var(--blue-bg);color:var(--blue);}
@@ -233,8 +233,8 @@ tbody tr:last-child td{border-bottom:none;}
 .empty-icon{width:56px;height:56px;border-radius:16px;background:var(--peach-bg);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--amber-text);margin:0 auto 16px auto;}
 .empty-title{font-size:15px;font-weight:700;margin-bottom:8px;}
 .empty-text{font-size:12.5px;color:var(--muted);line-height:1.5;max-width:340px;margin:0 auto 20px auto;}
-.register-link{display:inline-flex;align-items:center;gap:8px;color:var(--teal);font-weight:700;font-size:13px;text-decoration:none;background:none;border:none;cursor:pointer;}
-.register-link .plus{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--teal);display:flex;align-items:center;justify-content:center;font-size:12px;}
+.register-link{display:inline-flex;align-items:center;gap:8px;color:var(--green);font-weight:700;font-size:13px;text-decoration:none;background:none;border:none;cursor:pointer;}
+.register-link .plus{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:12px;}
 
 @media (max-width:1000px){
   .app{grid-template-columns:1fr;}

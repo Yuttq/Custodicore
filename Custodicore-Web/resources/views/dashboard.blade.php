@@ -5,11 +5,9 @@
 <div class="topbar">
   <h1>Dashboard</h1>
   <form class="search" action="{{ route('pdl.index') }}" method="GET" style="flex:1;">
-    <button type="submit" style="border:none;background:none;padding:0;color:inherit;font:inherit;cursor:pointer;">🔍</button>
     <input type="text" name="q" placeholder="Search PDL Records...">
   </form>
   <div class="right">
-    <span class="bell">🔔</span>
     <span>{{ now()->format('l, j F Y') }}</span>
   </div>
 </div>
@@ -42,7 +40,7 @@
     <div class="panel" style="margin-bottom:20px;">
       <div class="panel-header"><h2>Operational Controls</h2></div>
       <div class="controls">
-        <a class="btn btn-primary" href="{{ route('pdl.create') }}">+ Register New PDL</a>
+        <a class="btn btn-primary" href="{{ route('pdl.create') }}">Register New PDL</a>
         <a class="btn btn-outline" href="{{ route('pdl.index') }}">Update Custody Status</a>
       </div>
 
@@ -101,7 +99,7 @@
           <span class="pill no-visit">NO VISIT RECORD</span>
         </div>
         <div class="alert-desc">Admitted {{ $pdl->admission_date->format('M d, Y') }}. No visitation records established since intake.</div>
-        <a href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}" class="alert-link">View Full Profile →</a>
+        <a href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}" class="alert-link">View Full Profile</a>
       </div>
       @endforeach
     @endif

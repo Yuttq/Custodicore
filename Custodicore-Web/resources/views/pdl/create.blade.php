@@ -5,7 +5,7 @@
 <div class="topbar">
   <h1>Register New PDL</h1>
   <div class="right">
-    <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}">← Back to PDL Management</a>
+    <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}">Back to PDL Management</a>
   </div>
 </div>
 
@@ -13,10 +13,7 @@
   <form method="POST" action="{{ route('pdl.store') }}">
     @csrf
 
-    {{-- Step 1: Terms & Privacy consent — everything below stays locked until both are ticked. --}}
-    @include('partials.consent-gate', ['target' => 'pdl-create-fields', 'id' => 'pdl-create-consent', 'subject' => 'the person being registered'])
 
-    <fieldset id="pdl-create-fields" style="border:0;margin:0;padding:0;min-width:0;">
     <p class="section-title"><span class="icon">👤</span> Personal Details</p>
     <div class="row cols-2">
       <div class="field-m">
@@ -65,10 +62,9 @@
     </div>
 
     <div style="display:flex;gap:10px;margin-top:8px;">
-      <button class="btn btn-blue" type="submit">+ Register PDL</button>
+      <button class="btn btn-blue" type="submit">Register PDL</button>
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}">Cancel</a>
     </div>
-    </fieldset>
   </form>
 </div>
 @endsection

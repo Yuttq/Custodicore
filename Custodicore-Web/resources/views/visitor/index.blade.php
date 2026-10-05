@@ -24,7 +24,7 @@
 <form class="filters" method="GET" action="{{ route('visitor.index') }}" style="grid-template-columns:2fr 1.2fr auto;">
   <div class="field">
     <label for="q">Search</label>
-    <div class="input">🔍 <input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name or contact number"></div>
+    <div class="input"><input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name or contact number"></div>
   </div>
   <div class="field">
     <label for="status">Verification Status</label>
@@ -71,7 +71,7 @@
               —
             @endif
           </td>
-          <td><a class="row-action" href="{{ route('visitor.show', $visitor->visitor_id) }}">View →</a></td>
+          <td><a class="row-action" href="{{ route('visitor.show', $visitor->visitor_id) }}">View</a></td>
         </tr>
         @endforeach
       </tbody>

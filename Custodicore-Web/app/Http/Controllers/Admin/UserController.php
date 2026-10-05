@@ -54,20 +54,9 @@ class UserController extends Controller
             'full_name' => ['required', 'string', 'max:120'],
             'role_name' => ['required', 'in:' . implode(',', self::ROLE_NAMES)],
             'email' => ['required', 'email', 'max:150', 'unique:accounts,email'],
-            // Consent comes first: the form is locked until both are ticked
-            // (partials/consent-gate.blade.php) and re-checked here.
-            'accepted_terms' => ['accepted'],
-            'accepted_privacy' => ['accepted'],
-        ], [
-            'accepted_terms.accepted' => 'Confirm the Terms & Conditions before registering an officer.',
-            'accepted_privacy.accepted' => 'Confirm the Privacy Policy before registering an officer.',
         ]);
 
-        $consentAt = now();
-        $consentVersion = (string) config('legal.version');
-        $actorName = $request->user()?->displayName() ?? 'an administrator';
-
-        DB::transaction(function () use ($data, $consentAt, $consentVersion, $actorName) {
+        DB::transaction(function () use ($data) {
             $role = Role::where('role_name', $data['role_name'])->firstOrFail();
             $username = $this->uniqueUsername($data['email']);
 
@@ -77,9 +66,6 @@ class UserController extends Controller
                 'email' => $data['email'],
                 'password_hash' => Hash::make('password'),
                 'status' => 'active',
-                'terms_accepted_at' => $consentAt,
-                'privacy_accepted_at' => $consentAt,
-                'consent_version' => $consentVersion,
             ]);
 
             StaffProfile::create([
@@ -95,11 +81,7 @@ class UserController extends Controller
                 'accounts',
                 $account->account_id,
                 // audit_logs.description is varchar(255) — keep within it.
-                Str::limit(
-                    "Registered BJMP officer account for {$data['full_name']} ({$data['role_name']}); "
-                    . "Terms & Privacy v{$consentVersion} confirmed by {$actorName}",
-                    250
-                ),
+                Str::limit("Registered BJMP officer account for {$data['full_name']} ({$data['role_name']})", 250),
                 Module::CODE_USER_MANAGEMENT
             );
         });

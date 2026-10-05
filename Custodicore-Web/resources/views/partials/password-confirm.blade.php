@@ -35,7 +35,7 @@
     #cc-pw-confirm .ccpw-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
     #cc-pw-confirm button { height: 44px; padding: 0 20px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
     #cc-pw-confirm .ccpw-cancel { background: #FFFFFF; color: #374151; border: 1px solid #E5E7EB; }
-    #cc-pw-confirm .ccpw-ok { background: #0DA58A; color: #FFFFFF; border: 1px solid #0DA58A; }
+    #cc-pw-confirm .ccpw-ok { background: #16A34A; color: #FFFFFF; border: 1px solid #16A34A; }
     #cc-pw-confirm .ccpw-ok:disabled { opacity: .6; cursor: not-allowed; }
 
     #cc-pw-banner { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); padding: 12px 16px; background: #FFFFFF; border: 1px solid #EF4444; border-left-width: 4px; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, .15); font-size: 14px; color: #111827; }

@@ -18,10 +18,6 @@
                 id="checkInModeBtn"
                 class="cc-btn-primary w-full justify-center">
 
-                @include('admin.partials.icon', [
-                    'name' => 'login',
-                    'class' => 'h-4 w-4'
-                ])
 
                 <span>Check-In</span>
 
@@ -32,10 +28,6 @@
                 id="checkOutModeBtn"
                 class="cc-btn-secondary w-full justify-center">
 
-                @include('admin.partials.icon', [
-                    'name' => 'logout',
-                    'class' => 'h-4 w-4'
-                ])
 
                 <span>Check-Out</span>
 
@@ -146,10 +138,6 @@
                             id="startScannerBtn"
                             class="cc-btn-primary">
 
-                            @include('admin.partials.icon', [
-                                'name' => 'qrcode',
-                                'class' => 'h-4 w-4'
-                            ])
 
                             Start QR Scanner
 
@@ -851,10 +839,6 @@
 
                         <button type="button" id="visitorInfoNextBtn" class="cc-btn-primary">
                             Continue to ID Verification
-                            @include('admin.partials.icon', [
-                                'name' => 'arrow-right',
-                                'class' => 'h-4 w-4'
-                            ])
                         </button>
 
                     </div>
@@ -973,7 +957,6 @@
                     <button type="button" id="backToVisitorInfoBtn" class="cc-btn-secondary">Back</button>
                     <button type="button" id="continueToSummaryBtn" class="cc-btn-primary">
                         Continue to Summary
-                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
                     </button>
                 </div>
             </div>
@@ -1045,7 +1028,6 @@
                     <button type="button" id="backToIdVerificationBtn" class="cc-btn-secondary">Back</button>
                     <button type="button" id="confirmCheckInBtn" class="cc-btn-primary">
                         Confirm Check-In
-                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
                     </button>
                 </div>
             </div>
@@ -1157,10 +1139,6 @@
                             id="checkoutScannerStartButton"
                             class="cc-btn-primary">
 
-                            @include('admin.partials.icon', [
-                                'name' => 'qrcode',
-                                'class' => 'h-4 w-4'
-                            ])
 
                             Start QR Scanner
 
@@ -1789,10 +1767,6 @@
 
                                 Confirm Check-Out
 
-                                @include('admin.partials.icon', [
-                                    'name' => 'arrow-right',
-                                    'class' => 'h-4 w-4'
-                                ])
 
                             </button>
 
@@ -1890,7 +1864,6 @@
                 <div class="mt-lg flex justify-end">
                     <button type="button" id="checkoutToReturnIdBtn" class="cc-btn-primary">
                         Continue to Return ID
-                        @include('admin.partials.icon', ['name' => 'arrow-right', 'class' => 'h-4 w-4'])
                     </button>
                 </div>
 
@@ -2002,10 +1975,6 @@
 
                         Continue to Confirmation
 
-                        @include('admin.partials.icon', [
-                            'name' => 'arrow-right',
-                            'class' => 'h-4 w-4'
-                        ])
 
                     </button>
 
@@ -3695,10 +3664,6 @@ function showCheckinStep(step) {
 
                         Confirm Check-Out
 
-                        @include('admin.partials.icon', [
-                            'name' => 'arrow-right',
-                            'class' => 'h-4 w-4'
-                        ])
 
                     </button>
 

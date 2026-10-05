@@ -19,7 +19,7 @@
                 <tbody class="divide-y divide-border">
                     @foreach ($settings as $setting)
                         <tr>
-                            <td class="py-sm pr-md font-mono text-text-secondary">{{ $setting['key'] }}</td>
+                            <td class="py-sm pr-md text-text-secondary">{{ $setting['key'] }}</td>
                             <td class="py-sm pr-md"><span class="cc-chip cc-chip-info">{{ $setting['value'] }}</span></td>
                             <td class="py-sm pr-md text-text-secondary">{{ $setting['description'] }}</td>
                         </tr>

@@ -5,7 +5,7 @@
 <div class="topbar">
   <h1>{{ $visitor->full_name }}</h1>
   <div class="right">
-    <a class="btn btn-outline-neutral" href="{{ route('visitor.index') }}">← Back to Visitor Management</a>
+    <a class="btn btn-outline-neutral" href="{{ route('visitor.index') }}">Back to Visitor Management</a>
   </div>
 </div>
 
@@ -52,13 +52,13 @@
               @if ($doc->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Verify →</button>
+                  <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
                 </form>
               @endif
               @if ($doc->verification_status !== 'rejected')
                 <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--red);">Reject →</button>
+                  <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
                 </form>
               @endif
             </div>
@@ -109,13 +109,13 @@
               @if ($rel->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Verify →</button>
+                  <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
                 </form>
               @endif
               @if ($rel->verification_status !== 'rejected')
                 <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--red);">Reject →</button>
+                  <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
                 </form>
               @endif
             </div>
@@ -183,7 +183,7 @@
         </div>
       </div>
 
-      <button class="btn btn-blue" type="submit">Assign Visit →</button>
+      <button class="btn btn-blue" type="submit">Assign Visit</button>
     </form>
 
     {{-- Built in a PHP block first: Blade's json directive cannot parse a multi-line closure argument. --}}
@@ -301,7 +301,7 @@
             @if ($flag->isActive())
               <form method="POST" action="{{ route('visitor.flags.resolve', [$visitor->visitor_id, $flag->flag_id]) }}">
                 @csrf
-                <button type="submit" class="row-action">Resolve →</button>
+                <button type="submit" class="row-action">Resolve</button>
               </form>
             @endif
           </td>
@@ -312,7 +312,7 @@
   @endif
 
   <details style="margin-top:14px;">
-    <summary class="row-action" style="cursor:pointer;">+ Flag This Visitor</summary>
+    <summary class="row-action" style="cursor:pointer;">Flag This Visitor</summary>
     <form method="POST" action="{{ route('visitor.flags.store', $visitor->visitor_id) }}" style="margin-top:12px;">
       @csrf
       <div class="row cols-2">

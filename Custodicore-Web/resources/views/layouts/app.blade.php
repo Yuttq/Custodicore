@@ -11,7 +11,7 @@
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-icon">🛡</div>
+      <div class="brand-icon">CC</div>
       <div class="brand-text">
         <div class="title">CustodiCore</div>
         <div class="subtitle">INSTITUTIONAL GUARDIAN</div>
@@ -19,29 +19,29 @@
     </div>
     <nav class="nav">
       <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
-        <span class="dot">▦</span> Dashboard
+        Dashboard
       </a>
       <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*') ? 'active' : '' }}">
-        <span class="dot">🗂</span> PDL Management
+        PDL Management
       </a>
       <a href="{{ route('visitor.index') }}" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
-        <span class="dot">👥</span> Visitor Management
+        Visitor Management
       </a>
       <a href="{{ route('eligibility.index') }}" class="{{ request()->routeIs('eligibility.*') ? 'active' : '' }}">
-        <span class="dot">✅</span> Eligibility Review
+        Eligibility Review
       </a>
       {{-- Still a placeholder until visitor tables are confirmed --}}
       <a href="{{ route('custody-history.index') }}" class="{{ request()->routeIs('custody-history.*') ? 'active' : '' }}">
-        <span class="dot">⟳</span> Custody History
+        Custody History
       </a>
       <a href="{{ route('visitation-tracking.index') }}" class="{{ request()->routeIs('visitation-tracking.*') ? 'active' : '' }}">
-        <span class="dot">🗓</span> Visitation Tracking
+        Visitation Tracking
       </a>
     </nav>
     <div class="sidebar-bottom">
-      <a href="#" class="support-link">❓ Support</a>
+      <a href="#" class="support-link">Support</a>
       <div class="sidebar-footer">
-        <div class="avatar">👤</div>
+        <div class="avatar">{{ strtoupper(mb_substr(trim(auth()->user()?->displayName() ?? 'O'), 0, 1)) }}</div>
         <div class="who">
           <div class="name">{{ auth()->user()?->displayName() ?? 'Officer' }}</div>
           <div class="role">{{ auth()->user()?->role?->role_name ?? 'Records Officer' }}</div>
@@ -50,7 +50,7 @@
       <form method="POST" action="{{ route('logout') }}" style="margin:0;">
         @csrf
         <button type="submit" class="support-link" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font:inherit;color:inherit;">
-          ⏻ Sign out
+          Sign out
         </button>
       </form>
     </div>
@@ -64,8 +64,7 @@
       <div class="modal-overlay open" id="flashModal" onclick="if(event.target===this) this.remove()">
         <div class="modal modal-narrow">
           <div class="modal-body" style="text-align:center;padding:36px 28px 28px 28px;">
-            <div style="font-size:42px;margin-bottom:14px;">{{ $isError ? '⚠️' : '✅' }}</div>
-            <h2 style="margin:0 0 10px 0;font-size:17px;">{{ $isError ? 'Something went wrong' : 'Success' }}</h2>
+            <h2 style="margin:0 0 10px 0;font-size:17px;color:{{ $isError ? 'var(--red-text)' : 'var(--green)' }};">{{ $isError ? 'Something went wrong' : 'Success' }}</h2>
             <div style="color:var(--muted);font-size:13.5px;line-height:1.5;margin-bottom:26px;">
               @if (session('success'))
                 {{ session('success') }}

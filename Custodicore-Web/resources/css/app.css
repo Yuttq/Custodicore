@@ -4,7 +4,11 @@
 
 @layer base {
     body {
-        @apply bg-background text-text-primary antialiased;
+        @apply bg-background text-text-primary antialiased font-sans text-body;
+    }
+    /* Table headings: same small uppercase look as the Record Officer tables. */
+    thead th {
+        @apply uppercase;
     }
 }
 
@@ -18,13 +22,13 @@
        Teal = primary actions (shared UI guideline); navy is reserved for
        branding/navigation/headers. */
     .cc-btn-primary {
-        @apply inline-flex items-center justify-center gap-sm rounded-button bg-primary-teal px-lg text-body font-semibold text-white transition hover:bg-primary-teal/90;
-        height: 48px; /* layout.buttonHeight */
+        @apply inline-flex items-center justify-center gap-sm rounded-button bg-primary-green px-[18px] text-body font-semibold text-white transition hover:bg-primary-green/90;
+        height: 38px; /* same height as the Record Officer .btn */
     }
 
     .cc-btn-secondary {
-        @apply inline-flex items-center justify-center gap-sm rounded-button border border-border bg-white px-lg text-body font-semibold text-text-primary transition hover:bg-background;
-        height: 48px;
+        @apply inline-flex items-center justify-center gap-sm rounded-button border border-border bg-white px-[18px] text-body font-semibold text-text-primary transition hover:bg-background;
+        height: 38px;
     }
 
     /* Mirrors src/designSystem/components/StatusChip.js */
@@ -55,7 +59,7 @@
     }
     .cc-input {
         @apply mt-xs w-full rounded-button border border-border bg-white px-md text-body text-text-primary focus:border-primary-teal focus:outline-none focus:ring-2 focus:ring-primary-teal/20;
-        height: 48px; /* shared UI guideline: 48px main inputs and buttons */
+        height: 38px; /* same height as the Record Officer inputs */
     }
 
     /* Native <dialog>-based modal. The browser centers and backdrops a
@@ -68,6 +72,15 @@
         background-color: rgb(17 24 39 / 0.5);
     }
     .cc-modal-close {
-        @apply flex h-8 w-8 items-center justify-center rounded-chip text-text-secondary transition hover:bg-background;
+        @apply flex h-8 items-center justify-center rounded-button px-sm text-status-label font-semibold text-text-secondary transition hover:bg-background;
+    }
+
+    /* Sidebar navigation: identical on Admin and Front Desk, and the same
+       look as the Record Officer sidebar (white, text only, teal when active). */
+    .cc-nav-link {
+        @apply flex items-center rounded-button p-[10px] text-[13.5px] font-medium text-[#4b5563] transition hover:bg-background;
+    }
+    .cc-nav-link-active {
+        @apply bg-primary-teal/10 font-bold text-primary-teal hover:bg-primary-teal/10;
     }
 }
