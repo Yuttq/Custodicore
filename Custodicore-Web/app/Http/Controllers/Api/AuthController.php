@@ -233,36 +233,8 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
-        $fullName = $request->input('fullName', $request->input('full_name'));
-        $email = $request->input('email');
-        $password = $request->input('password');
-        $contactNumber = $request->input('contactNumber', $request->input('contact_number'));
-        $dateOfBirth = $request->input('dateOfBirth')
-            ?? $request->input('date_of_birth')
-            ?? $request->input('birthdate');
-        $genderRaw = $request->input('gender');
-        $address = $request->input('address');
-        $relationshipHint = $request->input('relationshipHint', $request->input('relationship_hint'));
-
-        // Consent (Terms & Conditions + Privacy Policy) — accepted before any
-        // details are collected; camelCase (mobile) or snake_case.
-        $acceptedTerms = $request->input('acceptedTerms', $request->input('accepted_terms'));
-        $acceptedPrivacy = $request->input('acceptedPrivacy', $request->input('accepted_privacy'));
-        $consentVersion = $request->input('consentVersion', $request->input('consent_version'));
-
-        $request->merge([
-            'acceptedTerms' => $acceptedTerms,
-            'acceptedPrivacy' => $acceptedPrivacy,
-            'consentVersion' => $consentVersion,
-            'email' => $email,
-            'password' => $password,
-            'fullName' => $fullName,
-            'dateOfBirth' => $dateOfBirth,
-            'contactNumber' => $contactNumber,
-            'gender' => $genderRaw,
-            'address' => $address,
-            'relationshipHint' => $relationshipHint,
-        ]);
+        $this->mergeRegistrationAliases($request);
+        $request->merge(['email' => $request->input('email')]);
 
         $passwordRules = ['required', 'string', 'min:6'];
         if ($request->filled('password_confirmation')) {
@@ -272,6 +244,105 @@ class AuthController extends Controller
         $request->validate([
             'email' => ['required', 'email', 'unique:accounts,email'],
             'password' => $passwordRules,
+        ] + $this->profileRegistrationRules(), $this->registrationMessages());
+
+        $email = $request->input('email');
+
+        $account = DB::transaction(fn () => $this->createVisitorAccount($request, $email));
+
+        $token = $account->createToken('mobile')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user' => $this->userPayload($account),
+        ], 201);
+    }
+
+    /**
+     * Google registration (after /auth/google answered registration_required):
+     * the same visitor registration form as register(), minus email, plus
+     * the Google ID token. The visitor still sets a normal Custodicore
+     * password (confirmed), so password login keeps working.
+     *
+     * The email and Google ID come ONLY from the verified token; any email,
+     * Google ID, role or status in the body is ignored. Consent is recorded
+     * server-side exactly as in register(). Nothing is created, linked or
+     * issued unless all of it succeeds (GoogleAuthService::register()).
+     *
+     *   201 authenticated            {status, token, user} — account created
+     *                                and linked to the verified Google ID
+     *   409 google_account_mismatch  Google identity already linked to an account
+     *   409 link_required            verified email already has an account —
+     *                                use /auth/google/link, never auto-linked
+     *   403 not_visitor_account      matched account is Staff
+     *   403 account_inactive         matched account is not active (not reactivated)
+     *   422 validation errors        form fields as register(); `email` if the
+     *                                verified Google email cannot be stored
+     *   401 invalid_google_token / 503 google_unavailable — as /auth/google
+     */
+    public function registerWithGoogle(Request $request, GoogleIdTokenVerifier $verifier, GoogleAuthService $googleAuth): JsonResponse
+    {
+        $this->aliasIdToken($request);
+        $this->mergeRegistrationAliases($request);
+
+        $request->validate([
+            'idToken' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'password_confirmation' => ['required', 'string'],
+        ] + $this->profileRegistrationRules(), $this->registrationMessages());
+
+        $identity = $this->verifyGoogleIdToken($verifier, $request->input('idToken'));
+        if ($identity instanceof JsonResponse) {
+            return $identity;
+        }
+
+        // Same limit as accounts.email (and register()'s `email` rule).
+        if (mb_strlen($identity->email) > 100) {
+            throw ValidationException::withMessages([
+                'email' => 'This Google account\'s email address is too long to register. Use the regular registration instead.',
+            ]);
+        }
+
+        $decision = $googleAuth->register(
+            $identity,
+            fn (string $verifiedEmail) => $this->createVisitorAccount($request, $verifiedEmail, maxUsernameBase: 40),
+        );
+
+        $response = $this->googleDecisionResponse($decision);
+
+        return $decision->outcome === GoogleAuthDecision::AUTHENTICATED
+            ? $response->setStatusCode(201)
+            : $response;
+    }
+
+    /**
+     * Registration fields accepted as camelCase (mobile) or snake_case,
+     * merged back under their camelCase names for validation.
+     */
+    private function mergeRegistrationAliases(Request $request): void
+    {
+        $request->merge([
+            // Consent (Terms & Conditions + Privacy Policy) — accepted before
+            // any details are collected.
+            'acceptedTerms' => $request->input('acceptedTerms', $request->input('accepted_terms')),
+            'acceptedPrivacy' => $request->input('acceptedPrivacy', $request->input('accepted_privacy')),
+            'consentVersion' => $request->input('consentVersion', $request->input('consent_version')),
+            'password' => $request->input('password'),
+            'fullName' => $request->input('fullName', $request->input('full_name')),
+            'dateOfBirth' => $request->input('dateOfBirth')
+                ?? $request->input('date_of_birth')
+                ?? $request->input('birthdate'),
+            'contactNumber' => $request->input('contactNumber', $request->input('contact_number')),
+            'gender' => $request->input('gender'),
+            'address' => $request->input('address'),
+            'relationshipHint' => $request->input('relationshipHint', $request->input('relationship_hint')),
+        ]);
+    }
+
+    /** Profile + consent rules shared by register() and registerWithGoogle(). */
+    private function profileRegistrationRules(): array
+    {
+        return [
             'fullName' => ['required', 'string', 'max:150'],
             'dateOfBirth' => ['required', 'date', 'before:today'],
             'contactNumber' => ['nullable', 'string', 'max:20'],
@@ -285,64 +356,53 @@ class AuthController extends Controller
             'acceptedPrivacy' => ['accepted'],
             // If the app says which version it showed, it must be the current one.
             'consentVersion' => ['nullable', 'string', Rule::in([(string) config('legal.version')])],
-        ], [
+        ];
+    }
+
+    private function registrationMessages(): array
+    {
+        return [
             'acceptedTerms.accepted' => 'You must accept the Terms and Conditions to register.',
             'acceptedPrivacy.accepted' => 'You must accept the Privacy Policy to register.',
             'consentVersion.in' => 'The Terms and Privacy Policy were updated. Please review and accept the latest version.',
-        ]);
+        ];
+    }
 
+    /**
+     * Creates the Visitor account + VisitorProfile from a validated
+     * registration request. Callers wrap it in a transaction. Role, status
+     * and consent are set here, never from the request.
+     */
+    private function createVisitorAccount(Request $request, string $email, ?int $maxUsernameBase = null): Account
+    {
         $consentAt = now();
-        $consentVersionStored = (string) config('legal.version');
-
-        $gender = $this->normalizeGender($genderRaw);
         $visitorRole = Role::where('role_name', 'Visitor')->firstOrFail();
 
-        $account = DB::transaction(function () use (
-            $visitorRole,
-            $email,
-            $password,
-            $fullName,
-            $contactNumber,
-            $dateOfBirth,
-            $gender,
-            $address,
-            $relationshipHint,
-            $consentAt,
-            $consentVersionStored
-        ) {
-            $account = Account::create([
-                'role_id' => $visitorRole->role_id,
-                'username' => $this->uniqueUsername($email),
-                'email' => $email,
-                'password_hash' => Hash::make($password),
-                'status' => 'active',
-                'terms_accepted_at' => $consentAt,
-                'privacy_accepted_at' => $consentAt,
-                'consent_version' => $consentVersionStored,
-            ]);
+        $account = Account::create([
+            'role_id' => $visitorRole->role_id,
+            'username' => $this->uniqueUsername($email, $maxUsernameBase),
+            'email' => $email,
+            'password_hash' => Hash::make($request->input('password')),
+            'status' => 'active',
+            'terms_accepted_at' => $consentAt,
+            'privacy_accepted_at' => $consentAt,
+            'consent_version' => (string) config('legal.version'),
+        ]);
 
-            // Intentionally does NOT create visitor_pdl_relationships —
-            // relationshipHint is only an initial indication for staff later.
-            VisitorProfile::create([
-                'account_id' => $account->account_id,
-                'full_name' => $fullName,
-                'date_of_birth' => $dateOfBirth,
-                'gender' => $gender,
-                'address' => $address,
-                'relationship_hint' => $relationshipHint,
-                'contact_number' => $contactNumber ?: 'N/A',
-                'verification_status' => 'pending',
-            ]);
+        // Intentionally does NOT create visitor_pdl_relationships —
+        // relationshipHint is only an initial indication for staff later.
+        VisitorProfile::create([
+            'account_id' => $account->account_id,
+            'full_name' => $request->input('fullName'),
+            'date_of_birth' => $request->input('dateOfBirth'),
+            'gender' => $this->normalizeGender($request->input('gender')),
+            'address' => $request->input('address'),
+            'relationship_hint' => $request->input('relationshipHint'),
+            'contact_number' => $request->input('contactNumber') ?: 'N/A',
+            'verification_status' => 'pending',
+        ]);
 
-            return $account;
-        });
-
-        $token = $account->createToken('mobile')->plainTextToken;
-
-        return response()->json([
-            'token' => $token,
-            'user' => $this->userPayload($account),
-        ], 201);
+        return $account;
     }
 
     /**
@@ -495,9 +555,13 @@ class AuthController extends Controller
         };
     }
 
-    private function uniqueUsername(string $email): string
+    /** $maxBase keeps base + numeric suffix within accounts.username (50). */
+    private function uniqueUsername(string $email, ?int $maxBase = null): string
     {
         $base = Str::before($email, '@');
+        if ($maxBase !== null) {
+            $base = Str::substr($base, 0, $maxBase);
+        }
         $username = $base;
         $suffix = 1;
 

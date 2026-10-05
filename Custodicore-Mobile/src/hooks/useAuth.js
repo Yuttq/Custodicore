@@ -12,16 +12,19 @@ import { USE_MOCK_AUTH } from '../mock/devFlags';
 import client, {
   getMe,
   getStoredToken,
+  linkGoogleAccount as apiLinkGoogleAccount,
   login as apiLogin,
   logout as apiLogout,
   persistToken,
   register as apiRegister,
+  registerWithGoogle as apiRegisterWithGoogle,
   TOKEN_KEY,
   updateMe as apiUpdateMe,
 } from '../services/api';
 import { uploadGovernmentId } from '../repositories/verificationRepository';
 import {
   authenticateWithGoogle,
+  getFreshGoogleRegistrationToken,
   GoogleSignInCancelledError,
   GoogleSignInNotConfiguredError,
 } from '../services/socialAuthHandlers';
@@ -32,6 +35,37 @@ const REGISTRATION_SUMMARY_KEY = '@custodicore/registration_summary';
 const USER_KEY = '@custodicore/auth_user';
 
 const AuthContext = createContext(null);
+
+/**
+ * /auth/google/link rejections after which the held Google ID token is
+ * useless (or must not be retried): the visitor starts over from Login.
+ * `invalid_password`, `google_unavailable`, 429 and network errors keep it
+ * for another try.
+ */
+const UNRECOVERABLE_LINK_CODES = new Set([
+  'invalid_google_token',
+  'google_account_mismatch',
+  'not_visitor_account',
+  'account_inactive',
+  'account_not_found',
+]);
+
+/**
+ * Google registration failures after which the held Google ID token is
+ * dropped and the visitor starts over from Login. Validation (422), 409
+ * conflicts, `google_unavailable`, 429 and network errors keep it so the
+ * visitor can fix the form or retry.
+ */
+const UNRECOVERABLE_GOOGLE_REGISTRATION_CODES = new Set([
+  'google_registration_expired',
+  'google_session_expired',
+  'google_email_mismatch',
+  'invalid_google_token',
+  'google_account_mismatch',
+  'link_required',
+  'not_visitor_account',
+  'account_inactive',
+]);
 
 /**
  * Map registration gender UI labels onto the Laravel contract.
@@ -82,6 +116,29 @@ function buildRegisterBody(payload) {
   return body;
 }
 
+/**
+ * Build POST /api/auth/google/register body: the same registration fields as
+ * buildRegisterBody() minus email (the backend reads it from the verified
+ * Google ID token), plus the fresh ID token.
+ * @param {Record<string, unknown>} payload
+ * @param {string} idToken
+ */
+function buildGoogleRegisterBody(payload, idToken) {
+  const body = buildRegisterBody(payload);
+  delete body.email;
+  return { ...body, idToken };
+}
+
+/** Local "what you submitted" summary shown on the verification screen. */
+function buildRegistrationSummary(payload) {
+  return {
+    fullName: payload?.fullName,
+    relationship: payload?.relationship,
+    relationshipLabel: payload?.relationshipLabel,
+    documents: payload?.documentsSummary ?? [],
+  };
+}
+
 function normalizeUser(raw) {
   if (!raw || typeof raw !== 'object') return null;
   return {
@@ -109,6 +166,15 @@ export function AuthProvider({ children }) {
   const [pendingVerification, setPendingVerification] = useState(false);
   const [registrationSummary, setRegistrationSummary] = useState(null);
   const clearingRef = useRef(false);
+  // Google ID token held between /auth/google (link_required) and
+  // /auth/google/link. Memory only: never persisted, logged, put in state
+  // or navigation params, or returned to screens.
+  const pendingGoogleLinkRef = useRef(null);
+  // Google ID token + verified email held between /auth/google
+  // (registration_required) and /auth/google/register. Same rules as above:
+  // memory only, never handed to screens. The email is used to check that a
+  // refreshed token belongs to the same Google account.
+  const pendingGoogleRegistrationRef = useRef(null);
 
   const clearLocalSession = useCallback(async () => {
     if (clearingRef.current) return;
@@ -280,17 +346,38 @@ export function AuthProvider({ children }) {
   /**
    * Native Google Sign-In → POST /auth/google.
    * - authenticated: session applied; navigation follows from `token`.
-   * - registration_required: no session exists — returns
-   *   `{ status, profile, consentVersion }` for the caller to route to Register.
+   * - registration_required: no session exists — the ID token is held in
+   *   memory for registerWithGoogle(); returns only
+   *   `{ status, profile: { email, fullName }, consentVersion }` for Register.
+   * - link_required: no session exists — the ID token is held in memory for
+   *   linkGoogle(); returns only `{ status, email }` (email for display).
    * - cancelled: returns null.
    * Backend rejections are rethrown with `status`/`code` intact.
    */
   const loginWithGoogle = useCallback(async () => {
     setError(null);
+    // A new Google attempt always discards any earlier pending link/registration.
+    pendingGoogleLinkRef.current = null;
+    pendingGoogleRegistrationRef.current = null;
     try {
       const result = await authenticateWithGoogle();
       if (result.status === 'authenticated') {
         await applySession(result.token, result.user);
+      }
+      if (result.status === 'link_required') {
+        pendingGoogleLinkRef.current = { idToken: result.idToken };
+        return { status: 'link_required', email: result.email };
+      }
+      if (result.status === 'registration_required') {
+        pendingGoogleRegistrationRef.current = {
+          idToken: result.idToken,
+          email: result.profile.email,
+        };
+        return {
+          status: 'registration_required',
+          profile: { email: result.profile.email, fullName: result.profile.fullName },
+          consentVersion: result.consentVersion,
+        };
       }
       return result;
     } catch (e) {
@@ -306,16 +393,163 @@ export function AuthProvider({ children }) {
     }
   }, [applySession]);
 
+  /** True while a Google ID token from link_required is held for linking. */
+  const hasPendingGoogleLink = useCallback(() => pendingGoogleLinkRef.current !== null, []);
+
+  /**
+   * POST /auth/google/link with the held Google ID token + the visitor's
+   * Custodicore password. On success the session is applied like login()
+   * and the navigator switches on `token`. Errors are rethrown with
+   * `status`/`code`; unrecoverable ones also drop the held token.
+   * @param {string} password
+   */
+  const linkGoogle = useCallback(
+    async (password) => {
+      setError(null);
+      const pending = pendingGoogleLinkRef.current;
+      if (!pending) {
+        const err = new Error('Your Google sign-in has expired. Please sign in with Google again.');
+        err.code = 'google_link_expired';
+        throw err;
+      }
+
+      try {
+        const data = await apiLinkGoogleAccount({ idToken: pending.idToken, password });
+        if (data?.status !== 'authenticated' || !data?.token) {
+          throw new Error('Linking succeeded but no session token was returned.');
+        }
+        pendingGoogleLinkRef.current = null;
+        await applySession(data.token, data.user);
+      } catch (e) {
+        if (UNRECOVERABLE_LINK_CODES.has(e?.code)) {
+          pendingGoogleLinkRef.current = null;
+        }
+        throw e;
+      }
+    },
+    [applySession],
+  );
+
+  /**
+   * Abandons a pending Google link (back/cancel/leaving the screen): drops
+   * the held ID token and clears the native Google session so the account
+   * picker shows next time. Never touches a CustodiCore session.
+   */
+  const cancelGoogleFlow = useCallback(() => {
+    if (!pendingGoogleLinkRef.current) return;
+    pendingGoogleLinkRef.current = null;
+    signOutGoogle().catch(() => {});
+  }, []);
+
+  /**
+   * Finishes a successful registration (password or Google): the account
+   * exists now — upload the government ID picked during registration
+   * (POST /api/documents, stored as pending), store the summary, then apply
+   * the session so the navigator switches to the app. Relationship documents
+   * can't be uploaded yet: staff must first link the visitor to a PDL. A
+   * failed upload does not undo registration; the visitor can retry from
+   * Verification Documents.
+   */
+  const completeRegistration = useCallback(
+    async (sessionToken, sessionUser, payload, summary) => {
+      await persistToken(sessionToken);
+      const governmentId = payload?.documents?.government_id;
+      if (governmentId?.uri) {
+        try {
+          await uploadGovernmentId({
+            uri: governmentId.uri,
+            fileName: governmentId.fileName,
+            documentType: governmentId.idType,
+          });
+        } catch {
+          summary.documents = summary.documents.map((doc) =>
+            doc.label === 'Government ID'
+              ? { ...doc, detail: 'Upload failed — re-upload from Verification Documents' }
+              : doc,
+          );
+        }
+      }
+
+      await AsyncStorage.setItem(REGISTRATION_SUMMARY_KEY, JSON.stringify(summary));
+      setRegistrationSummary(summary);
+
+      await applySession(sessionToken, sessionUser, {
+        forcePendingVerification: true,
+      });
+    },
+    [applySession],
+  );
+
+  /** True while a Google ID token from registration_required is held. */
+  const hasPendingGoogleRegistration = useCallback(
+    () => pendingGoogleRegistrationRef.current !== null,
+    [],
+  );
+
+  /**
+   * POST /auth/google/register for a visitor whose Google Sign-In answered
+   * registration_required. `payload` is the RegisterScreen form (same shape
+   * as register(), without email) — the Google ID token never comes from or
+   * goes to the screen.
+   *
+   * Before submitting, a fresh ID token is obtained silently (the held one
+   * may have expired during the multi-step form) and must belong to the same
+   * Google account; the stale token is never submitted. On success the
+   * session is applied exactly like register(). Errors are rethrown with
+   * `status`/`code`; unrecoverable ones also end the Google flow.
+   * @param {Record<string, unknown>} payload
+   */
+  const registerWithGoogle = useCallback(
+    async (payload) => {
+      setError(null);
+      const pending = pendingGoogleRegistrationRef.current;
+      if (!pending) {
+        const err = new Error('Your Google sign-in has expired. Please sign in with Google again.');
+        err.code = 'google_registration_expired';
+        throw err;
+      }
+
+      try {
+        const idToken = await getFreshGoogleRegistrationToken(pending.email);
+        const data = await apiRegisterWithGoogle(buildGoogleRegisterBody(payload, idToken));
+        if (data?.status !== 'authenticated' || !data?.token) {
+          throw new Error('Registration succeeded but no session token was returned.');
+        }
+        pendingGoogleRegistrationRef.current = null;
+        await completeRegistration(
+          data.token,
+          data.user,
+          payload,
+          buildRegistrationSummary(payload),
+        );
+      } catch (e) {
+        if (UNRECOVERABLE_GOOGLE_REGISTRATION_CODES.has(e?.code)) {
+          pendingGoogleRegistrationRef.current = null;
+          signOutGoogle().catch(() => {});
+        }
+        setError(e?.message ?? 'Registration failed');
+        throw e;
+      }
+    },
+    [completeRegistration],
+  );
+
+  /**
+   * Abandons a pending Google registration (back/cancel/leaving the screen):
+   * drops the held ID token and clears the native Google session. No account
+   * or CustodiCore session exists at this point, so nothing else to undo.
+   */
+  const cancelGoogleRegistration = useCallback(() => {
+    if (!pendingGoogleRegistrationRef.current) return;
+    pendingGoogleRegistrationRef.current = null;
+    signOutGoogle().catch(() => {});
+  }, []);
+
   const register = useCallback(
     async (payload) => {
       setError(null);
       try {
-        const summary = {
-          fullName: payload?.fullName,
-          relationship: payload?.relationship,
-          relationshipLabel: payload?.relationshipLabel,
-          documents: payload?.documentsSummary ?? [],
-        };
+        const summary = buildRegistrationSummary(payload);
 
         if (USE_MOCK_AUTH) {
           await new Promise((r) => setTimeout(r, 350));
@@ -343,42 +577,14 @@ export function AuthProvider({ children }) {
           throw new Error('Registration succeeded but no session token was returned.');
         }
 
-        // The account exists now — upload the government ID picked during
-        // registration (POST /api/documents, stored as pending). Relationship
-        // documents can't be uploaded yet: staff must first link the visitor
-        // to a PDL. A failed upload does not undo registration; the visitor
-        // can retry from Verification Documents.
-        await persistToken(data.token);
-        const governmentId = payload?.documents?.government_id;
-        if (governmentId?.uri) {
-          try {
-            await uploadGovernmentId({
-              uri: governmentId.uri,
-              fileName: governmentId.fileName,
-              documentType: governmentId.idType,
-            });
-          } catch {
-            summary.documents = summary.documents.map((doc) =>
-              doc.label === 'Government ID'
-                ? { ...doc, detail: 'Upload failed — re-upload from Verification Documents' }
-                : doc,
-            );
-          }
-        }
-
-        await AsyncStorage.setItem(REGISTRATION_SUMMARY_KEY, JSON.stringify(summary));
-        setRegistrationSummary(summary);
-
-        await applySession(data.token, data.user, {
-          forcePendingVerification: true,
-        });
+        await completeRegistration(data.token, data.user, payload, summary);
       } catch (e) {
         const message = e?.message ?? 'Registration failed';
         setError(message);
         throw e;
       }
     },
-    [applySession],
+    [completeRegistration],
   );
 
   /** Stores a fresh /me payload without touching token or pendingVerification. */
@@ -435,6 +641,12 @@ export function AuthProvider({ children }) {
       registrationSummary,
       login,
       loginWithGoogle,
+      linkGoogle,
+      cancelGoogleFlow,
+      hasPendingGoogleLink,
+      registerWithGoogle,
+      cancelGoogleRegistration,
+      hasPendingGoogleRegistration,
       register,
       completeVerificationReview,
       logout,
@@ -453,6 +665,12 @@ export function AuthProvider({ children }) {
       registrationSummary,
       login,
       loginWithGoogle,
+      linkGoogle,
+      cancelGoogleFlow,
+      hasPendingGoogleLink,
+      registerWithGoogle,
+      cancelGoogleRegistration,
+      hasPendingGoogleRegistration,
       register,
       completeVerificationReview,
       logout,

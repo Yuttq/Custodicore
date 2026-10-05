@@ -39,8 +39,6 @@ const GOOGLE_SIGN_IN_AVAILABLE = isGoogleSignInConfigured();
 
 /** Backend `code` → visitor-facing copy. Raw server text is never shown for these. */
 const GOOGLE_ERROR_MESSAGES = {
-  link_required:
-    'This email already has a CustodiCore account. Google can’t be connected to it automatically — please sign in with your email and password.',
   not_visitor_account:
     'Google sign-in is only available for visitor accounts.',
   account_inactive: 'This account is not active. Contact facility staff.',
@@ -129,13 +127,17 @@ export default function LoginScreen({ navigation }) {
     try {
       const result = await loginWithGoogle();
       // authenticated → AuthProvider's token switches the navigator; null → cancelled.
-      if (result?.status === 'registration_required') {
-        // Phase 5: RegisterScreen consumes `googleProfile`.
-        navigation.navigate('Register', {
+      if (result?.status === 'link_required') {
+        // Display email only — the Google ID token stays inside useAuth.
+        navigation.navigate('LinkGoogleAccount', { email: result.email });
+      } else if (result?.status === 'registration_required') {
+        // Display profile only — the Google ID token stays inside useAuth.
+        // push (not navigate) so Google registration always starts from a
+        // fresh form, never a half-filled normal registration left in the stack.
+        navigation.push('Register', {
           googleProfile: {
             email: result.profile.email,
             fullName: result.profile.fullName,
-            consentVersion: result.consentVersion,
           },
         });
       }

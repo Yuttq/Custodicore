@@ -144,21 +144,67 @@ function WizardField({
 }
 
 /**
- * 4-step visitor registration wizard (v2.1).
+ * Google registration failures that end the Google flow (useAuth has already
+ * dropped the held Google token): alert, then back to Login.
  */
-export default function RegisterScreen({ navigation }) {
-  const { register } = useAuth();
+const GOOGLE_RESTART_MESSAGES = {
+  google_registration_expired:
+    'Your Google sign-in has expired. Please sign in with Google again.',
+  google_session_expired: 'Your Google sign-in has expired. Please sign in with Google again.',
+  invalid_google_token: 'Your Google sign-in has expired. Please sign in with Google again.',
+  google_email_mismatch:
+    'The Google account on this device has changed. Please sign in with Google again.',
+  google_account_mismatch:
+    'This Google account is already registered. Please use Sign in with Google.',
+  link_required:
+    'A CustodiCore account already uses this email. Sign in with Google again to link it using your CustodiCore password.',
+  not_visitor_account: 'This Google account cannot be used to register a visitor account.',
+  account_inactive: 'This account is not active. Contact facility staff.',
+};
+
+/** Backend validation field → step-1 form field (Google registration). */
+const GOOGLE_FIELD_ERRORS = {
+  fullName: 'fullName',
+  dateOfBirth: 'birthdate',
+  gender: 'gender',
+  address: 'address',
+  contactNumber: 'contactNumber',
+  password: 'password',
+  password_confirmation: 'passwordConfirmation',
+  email: 'email',
+};
+
+/**
+ * 4-step visitor registration wizard (v2.1).
+ *
+ * Google mode (route param `googleProfile` from a `registration_required`
+ * Google Sign-In): email is the verified Google email and read-only, the
+ * name is prefilled but editable, and the visitor still sets a confirmed
+ * CustodiCore password. Consent, relationship, documents and review are the
+ * same as normal registration. The Google ID token never reaches this
+ * screen — useAuth holds it and refreshes it on submit.
+ */
+export default function RegisterScreen({ navigation, route }) {
+  const {
+    register,
+    registerWithGoogle,
+    cancelGoogleRegistration,
+    hasPendingGoogleRegistration,
+  } = useAuth();
+  const googleProfile = route?.params?.googleProfile ?? null;
+  const isGoogle = Boolean(googleProfile?.email);
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const [fullName, setFullName] = useState('');
+  const [fullName, setFullName] = useState(() => googleProfile?.fullName ?? '');
   const [birthdate, setBirthdate] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => googleProfile?.email ?? '');
   const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   const [relationship, setRelationship] = useState(null);
@@ -200,6 +246,34 @@ export default function RegisterScreen({ navigation }) {
     [relationship],
   );
 
+  // Google mode: leaving this screen in any way (back, hardware back, failure)
+  // ends the Google flow. No-op after a successful registration, which
+  // already cleared it. Normal registration never touches Google state.
+  useEffect(() => {
+    if (!isGoogle) return undefined;
+    return () => cancelGoogleRegistration();
+  }, [isGoogle, cancelGoogleRegistration]);
+
+  /** Ends the Google flow and returns to Login (pops this screen). */
+  const exitGoogleRegistration = useCallback(() => {
+    cancelGoogleRegistration();
+    navigation.popTo('Login');
+  }, [cancelGoogleRegistration, navigation]);
+
+  // Google mode without a held Google token (e.g. restored screen): restart.
+  useEffect(() => {
+    if (isGoogle && !hasPendingGoogleRegistration()) {
+      Alert.alert(
+        'Sign up with Google',
+        GOOGLE_RESTART_MESSAGES.google_registration_expired,
+      );
+      exitGoogleRegistration();
+    }
+    // Mount-only check: after a successful registration the token is
+    // cleared and the auth stack unmounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const goBack = useCallback(() => {
     if (step > 1) {
       setStep((s) => s - 1);
@@ -212,8 +286,12 @@ export default function RegisterScreen({ navigation }) {
       setErrors({});
       return;
     }
+    if (isGoogle) {
+      exitGoogleRegistration();
+      return;
+    }
     navigation.navigate('Login');
-  }, [step, consentDone, navigation]);
+  }, [step, consentDone, isGoogle, exitGoogleRegistration, navigation]);
 
   const onConsentContinue = useCallback(() => {
     if (!acceptTerms || !acceptPrivacy) {
@@ -234,14 +312,33 @@ export default function RegisterScreen({ navigation }) {
     if (!validateRequired(address)) next.address = 'Address is required';
     if (!validateRequired(contactNumber))
       next.contactNumber = 'Contact number is required';
-    if (!validateRequired(email)) next.email = 'Email address is required';
-    else if (!validateEmail(email.trim())) next.email = 'Enter a valid email address';
+    // Google mode: email is the verified Google email (read-only).
+    if (!isGoogle) {
+      if (!validateRequired(email)) next.email = 'Email address is required';
+      else if (!validateEmail(email.trim())) next.email = 'Enter a valid email address';
+    }
     if (!validateRequired(password)) next.password = 'Password is required';
     else if (!validatePassword(password))
       next.password = 'Password must be at least 6 characters';
+    if (isGoogle) {
+      if (!validateRequired(passwordConfirmation))
+        next.passwordConfirmation = 'Please confirm your password';
+      else if (passwordConfirmation !== password)
+        next.passwordConfirmation = 'Passwords do not match';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [fullName, birthdate, gender, address, contactNumber, email, password]);
+  }, [
+    fullName,
+    birthdate,
+    gender,
+    address,
+    contactNumber,
+    email,
+    password,
+    passwordConfirmation,
+    isGoogle,
+  ]);
 
   const validateStep2 = useCallback(() => {
     if (!relationship) {
@@ -316,6 +413,49 @@ export default function RegisterScreen({ navigation }) {
     });
   }, []);
 
+  /** Google registration failure → visitor-facing outcome. */
+  const handleGoogleRegistrationError = useCallback(
+    (e) => {
+      const title = 'Sign up with Google';
+      if (e?.code && GOOGLE_RESTART_MESSAGES[e.code]) {
+        // useAuth already dropped the Google token for these.
+        Alert.alert(title, GOOGLE_RESTART_MESSAGES[e.code]);
+        exitGoogleRegistration();
+        return;
+      }
+      if (e?.status === 429) {
+        Alert.alert(title, 'Too many attempts. Please wait a minute and try again.');
+        return;
+      }
+      if (e?.code === 'google_unavailable') {
+        Alert.alert(
+          title,
+          'Google Sign-In is temporarily unavailable. Please try again in a moment.',
+        );
+        return;
+      }
+      const message =
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : 'Something went wrong. Please try again.';
+      if (e?.status === 422 && e.errors && typeof e.errors === 'object') {
+        // Show field errors inline on the details step; the form is kept.
+        const fieldErrors = {};
+        Object.entries(e.errors).forEach(([field, messages]) => {
+          const key = GOOGLE_FIELD_ERRORS[field];
+          const text = Array.isArray(messages) ? messages[0] : messages;
+          if (key && typeof text === 'string') fieldErrors[key] = text;
+        });
+        if (Object.keys(fieldErrors).length) {
+          setErrors(fieldErrors);
+          setStep(1);
+        }
+      }
+      Alert.alert('Registration failed', message);
+    },
+    [exitGoogleRegistration],
+  );
+
   const onSubmit = useCallback(async () => {
     if (submitting || !validateStep4()) return;
 
@@ -335,13 +475,12 @@ export default function RegisterScreen({ navigation }) {
         return { label: doc.label, detail };
       });
 
-      await register({
+      const fields = {
         fullName: fullName.trim(),
         birthdate: birthdate.trim(),
         gender,
         address: address.trim(),
         contactNumber: contactNumber.trim(),
-        email: email.trim(),
         password,
         relationship,
         relationshipLabel: getRelationshipLabel(relationship),
@@ -351,8 +490,19 @@ export default function RegisterScreen({ navigation }) {
         acceptedTerms: acceptTerms,
         acceptedPrivacy: acceptPrivacy,
         consentVersion: legal?.version,
-      });
+      };
+
+      if (isGoogle) {
+        // No email: the backend takes it from the verified Google token.
+        await registerWithGoogle({ ...fields, password_confirmation: passwordConfirmation });
+      } else {
+        await register({ ...fields, email: email.trim() });
+      }
     } catch (e) {
+      if (isGoogle) {
+        handleGoogleRegistrationError(e);
+        return;
+      }
       const message =
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
@@ -365,6 +515,9 @@ export default function RegisterScreen({ navigation }) {
     submitting,
     validateStep4,
     register,
+    registerWithGoogle,
+    isGoogle,
+    handleGoogleRegistrationError,
     fullName,
     birthdate,
     gender,
@@ -372,6 +525,7 @@ export default function RegisterScreen({ navigation }) {
     contactNumber,
     email,
     password,
+    passwordConfirmation,
     relationship,
     documents,
     certified,
@@ -430,17 +584,38 @@ export default function RegisterScreen({ navigation }) {
         keyboardType="phone-pad"
         error={errors.contactNumber}
       />
-      <WizardField
-        label="Email Address"
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Enter your email"
-        keyboardType="email-address"
-        error={errors.email}
-        autoCapitalize="none"
-      />
+      {isGoogle ? (
+        <View style={fieldStyles.wrap}>
+          <Text style={fieldStyles.label}>Email Address</Text>
+          <View
+            style={[fieldStyles.readOnlyRow, errors.email && fieldStyles.inputError]}
+            accessible
+            accessibilityLabel={`Email address ${email}, from your Google account, cannot be changed`}
+          >
+            <Ionicons name="logo-google" size={18} color={colors.textSecondary} />
+            <Text style={fieldStyles.readOnlyText} numberOfLines={1}>
+              {email}
+            </Text>
+            <Ionicons name="lock-closed-outline" size={16} color={colors.textSecondary} />
+          </View>
+          <Text style={fieldStyles.hint}>
+            Your Google account email is used for this account.
+          </Text>
+          {errors.email ? <Text style={fieldStyles.error}>{errors.email}</Text> : null}
+        </View>
+      ) : (
+        <WizardField
+          label="Email Address"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Enter your email"
+          keyboardType="email-address"
+          error={errors.email}
+          autoCapitalize="none"
+        />
+      )}
       <View style={fieldStyles.wrap}>
-        <Text style={fieldStyles.label}>Password</Text>
+        <Text style={fieldStyles.label}>{isGoogle ? 'Create Password' : 'Password'}</Text>
         <View style={[fieldStyles.passwordRow, errors.password && fieldStyles.inputError]}>
           <TextInput
             value={password}
@@ -465,7 +640,36 @@ export default function RegisterScreen({ navigation }) {
           </Pressable>
         </View>
         {errors.password ? <Text style={fieldStyles.error}>{errors.password}</Text> : null}
+        {isGoogle ? (
+          <Text style={fieldStyles.hint}>
+            You can also sign in with this email and password.
+          </Text>
+        ) : null}
       </View>
+      {isGoogle ? (
+        <View style={fieldStyles.wrap}>
+          <Text style={fieldStyles.label}>Confirm Password</Text>
+          <View
+            style={[
+              fieldStyles.passwordRow,
+              errors.passwordConfirmation && fieldStyles.inputError,
+            ]}
+          >
+            <TextInput
+              value={passwordConfirmation}
+              onChangeText={setPasswordConfirmation}
+              placeholder="••••••••"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry={!showPassword}
+              accessibilityLabel="Confirm password"
+              style={fieldStyles.passwordInput}
+            />
+          </View>
+          {errors.passwordConfirmation ? (
+            <Text style={fieldStyles.error}>{errors.passwordConfirmation}</Text>
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 
@@ -600,7 +804,7 @@ export default function RegisterScreen({ navigation }) {
         {renderReviewRow('Gender', gender)}
         {renderReviewRow('Address', address.trim())}
         {renderReviewRow('Contact Number', contactNumber.trim())}
-        {renderReviewRow('Email', email.trim())}
+        {renderReviewRow(isGoogle ? 'Email (Google account)' : 'Email', email.trim())}
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>
@@ -646,6 +850,14 @@ export default function RegisterScreen({ navigation }) {
       {errors.certified ? <Text style={styles.stepError}>{errors.certified}</Text> : null}
     </>
   );
+
+  const renderGoogleBadge = () =>
+    isGoogle ? (
+      <View style={styles.googleBadge} accessibilityLabel="Signing up with Google">
+        <Ionicons name="logo-google" size={14} color={colors.primaryNavy} />
+        <Text style={styles.googleBadgeText}>Signing up with Google</Text>
+      </View>
+    ) : null;
 
   // ── Consent screen (shown first, before any details are collected) ──────
   const renderLegalModal = () => {
@@ -754,6 +966,7 @@ export default function RegisterScreen({ navigation }) {
         </Pressable>
 
         <Text style={styles.screenTitle}>Before you begin</Text>
+        {renderGoogleBadge()}
         <Text style={styles.stepSubtitle}>
           Please review and accept our Terms and Conditions and Privacy Policy before you
           provide any of your details. Tap a document name to read it.
@@ -810,9 +1023,12 @@ export default function RegisterScreen({ navigation }) {
           </Pressable>
 
           <Text style={styles.screenTitle}>{STEP_TITLES[step]}</Text>
+          {renderGoogleBadge()}
           {step === 1 ? (
             <Text style={styles.stepSubtitle}>
-              Create your visitor account with your email address and password.
+              {isGoogle
+                ? 'Complete your visitor account. Enter your full legal name as it appears on your ID, and create a CustodiCore password.'
+                : 'Create your visitor account with your email address and password.'}
             </Text>
           ) : null}
           <ProgressStepper step={step} />
@@ -1036,6 +1252,27 @@ const fieldStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  readOnlyRow: {
+    height: layout.buttonHeight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: layout.buttonRadius,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  readOnlyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  hint: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   inputError: { borderColor: colors.danger },
   error: {
     ...typography.metadata,
@@ -1068,6 +1305,24 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     color: colors.textPrimary,
     marginBottom: spacing.sm,
+  },
+  googleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: layout.buttonRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    marginBottom: spacing.sm,
+  },
+  googleBadgeText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.primaryNavy,
   },
   stepSubtitle: {
     ...typography.body,

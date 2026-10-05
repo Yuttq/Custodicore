@@ -65,6 +65,9 @@ class VisitorApiContractTest extends TestCase
             'address' => 'Quezon City',
             'relationshipHint' => 'sibling',
             'contactNumber' => '09170001111',
+            'acceptedTerms' => true,
+            'acceptedPrivacy' => true,
+            'consentVersion' => (string) config('legal.version'),
         ]);
 
         $response->assertCreated()

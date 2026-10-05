@@ -166,6 +166,23 @@ export async function linkGoogleAccount({ idToken, password }) {
 }
 
 /**
+ * Registers a new visitor through Google after `/auth/google` answered
+ * `registration_required` — POST /auth/google/register. The body carries the
+ * Google ID token plus the registration form (no email: the backend takes
+ * email and Google ID only from the verified token). Returns
+ * `{ status: 'authenticated', token, user }` (201).
+ * @param {Record<string, unknown> & { idToken: string }} payload
+ */
+export async function registerWithGoogle(payload) {
+  try {
+    const { data } = await client.post('/auth/google/register', payload);
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Registers a new visitor account.
  * @param {Record<string, unknown>} payload
  */

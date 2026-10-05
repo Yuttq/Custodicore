@@ -66,10 +66,11 @@ function loadGoogleSignin() {
 
 /**
  * Opens the native Google account picker and returns the ID token for the
- * backend `POST /auth/google` exchange. Nothing else from Google is returned
- * or stored.
+ * backend `POST /auth/google` exchange, plus the picked account's email for
+ * display only (the backend reads identity from the verified token). Nothing
+ * else from Google is returned or stored.
  *
- * @returns {Promise<{ idToken: string }>}
+ * @returns {Promise<{ idToken: string, email: string|null }>}
  */
 export async function signInWithGoogle() {
   const { GoogleSignin, isErrorWithCode, statusCodes } = loadGoogleSignin();
@@ -88,7 +89,7 @@ export async function signInWithGoogle() {
     if (!idToken) {
       throw new Error('Google Sign-In did not return an ID token. Please try again.');
     }
-    return { idToken };
+    return { idToken, email: response?.data?.user?.email ?? null };
   } catch (e) {
     if (e instanceof GoogleSignInCancelledError) throw e;
     if (isErrorWithCode(e)) {
@@ -106,6 +107,61 @@ export async function signInWithGoogle() {
     }
     throw e;
   }
+}
+
+/** Play Services `CommonStatusCodes.NETWORK_ERROR`, as the native module reports it. */
+const GOOGLE_NETWORK_ERROR_CODE = '7';
+
+/**
+ * Thrown when no fresh Google ID token can be obtained without user
+ * interaction (no saved Google session, or the silent refresh failed).
+ */
+export class GoogleSessionExpiredError extends Error {
+  constructor() {
+    super('Your Google sign-in has expired. Please sign in with Google again.');
+    this.name = 'GoogleSessionExpiredError';
+    this.code = 'google_session_expired';
+  }
+}
+
+/**
+ * Silently refreshes the native Google session (no account picker) and
+ * returns a fresh ID token plus the signed-in account's email. Never falls
+ * back to a previously issued token.
+ *
+ * @returns {Promise<{ idToken: string, email: string|null }>}
+ * @throws {GoogleSessionExpiredError} when no fresh token is available
+ * @throws {Error} `code: 'google_network_error'` — offline; safe to retry
+ */
+export async function refreshGoogleIdToken() {
+  let GoogleSignin;
+  try {
+    ({ GoogleSignin } = loadGoogleSignin());
+  } catch {
+    throw new GoogleSessionExpiredError();
+  }
+
+  let response;
+  try {
+    response = await GoogleSignin.signInSilently();
+  } catch (e) {
+    // Offline: retryable — the Google session itself may still be valid.
+    if (e?.code === GOOGLE_NETWORK_ERROR_CODE) {
+      const err = new Error(
+        'Unable to reach Google. Check your internet connection and try again.',
+      );
+      err.code = 'google_network_error';
+      throw err;
+    }
+    // Native error text can be technical — the visitor just signs in again.
+    throw new GoogleSessionExpiredError();
+  }
+
+  const idToken = response?.type === 'success' ? response.data?.idToken : null;
+  if (!idToken) {
+    throw new GoogleSessionExpiredError();
+  }
+  return { idToken, email: response.data?.user?.email ?? null };
 }
 
 /**

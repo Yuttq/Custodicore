@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Hash;
  *
  * Role/status always come from the database account. Apart from
  * last_login_at on a successful sign-in, decide() never modifies an account;
- * only link() ever sets google_id.
+ * only link() (existing account) and register() (new account) set google_id.
  */
 class GoogleAuthService
 {
@@ -125,6 +125,79 @@ class GoogleAuthService
             // Lost a race on accounts.google_id's unique index; rolled back.
             return GoogleAuthDecision::rejected(GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH, $identity, $account);
         }
+    }
+
+    /**
+     * Google registration (after /auth/google answered registration_required):
+     * creates a new Visitor account for a verified Google identity nobody
+     * owns yet. $createAccount(string $verifiedEmail): Account builds the
+     * Account + VisitorProfile from the validated registration form (see
+     * AuthController::createVisitorAccount()). Order:
+     *
+     *  1. accounts.google_id = verified `sub`
+     *       Staff/inactive → not_visitor_account / account_inactive
+     *       otherwise      → google_account_mismatch (already linked; no
+     *                        second account)
+     *  2. accounts.email = verified email (case-insensitive)
+     *       Staff/inactive → not_visitor_account / account_inactive (never
+     *                        converted or reactivated)
+     *       otherwise      → link_required — NEVER auto-linked on email alone
+     *  3. in one transaction: create account + profile, google_id = `sub`,
+     *       Sanctum token. Any failure rolls all of it back.
+     *
+     * A concurrent registration with the same `sub` or email that slips in
+     * after the checks trips the unique index; the rolled-back attempt is
+     * then re-classified by the same checks (409, never a 500). A collision
+     * on anything else (the generated username) is simply retried.
+     */
+    public function register(VerifiedGoogleIdentity $identity, callable $createAccount): GoogleAuthDecision
+    {
+        if ($conflict = $this->registrationConflict($identity)) {
+            return $conflict;
+        }
+
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return DB::transaction(function () use ($identity, $createAccount) {
+                    $account = $createAccount($identity->email);
+
+                    // forceFill: google_id is deliberately not fillable.
+                    $account->forceFill(['google_id' => $identity->googleId])->save();
+
+                    $token = $account->createToken(self::TOKEN_NAME)->plainTextToken;
+
+                    return GoogleAuthDecision::authenticated($identity, $account, $token);
+                });
+            } catch (UniqueConstraintViolationException $e) {
+                if ($conflict = $this->registrationConflict($identity)) {
+                    return $conflict;
+                }
+
+                if ($attempt >= 3) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /** Why a verified identity may not register, or null if it may. */
+    private function registrationConflict(VerifiedGoogleIdentity $identity): ?GoogleAuthDecision
+    {
+        $linked = Account::with('role')->where('google_id', $identity->googleId)->first();
+
+        if ($linked) {
+            return $this->rejection($linked, $identity)
+                ?? GoogleAuthDecision::rejected(GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH, $identity, $linked);
+        }
+
+        $byEmail = $this->findByEmail($identity);
+
+        if ($byEmail) {
+            return $this->rejection($byEmail, $identity)
+                ?? GoogleAuthDecision::rejected(GoogleAuthDecision::LINK_REQUIRED, $identity, $byEmail);
+        }
+
+        return null;
     }
 
     private function authenticate(Account $account, VerifiedGoogleIdentity $identity): GoogleAuthDecision

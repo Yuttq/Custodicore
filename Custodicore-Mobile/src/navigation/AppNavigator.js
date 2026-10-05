@@ -13,6 +13,7 @@ import { MainTabBarIcon } from './mainTabBarIcons';
 import DashboardScreen from '../screens/DashboardScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ForgotPasswordSuccessScreen from '../screens/ForgotPasswordSuccessScreen';
+import LinkGoogleAccountScreen from '../screens/LinkGoogleAccountScreen';
 import LoginScreen from '../screens/LoginScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import PersonalInformationScreen from '../screens/PersonalInformationScreen';
@@ -68,6 +69,11 @@ function AuthNavigator() {
     >
       <AuthStack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
       <AuthStack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+      <AuthStack.Screen
+        name="LinkGoogleAccount"
+        component={LinkGoogleAccountScreen}
+        options={{ headerShown: false }}
+      />
       <AuthStack.Screen
         name="ForgotPassword"
         component={ForgotPasswordScreen}

@@ -33,6 +33,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/google', [AuthController::class, 'loginWithGoogle'])->middleware('throttle:10,1');
     // Also throttled against password guessing (a valid Google token is required too).
     Route::post('/google/link', [AuthController::class, 'linkGoogle'])->middleware('throttle:10,1');
+    // Same limit: verifies a Google token and creates an account.
+    Route::post('/google/register', [AuthController::class, 'registerWithGoogle'])->middleware('throttle:10,1');
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });
