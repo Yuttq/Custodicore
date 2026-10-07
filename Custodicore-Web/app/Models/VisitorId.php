@@ -53,6 +53,30 @@ class VisitorId extends Model
         );
     }
 
+    /**
+     * The stored key (national_id) for a key or display label ("National
+     * ID", "Driver's License", "PhilHealth", ...) as the mobile app sends
+     * them; the raw value unchanged when nothing matches, so validation
+     * against TYPES still rejects it.
+     */
+    public static function resolveType(mixed $raw): mixed
+    {
+        if (! is_string($raw) || in_array($raw, self::TYPES, true)) {
+            return $raw;
+        }
+
+        $labelToType = [];
+        foreach (self::TYPES as $type) {
+            $labelToType[strtolower((new self(['id_type' => $type]))->typeLabel())] = $type;
+        }
+        $labelToType += [
+            "driver's license" => 'drivers_license', "voter's id" => 'voters_id',
+            'philhealth' => 'philhealth_id', 'philhealth id' => 'philhealth_id', 'umid' => 'umid',
+        ];
+
+        return $labelToType[strtolower(trim($raw))] ?? $raw;
+    }
+
     public function typeLabel(): string
     {
         return ucwords(

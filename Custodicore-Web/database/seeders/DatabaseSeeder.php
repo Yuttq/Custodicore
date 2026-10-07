@@ -241,6 +241,12 @@ class DatabaseSeeder extends Seeder
                 ]
             );
 
+            // Demo visitors can sign in straight away (email_verified_at is
+            // not fillable). Only fills it in — never un-verifies.
+            if (! $account->hasVerifiedEmail()) {
+                $account->forceFill(['email_verified_at' => now()])->save();
+            }
+
             $profile = VisitorProfile::firstOrCreate(
                 ['account_id' => $account->account_id],
                 [

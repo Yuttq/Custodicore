@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // password (current_password field) before a change to someone
             // else's details goes through. See ConfirmActorPassword.
             'reauth' => \App\Http\Middleware\ConfirmActorPassword::class,
+            // 'visitor.approved' — mobile API routes that need a visitor
+            // whose information/documents staff have approved. See
+            // EnsureVisitorApproved.
+            'visitor.approved' => \App\Http\Middleware\EnsureVisitorApproved::class,
         ]);
 
         // Send a not-logged-in visitor to /login instead of Laravel's

@@ -70,12 +70,16 @@ class VisitorApiContractTest extends TestCase
             'consentVersion' => (string) config('legal.version'),
         ]);
 
+        // Phase 2: no session — the visitor must verify their email first.
         $response->assertCreated()
-            ->assertJsonPath('user.email', 'juan.dela.cruz@example.com')
-            ->assertJsonPath('user.verificationStatus', 'pending');
+            ->assertJsonPath('status', 'verification_required')
+            ->assertJsonPath('email', 'juan.dela.cruz@example.com')
+            ->assertJsonMissingPath('token')
+            ->assertJsonMissingPath('user');
 
         $this->assertDatabaseHas('visitor_profiles', [
             'full_name' => 'Juan Dela Cruz',
+            'verification_status' => 'pending',
             'gender' => null,
             'address' => 'Quezon City',
             'relationship_hint' => 'sibling',

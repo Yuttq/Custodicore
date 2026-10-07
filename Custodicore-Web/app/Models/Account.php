@@ -46,12 +46,17 @@ class Account extends Authenticatable
     // server-verified Google ID token, never mass-assigned from request data.
     protected $hidden = ['password_hash', 'google_id'];
 
+    // email_verified_at is deliberately NOT fillable either: it is only set
+    // by App\Services\Auth\EmailVerificationService (a used verification
+    // link) or from a server-verified Google identity (GoogleAuthService).
+
     // last_login_at is a custom timestamp column (not created_at/updated_at),
     // so it must be cast or Admin\UserController's ->format() fails on a string.
     protected function casts(): array
     {
         return [
             'last_login_at' => 'datetime',
+            'email_verified_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
         ];
@@ -98,6 +103,12 @@ class Account extends Authenticatable
     public function isRole(string $roleName): bool
     {
         return $this->role?->role_name === $roleName;
+    }
+
+    /** The visitor has proven they control accounts.email (Phase 2). */
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
     }
 
     /** Only Visitor accounts may authenticate through the mobile API. */

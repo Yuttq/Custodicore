@@ -7,8 +7,11 @@ use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorFlag;
 use App\Models\AuditLog;
+use App\Models\Notification;
+use App\Mail\VisitorAccountApproved;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class VisitorController extends Controller
 {
@@ -89,6 +92,98 @@ class VisitorController extends Controller
         }
 
         return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification'));
+    }
+
+    // -----------------------------------------------------------------
+    // ACCOUNT REVIEW — approve or reject the visitor's submitted
+    // information and documents (visitor_profiles.verification_status).
+    // Separate from email verification, which the visitor does themselves.
+    // -----------------------------------------------------------------
+    public function approve(Request $request, VisitorProfile $visitor)
+    {
+        if ($visitor->verification_status === 'verified') {
+            return back()->with('success', 'This visitor is already approved.');
+        }
+
+        try {
+            $visitor->update([
+                'verification_status' => 'verified',
+                'verified_by' => $this->reviewingStaffId($request),
+                'verified_at' => now(),
+                'rejection_reason' => null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Visitor approval failed: ' . $e->getMessage());
+            return back()->with('error', 'Could not approve this visitor. ' . $e->getMessage());
+        }
+
+        Notification::notify(
+            $visitor->account_id,
+            'account_approved',
+            'Account Approved',
+            'Your account has been approved. Your information and documents have been reviewed and approved by staff. You can now use the visitor services available in the app.',
+            'visitor_profiles',
+            $visitor->visitor_id
+        );
+
+        $visitor->loadMissing('account');
+        if ($visitor->account) {
+            try {
+                Mail::to($visitor->account->email)->send(new VisitorAccountApproved($visitor->account));
+            } catch (\Throwable $e) {
+                // The in-app notification above is the authoritative record.
+                Log::warning('Approval email could not be sent for visitor #' . $visitor->visitor_id . ' (' . $e::class . ')');
+            }
+        }
+
+        $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id,
+            "Approved visitor account: {$visitor->full_name}");
+
+        return back()->with('success', 'Visitor approved. The visitor has been notified.');
+    }
+
+    public function reject(Request $request, VisitorProfile $visitor)
+    {
+        // Shown to the visitor in the app — keep it to what they can act on.
+        $data = $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $reason = trim((string) ($data['rejection_reason'] ?? '')) ?: null;
+
+        try {
+            $visitor->update([
+                'verification_status' => 'rejected',
+                'verified_by' => $this->reviewingStaffId($request),
+                'verified_at' => now(),
+                'rejection_reason' => $reason,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Visitor rejection failed: ' . $e->getMessage());
+            return back()->with('error', 'Could not reject this visitor. ' . $e->getMessage());
+        }
+
+        Notification::notify(
+            $visitor->account_id,
+            'account_rejected',
+            'Account Not Approved',
+            \Illuminate\Support\Str::limit(
+                'Your submitted information and documents were not approved.' . ($reason ? " Reason: {$reason}" : ' Please contact facility staff for details.'),
+                500
+            ),
+            'visitor_profiles',
+            $visitor->visitor_id
+        );
+
+        $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id,
+            "Rejected visitor account: {$visitor->full_name}");
+
+        return back()->with('success', 'Visitor rejected. The visitor has been notified.');
+    }
+
+    /** The signed-in staff member's profile, else the existing stand-in. */
+    private function reviewingStaffId(Request $request): int
+    {
+        return $request->user()?->staffProfile?->staff_id ?? $this->currentStaffId();
     }
 
     // -----------------------------------------------------------------

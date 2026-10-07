@@ -12,6 +12,8 @@ class VisitorProfile extends Model
     protected $fillable = [
         'account_id',
         'full_name',
+        'first_name',
+        'last_name',
         'date_of_birth',
         'gender',
         'address',
@@ -22,6 +24,7 @@ class VisitorProfile extends Model
         'verification_status',
         'verified_by',
         'verified_at',
+        'rejection_reason',
     ];
 
     protected $casts = [

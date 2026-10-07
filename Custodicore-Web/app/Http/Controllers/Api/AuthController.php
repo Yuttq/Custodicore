@@ -7,7 +7,9 @@ use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\Role;
+use App\Models\VisitorId;
 use App\Models\VisitorProfile;
+use App\Services\Auth\EmailVerificationService;
 use App\Services\Auth\GoogleAuthDecision;
 use App\Services\Auth\GoogleAuthService;
 use App\Services\Auth\GoogleIdTokenVerifier;
@@ -56,6 +58,18 @@ class AuthController extends Controller
 
         if ($account->status !== 'active') {
             throw ValidationException::withMessages(['email' => 'This account is not active. Contact facility staff.']);
+        }
+
+        // Email ownership first (Phase 2). Only reached with the right
+        // password, so it reveals nothing about unknown addresses. Staff
+        // review (verification_status) does NOT block login — a pending or
+        // rejected visitor signs in to a restricted app (EnsureVisitorApproved).
+        if (! $account->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'Please verify your email address before logging in.',
+                'code' => 'email_not_verified',
+                'email' => $account->email,
+            ], 403);
         }
 
         // forceFill: last_login_at is not fillable, so update() silently dropped it
@@ -230,31 +244,77 @@ class AuthController extends Controller
      *
      * Gender "Prefer not to say" is stored as NULL (visitor_profiles.gender
      * is a nullable enum of male|female|other).
+     *
+     * Phase 2: does NOT sign the visitor in. No Sanctum token or user is
+     * returned; a verification link is emailed instead, and /auth/login
+     * refuses the account until the link is used. The government ID picked
+     * during registration is therefore accepted here (multipart:
+     * governmentId + governmentIdType [+ governmentIdNumber]) and stored as
+     * `pending`, exactly like POST /documents — there is no token to upload
+     * it with afterwards. The profile stays `pending` until staff review it.
+     *
+     *   201 verification_required  {status, message, email}
+     *   422 validation errors
      */
-    public function register(Request $request): JsonResponse
+    public function register(Request $request, EmailVerificationService $verification): JsonResponse
     {
         $this->mergeRegistrationAliases($request);
-        $request->merge(['email' => $request->input('email')]);
+        $request->merge([
+            'email' => $request->input('email'),
+            'governmentIdType' => VisitorId::resolveType(
+                $request->input('governmentIdType', $request->input('government_id_type'))
+            ),
+            'governmentIdNumber' => $request->input('governmentIdNumber', $request->input('government_id_number')),
+        ]);
+        if (! $request->hasFile('governmentId') && $request->hasFile('government_id')) {
+            $request->files->set('governmentId', $request->file('government_id'));
+        }
 
         $passwordRules = ['required', 'string', 'min:6'];
         if ($request->filled('password_confirmation')) {
             $passwordRules[] = 'confirmed';
         }
 
+        $documentFileRules = array_values(array_diff(VisitorApiController::DOCUMENT_FILE_RULES, ['required']));
+
         $request->validate([
-            'email' => ['required', 'email', 'unique:accounts,email'],
+            'email' => ['required', 'email', 'max:100', 'unique:accounts,email'],
             'password' => $passwordRules,
-        ] + $this->profileRegistrationRules(), $this->registrationMessages());
+            'governmentId' => ['nullable', ...$documentFileRules],
+            'governmentIdType' => ['nullable', 'required_with:governmentId', 'string', Rule::in(VisitorId::TYPES)],
+            'governmentIdNumber' => ['nullable', 'string', 'max:50'],
+        ] + $this->profileRegistrationRules(), $this->registrationMessages() + [
+            'governmentId.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'governmentId.max' => 'The file is too large. Maximum size is 10 MB.',
+            'governmentIdType.in' => 'Choose one of the accepted government ID types.',
+            'governmentIdType.required_with' => 'Select the type of government ID you uploaded.',
+        ]);
 
         $email = $request->input('email');
 
-        $account = DB::transaction(fn () => $this->createVisitorAccount($request, $email));
+        $account = DB::transaction(function () use ($request, $email) {
+            $account = $this->createVisitorAccount($request, $email);
 
-        $token = $account->createToken('mobile')->plainTextToken;
+            if ($request->hasFile('governmentId')) {
+                VisitorApiController::storeGovernmentId(
+                    $account->visitorProfile,
+                    $request->file('governmentId'),
+                    $request->input('governmentIdType'),
+                    $request->input('governmentIdNumber'),
+                );
+            }
+
+            return $account;
+        });
+
+        // After commit: a mail failure never undoes the registration (the
+        // visitor can request another link).
+        $verification->send($account);
 
         return response()->json([
-            'token' => $token,
-            'user' => $this->userPayload($account),
+            'status' => 'verification_required',
+            'message' => 'Your account has been created. We sent a verification link to your email address. Please verify your email before logging in.',
+            'email' => $account->email,
         ], 201);
     }
 
@@ -329,6 +389,10 @@ class AuthController extends Controller
             'consentVersion' => $request->input('consentVersion', $request->input('consent_version')),
             'password' => $request->input('password'),
             'fullName' => $request->input('fullName', $request->input('full_name')),
+            // Phase 1 sends First/Last Name separately too (fullName is
+            // still the combined name everything else uses).
+            'firstName' => $request->input('firstName', $request->input('first_name')),
+            'lastName' => $request->input('lastName', $request->input('last_name')),
             'dateOfBirth' => $request->input('dateOfBirth')
                 ?? $request->input('date_of_birth')
                 ?? $request->input('birthdate'),
@@ -344,6 +408,8 @@ class AuthController extends Controller
     {
         return [
             'fullName' => ['required', 'string', 'max:150'],
+            'firstName' => ['nullable', 'string', 'max:100'],
+            'lastName' => ['nullable', 'string', 'max:100'],
             'dateOfBirth' => ['required', 'date', 'before:today'],
             'contactNumber' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'string', Rule::in([
@@ -394,6 +460,8 @@ class AuthController extends Controller
         VisitorProfile::create([
             'account_id' => $account->account_id,
             'full_name' => $request->input('fullName'),
+            'first_name' => $request->filled('firstName') ? trim($request->input('firstName')) : null,
+            'last_name' => $request->filled('lastName') ? trim($request->input('lastName')) : null,
             'date_of_birth' => $request->input('dateOfBirth'),
             'gender' => $this->normalizeGender($request->input('gender')),
             'address' => $request->input('address'),
@@ -521,8 +589,17 @@ class AuthController extends Controller
             'email' => $account->email,
             'fullName' => $account->displayName(),
             'role' => $account->role?->role_name,
+            // Two separate states (Phase 2): email ownership vs. staff review
+            // of the visitor's information/documents. The app restricts itself
+            // unless verificationStatus === 'verified' (and so does the API).
+            'emailVerified' => $account->hasVerifiedEmail(),
+            'emailVerifiedAt' => $account->email_verified_at?->toIso8601String(),
             'verificationStatus' => $profile?->verification_status,
             'verifiedAt' => $profile?->verified_at?->toIso8601String(),
+            // Only the visitor-facing reason staff entered, only when rejected.
+            'rejectionReason' => $profile?->verification_status === 'rejected' ? $profile->rejection_reason : null,
+            'firstName' => $profile?->first_name,
+            'lastName' => $profile?->last_name,
             'dateOfBirth' => $profile?->date_of_birth?->format('Y-m-d'),
             'gender' => $profile?->gender,
             'address' => $profile?->address,

@@ -87,6 +87,8 @@ trait SeedsVisitAssignmentFixtures
             'password_hash' => Hash::make('password'),
             'status' => 'active',
         ]);
+        // Phase 2: an existing visitor who already verified their email.
+        $this->visitorAccount->forceFill(['email_verified_at' => now()])->save();
         $this->visitor = VisitorProfile::create([
             'account_id' => $this->visitorAccount->account_id,
             'full_name' => 'Maria D. Santos',

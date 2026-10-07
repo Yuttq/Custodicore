@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VisitorController;
 
+use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
 
 use App\Http\Controllers\LegalController;
@@ -54,6 +55,22 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 Route::get('/terms', [LegalController::class, 'terms'])->name('legal.terms');
 Route::get('/privacy', [LegalController::class, 'privacy'])->name('legal.privacy');
+
+/*
+|--------------------------------------------------------------------------
+| Visitor email verification
+|--------------------------------------------------------------------------
+| Public: opened from the link in the visitor's verification email. GET
+| only shows a confirmation page; the single-use token is consumed by the
+| POST. Never signs anyone in. See EmailVerificationController.
+*/
+
+Route::get('/email/verify/{token}', [EmailVerificationController::class, 'show'])
+    ->middleware('throttle:20,1,email-verify-page')
+    ->name('email-verification.show');
+Route::post('/email/verify', [EmailVerificationController::class, 'verify'])
+    ->middleware('throttle:10,1,email-verify-web')
+    ->name('email-verification.verify');
 
 /*
 |--------------------------------------------------------------------------
@@ -310,6 +327,18 @@ Route::middleware([
         '/visitors/{visitor}',
         [\App\Http\Controllers\VisitorController::class, 'show']
     )->name('visitor.show');
+
+    // Staff review of the visitor's submitted information/documents
+    // (visitor_profiles.verification_status). Separate from email verification.
+    Route::post(
+        '/visitors/{visitor}/approve',
+        [\App\Http\Controllers\VisitorController::class, 'approve']
+    )->name('visitor.approve');
+
+    Route::post(
+        '/visitors/{visitor}/reject',
+        [\App\Http\Controllers\VisitorController::class, 'reject']
+    )->name('visitor.reject');
 
     Route::post(
         '/visitors/{visitor}/ids/{idDocument}/verify',

@@ -13,6 +13,7 @@ use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -294,7 +295,7 @@ class VisitorApiController extends Controller
     }
 
     /** Accepted upload formats for government IDs and supporting documents. */
-    private const DOCUMENT_FILE_RULES = ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'];
+    public const DOCUMENT_FILE_RULES = ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'];
 
     /**
      * Uploads a government ID for the authenticated visitor. Always stored
@@ -306,18 +307,7 @@ class VisitorApiController extends Controller
         $visitor = $this->currentVisitor($request);
 
         // Accept the stored key (national_id) or its display label (National ID).
-        $labelToType = [];
-        foreach (VisitorId::TYPES as $type) {
-            $labelToType[strtolower((new VisitorId(['id_type' => $type]))->typeLabel())] = $type;
-        }
-        $labelToType += [
-            "driver's license" => 'drivers_license', "voter's id" => 'voters_id',
-            'philhealth' => 'philhealth_id', 'philhealth id' => 'philhealth_id', 'umid' => 'umid',
-        ];
-        $rawType = (string) $request->input('documentType', '');
-        if (! in_array($rawType, VisitorId::TYPES, true) && isset($labelToType[strtolower(trim($rawType))])) {
-            $request->merge(['documentType' => $labelToType[strtolower(trim($rawType))]]);
-        }
+        $request->merge(['documentType' => VisitorId::resolveType($request->input('documentType', ''))]);
 
         $data = $request->validate([
             'documentType' => ['required', 'string', Rule::in(VisitorId::TYPES)],
@@ -329,12 +319,27 @@ class VisitorApiController extends Controller
             'file.max' => 'The file is too large. Maximum size is 10 MB.',
         ]);
 
-        $path = $request->file('file')->store('visitor-ids', 'public');
+        $document = self::storeGovernmentId(
+            $visitor, $request->file('file'), $data['documentType'], $data['idNumber'] ?? null
+        );
+
+        return response()->json($this->governmentIdPayload($document->fresh()), 201);
+    }
+
+    /**
+     * Stores an uploaded government ID for a visitor, always as `pending`.
+     * Shared by POST /documents and AuthController::register() (which
+     * accepts the ID with the registration form, since a newly registered
+     * visitor has no token until their email is verified).
+     */
+    public static function storeGovernmentId(VisitorProfile $visitor, UploadedFile $file, string $type, ?string $idNumber): VisitorId
+    {
+        $path = $file->store('visitor-ids', 'public');
 
         $document = VisitorId::create([
             'visitor_id' => $visitor->visitor_id,
-            'id_type' => $data['documentType'],
-            'id_number' => $data['idNumber'] ?? 'PENDING',
+            'id_type' => $type,
+            'id_number' => $idNumber ?: 'PENDING',
             'file_path' => $path,
             'verification_status' => 'pending',
         ]);
@@ -342,7 +347,7 @@ class VisitorApiController extends Controller
         AuditLog::record('create', 'visitor_ids', $document->visitor_id_doc_id,
             "Visitor uploaded {$document->typeLabel()} via mobile app", Module::CODE_VISITOR_MANAGEMENT);
 
-        return response()->json($this->governmentIdPayload($document->fresh()), 201);
+        return $document;
     }
 
     /**

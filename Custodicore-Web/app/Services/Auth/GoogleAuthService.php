@@ -30,6 +30,12 @@ use Illuminate\Support\Facades\Hash;
  * Role/status always come from the database account. Apart from
  * last_login_at on a successful sign-in, decide() never modifies an account;
  * only link() (existing account) and register() (new account) set google_id.
+ *
+ * Email verification (Phase 2): a verified Google token proves ownership of
+ * its email, so register(), link() and a sign-in whose Google email still
+ * equals the account email set email_verified_at if it is not set yet.
+ * Staff review (visitor_profiles.verification_status) is never touched —
+ * a new Google visitor is `pending` like any other.
  */
 class GoogleAuthService
 {
@@ -111,10 +117,13 @@ class GoogleAuthService
                     return GoogleAuthDecision::rejected(GoogleAuthDecision::GOOGLE_ACCOUNT_MISMATCH, $identity, $locked);
                 }
 
-                // forceFill: google_id is deliberately not fillable.
+                // forceFill: google_id is deliberately not fillable. The
+                // account's email is the verified Google email (step 1), so
+                // this also proves email ownership.
                 $locked->forceFill([
                     'google_id' => $identity->googleId,
                     'last_login_at' => now(),
+                    'email_verified_at' => $locked->email_verified_at ?? now(),
                 ])->save();
 
                 $token = $locked->createToken(self::TOKEN_NAME)->plainTextToken;
@@ -161,8 +170,14 @@ class GoogleAuthService
                 return DB::transaction(function () use ($identity, $createAccount) {
                     $account = $createAccount($identity->email);
 
-                    // forceFill: google_id is deliberately not fillable.
-                    $account->forceFill(['google_id' => $identity->googleId])->save();
+                    // forceFill: google_id/email_verified_at are deliberately
+                    // not fillable. The email came from the verified Google
+                    // token, so no second email verification is needed. Staff
+                    // review is untouched: the profile stays `pending`.
+                    $account->forceFill([
+                        'google_id' => $identity->googleId,
+                        'email_verified_at' => now(),
+                    ])->save();
 
                     $token = $account->createToken(self::TOKEN_NAME)->plainTextToken;
 
@@ -203,7 +218,16 @@ class GoogleAuthService
     private function authenticate(Account $account, VerifiedGoogleIdentity $identity): GoogleAuthDecision
     {
         // forceFill: last_login_at is not fillable (same as AuthController::login).
-        $account->forceFill(['last_login_at' => now()])->save();
+        $updates = ['last_login_at' => now()];
+
+        // A linked visitor who never used their verification link has now
+        // proven the address through Google — only if it is still the same one.
+        if (! $account->hasVerifiedEmail()
+            && mb_strtolower($account->email) === mb_strtolower($identity->email)) {
+            $updates['email_verified_at'] = now();
+        }
+
+        $account->forceFill($updates)->save();
         $token = $account->createToken(self::TOKEN_NAME)->plainTextToken;
 
         return GoogleAuthDecision::authenticated($identity, $account, $token);

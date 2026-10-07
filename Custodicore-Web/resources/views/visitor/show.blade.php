@@ -27,6 +27,56 @@
   @endif
 </div>
 
+{{-- ================= ACCOUNT REVIEW ================= --}}
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header"><h2>Account Review</h2></div>
+  <div class="row cols-3" style="margin-bottom:0;">
+    <div>
+      <div class="stat-label">Review Status</div>
+      <span class="badge {{ $visitor->verification_status === 'verified' ? 'active' : ($visitor->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
+        <span class="dot"></span>{{ $visitor->verification_status === 'verified' ? 'APPROVED' : strtoupper($visitor->verification_status) }}
+      </span>
+    </div>
+    <div>
+      <div class="stat-label">Email</div>
+      <div>{{ $visitor->account?->email ?? '—' }} {{ $visitor->account?->email_verified_at ? '(verified)' : '(not verified yet)' }}</div>
+    </div>
+    <div>
+      <div class="stat-label">Reviewed</div>
+      <div>{{ $visitor->verified_at ? $visitor->verified_at->format('M d, Y g:i A') : '—' }}</div>
+    </div>
+  </div>
+  @if ($visitor->verification_status === 'rejected' && $visitor->rejection_reason)
+    <div class="row" style="margin-top:16px;margin-bottom:0;">
+      <div><div class="stat-label">Reason shown to the visitor</div><div>{{ $visitor->rejection_reason }}</div></div>
+    </div>
+  @endif
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
+    @if ($visitor->verification_status !== 'verified')
+      <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}">
+        @csrf
+        <button class="btn btn-blue" type="submit">Approve Visitor</button>
+      </form>
+    @endif
+    @if ($visitor->verification_status !== 'rejected')
+      <details>
+        <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject Visitor</summary>
+        <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" style="margin-top:12px;">
+          @csrf
+          <div class="row">
+            <div class="field-m">
+              <label>Reason (shown to the visitor)</label>
+              <textarea name="rejection_reason" maxlength="500" placeholder="e.g. The uploaded ID photo is unreadable. Please upload a clearer copy."></textarea>
+            </div>
+          </div>
+          <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);">Confirm Rejection</button>
+        </form>
+      </details>
+    @endif
+  </div>
+</div>
+
 {{-- ================= IDENTITY VERIFICATION ================= --}}
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Identity Documents</h2></div>

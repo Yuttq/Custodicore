@@ -50,5 +50,19 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Visitor Email Verification
+    |--------------------------------------------------------------------------
+    |
+    | Minutes a visitor's email verification link stays valid (single-use;
+    | see App\Services\Auth\EmailVerificationService).
+    |
+    */
+
+    'email_verification' => [
+        'expire' => (int) env('EMAIL_VERIFICATION_EXPIRE', 1440),
+    ],
+
     'password_timeout' => 10800,
 ];
