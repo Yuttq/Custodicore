@@ -10,6 +10,14 @@ class VisitorPdlRelationship extends Model
     protected $primaryKey = 'relationship_id';
     public $timestamps = false; // only has created_at, no updated_at
 
+    // Mirrors the enums in 2024_01_02_000120_create_visitor_pdl_relationships_table.php
+    const RELATIONSHIP_TYPES = [
+        'immediate_family', 'legal_counsel', 'verified_guardian',
+        'approved_relative', 'unknown_or_other',
+    ];
+
+    const PRIORITY_TIERS = ['high_priority', 'requires_verification'];
+
     protected $fillable = [
         'visitor_id',
         'pdl_id',

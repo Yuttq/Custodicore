@@ -350,6 +350,12 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'rejectId']
     )->name('visitor.ids.reject');
 
+    // Registers a visitor↔PDL relationship as pending; verify it below.
+    Route::post(
+        '/visitors/{visitor}/relationships',
+        [\App\Http\Controllers\VisitorController::class, 'storeRelationship']
+    )->name('visitor.relationships.store');
+
     Route::post(
         '/visitors/{visitor}/relationships/{relationship}/verify',
         [\App\Http\Controllers\VisitorController::class, 'verifyRelationship']

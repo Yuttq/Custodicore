@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Pdl;
 use App\Models\VisitorProfile;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
@@ -9,9 +10,11 @@ use App\Models\VisitorFlag;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use App\Mail\VisitorAccountApproved;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 
 class VisitorController extends Controller
 {
@@ -91,7 +94,12 @@ class VisitorController extends Controller
             $schedulesByClassification[$classification] = VisitAssignmentController::openSchedulesForClassification($classification);
         }
 
-        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification'));
+        // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
+        $relatablePdls = Pdl::whereNotIn('pdl_id', $visitor->relationships->pluck('pdl_id'))
+            ->orderBy('full_name')
+            ->get(['pdl_id', 'pdl_number', 'full_name', 'custody_status']);
+
+        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls'));
     }
 
     // -----------------------------------------------------------------
@@ -234,6 +242,45 @@ class VisitorController extends Controller
     // -----------------------------------------------------------------
     // RELATIONSHIP VERIFICATION — verify or reject a visitor↔PDL relationship
     // -----------------------------------------------------------------
+    // Staff register the relationship as pending; verifying it is a separate
+    // step (verifyRelationship below).
+    public function storeRelationship(Request $request, VisitorProfile $visitor)
+    {
+        $validated = $request->validate([
+            'pdl_id' => [
+                'required', 'integer',
+                Rule::exists('pdl_profiles', 'pdl_id'),
+                Rule::unique('visitor_pdl_relationships', 'pdl_id')->where('visitor_id', $visitor->visitor_id),
+            ],
+            'relationship_type' => ['required', Rule::in(VisitorPdlRelationship::RELATIONSHIP_TYPES)],
+            'priority_tier' => ['required', Rule::in(VisitorPdlRelationship::PRIORITY_TIERS)],
+        ], [
+            'pdl_id.unique' => 'This visitor already has a relationship with the selected PDL.',
+        ]);
+
+        try {
+            $relationship = VisitorPdlRelationship::create([
+                ...$validated,
+                'visitor_id' => $visitor->visitor_id,
+                'verification_status' => 'pending',
+            ]);
+        } catch (UniqueConstraintViolationException $e) {
+            // Unique (visitor_id, pdl_id) — a concurrent request got there first.
+            return back()->withInput()->withErrors([
+                'pdl_id' => 'This visitor already has a relationship with the selected PDL.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Relationship creation failed: ' . $e->getMessage());
+            return back()->withInput()->with('error', 'Could not add this relationship. ' . $e->getMessage());
+        }
+
+        $this->logAudit('create', 'visitor_pdl_relationships', $relationship->relationship_id,
+            "Added relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id} (pending verification)");
+
+        return redirect()->route('visitor.show', $visitor->visitor_id)
+            ->with('success', 'Relationship added. It is pending verification.');
+    }
+
     public function verifyRelationship(VisitorProfile $visitor, VisitorPdlRelationship $relationship)
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);

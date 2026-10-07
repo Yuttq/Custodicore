@@ -175,6 +175,51 @@
       </tbody>
     </table>
   @endif
+
+  <details style="margin-top:14px;" {{ $errors->hasAny(['pdl_id', 'relationship_type', 'priority_tier']) && ! old('schedule_id') ? 'open' : '' }}>
+    <summary class="row-action" style="cursor:pointer;">Add PDL Relationship</summary>
+    @if ($relatablePdls->isEmpty())
+      <p class="empty-note" style="margin-top:12px;">No other PDLs are available to relate to this visitor.</p>
+    @else
+      <form method="POST" action="{{ route('visitor.relationships.store', $visitor->visitor_id) }}" style="margin-top:12px;">
+        @csrf
+        <div class="row cols-3">
+          <div class="field-m">
+            <label>PDL</label>
+            <select name="pdl_id" required>
+              <option value="">— Select PDL —</option>
+              @foreach ($relatablePdls as $pdl)
+                <option value="{{ $pdl->pdl_id }}" {{ (string) old('pdl_id') === (string) $pdl->pdl_id && ! old('schedule_id') ? 'selected' : '' }}>
+                  {{ $pdl->full_name }} ({{ $pdl->pdl_number }}){{ $pdl->custody_status !== 'active' ? ' — ' . ucfirst($pdl->custody_status) : '' }}
+                </option>
+              @endforeach
+            </select>
+          </div>
+          <div class="field-m">
+            <label>Relationship Type</label>
+            <select name="relationship_type" required>
+              <option value="">— Select type —</option>
+              @foreach (\App\Models\VisitorPdlRelationship::RELATIONSHIP_TYPES as $type)
+                <option value="{{ $type }}" {{ old('relationship_type') === $type ? 'selected' : '' }}>{{ ucwords(str_replace('_', ' ', $type)) }}</option>
+              @endforeach
+            </select>
+          </div>
+          <div class="field-m">
+            <label>Priority Tier</label>
+            <select name="priority_tier" required>
+              @foreach (\App\Models\VisitorPdlRelationship::PRIORITY_TIERS as $tier)
+                <option value="{{ $tier }}" {{ old('priority_tier', 'requires_verification') === $tier ? 'selected' : '' }}>{{ ucwords(str_replace('_', ' ', $tier)) }}</option>
+              @endforeach
+            </select>
+          </div>
+        </div>
+        <div class="muted-cell" style="margin-bottom:12px;font-size:12px;">
+          The relationship is added as pending. Verify it in the table above once the supporting details are confirmed.
+        </div>
+        <button class="btn btn-blue" type="submit">Add Relationship</button>
+      </form>
+    @endif
+  </details>
 </div>
 
 {{-- ================= ASSIGN VISIT ================= --}}
