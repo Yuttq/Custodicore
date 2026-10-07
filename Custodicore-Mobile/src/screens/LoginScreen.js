@@ -1,5 +1,6 @@
 import { Image as ExpoImage } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Linking from 'expo-linking';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
@@ -30,6 +31,7 @@ import { isGoogleSignInConfigured } from '../config/authConfig';
 import { useAuth } from '../hooks/useAuth';
 import { GoogleSignInCancelledError } from '../services/socialAuthHandlers';
 import { validateEmail, validatePassword, validateRequired } from '../utils';
+import { isEmailVerifiedLink } from '../utils/emailVerificationLink';
 
 const LOGO_ASPECT = 819 / 1024;
 const CONTENT_MAX_WIDTH = 440;
@@ -55,8 +57,13 @@ function googleErrorMessage(e) {
     : 'Google Sign-In is not available. Please sign in with your email and password.';
 }
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, route }) {
   const { width: windowWidth } = useWindowDimensions();
+  // Opened from the backend's "email verified" page (custodicore://login?emailVerified=1),
+  // or sent here by CheckEmail after it received that link.
+  const incomingUrl = Linking.useURL();
+  const emailJustVerified =
+    route?.params?.emailVerified === true || isEmailVerifiedLink(incomingUrl);
   const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -110,6 +117,11 @@ export default function LoginScreen({ navigation }) {
     try {
       await login(trimmedEmail, password);
     } catch (e) {
+      // Right password, email not verified yet: no session was created.
+      if (e?.code === 'email_not_verified') {
+        navigation.navigate('CheckEmail', { email: trimmedEmail, fromLogin: true });
+        return;
+      }
       const message =
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
@@ -118,7 +130,7 @@ export default function LoginScreen({ navigation }) {
     } finally {
       setSubmitting(false);
     }
-  }, [email, password, login, submitting, googleSubmitting]);
+  }, [email, password, login, navigation, submitting, googleSubmitting]);
 
   const onGoogleSignIn = useCallback(async () => {
     if (submitting || googleSubmitting) return;
@@ -187,6 +199,15 @@ export default function LoginScreen({ navigation }) {
               </Text>
               <Text style={styles.welcomeSubtitle}>Sign in to your account</Text>
             </View>
+
+            {emailJustVerified ? (
+              <View style={styles.verifiedBanner} accessibilityRole="alert">
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                <Text style={styles.verifiedBannerText}>
+                  Your email has been verified. You can now log in.
+                </Text>
+              </View>
+            ) : null}
 
             <Card style={styles.formCard}>
               <View style={styles.field}>
@@ -347,6 +368,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  verifiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 165, 138, 0.25)',
+    backgroundColor: 'rgba(13, 165, 138, 0.08)',
+  },
+  verifiedBannerText: {
+    ...typography.body,
+    flex: 1,
+    color: colors.textPrimary,
   },
   formCard: {
     borderRadius: layout.cardRadius,

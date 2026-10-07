@@ -10,6 +10,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { colors as dsColors } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
 import { MainTabBarIcon } from './mainTabBarIcons';
+import CheckEmailScreen from '../screens/CheckEmailScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ForgotPasswordSuccessScreen from '../screens/ForgotPasswordSuccessScreen';
@@ -36,6 +37,7 @@ import VisitTrackingScreen from '../screens/VisitTrackingScreen';
 const RootStack = createStackNavigator();
 const AuthStack = createStackNavigator();
 const AppStack = createStackNavigator();
+const ReviewStackNav = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 /** Stack header for Login / Register — uses shared Header + top safe inset. */
@@ -87,6 +89,11 @@ function AuthNavigator() {
       <AuthStack.Screen
         name="Register"
         component={RegisterScreen}
+        options={{ headerShown: false }}
+      />
+      <AuthStack.Screen
+        name="CheckEmail"
+        component={CheckEmailScreen}
         options={{ headerShown: false }}
       />
     </AuthStack.Navigator>
@@ -153,22 +160,45 @@ function MainTabs() {
   );
 }
 
-/** Authenticated stack: tabs plus auxiliary visitor screens (ID upload, history, timeline). */
-function AuthenticatedStack() {
-  const { pendingVerification } = useAuth();
-
+/**
+ * Signed in, email verified, but staff have not approved the visitor's
+ * information/documents (pending or rejected): the review screen plus the
+ * screens needed to fix documents/profile — no visits, schedules or QR.
+ * The backend enforces the same restriction (EnsureVisitorApproved).
+ */
+function ReviewStack() {
   return (
-    <AppStack.Navigator
-      initialRouteName={pendingVerification ? 'VerificationReview' : 'MainTabs'}
+    <ReviewStackNav.Navigator
       screenOptions={{
         headerShown: false,
         cardStyle: { backgroundColor: dsColors.background },
       }}
     >
-      <AppStack.Screen
-        name="VerificationReview"
-        component={VerificationReviewScreen}
+      <ReviewStackNav.Screen name="VerificationReview" component={VerificationReviewScreen} />
+      <ReviewStackNav.Screen
+        name="VisitorVerificationDocuments"
+        component={VisitorVerificationDocumentsScreen}
       />
+      <ReviewStackNav.Screen
+        name="VerificationDocumentDetail"
+        component={VerificationDocumentDetailScreen}
+      />
+      <ReviewStackNav.Screen name="UploadID" component={UploadIDScreen} />
+      <ReviewStackNav.Screen name="PersonalInformation" component={PersonalInformationScreen} />
+    </ReviewStackNav.Navigator>
+  );
+}
+
+/** Approved visitor: tabs plus auxiliary visitor screens (ID upload, history, timeline). */
+function AuthenticatedStack() {
+  return (
+    <AppStack.Navigator
+      initialRouteName="MainTabs"
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: dsColors.background },
+      }}
+    >
       <AppStack.Screen name="MainTabs" component={MainTabs} />
       <AppStack.Screen name="UploadID" component={UploadIDScreen} />
       <AppStack.Screen
@@ -191,7 +221,7 @@ function AuthenticatedStack() {
 }
 
 export default function AppNavigator() {
-  const { token, initializing } = useAuth();
+  const { token, initializing, isApprovedVisitor } = useAuth();
 
   useEffect(() => {
     if (initializing) return;
@@ -214,8 +244,11 @@ export default function AppNavigator() {
         cardStyle: { backgroundColor: dsColors.background },
       }}
     >
-      {token ? (
+      {/* Backend truth (/me verificationStatus) decides full vs. restricted access. */}
+      {token && isApprovedVisitor ? (
         <RootStack.Screen name="App" component={AuthenticatedStack} />
+      ) : token ? (
+        <RootStack.Screen name="Review" component={ReviewStack} />
       ) : (
         <RootStack.Screen name="Auth" component={AuthNavigator} />
       )}

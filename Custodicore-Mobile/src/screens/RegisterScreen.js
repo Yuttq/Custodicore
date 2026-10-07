@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import GoogleGLogo from '../components/GoogleGLogo';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -34,7 +35,24 @@ import {
   getRelationshipLabel,
   getRequiredDocuments,
 } from '../utils/registrationRequirements';
-import { validateEmail, validatePassword, validateRequired } from '../utils';
+import { validateRequired } from '../utils';
+import {
+  REGISTRATION_LIMITS,
+  ageFromBirthdate,
+  inputFilters,
+  normalizeAddress,
+  normalizeEmail,
+  normalizeMobile,
+  normalizeName,
+  validateAddress,
+  validateAge,
+  validateFirstName,
+  validateLastName,
+  validateMobileNumber,
+  validatePasswordConfirmation,
+  validateRegistrationEmail,
+  validateRegistrationPassword,
+} from '../utils/registrationValidation';
 
 const TOTAL_STEPS = 4;
 
@@ -111,6 +129,9 @@ function WizardField({
   editable = true,
   onPress,
   autoCapitalize,
+  autoCorrect,
+  maxLength,
+  textContentType,
 }) {
   const input = (
     <TextInput
@@ -123,6 +144,10 @@ function WizardField({
       multiline={multiline}
       editable={editable && !onPress}
       autoCapitalize={autoCapitalize}
+      autoCorrect={autoCorrect}
+      maxLength={maxLength}
+      textContentType={textContentType}
+      accessibilityLabel={label}
       style={[
         fieldStyles.input,
         multiline && fieldStyles.inputMultiline,
@@ -163,9 +188,13 @@ const GOOGLE_RESTART_MESSAGES = {
   account_inactive: 'This account is not active. Contact facility staff.',
 };
 
-/** Backend validation field → step-1 form field (Google registration). */
-const GOOGLE_FIELD_ERRORS = {
-  fullName: 'fullName',
+/**
+ * Backend validation field → step-1 form field. The backend only knows a
+ * single `fullName` (built from First + Last Name), so its errors are shown
+ * under First Name.
+ */
+const SERVER_FIELD_ERRORS = {
+  fullName: 'firstName',
   dateOfBirth: 'birthdate',
   gender: 'gender',
   address: 'address',
@@ -173,7 +202,50 @@ const GOOGLE_FIELD_ERRORS = {
   password: 'password',
   password_confirmation: 'passwordConfirmation',
   email: 'email',
+  firstName: 'firstName',
+  lastName: 'lastName',
+  // The government ID is sent with the registration (step 3 fields).
+  governmentId: 'government_id',
+  governmentIdType: 'government_id_type',
 };
+
+/** Step-3 (documents) form fields among SERVER_FIELD_ERRORS targets. */
+const DOCUMENT_STEP_FIELDS = new Set(['government_id', 'government_id_type']);
+
+/**
+ * Best-effort prefill of First/Last Name from the Google display name (the
+ * only name the Google flow provides). The last word becomes the last name;
+ * both stay editable, and the visitor is asked to match their ID.
+ */
+function splitGoogleName(fullName) {
+  const name = normalizeName(fullName ?? '');
+  const cut = name.lastIndexOf(' ');
+  if (cut < 0) return { first: name, last: '' };
+  return { first: name.slice(0, cut), last: name.slice(cut + 1) };
+}
+
+/** Pure step-1 validation; returns `{ field: message }`. */
+function getAccountInfoErrors(form, { isGoogle }) {
+  const next = {};
+  const put = (key, message) => {
+    if (message) next[key] = message;
+  };
+  put('firstName', validateFirstName(form.firstName));
+  put('lastName', validateLastName(form.lastName));
+  if (!validateRequired(form.birthdate)) next.birthdate = 'Birthdate is required.';
+  put('age', validateAge(form.age, form.birthdate));
+  if (!validateRequired(form.gender)) next.gender = 'Gender is required.';
+  put('address', validateAddress(form.address));
+  put('contactNumber', validateMobileNumber(form.contactNumber));
+  // Google mode: email is the verified Google email (read-only).
+  if (!isGoogle) put('email', validateRegistrationEmail(form.email));
+  put('password', validateRegistrationPassword(form.password));
+  put(
+    'passwordConfirmation',
+    validatePasswordConfirmation(form.password, form.passwordConfirmation),
+  );
+  return next;
+}
 
 /**
  * 4-step visitor registration wizard (v2.1).
@@ -198,8 +270,16 @@ export default function RegisterScreen({ navigation, route }) {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const [fullName, setFullName] = useState(() => googleProfile?.fullName ?? '');
+  const submittingRef = useRef(false);
+
+  const [firstName, setFirstName] = useState(
+    () => splitGoogleName(googleProfile?.fullName).first,
+  );
+  const [lastName, setLastName] = useState(
+    () => splitGoogleName(googleProfile?.fullName).last,
+  );
   const [birthdate, setBirthdate] = useState('');
+  const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -224,6 +304,24 @@ export default function RegisterScreen({ navigation, route }) {
   const [legal, setLegal] = useState(null);
   const [legalError, setLegalError] = useState(null);
   const [legalDoc, setLegalDoc] = useState(null); // 'terms' | 'privacy' | null (modal)
+
+  const clearError = useCallback((key) => {
+    setErrors((e) => {
+      if (!e[key]) return e;
+      const next = { ...e };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  /** onChangeText for a step-1 field: filter the input, clear its error. */
+  const editField = useCallback(
+    (setter, filter, key) => (text) => {
+      setter(filter(text));
+      clearError(key);
+    },
+    [clearError],
+  );
 
   const loadLegal = useCallback(async () => {
     setLegalError(null);
@@ -294,6 +392,17 @@ export default function RegisterScreen({ navigation, route }) {
     navigation.navigate('Login');
   }, [step, consentDone, isGoogle, exitGoogleRegistration, navigation]);
 
+  // Android hardware back steps back through the wizard like the on-screen
+  // back button, instead of leaving the screen and discarding the form.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step === 1 && !consentDone) return false;
+      goBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [step, consentDone, goBack]);
+
   const onConsentContinue = useCallback(() => {
     if (!acceptTerms || !acceptPrivacy) {
       setErrors({
@@ -305,41 +414,43 @@ export default function RegisterScreen({ navigation, route }) {
     setConsentDone(true);
   }, [acceptTerms, acceptPrivacy]);
 
+  const getStep1Errors = useCallback(
+    () =>
+      getAccountInfoErrors(
+        {
+          firstName,
+          lastName,
+          birthdate,
+          age,
+          gender,
+          address,
+          contactNumber,
+          email,
+          password,
+          passwordConfirmation,
+        },
+        { isGoogle },
+      ),
+    [
+      firstName,
+      lastName,
+      birthdate,
+      age,
+      gender,
+      address,
+      contactNumber,
+      email,
+      password,
+      passwordConfirmation,
+      isGoogle,
+    ],
+  );
+
   const validateStep1 = useCallback(() => {
-    const next = {};
-    if (!validateRequired(fullName)) next.fullName = 'Full name is required';
-    if (!validateRequired(birthdate)) next.birthdate = 'Birthdate is required';
-    if (!validateRequired(gender)) next.gender = 'Gender is required';
-    if (!validateRequired(address)) next.address = 'Address is required';
-    if (!validateRequired(contactNumber))
-      next.contactNumber = 'Contact number is required';
-    // Google mode: email is the verified Google email (read-only).
-    if (!isGoogle) {
-      if (!validateRequired(email)) next.email = 'Email address is required';
-      else if (!validateEmail(email.trim())) next.email = 'Enter a valid email address';
-    }
-    if (!validateRequired(password)) next.password = 'Password is required';
-    else if (!validatePassword(password))
-      next.password = 'Password must be at least 6 characters';
-    if (isGoogle) {
-      if (!validateRequired(passwordConfirmation))
-        next.passwordConfirmation = 'Please confirm your password';
-      else if (passwordConfirmation !== password)
-        next.passwordConfirmation = 'Passwords do not match';
-    }
+    const next = getStep1Errors();
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [
-    fullName,
-    birthdate,
-    gender,
-    address,
-    contactNumber,
-    email,
-    password,
-    passwordConfirmation,
-    isGoogle,
-  ]);
+  }, [getStep1Errors]);
 
   const validateStep2 = useCallback(() => {
     if (!relationship) {
@@ -402,7 +513,8 @@ export default function RegisterScreen({ navigation, route }) {
     }
   }, []);
 
-  const setGuardianText = useCallback((text) => {
+  const setGuardianText = useCallback((value) => {
+    const text = inputFilters.guardianInfo(value);
     setDocuments((prev) => ({
       ...prev,
       guardian_information: { ...prev.guardian_information, text },
@@ -413,6 +525,45 @@ export default function RegisterScreen({ navigation, route }) {
       return next;
     });
   }, []);
+
+  /**
+   * 422 field errors from the backend (e.g. email already taken) → shown
+   * inline on the details step; the form is kept.
+   */
+  const showServerFieldErrors = useCallback((e) => {
+    if (e?.status !== 422 || !e.errors || typeof e.errors !== 'object') return;
+    // Terms/Privacy updated (or consent missing): back to the consent screen
+    // with the latest documents; the details entered so far are kept.
+    const consentField = ['consentVersion', 'acceptedTerms', 'acceptedPrivacy'].find(
+      (field) => e.errors[field],
+    );
+    if (consentField) {
+      const messages = e.errors[consentField];
+      const text = Array.isArray(messages) ? messages[0] : messages;
+      setAcceptTerms(false);
+      setAcceptPrivacy(false);
+      setConsentDone(false);
+      setErrors({
+        consent:
+          typeof text === 'string'
+            ? text
+            : 'Please accept both the Terms and Conditions and the Privacy Policy to continue.',
+      });
+      loadLegal();
+      return;
+    }
+    const fieldErrors = {};
+    Object.entries(e.errors).forEach(([field, messages]) => {
+      const key = SERVER_FIELD_ERRORS[field];
+      const text = Array.isArray(messages) ? messages[0] : messages;
+      if (key && typeof text === 'string') fieldErrors[key] = text;
+    });
+    const keys = Object.keys(fieldErrors);
+    if (keys.length) {
+      setErrors(fieldErrors);
+      setStep(keys.every((key) => DOCUMENT_STEP_FIELDS.has(key)) ? 3 : 1);
+    }
+  }, [loadLegal]);
 
   /** Google registration failure → visitor-facing outcome. */
   const handleGoogleRegistrationError = useCallback(
@@ -439,27 +590,25 @@ export default function RegisterScreen({ navigation, route }) {
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
           : 'Something went wrong. Please try again.';
-      if (e?.status === 422 && e.errors && typeof e.errors === 'object') {
-        // Show field errors inline on the details step; the form is kept.
-        const fieldErrors = {};
-        Object.entries(e.errors).forEach(([field, messages]) => {
-          const key = GOOGLE_FIELD_ERRORS[field];
-          const text = Array.isArray(messages) ? messages[0] : messages;
-          if (key && typeof text === 'string') fieldErrors[key] = text;
-        });
-        if (Object.keys(fieldErrors).length) {
-          setErrors(fieldErrors);
-          setStep(1);
-        }
-      }
+      showServerFieldErrors(e);
       Alert.alert('Registration failed', message);
     },
-    [exitGoogleRegistration],
+    [exitGoogleRegistration, showServerFieldErrors],
   );
 
   const onSubmit = useCallback(async () => {
-    if (submitting || !validateStep4()) return;
+    // Ref guard: a fast double tap can fire twice before `submitting` re-renders.
+    if (submittingRef.current || !validateStep4()) return;
 
+    // Never send a request the client already knows is invalid.
+    const accountErrors = getStep1Errors();
+    if (Object.keys(accountErrors).length) {
+      setErrors(accountErrors);
+      setStep(1);
+      return;
+    }
+
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const documentsSummary = requiredDocs.map((doc) => {
@@ -476,13 +625,18 @@ export default function RegisterScreen({ navigation, route }) {
         return { label: doc.label, detail };
       });
 
+      // The backend stores one full name; age is checked against the
+      // birthdate here and not sent (the backend derives it from dateOfBirth).
       const fields = {
-        fullName: fullName.trim(),
+        fullName: `${normalizeName(firstName)} ${normalizeName(lastName)}`,
+        firstName: normalizeName(firstName),
+        lastName: normalizeName(lastName),
         birthdate: birthdate.trim(),
         gender,
-        address: address.trim(),
-        contactNumber: contactNumber.trim(),
+        address: normalizeAddress(address),
+        contactNumber: normalizeMobile(contactNumber),
         password,
+        password_confirmation: passwordConfirmation,
         relationship,
         relationshipLabel: getRelationshipLabel(relationship),
         documents,
@@ -495,9 +649,18 @@ export default function RegisterScreen({ navigation, route }) {
 
       if (isGoogle) {
         // No email: the backend takes it from the verified Google token.
-        await registerWithGoogle({ ...fields, password_confirmation: passwordConfirmation });
+        // Google proves the email, so this signs in (to the review state).
+        await registerWithGoogle(fields);
       } else {
-        await register({ ...fields, email: email.trim() });
+        // Never signs in: the visitor verifies their email, then logs in.
+        const result = await register({ ...fields, email: normalizeEmail(email) });
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Login' },
+            { name: 'CheckEmail', params: { email: result?.email ?? normalizeEmail(email) } },
+          ],
+        });
       }
     } catch (e) {
       if (isGoogle) {
@@ -507,19 +670,23 @@ export default function RegisterScreen({ navigation, route }) {
       const message =
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
-          : 'Something went wrong. Please try again.';
+          : 'Registration could not be completed. Please try again.';
+      showServerFieldErrors(e);
       Alert.alert('Registration failed', message);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [
-    submitting,
     validateStep4,
+    getStep1Errors,
     register,
     registerWithGoogle,
     isGoogle,
     handleGoogleRegistrationError,
-    fullName,
+    showServerFieldErrors,
+    firstName,
+    lastName,
     birthdate,
     gender,
     address,
@@ -534,31 +701,55 @@ export default function RegisterScreen({ navigation, route }) {
     acceptTerms,
     acceptPrivacy,
     legal,
+    navigation,
   ]);
 
   const renderStep1 = () => (
     <Card style={styles.card}>
       <WizardField
-        label="Full Name"
-        value={fullName}
-        onChangeText={setFullName}
-        placeholder="Enter full name"
-        error={errors.fullName}
+        label="First Name"
+        value={firstName}
+        onChangeText={editField(setFirstName, inputFilters.name, 'firstName')}
+        placeholder="Enter first name"
+        error={errors.firstName}
         autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={REGISTRATION_LIMITS.nameMax}
+        textContentType="givenName"
+      />
+      <WizardField
+        label="Last Name"
+        value={lastName}
+        onChangeText={editField(setLastName, inputFilters.name, 'lastName')}
+        placeholder="Enter last name"
+        error={errors.lastName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={REGISTRATION_LIMITS.nameMax}
+        textContentType="familyName"
       />
       <BirthdateField
         label="Birthdate"
         value={birthdate}
         onChange={(iso) => {
           setBirthdate(iso);
-          setErrors((e) => {
-            const next = { ...e };
-            delete next.birthdate;
-            return next;
-          });
+          // Age follows the birthdate; the visitor can still review it.
+          const derived = ageFromBirthdate(iso);
+          if (derived !== null) setAge(String(derived));
+          clearError('birthdate');
+          clearError('age');
         }}
         error={errors.birthdate}
         placeholder="Select birthdate"
+      />
+      <WizardField
+        label="Age"
+        value={age}
+        onChangeText={editField(setAge, inputFilters.age, 'age')}
+        placeholder="Enter age"
+        keyboardType="number-pad"
+        error={errors.age}
+        maxLength={REGISTRATION_LIMITS.ageInputMax}
       />
       <WizardField
         label="Gender"
@@ -572,18 +763,21 @@ export default function RegisterScreen({ navigation, route }) {
       <WizardField
         label="Address"
         value={address}
-        onChangeText={setAddress}
+        onChangeText={editField(setAddress, inputFilters.address, 'address')}
         placeholder="Enter complete address"
         error={errors.address}
         multiline
+        maxLength={REGISTRATION_LIMITS.addressMax}
       />
       <WizardField
-        label="Contact Number"
+        label="Mobile Number"
         value={contactNumber}
-        onChangeText={setContactNumber}
+        onChangeText={editField(setContactNumber, inputFilters.mobile, 'contactNumber')}
         placeholder="09XX XXX XXXX"
         keyboardType="phone-pad"
         error={errors.contactNumber}
+        maxLength={REGISTRATION_LIMITS.mobileInputMax}
+        textContentType="telephoneNumber"
       />
       {isGoogle ? (
         <View style={fieldStyles.wrap}>
@@ -608,11 +802,14 @@ export default function RegisterScreen({ navigation, route }) {
         <WizardField
           label="Email Address"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={editField(setEmail, inputFilters.email, 'email')}
           placeholder="Enter your email"
           keyboardType="email-address"
           error={errors.email}
           autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={REGISTRATION_LIMITS.emailMax}
+          textContentType="emailAddress"
         />
       )}
       <View style={fieldStyles.wrap}>
@@ -620,10 +817,19 @@ export default function RegisterScreen({ navigation, route }) {
         <View style={[fieldStyles.passwordRow, errors.password && fieldStyles.inputError]}>
           <TextInput
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(inputFilters.password(text));
+              clearError('password');
+              clearError('passwordConfirmation');
+            }}
             placeholder="••••••••"
             placeholderTextColor={colors.textSecondary}
             secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={REGISTRATION_LIMITS.passwordMax}
+            textContentType="newPassword"
+            accessibilityLabel={isGoogle ? 'Create password' : 'Password'}
             style={fieldStyles.passwordInput}
           />
           <Pressable
@@ -641,36 +847,41 @@ export default function RegisterScreen({ navigation, route }) {
           </Pressable>
         </View>
         {errors.password ? <Text style={fieldStyles.error}>{errors.password}</Text> : null}
-        {isGoogle ? (
-          <Text style={fieldStyles.hint}>
-            You can also sign in with this email and password.
-          </Text>
+        <Text style={fieldStyles.hint}>
+          {isGoogle
+            ? `At least ${REGISTRATION_LIMITS.passwordMin} characters. You can also sign in with this email and password.`
+            : `At least ${REGISTRATION_LIMITS.passwordMin} characters.`}
+        </Text>
+      </View>
+      <View style={fieldStyles.wrap}>
+        <Text style={fieldStyles.label}>Confirm Password</Text>
+        <View
+          style={[
+            fieldStyles.passwordRow,
+            errors.passwordConfirmation && fieldStyles.inputError,
+          ]}
+        >
+          <TextInput
+            value={passwordConfirmation}
+            onChangeText={(text) => {
+              setPasswordConfirmation(inputFilters.password(text));
+              clearError('passwordConfirmation');
+            }}
+            placeholder="••••••••"
+            placeholderTextColor={colors.textSecondary}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={REGISTRATION_LIMITS.passwordMax}
+            textContentType="newPassword"
+            accessibilityLabel="Confirm password"
+            style={fieldStyles.passwordInput}
+          />
+        </View>
+        {errors.passwordConfirmation ? (
+          <Text style={fieldStyles.error}>{errors.passwordConfirmation}</Text>
         ) : null}
       </View>
-      {isGoogle ? (
-        <View style={fieldStyles.wrap}>
-          <Text style={fieldStyles.label}>Confirm Password</Text>
-          <View
-            style={[
-              fieldStyles.passwordRow,
-              errors.passwordConfirmation && fieldStyles.inputError,
-            ]}
-          >
-            <TextInput
-              value={passwordConfirmation}
-              onChangeText={setPasswordConfirmation}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry={!showPassword}
-              accessibilityLabel="Confirm password"
-              style={fieldStyles.passwordInput}
-            />
-          </View>
-          {errors.passwordConfirmation ? (
-            <Text style={fieldStyles.error}>{errors.passwordConfirmation}</Text>
-          ) : null}
-        </View>
-      ) : null}
     </Card>
   );
 
@@ -685,8 +896,9 @@ export default function RegisterScreen({ navigation, route }) {
           <Pressable
             key={item.id}
             onPress={() => {
+              // Only a different relationship changes the required documents.
+              if (item.id !== relationship) setDocuments({});
               setRelationship(item.id);
-              setDocuments({});
               setErrors((e) => {
                 const next = { ...e };
                 delete next.relationship;
@@ -758,6 +970,7 @@ export default function RegisterScreen({ navigation, route }) {
             placeholder="Guardian full name, relationship, contact number"
             placeholderTextColor={colors.textSecondary}
             multiline
+            maxLength={REGISTRATION_LIMITS.guardianInfoMax}
             style={[
               fieldStyles.input,
               fieldStyles.inputMultiline,
@@ -800,12 +1013,17 @@ export default function RegisterScreen({ navigation, route }) {
     <>
       <Card style={styles.card}>
         <Text style={styles.reviewSectionTitle}>Personal Information</Text>
-        {renderReviewRow('Full Name', fullName.trim())}
+        {renderReviewRow('First Name', normalizeName(firstName))}
+        {renderReviewRow('Last Name', normalizeName(lastName))}
         {renderReviewRow('Birthdate', formatBirthdateDisplay(birthdate) || '—')}
+        {renderReviewRow('Age', age)}
         {renderReviewRow('Gender', gender)}
-        {renderReviewRow('Address', address.trim())}
-        {renderReviewRow('Contact Number', contactNumber.trim())}
-        {renderReviewRow(isGoogle ? 'Email (Google account)' : 'Email', email.trim())}
+        {renderReviewRow('Address', normalizeAddress(address))}
+        {renderReviewRow('Mobile Number', normalizeMobile(contactNumber))}
+        {renderReviewRow(
+          isGoogle ? 'Email (Google account)' : 'Email',
+          isGoogle ? email : normalizeEmail(email),
+        )}
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>

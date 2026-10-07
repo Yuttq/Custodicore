@@ -20,7 +20,9 @@ const VisitsContext = createContext(null);
  * Phase 2: loads from GET /api/visits when USE_MOCK_VISITS is false.
  */
 export function VisitsProvider({ children }) {
-  const { token } = useAuth();
+  // Visits need a staff-approved visitor; the API refuses them otherwise.
+  const { token: sessionToken, isApprovedVisitor } = useAuth();
+  const token = isApprovedVisitor ? sessionToken : null;
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

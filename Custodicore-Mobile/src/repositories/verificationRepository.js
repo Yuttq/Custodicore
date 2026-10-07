@@ -235,6 +235,20 @@ export async function uploadGovernmentId({ uri, fileName, documentType }) {
 }
 
 /**
+ * Adds the government ID picked during registration to the POST
+ * /auth/register multipart body (a new visitor has no token to upload it with
+ * afterwards — they must verify their email before logging in).
+ * @param {FormData} form
+ * @param {{ uri: string; fileName?: string | null; idType?: string | null }} governmentId
+ */
+export function appendRegistrationGovernmentId(form, governmentId) {
+  const typeKey = toGovernmentIdTypeKey(governmentId?.idType);
+  if (!typeKey) throw new Error('Select which government ID you are uploading.');
+  form.append('governmentIdType', typeKey);
+  form.append('governmentId', /** @type {any} */ (toFilePart(governmentId)));
+}
+
+/**
  * Uploads the supporting document for the visitor's own relationship record.
  * @param {{ relationshipRecordId: string; uri: string; fileName?: string | null }} input
  */

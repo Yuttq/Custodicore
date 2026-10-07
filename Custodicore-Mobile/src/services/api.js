@@ -13,6 +13,9 @@ const BASE_URL = (
 
 export const TOKEN_KEY = '@custodicore/auth_token';
 
+/** Uploads can be slow on mobile data (files up to 10 MB). */
+const UPLOAD_TIMEOUT_MS = 90000;
+
 // axios.create is the documented API; eslint-plugin-import flags default.create.
 // eslint-disable-next-line import/no-named-as-default-member -- axios public API
 const client = axios.create({
@@ -183,12 +186,36 @@ export async function registerWithGoogle(payload) {
 }
 
 /**
- * Registers a new visitor account.
- * @param {Record<string, unknown>} payload
+ * Registers a new visitor account — POST /auth/register. Never signs in:
+ * returns `{ status: 'verification_required', message, email }` (201) and the
+ * backend emails a verification link. A FormData body (multipart) carries the
+ * government ID picked during registration (governmentId + governmentIdType).
+ * @param {Record<string, unknown> | FormData} payload
  */
 export async function register(payload) {
   try {
-    const { data } = await client.post('/auth/register', payload);
+    const isMultipart = typeof FormData !== 'undefined' && payload instanceof FormData;
+    const { data } = await client.post(
+      '/auth/register',
+      payload,
+      isMultipart
+        ? { headers: { 'Content-Type': 'multipart/form-data' }, timeout: UPLOAD_TIMEOUT_MS }
+        : undefined,
+    );
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Requests another email verification link — POST /auth/email/resend.
+ * The backend answers the same way whether or not the address is registered.
+ * @param {string} email
+ */
+export async function resendVerificationEmail(email) {
+  try {
+    const { data } = await client.post('/auth/email/resend', { email });
     return data;
   } catch (error) {
     throw toRequestError(error);
@@ -248,9 +275,6 @@ export async function updateMe(fields) {
     throw toRequestError(error);
   }
 }
-
-/** Uploads can be slow on mobile data (files up to 10 MB). */
-const UPLOAD_TIMEOUT_MS = 90000;
 
 /**
  * Uploads a government ID — POST /api/documents (multipart: documentType, file, idNumber?)

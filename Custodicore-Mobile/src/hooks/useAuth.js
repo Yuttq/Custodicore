@@ -18,10 +18,14 @@ import client, {
   persistToken,
   register as apiRegister,
   registerWithGoogle as apiRegisterWithGoogle,
+  resendVerificationEmail as apiResendVerificationEmail,
   TOKEN_KEY,
   updateMe as apiUpdateMe,
 } from '../services/api';
-import { uploadGovernmentId } from '../repositories/verificationRepository';
+import {
+  appendRegistrationGovernmentId,
+  uploadGovernmentId,
+} from '../repositories/verificationRepository';
 import {
   authenticateWithGoogle,
   getFreshGoogleRegistrationToken,
@@ -88,6 +92,9 @@ function mapGenderForApi(gender) {
 function buildRegisterBody(payload) {
   const body = {
     fullName: String(payload.fullName || '').trim(),
+    // Phase 1 First/Last Name, stored separately as well as in fullName.
+    firstName: payload.firstName ? String(payload.firstName).trim() : undefined,
+    lastName: payload.lastName ? String(payload.lastName).trim() : undefined,
     email: String(payload.email || '').trim(),
     password: payload.password,
     password_confirmation: payload.password_confirmation || payload.password,
@@ -129,6 +136,25 @@ function buildGoogleRegisterBody(payload, idToken) {
   return { ...body, idToken };
 }
 
+/**
+ * POST /api/auth/register body. With a government ID picked during
+ * registration this is multipart (the visitor gets no token until they
+ * verify their email, so it cannot be uploaded afterwards); otherwise JSON.
+ * @param {Record<string, unknown>} payload
+ */
+function buildRegisterRequest(payload) {
+  const body = buildRegisterBody(payload);
+  const governmentId = payload?.documents?.government_id;
+  if (!governmentId?.uri) return body;
+
+  const form = new FormData();
+  Object.entries(body).forEach(([key, value]) => {
+    form.append(key, String(value));
+  });
+  appendRegistrationGovernmentId(form, governmentId);
+  return form;
+}
+
 /** Local "what you submitted" summary shown on the verification screen. */
 function buildRegistrationSummary(payload) {
   return {
@@ -146,8 +172,13 @@ function normalizeUser(raw) {
     email: raw.email ?? null,
     fullName: raw.fullName ?? raw.full_name ?? null,
     role: raw.role ?? null,
+    // Email ownership and staff review are separate backend states.
+    emailVerified: raw.emailVerified ?? raw.email_verified ?? null,
     verificationStatus: raw.verificationStatus ?? raw.verification_status ?? null,
     verifiedAt: raw.verifiedAt ?? null,
+    rejectionReason: raw.rejectionReason ?? null,
+    firstName: raw.firstName ?? null,
+    lastName: raw.lastName ?? null,
     dateOfBirth: raw.dateOfBirth ?? null,
     gender: raw.gender ?? null,
     address: raw.address ?? null,
@@ -442,8 +473,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Finishes a successful registration (password or Google): the account
-   * exists now — upload the government ID picked during registration
+   * Finishes a successful Google registration (password registration never
+   * signs in — see register()): the account exists now — upload the
+   * government ID picked during registration
    * (POST /api/documents, stored as pending), store the summary, then apply
    * the session so the navigator switches to the app. Relationship documents
    * can't be uploaded yet: staff must first link the visitor to a PDL. A
@@ -545,47 +577,46 @@ export function AuthProvider({ children }) {
     signOutGoogle().catch(() => {});
   }, []);
 
-  const register = useCallback(
-    async (payload) => {
-      setError(null);
-      try {
-        const summary = buildRegistrationSummary(payload);
-
-        if (USE_MOCK_AUTH) {
-          await new Promise((r) => setTimeout(r, 350));
-          await AsyncStorage.multiSet([
-            [TOKEN_KEY, 'placeholder-token'],
-            [PENDING_VERIFICATION_KEY, '1'],
-            [REGISTRATION_SUMMARY_KEY, JSON.stringify(summary)],
-          ]);
-          setRegistrationSummary(summary);
-          setPendingVerification(true);
-          setToken('placeholder-token');
-          setUser({
-            id: 'mock',
-            email: payload?.email ?? null,
-            fullName: payload?.fullName ?? null,
-            role: 'Visitor',
-            verificationStatus: 'pending',
-          });
-          return;
-        }
-
-        const body = buildRegisterBody(payload);
-        const data = await apiRegister(body);
-        if (!data?.token) {
-          throw new Error('Registration succeeded but no session token was returned.');
-        }
-
-        await completeRegistration(data.token, data.user, payload, summary);
-      } catch (e) {
-        const message = e?.message ?? 'Registration failed';
-        setError(message);
-        throw e;
+  /**
+   * POST /api/auth/register (password registration). Creates the account
+   * and sends the government ID with it, but does NOT sign in: the visitor
+   * must verify their email first, then log in. No token or session is
+   * stored. Returns `{ email, message }` for the "Check your email" screen.
+   */
+  const register = useCallback(async (payload) => {
+    setError(null);
+    try {
+      if (USE_MOCK_AUTH) {
+        await new Promise((r) => setTimeout(r, 350));
+        return { email: payload?.email ?? null, message: null };
       }
-    },
-    [completeRegistration],
-  );
+
+      const data = await apiRegister(buildRegisterRequest(payload));
+      if (data?.status !== 'verification_required') {
+        throw new Error('Registration could not be confirmed. Please try logging in.');
+      }
+
+      const summary = buildRegistrationSummary(payload);
+      await AsyncStorage.setItem(REGISTRATION_SUMMARY_KEY, JSON.stringify(summary));
+      setRegistrationSummary(summary);
+
+      return { email: data.email ?? payload?.email ?? null, message: data.message ?? null };
+    } catch (e) {
+      const message = e?.message ?? 'Registration failed';
+      setError(message);
+      throw e;
+    }
+  }, []);
+
+  /**
+   * POST /api/auth/email/resend. The backend replies the same way for any
+   * address (no account enumeration); errors keep `status` (429 when limited).
+   * @param {string} email
+   */
+  const resendVerificationEmail = useCallback(async (email) => {
+    if (USE_MOCK_AUTH) return { message: null };
+    return apiResendVerificationEmail(String(email || '').trim());
+  }, []);
 
   /** Stores a fresh /me payload without touching token or pendingVerification. */
   const storeUser = useCallback(async (rawUser) => {
@@ -630,10 +661,15 @@ export function AuthProvider({ children }) {
     }
   }, [token, clearLocalSession]);
 
+  // Staff approved the visitor's information/documents. Backend truth from
+  // /me — the API refuses visit features otherwise (EnsureVisitorApproved).
+  const isApprovedVisitor = user?.verificationStatus === 'verified';
+
   const value = useMemo(
     () => ({
       token,
       user,
+      isApprovedVisitor,
       initializing,
       error,
       setError,
@@ -648,6 +684,7 @@ export function AuthProvider({ children }) {
       cancelGoogleRegistration,
       hasPendingGoogleRegistration,
       register,
+      resendVerificationEmail,
       completeVerificationReview,
       logout,
       clearLocalSession,
@@ -659,6 +696,8 @@ export function AuthProvider({ children }) {
       updateProfile,
       token,
       user,
+      isApprovedVisitor,
+      resendVerificationEmail,
       initializing,
       error,
       pendingVerification,
