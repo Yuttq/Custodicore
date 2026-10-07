@@ -430,6 +430,39 @@ export async function getTimeline(scheduleId) {
   }
 }
 
+/**
+ * Visit-slot availability for the visitor's own verified PDL relationships —
+ * GET /api/schedules/availability (approved visitors only). Read-only: it
+ * reserves nothing.
+ * @param {{ from?: string; to?: string; relationshipId?: string }} [params]
+ *   from / to are YYYY-MM-DD; omitted values use the backend defaults.
+ */
+export async function getScheduleAvailability(params = {}) {
+  try {
+    const query = {};
+    if (params.from) query.from = params.from;
+    if (params.to) query.to = params.to;
+    if (params.relationshipId) query.relationshipId = params.relationshipId;
+    const { data } = await client.get('/schedules/availability', { params: query });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Facility announcements for the Home screen — GET /api/announcements.
+ * @returns {Promise<{ announcements: { id, title, body, category, pinned, createdAt }[] }>}
+ */
+export async function getAnnouncements() {
+  try {
+    const { data } = await client.get('/announcements');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
 export async function getNotifications() {
   try {
     const { data } = await client.get('/notifications');

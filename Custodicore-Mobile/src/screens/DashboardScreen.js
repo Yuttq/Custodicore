@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
@@ -12,12 +12,23 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import TimeSlotList from '../components/TimeSlotList';
+import VisitCalendar from '../components/VisitCalendar';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
+import useAnnouncements from '../hooks/useAnnouncements';
+import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitTimeline from '../hooks/useVisitTimeline';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
+import {
+  formatDateLong,
+  formatSlotRange,
+  formatVisitingDays,
+  periodLabel,
+  visitingWindows,
+} from '../utils/scheduleAvailability';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
@@ -208,14 +219,247 @@ function TextLink({ label, onPress, accessibilityLabel }) {
   );
 }
 
+const ANNOUNCEMENTS_PREVIEW = 2;
+
 /**
- * Visitor home dashboard — verification, upcoming visit, progress snapshot (v2.1).
+ * Facility announcements (GET /api/announcements).
+ * @param {object} props
+ * @param {ReturnType<typeof useAnnouncements>} props.state
+ */
+function AnnouncementsSection({ state }) {
+  const { announcements, loading, error, reload } = state;
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? announcements : announcements.slice(0, ANNOUNCEMENTS_PREVIEW);
+
+  let content;
+  if (loading && announcements.length === 0) {
+    content = <ActivityIndicator color={colors.primaryTeal} />;
+  } else if (error && announcements.length === 0) {
+    content = (
+      <>
+        <Text style={styles.noVisit}>{error}</Text>
+        <TextLink label="Try Again" onPress={reload} accessibilityLabel="Reload announcements" />
+      </>
+    );
+  } else if (announcements.length === 0) {
+    content = <Text style={styles.noVisit}>No announcements right now.</Text>;
+  } else {
+    content = (
+      <>
+        {shown.map((item, index) => (
+          <View
+            key={item.id}
+            style={[styles.announcementRow, index < shown.length - 1 && styles.announcementDivider]}
+          >
+            <Ionicons
+              name={item.pinned ? 'megaphone' : 'megaphone-outline'}
+              size={18}
+              color={colors.primaryNavy}
+            />
+            <View style={styles.announcementBody}>
+              <Text style={styles.announcementTitle}>{item.title}</Text>
+              <Text style={styles.announcementText}>{item.body}</Text>
+            </View>
+          </View>
+        ))}
+        {announcements.length > ANNOUNCEMENTS_PREVIEW ? (
+          <TextLink
+            label={expanded ? 'Show Less' : `Show All (${announcements.length})`}
+            onPress={() => setExpanded((v) => !v)}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <View style={styles.homeSection}>
+      <Text style={styles.sectionLabel}>Announcements</Text>
+      <Card style={styles.visitCard}>{content}</Card>
+    </View>
+  );
+}
+
+/**
+ * Visiting days/hours for the visitor's verified PDL relationship(s), the
+ * date calendar and the time slots for the chosen date. Choosing a slot
+ * reserves nothing — `schedule.requestParams` is handed to the Phase 4
+ * visit-request screen.
+ * @param {object} props
+ * @param {ReturnType<typeof useScheduleAvailability>} props.schedule
+ */
+function VisitationScheduleSection({ schedule }) {
+  const {
+    loading,
+    error,
+    reload,
+    message,
+    today,
+    from,
+    to,
+    relationships,
+    relationship,
+    selectRelationship,
+    daysByDate,
+    selectedDate,
+    selectDate,
+    selectedDaySlots,
+    selectedSlotKey,
+    selectSlot,
+    selection,
+  } = schedule;
+
+  const windows = useMemo(() => visitingWindows(relationship), [relationship]);
+  const hasAvailableDate = useMemo(
+    () => Object.values(daysByDate).some((d) => d.available),
+    [daysByDate],
+  );
+
+  let info;
+  if (loading && !relationship) {
+    info = (
+      <View style={styles.scheduleLoading}>
+        <ActivityIndicator color={colors.primaryTeal} />
+        <Text style={styles.noVisit}>Loading visit availability…</Text>
+      </View>
+    );
+  } else if (error && !relationship) {
+    info = (
+      <>
+        <Text style={styles.noVisit}>{error}</Text>
+        <TextLink label="Try Again" onPress={reload} accessibilityLabel="Reload visit availability" />
+      </>
+    );
+  } else if (!relationship) {
+    info = (
+      <View style={styles.scheduleNotice}>
+        <Ionicons name="information-circle-outline" size={20} color={colors.primaryNavy} />
+        <Text style={styles.scheduleNoticeText}>
+          {message ??
+            'A verified PDL relationship is required to view visit availability.'}
+        </Text>
+      </View>
+    );
+  } else {
+    info = (
+      <>
+        {relationships.length > 1 ? (
+          <View style={styles.chipRow}>
+            {relationships.map((r) => {
+              const active = r.relationshipId === relationship.relationshipId;
+              return (
+                <Pressable
+                  key={r.relationshipId}
+                  onPress={() => selectRelationship(r.relationshipId)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    active && styles.chipActive,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Show schedule for ${r.pdlName ?? 'PDL'}`}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {r.pdlName ?? 'PDL'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        {relationship.pdlName ? (
+          <Text style={styles.visitPdl}>{relationship.pdlName}</Text>
+        ) : null}
+        {relationship.visitingDays.length > 0 ? (
+          <Text style={styles.scheduleLine}>
+            Visiting days: {formatVisitingDays(relationship.visitingDays)}
+          </Text>
+        ) : null}
+        {windows.map((w) => (
+          <Text key={`${w.startTime}-${w.endTime}`} style={styles.scheduleLine}>
+            {periodLabel(w.period, w.startTime)}: {formatSlotRange(w.startTime, w.endTime)}
+          </Text>
+        ))}
+        {relationship.message ? (
+          <Text style={styles.scheduleWarning}>{relationship.message}</Text>
+        ) : !hasAvailableDate && !loading ? (
+          <Text style={styles.scheduleWarning}>
+            No visit dates are available in the coming weeks. Please check again later.
+          </Text>
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <View style={styles.homeSection}>
+      <Text style={styles.sectionLabel}>Visitation Schedule</Text>
+      <Card style={styles.visitCard}>{info}</Card>
+
+      {relationship ? (
+        <>
+          <Text style={styles.sectionLabel}>Choose a Visit Date</Text>
+          <Card style={styles.visitCard}>
+            <VisitCalendar
+              key={relationship.relationshipId}
+              daysByDate={daysByDate}
+              today={today}
+              minDate={from}
+              maxDate={to}
+              selectedDate={selectedDate}
+              onSelectDate={selectDate}
+            />
+          </Card>
+
+          <Text style={styles.sectionLabel}>Available Time Slots</Text>
+          <Card style={styles.visitCard}>
+            {selectedDate ? (
+              <>
+                <Text style={styles.slotDate}>{formatDateLong(selectedDate)}</Text>
+                <TimeSlotList
+                  slots={selectedDaySlots}
+                  selectedSlotKey={selectedSlotKey}
+                  onSelectSlot={selectSlot}
+                />
+              </>
+            ) : (
+              <Text style={styles.noVisit}>Select an available date to see its time slots.</Text>
+            )}
+          </Card>
+
+          {selection ? (
+            <Card style={styles.visitCard}>
+              <Text style={styles.sectionLabel}>Selected Visit Slot</Text>
+              <Text style={styles.visitDate}>{formatDateLong(selection.date)}</Text>
+              <Text style={styles.visitTime}>
+                {periodLabel(selection.period, selection.startTime)} ·{' '}
+                {formatSlotRange(selection.startTime, selection.endTime)}
+              </Text>
+              <Text style={[styles.noVisit, styles.selectionNote]}>
+                Choosing a slot does not reserve it. Visit requests will be available in an
+                upcoming update.
+              </Text>
+            </Card>
+          ) : null}
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Visitor home dashboard — verification, upcoming visit, progress snapshot (v2.1),
+ * announcements and the visitation schedule calendar (Phase 3).
  */
 export default function DashboardScreen({ navigation }) {
-  const { registrationSummary, user } = useAuth();
+  const { registrationSummary, user, isApprovedVisitor } = useAuth();
   const { visits } = useVisits();
   const { verification } = useVisitorVerification();
   const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
+  const announcements = useAnnouncements();
+  // Availability is an approved-visitor API (visitor.approved middleware).
+  const schedule = useScheduleAvailability({ enabled: isApprovedVisitor });
 
   const visitorName =
     user?.fullName?.trim() || registrationSummary?.fullName?.trim() || 'Visitor';
@@ -355,6 +599,9 @@ export default function DashboardScreen({ navigation }) {
             />
           </View>
         ) : null}
+
+        <AnnouncementsSection state={announcements} />
+        <VisitationScheduleSection schedule={schedule} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -581,6 +828,93 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontWeight: '600',
     color: colors.primaryTeal,
+  },
+  homeSection: {
+    marginBottom: spacing.sm,
+  },
+  announcementRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  announcementDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  announcementBody: {
+    flex: 1,
+  },
+  announcementTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  announcementText: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  scheduleLoading: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  scheduleNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  scheduleNoticeText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  scheduleLine: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  scheduleWarning: {
+    ...typography.metadata,
+    color: colors.warning,
+    fontWeight: '600',
+    marginTop: spacing.sm,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: layout.chipRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  chipActive: {
+    borderColor: colors.primaryNavy,
+    backgroundColor: colors.primaryNavy,
+  },
+  chipText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  chipTextActive: {
+    color: colors.white,
+  },
+  slotDate: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.primaryNavy,
+    marginBottom: spacing.sm,
+  },
+  selectionNote: {
+    marginTop: spacing.sm,
+    marginBottom: 0,
   },
   pressed: { opacity: 0.88 },
 });

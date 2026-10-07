@@ -39,3 +39,15 @@ export const USE_MOCK_VISIT_HISTORY = false;
  * Phase 4: false — wired to GET /api/schedules/{id}/timeline.
  */
 export const USE_MOCK_TIMELINE = false;
+
+/**
+ * When true, the Home calendar's visit-slot availability uses local mock data (no HTTP).
+ * Phase 3: false — wired to GET /api/schedules/availability.
+ */
+export const USE_MOCK_SCHEDULE = false;
+
+/**
+ * When true, Home screen announcements use local mock data (no HTTP).
+ * Phase 3: false — wired to GET /api/announcements.
+ */
+export const USE_MOCK_ANNOUNCEMENTS = false;

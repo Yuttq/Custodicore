@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\AnnouncementApiController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationApiController;
+use App\Http\Controllers\Api\ScheduleAvailabilityController;
 use App\Http\Controllers\Api\VisitorApiController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\LegalController;
@@ -67,11 +69,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/visits/upcoming', [VisitorApiController::class, 'upcoming']);
         Route::get('/visits/history', [VisitorApiController::class, 'history']);
 
+        // Read-only slot availability for the visitor's verified PDL
+        // relationships (Home calendar). Books nothing.
+        Route::get('/schedules/availability', [ScheduleAvailabilityController::class, 'index']);
+
         Route::post('/schedules/{visitRequest}/confirm', [VisitorApiController::class, 'confirm']);
         Route::post('/schedules/{visitRequest}/decline', [VisitorApiController::class, 'decline']);
         Route::get('/schedules/{visitRequest}/qr', [VisitorApiController::class, 'qr']);
         Route::get('/schedules/{visitRequest}/timeline', [VisitorApiController::class, 'timeline']);
     });
+
+    // Facility announcements (config/visitation.php) — any signed-in visitor.
+    Route::get('/announcements', [AnnouncementApiController::class, 'index']);
 
     Route::get('/notifications', [NotificationApiController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationApiController::class, 'unreadCount']);

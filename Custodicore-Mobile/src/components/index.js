@@ -11,3 +11,5 @@ export { default as TimelineItem } from './TimelineItem';
 export { default as QrScannerModal } from './QrScannerModal';
 export { default as AuthDivider } from './AuthDivider';
 export { default as GoogleSignInButton } from './GoogleSignInButton';
+export { default as VisitCalendar } from './VisitCalendar';
+export { default as TimeSlotList } from './TimeSlotList';
