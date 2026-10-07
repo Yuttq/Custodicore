@@ -33,6 +33,9 @@ use Illuminate\Validation\ValidationException;
  */
 class AuthController extends Controller
 {
+    /** The only gender values a visitor may submit (registration and PATCH /me). */
+    private const GENDERS = ['male', 'female'];
+
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -242,8 +245,8 @@ class AuthController extends Controller
      * relationshipHint as a free-text initial indication only — does NOT
      * create a visitor_pdl_relationships row (PDL may be unknown at signup).
      *
-     * Gender "Prefer not to say" is stored as NULL (visitor_profiles.gender
-     * is a nullable enum of male|female|other).
+     * Gender is required and must be male or female. (visitor_profiles.gender
+     * is still a nullable male|female|other enum so existing rows stay valid.)
      *
      * Phase 2: does NOT sign the visitor in. No Sanctum token or user is
      * returned; a verification link is emailed instead, and /auth/login
@@ -283,6 +286,8 @@ class AuthController extends Controller
             'governmentId' => ['nullable', ...$documentFileRules],
             'governmentIdType' => ['nullable', 'required_with:governmentId', 'string', Rule::in(VisitorId::TYPES)],
             'governmentIdNumber' => ['nullable', 'string', 'max:50'],
+            // Overrides the shared (optional) gender rule: required here.
+            'gender' => ['required', 'string', Rule::in(self::GENDERS)],
         ] + $this->profileRegistrationRules(), $this->registrationMessages() + [
             'governmentId.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
             'governmentId.max' => 'The file is too large. Maximum size is 10 MB.',
@@ -412,10 +417,9 @@ class AuthController extends Controller
             'lastName' => ['nullable', 'string', 'max:100'],
             'dateOfBirth' => ['required', 'date', 'before:today'],
             'contactNumber' => ['nullable', 'string', 'max:20'],
-            'gender' => ['nullable', 'string', Rule::in([
-                'male', 'female', 'other',
-                'prefer_not_to_say', 'Prefer not to say', 'prefer not to say',
-            ])],
+            // register() also makes it required; Google registration keeps
+            // it optional as before, but neither accepts anything else.
+            'gender' => ['nullable', 'string', Rule::in(self::GENDERS)],
             'address' => ['nullable', 'string', 'max:255'],
             'relationshipHint' => ['nullable', 'string', 'max:100'],
             'acceptedTerms' => ['accepted'],
@@ -522,10 +526,7 @@ class AuthController extends Controller
         $rules = [
             'fullName' => ['sometimes', 'required', 'string', 'max:150'],
             'dateOfBirth' => ['sometimes', 'required', 'date_format:Y-m-d', 'before:today'],
-            'gender' => ['sometimes', 'nullable', 'string', Rule::in([
-                'male', 'female', 'other',
-                'prefer_not_to_say', 'Prefer not to say', 'prefer not to say',
-            ])],
+            'gender' => ['sometimes', 'required', 'string', Rule::in(self::GENDERS)],
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'contactNumber' => ['sometimes', 'required', 'string', 'max:20'],
             'emergencyContactName' => ['sometimes', 'nullable', 'string', 'max:150'],
@@ -612,8 +613,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Map mobile gender values onto the nullable male|female|other enum.
-     * "Prefer not to say" → NULL.
+     * Map a validated gender (see GENDERS) onto visitor_profiles.gender.
      */
     private function normalizeGender(mixed $gender): ?string
     {
@@ -623,13 +623,7 @@ class AuthController extends Controller
 
         $normalized = strtolower(trim((string) $gender));
 
-        return match ($normalized) {
-            'male' => 'male',
-            'female' => 'female',
-            'other' => 'other',
-            'prefer_not_to_say', 'prefer not to say' => null,
-            default => null,
-        };
+        return in_array($normalized, self::GENDERS, true) ? $normalized : null;
     }
 
     /** $maxBase keeps base + numeric suffix within accounts.username (50). */

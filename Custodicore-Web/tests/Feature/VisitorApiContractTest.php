@@ -7,6 +7,7 @@ use App\Models\VisitRequest;
 use App\Services\VisitAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -61,7 +62,7 @@ class VisitorApiContractTest extends TestCase
             'password' => 'secret12',
             'password_confirmation' => 'secret12',
             'dateOfBirth' => '1995-06-15',
-            'gender' => 'Prefer not to say',
+            'gender' => 'female',
             'address' => 'Quezon City',
             'relationshipHint' => 'sibling',
             'contactNumber' => '09170001111',
@@ -80,13 +81,64 @@ class VisitorApiContractTest extends TestCase
         $this->assertDatabaseHas('visitor_profiles', [
             'full_name' => 'Juan Dela Cruz',
             'verification_status' => 'pending',
-            'gender' => null,
+            'gender' => 'female',
             'address' => 'Quezon City',
             'relationship_hint' => 'sibling',
         ]);
 
         // Only the fixture relationship should exist (Maria), not one for Juan.
         $this->assertSame(1, VisitorPdlRelationship::count());
+    }
+
+    /** A valid registration body with the given gender (null = omitted). */
+    private function registrationWithGender(?string $gender): array
+    {
+        return array_filter([
+            'fullName' => 'Ana Reyes',
+            'email' => 'ana.reyes@example.com',
+            'password' => 'secret12',
+            'password_confirmation' => 'secret12',
+            'dateOfBirth' => '1992-02-02',
+            'gender' => $gender,
+            'contactNumber' => '09170002222',
+            'acceptedTerms' => true,
+            'acceptedPrivacy' => true,
+            'consentVersion' => (string) config('legal.version'),
+        ], fn ($value) => $value !== null);
+    }
+
+    public static function acceptedGenderProvider(): array
+    {
+        return ['male' => ['male'], 'female' => ['female']];
+    }
+
+    #[DataProvider('acceptedGenderProvider')]
+    public function test_registration_accepts_male_and_female(string $gender): void
+    {
+        $this->postJson('/api/auth/register', $this->registrationWithGender($gender))
+            ->assertCreated();
+
+        $this->assertDatabaseHas('visitor_profiles', ['full_name' => 'Ana Reyes', 'gender' => $gender]);
+    }
+
+    public static function rejectedGenderProvider(): array
+    {
+        return [
+            'other' => ['other'],
+            'arbitrary value' => ['robot'],
+            'prefer not to say' => ['Prefer not to say'],
+            'missing' => [null],
+        ];
+    }
+
+    #[DataProvider('rejectedGenderProvider')]
+    public function test_registration_rejects_any_other_gender(?string $gender): void
+    {
+        $this->postJson('/api/auth/register', $this->registrationWithGender($gender))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('gender');
+
+        $this->assertDatabaseMissing('accounts', ['email' => 'ana.reyes@example.com']);
     }
 
     public function test_visits_list_returns_only_authenticated_visitor_visits(): void

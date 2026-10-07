@@ -47,6 +47,7 @@ import {
   validateAddress,
   validateAge,
   validateFirstName,
+  validateGender,
   validateLastName,
   validateMobileNumber,
   validatePasswordConfirmation,
@@ -234,7 +235,7 @@ function getAccountInfoErrors(form, { isGoogle }) {
   put('lastName', validateLastName(form.lastName));
   if (!validateRequired(form.birthdate)) next.birthdate = 'Birthdate is required.';
   put('age', validateAge(form.age, form.birthdate));
-  if (!validateRequired(form.gender)) next.gender = 'Gender is required.';
+  put('gender', validateGender(form.gender));
   put('address', validateAddress(form.address));
   put('contactNumber', validateMobileNumber(form.contactNumber));
   // Google mode: email is the verified Google email (read-only).

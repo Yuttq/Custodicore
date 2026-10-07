@@ -221,21 +221,21 @@ class VisitorPhase4ApiTest extends TestCase
         $this->patchJson('/api/me', [
             'fullName' => 'Carlo M. Ramos',
             'dateOfBirth' => '1990-03-03',
-            'gender' => 'Prefer not to say',
+            'gender' => 'male',
             'address' => 'Pasig City',
             'contactNumber' => '09179998888',
         ])
             ->assertOk()
             ->assertJsonPath('fullName', 'Carlo M. Ramos')
             ->assertJsonPath('address', 'Pasig City')
-            ->assertJsonPath('gender', null)
+            ->assertJsonPath('gender', 'male')
             ->assertJsonPath('verificationStatus', 'pending');
 
         $this->assertDatabaseHas('visitor_profiles', [
             'visitor_id' => $this->otherVisitor->visitor_id,
             'full_name' => 'Carlo M. Ramos',
             'contact_number' => '09179998888',
-            'gender' => null,
+            'gender' => 'male',
         ]);
     }
 
@@ -246,6 +246,9 @@ class VisitorPhase4ApiTest extends TestCase
         $this->patchJson('/api/me', ['dateOfBirth' => '03/03/1990'])->assertUnprocessable()->assertJsonValidationErrors('dateOfBirth');
         $this->patchJson('/api/me', ['dateOfBirth' => now()->addDay()->toDateString()])->assertUnprocessable();
         $this->patchJson('/api/me', ['gender' => 'unknown'])->assertUnprocessable()->assertJsonValidationErrors('gender');
+        $this->patchJson('/api/me', ['gender' => 'other'])->assertUnprocessable()->assertJsonValidationErrors('gender');
+        $this->patchJson('/api/me', ['gender' => 'Prefer not to say'])->assertUnprocessable()->assertJsonValidationErrors('gender');
+        $this->patchJson('/api/me', ['gender' => null])->assertUnprocessable()->assertJsonValidationErrors('gender');
         $this->patchJson('/api/me', ['fullName' => ''])->assertUnprocessable()->assertJsonValidationErrors('fullName');
     }
 

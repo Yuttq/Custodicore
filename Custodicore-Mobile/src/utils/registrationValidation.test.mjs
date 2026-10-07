@@ -11,6 +11,7 @@ import {
   validateAddress,
   validateAge,
   validateFirstName,
+  validateGender,
   validateLastName,
   validateMobileNumber,
   validatePasswordConfirmation,
@@ -64,6 +65,13 @@ test('names: valid PH/accented names pass, digits/symbols/emoji fail', () => {
   assert.notEqual(validateFirstName('A'.repeat(71)), null);
   assert.equal(normalizeName('  Juan    Carlos  '), 'Juan Carlos');
   assert.equal(inputFilters.name('A'.repeat(200)).length, 70);
+});
+
+test('gender: only Male or Female', () => {
+  for (const g of ['Male', 'Female', 'male', 'female']) assert.equal(validateGender(g), null, g);
+  for (const g of ['', '   ', 'Other', 'other', 'Prefer not to say', 'robot']) {
+    assert.notEqual(validateGender(g), null, g);
+  }
 });
 
 test('age: range 1–120, whole numbers, must match birthdate', () => {

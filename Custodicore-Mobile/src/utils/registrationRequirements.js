@@ -19,7 +19,7 @@ export const ACCEPTED_ID_TYPES = [
   "Voter's ID",
 ];
 
-export const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+export const GENDER_OPTIONS = ['Male', 'Female'];
 
 /**
  * Required uploads for the selected relationship.

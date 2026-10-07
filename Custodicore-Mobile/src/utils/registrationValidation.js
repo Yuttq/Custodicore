@@ -163,6 +163,14 @@ export function validateAge(value, birthdate) {
   return null;
 }
 
+/** Only Male or Female (the backend accepts `male` / `female` only). */
+export function validateGender(value) {
+  const g = String(value ?? '').trim().toLowerCase();
+  if (!g) return 'Gender is required.';
+  if (g !== 'male' && g !== 'female') return 'Please select Male or Female.';
+  return null;
+}
+
 export function validateRegistrationEmail(value) {
   const email = normalizeEmail(value);
   if (!email) return 'Email address is required.';

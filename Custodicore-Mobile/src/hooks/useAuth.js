@@ -72,16 +72,13 @@ const UNRECOVERABLE_GOOGLE_REGISTRATION_CODES = new Set([
 ]);
 
 /**
- * Map registration gender UI labels onto the Laravel contract.
- * "Prefer not to say" → prefer_not_to_say (backend stores NULL).
+ * Map registration gender UI labels (Male / Female) onto the Laravel
+ * contract (male / female — the only values the backend accepts).
  * @param {string} gender
  */
 function mapGenderForApi(gender) {
   const g = String(gender || '').trim().toLowerCase();
-  if (!g) return undefined;
-  if (g === 'prefer not to say') return 'prefer_not_to_say';
-  if (g === 'male' || g === 'female' || g === 'other') return g;
-  return g;
+  return g || undefined;
 }
 
 /**
