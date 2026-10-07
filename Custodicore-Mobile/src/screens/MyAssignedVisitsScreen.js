@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,7 +21,10 @@ import {
   typography,
 } from '../designSystem';
 import { LoadingSpinner, EmptyState } from '../components';
+import VisitationScheduleSection from '../components/VisitationScheduleSection';
 import { useVisits } from '../context/VisitsContext';
+import { useAuth } from '../hooks/useAuth';
+import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
 
@@ -28,6 +32,7 @@ const TABS = [
   { key: 'upcoming', label: 'Upcoming' },
   { key: 'pending', label: 'Pending' },
   { key: 'completed', label: 'Completed' },
+  { key: 'schedule', label: 'Schedule' },
 ];
 
 const LOADING_MS = 500;
@@ -164,11 +169,24 @@ function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnable
 }
 
 /**
- * My Visits — upcoming, pending confirmation, and completed visits (v2.1 / BJMP).
+ * My Visits — upcoming, pending confirmation, and completed visits (v2.1 / BJMP),
+ * plus the Schedule tab: visitation schedule, PDL / date / time-slot selection
+ * (Phase 3). Open a tab directly with `navigate('Schedule', { tab: 'schedule' })`.
  */
-export default function MyAssignedVisitsScreen({ navigation }) {
+export default function MyAssignedVisitsScreen({ navigation, route }) {
   const { visits, confirmVisit, refreshVisits, error: visitsError } = useVisits();
+  const { isApprovedVisitor } = useAuth();
+  // Availability is an approved-visitor API (visitor.approved middleware).
+  const schedule = useScheduleAvailability({ enabled: isApprovedVisitor });
   const [activeTab, setActiveTab] = useState('upcoming');
+
+  const requestedTab = route?.params?.tab;
+  useEffect(() => {
+    if (requestedTab && TABS.some((t) => t.key === requestedTab)) {
+      setActiveTab(requestedTab);
+      navigation.setParams({ tab: undefined });
+    }
+  }, [requestedTab, navigation]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -309,7 +327,23 @@ export default function MyAssignedVisitsScreen({ navigation }) {
         })}
       </View>
 
-      {loading && !refreshing ? (
+      {activeTab === 'schedule' ? (
+        <ScrollView
+          contentContainerStyle={[styles.list, { paddingBottom: tabBarInset }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={schedule.loading && Boolean(schedule.relationship)}
+              onRefresh={schedule.reload}
+              tintColor={colors.primaryTeal}
+              colors={[colors.primaryTeal]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <VisitationScheduleSection schedule={schedule} />
+        </ScrollView>
+      ) : loading && !refreshing ? (
         <View style={styles.loadingWrap}>
           <LoadingSpinner message="Loading visits…" compact />
         </View>
