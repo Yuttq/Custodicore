@@ -8,6 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "test": "node --test src/utils/registrationValidation.test.mjs",
     "generate-icons": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-app-icons.ps1",
     "generate-splash": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-splash-assets.ps1"
   },
