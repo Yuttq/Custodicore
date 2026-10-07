@@ -76,6 +76,31 @@ class VisitorEmailVerificationFlowTest extends TestCase
         return basename(parse_url($mail->verificationUrl, PHP_URL_PATH));
     }
 
+    /**
+     * The browser flow: open the emailed link exactly as sent, then submit the
+     * confirmation page's form with the token it rendered (not the one the
+     * test already knows), the way tapping "Verify my email" does.
+     */
+    private function verifyThroughBrowser(string $email = self::EMAIL)
+    {
+        $mail = Mail::sent(VerifyVisitorEmail::class, fn ($m) => $m->hasTo($email))->last();
+
+        return $this->verifyLinkThroughBrowser($mail->verificationUrl);
+    }
+
+    private function verifyLinkThroughBrowser(string $verificationUrl)
+    {
+        $page = $this->get(parse_url($verificationUrl, PHP_URL_PATH))
+            ->assertOk()
+            ->assertSee('Verify my email');
+
+        $this->assertSame(1, preg_match('/name="token" value="([^"]*)"/', $page->getContent(), $m));
+        // The form must carry the URL's token unchanged (no truncation/encoding).
+        $this->assertSame(basename(parse_url($verificationUrl, PHP_URL_PATH)), $m[1]);
+
+        return $this->post(route('email-verification.verify'), ['token' => html_entity_decode($m[1])]);
+    }
+
     private function login(string $email = self::EMAIL, string $password = self::PASSWORD)
     {
         return $this->postJson('/api/auth/login', ['email' => $email, 'password' => $password]);
@@ -148,6 +173,24 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->assertSame(hash('sha256', $token), $record->token_hash);
         $this->assertNotSame($token, $record->token_hash);
         $this->assertTrue($record->expires_at->isFuture());
+    }
+
+    public function test_verification_links_use_app_url_not_the_request_host(): void
+    {
+        config(['app.url' => 'http://10.0.2.2:8000/']);
+
+        $this->withServerVariables(['HTTP_HOST' => '127.0.0.1:8000'])->register()->assertCreated();
+        $this->withServerVariables(['HTTP_HOST' => '127.0.0.1:8000'])
+            ->postJson('/api/auth/email/resend', ['email' => self::EMAIL])->assertOk();
+
+        $mails = Mail::sent(VerifyVisitorEmail::class, fn ($m) => $m->hasTo(self::EMAIL));
+        $this->assertCount(2, $mails);
+        foreach ($mails as $mail) {
+            $this->assertMatchesRegularExpression(
+                '#^http://10\.0\.2\.2:8000/email/verify/[A-Za-z0-9]{64}$#',
+                $mail->verificationUrl,
+            );
+        }
     }
 
     public function test_registration_saves_the_government_id_as_pending(): void
@@ -230,6 +273,61 @@ class VisitorEmailVerificationFlowTest extends TestCase
 
         $this->assertNotNull(Account::where('email', self::EMAIL)->first()->email_verified_at);
         $this->assertGuest();
+    }
+
+    // Regression: fresh link → GET confirmation page → POST its form.
+
+    public function test_fresh_link_verifies_through_the_confirmation_page(): void
+    {
+        $this->register();
+
+        $this->verifyThroughBrowser()
+            ->assertOk()
+            ->assertSee('Your email has been verified');
+
+        $this->assertNotNull(Account::where('email', self::EMAIL)->first()->email_verified_at);
+        $this->assertDatabaseCount('email_verification_tokens', 0);
+    }
+
+    public function test_used_link_fails_through_the_confirmation_page(): void
+    {
+        $this->register();
+        $this->verifyThroughBrowser()->assertSee('Your email has been verified');
+
+        $this->verifyThroughBrowser()
+            ->assertOk()
+            ->assertSee('This link is not valid');
+    }
+
+    public function test_expired_link_fails_through_the_confirmation_page(): void
+    {
+        $this->register();
+        $this->travel(config('auth.email_verification.expire') + 1)->minutes();
+
+        $this->verifyThroughBrowser()
+            ->assertOk()
+            ->assertSee('This link has expired');
+
+        $this->assertNull(Account::where('email', self::EMAIL)->first()->email_verified_at);
+    }
+
+    public function test_link_replaced_by_a_resend_fails_and_the_newest_link_works(): void
+    {
+        $this->register();
+        $firstUrl = Mail::sent(VerifyVisitorEmail::class)->last()->verificationUrl;
+
+        $this->postJson('/api/auth/email/resend', ['email' => self::EMAIL])->assertOk();
+
+        // The registration email's link no longer exists after a resend.
+        $this->verifyLinkThroughBrowser($firstUrl)
+            ->assertOk()
+            ->assertSee('This link is not valid')
+            ->assertSee('newest');
+        $this->assertNull(Account::where('email', self::EMAIL)->first()->email_verified_at);
+
+        $this->verifyThroughBrowser()
+            ->assertOk()
+            ->assertSee('Your email has been verified');
     }
 
     public function test_invalid_token_fails(): void

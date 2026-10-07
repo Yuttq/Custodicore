@@ -43,7 +43,7 @@ class EmailVerificationService
         try {
             Mail::to($account->email)->send(new VerifyVisitorEmail(
                 $account,
-                route('email-verification.show', ['token' => $token]),
+                $this->verificationUrl($token),
                 $this->expiresInMinutes(),
             ));
         } catch (\Throwable $e) {
@@ -137,6 +137,17 @@ class EmailVerificationService
         }
 
         $this->send($account);
+    }
+
+    /**
+     * Built on APP_URL, not the current request's host: links sent during
+     * API registration/resend must point to the address the recipient can
+     * reach (e.g. http://10.0.2.2:8000 for the Android emulator).
+     */
+    public function verificationUrl(string $token): string
+    {
+        return rtrim((string) config('app.url'), '/')
+            .route('email-verification.show', ['token' => $token], false);
     }
 
     public function expiresInMinutes(): int

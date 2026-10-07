@@ -53,6 +53,7 @@
                 <div class="icon err">&times;</div>
                 <h1>This link is not valid</h1>
                 <p>This verification link is invalid or has already been used. If your email is not verified yet, open the CustodiCore app and request a new verification email.</p>
+                <p class="muted">Requested another verification email? Each new email replaces the earlier ones — only the link in the newest email works.</p>
             @endif
         </div>
     </main>
