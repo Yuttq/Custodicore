@@ -5,8 +5,8 @@ import { toVisitRequestParams } from '../utils/scheduleAvailability';
 /**
  * Loads visit-slot availability (GET /api/schedules/availability) and holds
  * the visitor's relationship / date / time-slot selection for the Home
- * calendar. Selecting a slot reserves nothing; `requestParams` is what the
- * Phase 4 visit-request screen will receive as navigation params.
+ * calendar. Selecting a slot reserves nothing; `requestParams` is the body
+ * the Schedule tab submits to POST /api/visit-requests.
  *
  * @param {object} [options]
  * @param {boolean} [options.enabled=true] — false skips loading (e.g. not approved yet)

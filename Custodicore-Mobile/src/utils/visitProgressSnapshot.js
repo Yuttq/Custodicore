@@ -94,13 +94,40 @@ function matchesStep(step, stepId) {
 }
 
 /**
+ * A visitor-submitted request (`assigned`) has not been scheduled by staff yet.
+ * The backend timeline still reports its submission as "Schedule Assigned"
+ * (completed) with "Attendance Confirmed" current, so that step becomes the
+ * current "Awaiting Staff Review" step and every later step stays pending.
+ * @param {CompactVisitStep[]} steps
+ * @returns {CompactVisitStep[]}
+ */
+function asAwaitingStaffReview(steps) {
+  const reviewIndex = steps.findIndex((step) => step.id === 'schedule_assigned');
+  if (reviewIndex === -1) return steps;
+  return steps.map((step, i) => {
+    if (i < reviewIndex) return step;
+    if (i > reviewIndex) return { ...step, stepState: 'pending', occurredAt: null };
+    return {
+      ...step,
+      id: 'awaiting_review',
+      label: 'Awaiting Staff Review',
+      stepState: 'current',
+      description:
+        'Your visit request was submitted and is awaiting review by facility staff. You will be notified once it is approved or rejected.',
+      officerNote: null,
+    };
+  });
+}
+
+/**
  * Builds the six-step snapshot from real timeline events. When the visit ended
  * early (declined / cancelled / no-show), steps that never happened are dropped
  * and the backend's closing event is shown last.
  * @param {TimelineEvent[]} fullSteps
+ * @param {string} [visitStatus] — the visit's status; `assigned` shows "Awaiting Staff Review"
  * @returns {CompactVisitStep[]}
  */
-export function buildCompactVisitStepsFromTimeline(fullSteps) {
+export function buildCompactVisitStepsFromTimeline(fullSteps, visitStatus) {
   const base = VISIT_PROGRESS_SNAPSHOT_DEFS.map(({ label, stepId }) => {
     const entry = fullSteps.find((s) => matchesStep(s, stepId));
     return {
@@ -114,7 +141,7 @@ export function buildCompactVisitStepsFromTimeline(fullSteps) {
   });
 
   const terminal = fullSteps.find((s) => TERMINAL_STEP_IDS.some((id) => matchesStep(s, id)));
-  if (!terminal) return base;
+  if (!terminal) return visitStatus === 'assigned' ? asAwaitingStaffReview(base) : base;
 
   return [
     ...base.filter((step) => step.stepState === 'completed'),

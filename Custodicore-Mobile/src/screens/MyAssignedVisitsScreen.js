@@ -88,7 +88,7 @@ function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
     },
     pending: {
       title: 'No Pending Visits',
-      message: 'Visits awaiting your attendance confirmation will appear here.',
+      message: 'Visit requests awaiting staff review and visits awaiting your confirmation will appear here.',
       icon: 'time-outline',
       actionTitle: null,
     },
@@ -174,7 +174,13 @@ function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnable
  * (Phase 3). Open a tab directly with `navigate('Schedule', { tab: 'schedule' })`.
  */
 export default function MyAssignedVisitsScreen({ navigation, route }) {
-  const { visits, confirmVisit, refreshVisits, error: visitsError } = useVisits();
+  const {
+    visits,
+    confirmVisit,
+    submitVisitRequest,
+    refreshVisits,
+    error: visitsError,
+  } = useVisits();
   const { isApprovedVisitor } = useAuth();
   // Availability is an approved-visitor API (visitor.approved middleware).
   const schedule = useScheduleAvailability({ enabled: isApprovedVisitor });
@@ -341,7 +347,11 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <VisitationScheduleSection schedule={schedule} />
+          <VisitationScheduleSection
+            schedule={schedule}
+            onSubmitRequest={submitVisitRequest}
+            onViewPending={() => setActiveTab('pending')}
+          />
         </ScrollView>
       ) : loading && !refreshing ? (
         <View style={styles.loadingWrap}>

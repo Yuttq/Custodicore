@@ -11,6 +11,7 @@ import {
   confirmAssignedVisit,
   declineAssignedVisit,
   fetchAssignedVisits,
+  submitVisitRequest as submitVisitRequestApi,
 } from '../repositories/visitsRepository';
 
 const VisitsContext = createContext(null);
@@ -96,6 +97,25 @@ export function VisitsProvider({ children }) {
     [getVisitById, upsertVisit],
   );
 
+  /**
+   * Submits a visit request, then reloads the list so it shows up (status
+   * `assigned`, awaiting staff review). Throws the API error unchanged;
+   * nothing is added locally unless the backend accepted the request.
+   */
+  const submitVisitRequest = useCallback(
+    async (params) => {
+      const created = await submitVisitRequestApi(params);
+      try {
+        await refreshVisits();
+      } catch {
+        // The request exists server-side; show it even if the reload failed.
+        if (created) upsertVisit(created);
+      }
+      return created;
+    },
+    [refreshVisits, upsertVisit],
+  );
+
   const submitUnableToAttend = useCallback(
     async (id, { reason, notes }) => {
       const existing = getVisitById(id);
@@ -132,6 +152,7 @@ export function VisitsProvider({ children }) {
       error,
       getVisitById,
       confirmVisit,
+      submitVisitRequest,
       submitUnableToAttend,
       refreshVisits,
       clearVisits,
@@ -142,6 +163,7 @@ export function VisitsProvider({ children }) {
       error,
       getVisitById,
       confirmVisit,
+      submitVisitRequest,
       submitUnableToAttend,
       refreshVisits,
       clearVisits,

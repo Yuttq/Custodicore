@@ -66,6 +66,16 @@ export async function confirmAssignedVisit(visitId) {
 }
 
 /**
+ * Submits a visit request (POST /api/visit-requests). Always hits the API —
+ * there is no mock path, so nothing is created unless the backend accepts it.
+ * @param {{ relationshipId: string; date: string; startTime: string }} params
+ * @returns {Promise<object | null>} the created visit (status `assigned`)
+ */
+export async function submitVisitRequest(params) {
+  return normalizeVisit(await api.createVisitRequest(params));
+}
+
+/**
  * @param {string} visitId
  * @param {{ reason?: string; notes?: string }} details
  * @returns {Promise<object>}

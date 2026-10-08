@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
 import TimeSlotList from './TimeSlotList';
@@ -28,13 +28,16 @@ function TextLink({ label, onPress, accessibilityLabel }) {
 
 /**
  * Visiting days/hours for the visitor's verified PDL relationship(s), the
- * date calendar and the time slots for the chosen date. Choosing (and
- * confirming) a slot reserves nothing — confirmation is local UI state only;
- * `schedule.requestParams` is handed to the Phase 4 visit-request screen.
+ * date calendar and the time slots for the chosen date. Choosing a slot
+ * reserves nothing; the submit button sends `schedule.requestParams` to
+ * `onSubmitRequest` (POST /api/visit-requests). The resulting request awaits
+ * staff review (`assigned`) — it is never confirmed here.
  * @param {object} props
  * @param {ReturnType<typeof import('../hooks/useScheduleAvailability').default>} props.schedule
+ * @param {(params: { relationshipId: string; date: string; startTime: string }) => Promise<unknown>} props.onSubmitRequest
+ * @param {() => void} [props.onViewPending] — shows the Pending tab
  */
-export default function VisitationScheduleSection({ schedule }) {
+export default function VisitationScheduleSection({ schedule, onSubmitRequest, onViewPending }) {
   const {
     loading,
     error,
@@ -52,22 +55,71 @@ export default function VisitationScheduleSection({ schedule }) {
     selectedDaySlots,
     selectedSlotKey,
     selectSlot,
+    clearSelection,
     selection,
+    requestParams,
   } = schedule;
 
   const windows = useMemo(() => visitingWindows(relationship), [relationship]);
 
-  // Local, on-screen confirmation of the chosen slot. No API call and nothing
-  // reserved; any change of slot/date/PDL drops it so a new choice must be
-  // confirmed again.
   const selectionKey = selection
     ? `${selection.relationshipId}|${selection.date}|${selection.slotKey}`
     : null;
-  const [confirmedKey, setConfirmedKey] = useState(/** @type {string | null} */ (null));
+
+  // Visit request submission. The ref blocks a second POST from a fast
+  // double tap before `submitting` re-renders the button as disabled.
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  // An API error belongs to the slot it was raised for; another choice hides it.
+  const [submitError, setSubmitError] = useState(
+    /** @type {{ key: string; message: string } | null} */ (null),
+  );
+  // The last successfully submitted slot, shown until a new slot is chosen.
+  const [submitted, setSubmitted] = useState(
+    /** @type {{ pdlName: string | null; date: string; period: string; startTime: string; endTime: string } | null} */ (null),
+  );
   useEffect(() => {
-    if (confirmedKey && confirmedKey !== selectionKey) setConfirmedKey(null);
-  }, [confirmedKey, selectionKey]);
-  const isConfirmed = selectionKey !== null && confirmedKey === selectionKey;
+    if (selectionKey) setSubmitted(null);
+  }, [selectionKey]);
+  const errorMessage =
+    submitError && submitError.key === selectionKey ? submitError.message : null;
+
+  const handleSubmit = async () => {
+    if (submittingRef.current || !requestParams || !selection) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitError(null);
+    const key = selectionKey;
+    const chosen = {
+      pdlName: relationship?.pdlName ?? null,
+      date: selection.date,
+      period: selection.period,
+      startTime: selection.startTime,
+      endTime: selection.endTime,
+    };
+    try {
+      await onSubmitRequest({
+        relationshipId: requestParams.relationshipId,
+        date: requestParams.date,
+        startTime: requestParams.startTime,
+      });
+      clearSelection();
+      setSubmitted(chosen);
+      // The slot's remaining capacity changed; show the backend's view of it.
+      reload();
+    } catch (e) {
+      setSubmitError({
+        key,
+        message:
+          e instanceof Error && e.message.trim()
+            ? e.message
+            : 'Could not submit your visit request. Please try again.',
+      });
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
   const hasAvailableDate = useMemo(
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
@@ -187,38 +239,66 @@ export default function VisitationScheduleSection({ schedule }) {
           </Card>
 
           {selection ? (
-            <Card style={[styles.visitCard, isConfirmed && styles.selectionCardConfirmed]}>
+            <Card style={styles.visitCard}>
               <Text style={styles.sectionLabel}>Selected Visit Slot</Text>
               <Text style={styles.visitDate}>{formatDateLong(selection.date)}</Text>
               <Text style={styles.visitTime}>
                 {periodLabel(selection.period, selection.startTime)} ·{' '}
                 {formatSlotRange(selection.startTime, selection.endTime)}
               </Text>
-              {isConfirmed ? (
+              <View style={styles.selectionAction}>
+                <Button
+                  title="Submit Visit Request"
+                  onPress={handleSubmit}
+                  loading={submitting}
+                  accessibilityLabel={`Submit visit request: ${formatDateLong(selection.date)}, ${periodLabel(selection.period, selection.startTime)}`}
+                />
+              </View>
+              {errorMessage ? (
                 <View
-                  style={styles.selectionConfirmed}
+                  style={styles.selectionError}
                   accessibilityLiveRegion="polite"
-                  accessibilityLabel="Selection confirmed on this screen. Not reserved."
+                  accessibilityRole="alert"
                 >
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                  <Text style={styles.selectionConfirmedText}>
-                    Selection confirmed on this screen — not reserved
-                  </Text>
+                  <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                  <Text style={styles.selectionErrorText}>{errorMessage}</Text>
                 </View>
-              ) : (
-                <View style={styles.selectionAction}>
-                  <Button
-                    title="Confirm Selection"
-                    onPress={() => setConfirmedKey(selectionKey)}
-                    accessibilityLabel={`Confirm selection: ${formatDateLong(selection.date)}, ${periodLabel(selection.period, selection.startTime)}`}
-                  />
-                </View>
-              )}
+              ) : null}
               <Text style={[styles.noVisit, styles.selectionNote]}>
-                {isConfirmed
-                  ? 'Your choice is confirmed on this screen only. The slot is not reserved and no visit request has been sent. Tap a different time slot to change it — you will need to confirm again. Visit requests will be available in an upcoming update.'
-                  : 'Confirming only confirms your choice on this screen. It does not reserve the slot or send a visit request. Visit requests will be available in an upcoming update.'}
+                Your request will be sent to the facility for review. The visit is not
+                confirmed until staff approve it.
               </Text>
+            </Card>
+          ) : submitted ? (
+            <Card style={[styles.visitCard, styles.selectionCardConfirmed]}>
+              <Text style={styles.sectionLabel}>Visit Request Submitted</Text>
+              <Text style={styles.visitDate}>{formatDateLong(submitted.date)}</Text>
+              <Text style={styles.visitTime}>
+                {periodLabel(submitted.period, submitted.startTime)} ·{' '}
+                {formatSlotRange(submitted.startTime, submitted.endTime)}
+              </Text>
+              <View
+                style={styles.selectionConfirmed}
+                accessibilityLiveRegion="polite"
+                accessibilityLabel="Visit request submitted. Awaiting staff review."
+              >
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                <Text style={styles.selectionConfirmedText}>
+                  Request submitted — awaiting staff review
+                </Text>
+              </View>
+              <Text style={[styles.noVisit, styles.selectionNote]}>
+                {submitted.pdlName ? `Your request to visit ${submitted.pdlName}` : 'Your request'}{' '}
+                is now under review by facility staff. You will be notified once it is approved
+                or rejected. You can follow it in the Pending tab.
+              </Text>
+              {onViewPending ? (
+                <TextLink
+                  label="View Pending Requests"
+                  onPress={onViewPending}
+                  accessibilityLabel="View pending visit requests"
+                />
+              ) : null}
             </Card>
           ) : null}
         </>
@@ -355,6 +435,22 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontWeight: '600',
     color: colors.success,
+    flexShrink: 1,
+  },
+  selectionError: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: layout.buttonRadius,
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
+  },
+  selectionErrorText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.danger,
     flexShrink: 1,
   },
   pressed: { opacity: 0.88 },

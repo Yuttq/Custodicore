@@ -7,7 +7,8 @@ import { buildCompactVisitStepsFromTimeline } from '../utils/visitProgressSnapsh
  * Returns no steps (not mock steps) when there is no visit or no events.
  *
  * @param {string | null | undefined} visitId — visit_requests.visit_request_id
- * @param {string | undefined} visitStatus — used only to refetch when status changes
+ * @param {string | undefined} visitStatus — refetches when it changes; `assigned`
+ *   shows the "Awaiting Staff Review" step
  */
 export default function useVisitTimeline(visitId, visitStatus) {
   const [steps, setSteps] = useState(
@@ -27,7 +28,7 @@ export default function useVisitTimeline(visitId, visitStatus) {
     setError(null);
     try {
       const events = await fetchVisitTimeline(String(visitId), visitStatus);
-      setSteps(events.length > 0 ? buildCompactVisitStepsFromTimeline(events) : []);
+      setSteps(events.length > 0 ? buildCompactVisitStepsFromTimeline(events, visitStatus) : []);
     } catch (e) {
       setError(e instanceof Error && e.message.trim() ? e.message : 'Could not load timeline.');
       setSteps([]);

@@ -451,6 +451,27 @@ export async function getScheduleAvailability(params = {}) {
 }
 
 /**
+ * Submits a visit request for one of the visitor's verified PDL relationships —
+ * POST /api/visit-requests. The backend re-checks eligibility, availability,
+ * capacity and duplicates; on success it returns the new visit (201) with
+ * status `assigned` (awaiting staff review).
+ * @param {{ relationshipId: string | number; date: string; startTime: string }} params
+ *   date is YYYY-MM-DD, startTime is HH:MM (the slot's start).
+ */
+export async function createVisitRequest({ relationshipId, date, startTime }) {
+  try {
+    const { data } = await client.post('/visit-requests', {
+      relationshipId: Number(relationshipId),
+      date,
+      startTime,
+    });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Facility announcements for the Home screen — GET /api/announcements.
  * @returns {Promise<{ announcements: { id, title, body, category, pinned, createdAt }[] }>}
  */

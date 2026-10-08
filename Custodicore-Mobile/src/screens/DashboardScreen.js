@@ -411,7 +411,8 @@ export default function DashboardScreen({ navigation }) {
         ) : (
           <Card style={styles.visitCard}>
             <Text style={styles.noVisit}>
-              No upcoming assigned visits. Schedules are assigned by facility officers.
+              No upcoming assigned visits. Choose an available visitation slot and submit a
+              visit request for staff review.
             </Text>
             <View style={styles.noVisitAction}>
               <Button

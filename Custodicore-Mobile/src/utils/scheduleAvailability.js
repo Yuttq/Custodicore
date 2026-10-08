@@ -257,7 +257,7 @@ export function visitingWindows(relationship) {
 }
 
 /**
- * Navigation params for the Phase 4 visit-request screen. Only IDs and the
+ * Visit-request parameters (POST /api/visit-requests). Only IDs and the
  * chosen date/time — no names or personal details. The backend must
  * re-check ownership, verification and capacity when the request is sent.
  * @param {{ relationshipId: string; date: string; startTime: string; endTime: string } | null} selection
