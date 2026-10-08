@@ -77,6 +77,8 @@ class VisitAssignmentService
                 ]);
             }
 
+            $this->assertWeeklyVisitLimit($visitor, $schedule);
+
             $visitRequest = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
                 'pdl_id' => $pdl->pdl_id,
@@ -175,6 +177,7 @@ class VisitAssignmentService
                 $visitor, $pdl, $schedule,
                 'You already have a visit request for this PDL in this time slot.'
             );
+            $this->assertWeeklyVisitLimit($visitor, $schedule);
 
             $visitRequest = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
@@ -630,6 +633,46 @@ class VisitAssignmentService
                 'schedule_id' => $message,
             ]);
         }
+    }
+
+    /**
+     * `visit.max_per_week`: a visitor may hold at most N capacity-status
+     * visits (across all PDLs) in one Monday–Sunday week of schedule_date.
+     *
+     * Runs inside the creating transaction, but the lock held there is on
+     * the target schedule row only, so two concurrent requests by the same
+     * visitor for different schedules in the same week can both pass.
+     */
+    private function assertWeeklyVisitLimit(VisitorProfile $visitor, VisitSchedule $schedule): void
+    {
+        $day = CarbonImmutable::parse($schedule->schedule_date->toDateString());
+        $weekStart = $day->startOfWeek(CarbonImmutable::MONDAY)->toDateString();
+        $weekEnd = $day->endOfWeek(CarbonImmutable::SUNDAY)->toDateString();
+
+        $count = VisitRequest::where('visitor_id', $visitor->visitor_id)
+            ->whereIn('status', self::CAPACITY_STATUSES)
+            ->whereHas('schedule', fn ($q) => $q
+                ->whereDate('schedule_date', '>=', $weekStart)
+                ->whereDate('schedule_date', '<=', $weekEnd))
+            ->count();
+
+        if ($count >= $this->maxVisitsPerWeek()) {
+            throw ValidationException::withMessages([
+                'schedule_id' => 'You have reached the maximum number of visits allowed for this calendar week.',
+            ]);
+        }
+    }
+
+    /** Zero or negative allows no visits; a missing or non-integer value falls back to 2. */
+    private function maxVisitsPerWeek(): int
+    {
+        $raw = trim((string) SystemSetting::value('visit.max_per_week', '2'));
+
+        if (preg_match('/^-?\d+$/', $raw) !== 1) {
+            return 2;
+        }
+
+        return max((int) $raw, 0);
     }
 
     /** Locks a visit request that is still awaiting staff review (`assigned`). */
