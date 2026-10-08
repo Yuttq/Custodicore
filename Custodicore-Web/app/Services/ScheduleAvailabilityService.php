@@ -8,6 +8,7 @@ use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
+use App\Models\VisitSession;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -21,6 +22,12 @@ use Illuminate\Support\Collection;
  * Nothing is written: viewing availability creates no visit_schedules rows
  * (VisitAssignmentService::submitVisitorRequest creates one on demand).
  *
+ * Slots are the sessions of a visiting day (morning, afternoon). A visit is
+ * one day: the visitor picks one or more of that day's available sessions
+ * and they form ONE visit (one visit.max_per_week count). Each day also
+ * reports `wholeDay` — all of its sessions as one visit — when it has more
+ * than one session.
+ *
  * Unavailable slots carry a machine-readable `reason`:
  *   past             — the date is before today (Asia/Manila)
  *   ended            — today, but the slot's end time has passed
@@ -28,7 +35,7 @@ use Illuminate\Support\Collection;
  *   not_in_effect    — a rule exists for that day but is outside effective_from/to
  *   pdl_unavailable  — PDL not in active custody, or has an active restriction
  *   closed           — the overlaid visit_schedules row is closed
- *   already_scheduled — this visitor already has an active visit for this PDL in this slot
+ *   already_scheduled — this visitor already has an active visit for this PDL on this date
  *   full             — no capacity left
  *   weekly_limit     — the visitor already holds visit.max_per_week visits that week
  */
@@ -92,7 +99,7 @@ class ScheduleAvailabilityService
         $rules = FacilityVisitationRule::orderBy('time_slot_start')->get();
         $schedules = $this->schedulesInRange($from, $to);
         $occupied = $this->occupiedBySchedule($schedules);
-        $ownBookings = $this->visitorBookings($visitor, $schedules);
+        $ownBookings = $this->visitorBookings($visitor, $from, $to);
         $weekly = [
             'counts' => $this->weeklyVisitCounts($visitor, $from, $to),
             'limit' => $this->maxVisitsPerWeek(),
@@ -118,7 +125,9 @@ class ScheduleAvailabilityService
     /**
      * `visit.max_per_week` counts: the visitor's visits in capacity statuses
      * (across all PDLs) per Monday–Sunday week of visit_schedules.schedule_date,
-     * over the complete weeks covering [from, to].
+     * over the complete weeks covering [from, to]. A visit is one
+     * visit_requests row however many sessions it has, so a whole-day visit
+     * counts once.
      *
      * @return array<string, int> weekStart (Y-m-d Monday) => visits that week
      */
@@ -277,7 +286,27 @@ class ScheduleAvailabilityService
             'date' => $dateString,
             'dayOfWeek' => $dayKey,
             'available' => collect($slots)->contains('available', true),
+            'wholeDay' => $effectiveRules->count() > 1 ? $this->wholeDay($slots) : null,
             'slots' => $slots,
+        ];
+    }
+
+    /**
+     * All of the day's sessions booked as one visit (POST /api/visit-requests
+     * with every startTime). Available only when every session is.
+     *
+     * @param  array<int, array<string, mixed>>  $slots  the day's slots, sorted by start
+     */
+    private function wholeDay(array $slots): array
+    {
+        $blocking = collect($slots)->firstWhere('available', false);
+
+        return [
+            'available' => $blocking === null,
+            'reason' => $blocking['reason'] ?? null,
+            'startTime' => $slots[0]['startTime'],
+            'endTime' => $slots[count($slots) - 1]['endTime'],
+            'startTimes' => array_column($slots, 'startTime'),
         ];
     }
 
@@ -307,7 +336,7 @@ class ScheduleAvailabilityService
         if (! $reason && $schedule?->status === 'closed') {
             $reason = self::REASON_CLOSED;
         }
-        if (! $reason && $schedule && isset($ownBookings[$relationship->pdl_id.'|'.$schedule->schedule_id])) {
+        if (! $reason && isset($ownBookings[$relationship->pdl_id.'|'.$date->toDateString()])) {
             $reason = self::REASON_ALREADY_SCHEDULED;
         }
         if (! $reason && ($schedule?->status === 'full' || $remaining <= 0)) {
@@ -398,34 +427,42 @@ class ScheduleAvailabilityService
             ));
     }
 
-    /** @return array<int, int> schedule_id => visit requests that still hold a seat */
+    /** @return array<int, int> schedule_id => visit sessions that still hold a seat */
     private function occupiedBySchedule(Collection $schedules): array
     {
         if ($schedules->isEmpty()) {
             return [];
         }
 
-        return VisitRequest::whereIn('schedule_id', $schedules->pluck('schedule_id'))
-            ->whereIn('status', VisitAssignmentService::CAPACITY_STATUSES)
-            ->selectRaw('schedule_id, COUNT(*) as aggregate')
-            ->groupBy('schedule_id')
+        return VisitSession::query()
+            ->join('visit_requests', 'visit_requests.visit_request_id', '=', 'visit_sessions.visit_request_id')
+            ->whereIn('visit_sessions.schedule_id', $schedules->pluck('schedule_id'))
+            ->whereIn('visit_requests.status', VisitAssignmentService::CAPACITY_STATUSES)
+            ->selectRaw('visit_sessions.schedule_id as schedule_id, COUNT(*) as aggregate')
+            ->groupBy('visit_sessions.schedule_id')
+            ->toBase()
             ->pluck('aggregate', 'schedule_id')
             ->map(fn ($count) => (int) $count)
             ->all();
     }
 
-    /** @return array<string, true> "pdl_id|schedule_id" this visitor already holds */
-    private function visitorBookings(VisitorProfile $visitor, Collection $schedules): array
+    /**
+     * A visitor holds at most one active visit per PDL per day; its sessions
+     * are chosen when it is requested.
+     *
+     * @return array<string, true> "pdl_id|Y-m-d" days on which this visitor already has a visit with that PDL
+     */
+    private function visitorBookings(VisitorProfile $visitor, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        if ($schedules->isEmpty()) {
-            return [];
-        }
-
-        return VisitRequest::where('visitor_id', $visitor->visitor_id)
-            ->whereIn('schedule_id', $schedules->pluck('schedule_id'))
-            ->whereIn('status', VisitAssignmentService::CAPACITY_STATUSES)
-            ->get(['pdl_id', 'schedule_id'])
-            ->mapWithKeys(fn ($v) => [$v->pdl_id.'|'.$v->schedule_id => true])
+        return VisitRequest::query()
+            ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
+            ->where('visit_requests.visitor_id', $visitor->visitor_id)
+            ->whereIn('visit_requests.status', VisitAssignmentService::CAPACITY_STATUSES)
+            ->whereDate('visit_schedules.schedule_date', '>=', $from->toDateString())
+            ->whereDate('visit_schedules.schedule_date', '<=', $to->toDateString())
+            ->toBase()
+            ->get(['visit_requests.pdl_id', 'visit_schedules.schedule_date'])
+            ->mapWithKeys(fn ($v) => [$v->pdl_id.'|'.substr((string) $v->schedule_date, 0, 10) => true])
             ->all();
     }
 

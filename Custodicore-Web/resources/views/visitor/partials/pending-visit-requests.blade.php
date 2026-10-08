@@ -46,8 +46,15 @@
           <td class="muted-cell">
             @if ($vr->schedule)
               {{ $vr->schedule->schedule_date->format('M d, Y') }}
-              · {{ substr($vr->schedule->time_slot_start, 0, 5) }}–{{ substr($vr->schedule->time_slot_end, 0, 5) }}
-              <div style="font-size:12px;">{{ $vr->schedule->capacityLabel() }} taken</div>
+              @if ($vr->sessionSchedules->count() > 1)
+                · Whole day (one visit)
+              @endif
+              @foreach ($vr->sessionSchedules->isNotEmpty() ? $vr->sessionSchedules : collect([$vr->schedule]) as $session)
+                <div style="font-size:12px;">
+                  {{ substr($session->time_slot_start, 0, 5) }}–{{ substr($session->time_slot_end, 0, 5) }}
+                  · {{ $session->capacityLabel() }} taken
+                </div>
+              @endforeach
             @else
               —
             @endif

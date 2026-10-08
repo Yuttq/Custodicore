@@ -173,9 +173,10 @@ class VisitWeeklyLimitTest extends TestCase
         $this->existingVisit('2026-10-05');
         $this->assertSame('assigned', $this->submit()->status, 'Second visit of the week is allowed.');
 
-        // Third visit, in a different Friday slot of the same week.
-        $afternoon = $this->scheduleOn(self::FRIDAY);
-        $this->assertBlocked(fn () => $this->assign($afternoon));
+        // Third visit, on another day of the same week. (A second Friday
+        // session would belong to the Friday visit, not be a new visit.)
+        $sunday = $this->scheduleOn('2026-10-11');
+        $this->assertBlocked(fn () => $this->assign($sunday));
     }
 
     public function test_seeded_limit_of_two_is_enforced(): void
@@ -303,8 +304,8 @@ class VisitWeeklyLimitTest extends TestCase
 
         $this->assertSame('assigned', $this->submit()->status);
 
-        $afternoon = $this->scheduleOn(self::FRIDAY);
-        $this->assertBlocked(fn () => $this->assign($afternoon));
+        $sunday = $this->scheduleOn('2026-10-11');
+        $this->assertBlocked(fn () => $this->assign($sunday));
     }
 
     public function test_higher_limit_allows_more_visits(): void

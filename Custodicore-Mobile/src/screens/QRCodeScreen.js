@@ -29,7 +29,7 @@ import {
   resolveScheduleIdForQr,
 } from '../repositories/qrRepository';
 import { formatDate, formatTime } from '../utils';
-import { pickQrVisit } from '../utils/activeVisits';
+import { pickQrVisit, visitSessionsText, visitTimeText } from '../utils/activeVisits';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
@@ -67,13 +67,16 @@ function normalizeQrPayload(data) {
   const timeLabel =
     (typeof schedule.timeLabel === 'string' && schedule.timeLabel) ||
     (scheduledAt ? formatTime(scheduledAt) : '—');
+  // Whole-day visit: the same pass is used again for the afternoon re-entry.
+  const isWholeDay = schedule.isWholeDay === true;
 
   return {
     qrToken,
     expiresAt,
     pdlName,
     dateDisplay,
-    timeLabel,
+    timeLabel: visitTimeText({ timeLabel, isWholeDay }),
+    sessionsText: isWholeDay ? visitSessionsText(schedule.sessions) : null,
   };
 }
 
@@ -410,6 +413,12 @@ export default function QRCodeScreen({ route, navigation }) {
               <View style={styles.visitSummary}>
                 <Text style={styles.summaryDate}>{qrPayload?.dateDisplay}</Text>
                 <Text style={styles.summaryTime}>{qrPayload?.timeLabel}</Text>
+                {qrPayload?.sessionsText ? (
+                  <Text style={styles.summaryTime}>
+                    {qrPayload.sessionsText}. Show this same pass again when you return after
+                    the midday break.
+                  </Text>
+                ) : null}
                 <Text style={styles.summaryPdl} numberOfLines={2}>
                   {qrPayload?.pdlName}
                 </Text>

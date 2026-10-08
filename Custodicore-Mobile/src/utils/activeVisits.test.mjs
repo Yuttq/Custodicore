@@ -2,7 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isUpcomingVisit, pickNextVisit, pickQrVisit } from './activeVisits.js';
+import {
+  isUpcomingVisit,
+  pickNextVisit,
+  pickQrVisit,
+  visitSessionsText,
+  visitTimeText,
+} from './activeVisits.js';
 
 /** 2026-10-08 14:00 in Manila (UTC+8). */
 const NOW = new Date('2026-10-08T06:00:00Z');
@@ -107,4 +113,31 @@ test('pickQrVisit never falls back to visits[0]', () => {
   ];
   assert.equal(pickQrVisit(visits, NOW), null);
   assert.equal(pickQrVisit([], NOW), null);
+});
+
+test('a whole-day visit is one visit with both sessions', () => {
+  const wholeDay = {
+    ...visit(7, 'confirmed', '2026-10-09'),
+    timeLabel: '9:00 AM - 4:30 PM',
+    isWholeDay: true,
+    sessions: [
+      { period: 'morning', timeLabel: '9:00 AM - 11:30 AM' },
+      { period: 'afternoon', timeLabel: '1:00 PM - 4:30 PM' },
+    ],
+  };
+
+  assert.equal(pickNextVisit([wholeDay], NOW), wholeDay);
+  assert.equal(pickQrVisit([wholeDay], NOW), wholeDay);
+  assert.equal(visitTimeText(wholeDay), '9:00 AM - 4:30 PM · Whole day');
+  assert.equal(
+    visitSessionsText(wholeDay.sessions),
+    'Morning 9:00 AM - 11:30 AM · Afternoon 1:00 PM - 4:30 PM',
+  );
+});
+
+test('a single-session visit keeps its own time line', () => {
+  const single = { timeLabel: '1:00 PM - 4:30 PM', isWholeDay: false, sessions: [{ period: 'afternoon', timeLabel: '1:00 PM - 4:30 PM' }] };
+  assert.equal(visitTimeText(single), '1:00 PM - 4:30 PM');
+  assert.equal(visitSessionsText(single.sessions), null);
+  assert.equal(visitTimeText(null), '');
 });

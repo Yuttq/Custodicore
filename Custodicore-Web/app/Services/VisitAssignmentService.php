@@ -13,6 +13,7 @@ use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
+use App\Models\VisitSession;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -30,9 +31,17 @@ use Illuminate\Validation\ValidationException;
  * `assigned` is staff review only — the visitor API never confirms or
  * declines it. Both paths reserve schedule capacity on creation.
  *
+ * A visit is one day with one PDL and covers one or more sessions
+ * (visit_sessions): a visitor request may take the morning, the afternoon or
+ * both (whole day); a staff assignment takes one schedule. The visit carries
+ * the status lifecycle and counts once toward visit.max_per_week; each
+ * session holds one seat on its schedule, reserved and released together.
+ *
  * Time-based transitions (`php artisan visits:expire`):
- *   pending_confirmation -> cancelled  once confirmation_deadline passes (seat released)
+ *   pending_confirmation -> cancelled  once confirmation_deadline passes (seats released)
  *   confirmed            -> no_show    once the visit date is before today, never checked in
+ *   confirmed            -> completed  once the visit date is before today, entered and exited
+ *                                       but never finally checked out (left at the midday break)
  */
 class VisitAssignmentService
 {
@@ -122,16 +131,21 @@ class VisitAssignmentService
     }
 
     /**
-     * A visitor's own request for one slot. The slot must be available
-     * exactly as GET /api/schedules/availability reports it; the
-     * visit_schedules row is created on demand. Creates the request as
-     * `assigned` (awaiting Record Officer review) and reserves a seat.
+     * A visitor's own request for one visit: one day with one or more of its
+     * sessions ($startTimes, e.g. ['09:00', '13:00'] for the whole day). The
+     * sessions form ONE visit — one weekly-limit count, one review, one QR —
+     * and each reserves a seat on its own schedule. Every session must be
+     * available exactly as GET /api/schedules/availability reports it; the
+     * visit_schedules rows are created on demand. Creates the request as
+     * `assigned` (awaiting Record Officer review).
+     *
+     * @param  string|array<int, string>  $startTimes
      */
     public function submitVisitorRequest(
         VisitorProfile $visitor,
         VisitorPdlRelationship $relationship,
         CarbonImmutable $date,
-        string $startTime
+        string|array $startTimes
     ): VisitRequest {
         if ((int) $relationship->visitor_id !== (int) $visitor->visitor_id) {
             throw ValidationException::withMessages(['relationshipId' => 'Relationship not found.']);
@@ -143,15 +157,21 @@ class VisitAssignmentService
             ]);
         }
 
-        $slot = $this->availability->slotFor($visitor, $relationship, $date, $startTime);
-        if (! $slot) {
-            throw ValidationException::withMessages([
-                'startTime' => 'There is no visiting slot at this time on the selected date.',
-            ]);
-        }
-        if (! $slot['available']) {
-            [$field, $message] = $this->unavailableSlotError($slot['reason']);
-            throw ValidationException::withMessages([$field => $message]);
+        $startTimes = collect((array) $startTimes)->map(fn ($t) => substr((string) $t, 0, 5))->unique()->sort()->values();
+
+        $slots = [];
+        foreach ($startTimes as $startTime) {
+            $slot = $this->availability->slotFor($visitor, $relationship, $date, $startTime);
+            if (! $slot) {
+                throw ValidationException::withMessages([
+                    'startTime' => 'There is no visiting slot at this time on the selected date.',
+                ]);
+            }
+            if (! $slot['available']) {
+                [$field, $message] = $this->unavailableSlotError($slot['reason']);
+                throw ValidationException::withMessages([$field => $message]);
+            }
+            $slots[] = $slot;
         }
 
         $visitor->loadMissing('account');
@@ -160,37 +180,50 @@ class VisitAssignmentService
         $this->assertPdlAssignable($pdl);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
-        $rule = FacilityVisitationRule::findOrFail($slot['ruleId']);
+        return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots) {
+            // Locked in start-time order, so two requests for the same day
+            // always take the schedule locks in the same order.
+            $schedules = [];
+            foreach ($slots as $slot) {
+                $scheduleId = $slot['scheduleId']
+                    ?? $this->createScheduleRow(FacilityVisitationRule::findOrFail($slot['ruleId']), $date);
 
-        return DB::transaction(function () use ($visitor, $pdl, $relationship, $rule, $date, $slot) {
-            $scheduleId = $slot['scheduleId'] ?? $this->createScheduleRow($rule, $date);
+                $schedule = VisitSchedule::with('rule')->whereKey($scheduleId)->lockForUpdate()->first();
 
-            $schedule = VisitSchedule::with('rule')->whereKey($scheduleId)->lockForUpdate()->first();
-
-            // Re-checked under the lock: the slot may have filled, closed or
-            // been taken by this visitor since availability was read.
-            $this->assertScheduleAssignable($schedule, $pdl);
-            if ($this->occupiedSlots($schedule) >= $schedule->max_capacity) {
-                throw ValidationException::withMessages([
-                    'schedule_id' => 'This schedule is full. Choose another available slot.',
-                ]);
+                // Re-checked under the lock: the slot may have filled or
+                // closed since availability was read.
+                $this->assertScheduleAssignable($schedule, $pdl);
+                if ($this->occupiedSlots($schedule) >= $schedule->max_capacity) {
+                    throw ValidationException::withMessages([
+                        'schedule_id' => 'This schedule is full. Choose another available slot.',
+                    ]);
+                }
+                $schedules[] = $schedule;
             }
+
+            $first = $schedules[0];
             $this->assertNoDuplicate(
-                $visitor, $pdl, $schedule,
-                'You already have a visit request for this PDL in this time slot.'
+                $visitor, $pdl, $first,
+                'You already have a visit with this PDL on this date.'
             );
-            $this->assertWeeklyVisitLimit($visitor, $schedule);
+            $this->assertWeeklyVisitLimit($visitor, $first);
 
             $visitRequest = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
                 'pdl_id' => $pdl->pdl_id,
                 'relationship_id' => $relationship->relationship_id,
-                'schedule_id' => $schedule->schedule_id,
+                'schedule_id' => $first->schedule_id,
                 'status' => 'assigned',
                 'confirmation_deadline' => null,
             ]);
 
-            $schedule->reserveSlot();
+            foreach ($schedules as $schedule) {
+                VisitSession::firstOrCreate([
+                    'visit_request_id' => $visitRequest->visit_request_id,
+                    'schedule_id' => $schedule->schedule_id,
+                ]);
+                $schedule->reserveSlot();
+            }
 
             EligibilityAssessment::assessFor($visitRequest->fresh([
                 'visitor.idDocuments',
@@ -199,7 +232,7 @@ class VisitAssignmentService
                 'relationship',
             ]));
 
-            $scheduleLabel = $this->scheduleLabel($schedule);
+            $scheduleLabel = $this->visitLabel($visitRequest);
             Notification::notify(
                 $visitor->account_id,
                 'visits',
@@ -248,7 +281,7 @@ class VisitAssignmentService
 
             $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
 
-            $scheduleLabel = $this->scheduleLabel($visitRequest->schedule);
+            $scheduleLabel = $this->visitLabel($visitRequest);
             Notification::notify(
                 $visitRequest->visitor->account_id,
                 'visit_confirmed',
@@ -272,7 +305,7 @@ class VisitAssignmentService
 
     /**
      * Record Officer rejects a visitor-submitted request: assigned -> cancelled,
-     * releasing the seat reserved at submission.
+     * releasing the seats reserved at submission (every session).
      */
     public function rejectVisitorRequest(VisitRequest $visitRequest, string $reason): VisitRequest
     {
@@ -285,11 +318,10 @@ class VisitAssignmentService
                 'cancellation_reason' => $reason,
             ]);
 
-            $schedule = VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first();
-            $schedule?->releaseSlot();
+            $this->releaseSessionSlots($visitRequest);
 
             $visitRequest->load(['visitor', 'pdl']);
-            $scheduleLabel = $schedule ? $this->scheduleLabel($schedule) : 'the requested schedule';
+            $scheduleLabel = $this->visitLabel($visitRequest);
             Notification::notify(
                 $visitRequest->visitor->account_id,
                 'visits',
@@ -359,8 +391,8 @@ class VisitAssignmentService
 
     /**
      * Visitor declines a staff-assigned visit: pending_confirmation -> declined,
-     * releasing its seat. The row lock and status re-check mean a repeated or
-     * racing decline/confirm fails instead of releasing the seat twice.
+     * releasing its seats. The row lock and status re-check mean a repeated or
+     * racing decline/confirm fails instead of releasing the seats twice.
      */
     public function declineAssignedVisit(VisitRequest $visitRequest, string $reason): VisitRequest
     {
@@ -373,7 +405,7 @@ class VisitAssignmentService
                 'cancellation_reason' => $reason,
             ]);
 
-            VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first()?->releaseSlot();
+            $this->releaseSessionSlots($visitRequest);
 
             AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
                 'Visitor declined assigned visit via mobile app', Module::CODE_VISIT_SCHEDULING);
@@ -418,11 +450,10 @@ class VisitAssignmentService
                 'cancellation_reason' => 'The confirmation deadline passed without a response.',
             ]);
 
-            $schedule = VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first();
-            $schedule?->releaseSlot();
+            $this->releaseSessionSlots($visitRequest);
 
             $visitRequest->load(['visitor', 'pdl']);
-            $scheduleLabel = $schedule ? $this->scheduleLabel($schedule) : 'the assigned schedule';
+            $scheduleLabel = $this->visitLabel($visitRequest);
             Notification::notify(
                 $visitRequest->visitor->account_id,
                 'visits',
@@ -442,23 +473,23 @@ class VisitAssignmentService
 
     /**
      * IDs of confirmed visits whose schedule date is before today and that
-     * were never checked in. A visit that was checked in but not checked out
-     * was attended, so it is left for the front desk to close.
+     * were never checked in for any session. A visit that was checked in but
+     * not checked out was attended, so it is left for the front desk to close.
      */
     public function missedConfirmedVisitIds(): Collection
     {
         return VisitRequest::where('status', 'confirmed')
             ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '<', today()->toDateString()))
-            ->whereDoesntHave('checkin', fn ($q) => $q->whereNotNull('check_in_time'))
+            ->whereDoesntHave('checkins', fn ($q) => $q->whereNotNull('check_in_time'))
             ->orderBy('visit_request_id')
             ->pluck('visit_request_id');
     }
 
     /**
      * confirmed -> no_show once the visit date has passed without a check-in.
-     * The seat stays counted (no_show is a capacity status). Returns false
+     * The seats stay counted (no_show is a capacity status). Returns false
      * (no change) when the visit is no longer confirmed, is today or later,
-     * or was checked in.
+     * or was checked in for any session.
      */
     public function markNoShow(int $visitRequestId): bool
     {
@@ -469,11 +500,11 @@ class VisitAssignmentService
                 return false;
             }
 
-            $visitRequest->load(['schedule', 'checkin', 'visitor', 'pdl']);
+            $visitRequest->load(['schedule', 'checkins', 'visitor', 'pdl']);
 
             if (
                 ! $visitRequest->schedule?->schedule_date?->lt(today())
-                || $visitRequest->checkin?->check_in_time
+                || $visitRequest->checkins->contains(fn ($c) => $c->check_in_time !== null)
             ) {
                 return false;
             }
@@ -481,18 +512,85 @@ class VisitAssignmentService
             $visitRequest->update(['status' => 'no_show']);
 
             AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
-                "System marked visit as no-show for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$this->scheduleLabel($visitRequest->schedule)}): not checked in on the visit date",
+                "System marked visit as no-show for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$this->visitLabel($visitRequest)}): not checked in on the visit date",
                 Module::CODE_VISIT_SCHEDULING);
 
             return true;
         });
     }
 
+    /**
+     * IDs of confirmed visits dated before today that were entered and then
+     * left for good: at least one check-in, nobody still inside. This is a
+     * whole-day visitor who exited at the midday break and never came back
+     * for the afternoon session (the final check-out completes it otherwise).
+     */
+    public function attendedUnclosedVisitIds(): Collection
+    {
+        return VisitRequest::where('status', 'confirmed')
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '<', today()->toDateString()))
+            ->whereHas('checkins', fn ($q) => $q->whereNotNull('check_in_time'))
+            ->whereDoesntHave('checkins', fn ($q) => $q->where('status', 'checked_in'))
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * confirmed -> completed for a past visit that was attended and exited
+     * but never reached its final check-out (see attendedUnclosedVisitIds).
+     * The unused session's seat stays counted, like a no-show. The gate QR is
+     * retired. Returns false (no change) when the visit no longer qualifies.
+     */
+    public function completeAttendedVisit(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (! $visitRequest || $visitRequest->status !== 'confirmed') {
+                return false;
+            }
+
+            $visitRequest->load(['schedule', 'checkins', 'qrCode', 'visitor', 'pdl']);
+
+            if (
+                ! $visitRequest->schedule?->schedule_date?->lt(today())
+                || ! $visitRequest->checkins->contains(fn ($c) => $c->check_in_time !== null)
+                || $visitRequest->checkins->contains(fn ($c) => $c->status === 'checked_in')
+            ) {
+                return false;
+            }
+
+            $visitRequest->update(['status' => 'completed']);
+            if ($visitRequest->qrCode && $visitRequest->qrCode->status === 'active') {
+                $visitRequest->qrCode->update(['status' => 'used']);
+            }
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System completed visit for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$this->visitLabel($visitRequest)}): visitor left and did not return for a later session",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
+    }
+
+    /** Visit sessions on this schedule whose visit still holds a seat. */
     public function occupiedSlots(VisitSchedule $schedule): int
     {
-        return VisitRequest::where('schedule_id', $schedule->schedule_id)
-            ->whereIn('status', self::CAPACITY_STATUSES)
+        return VisitSession::query()
+            ->join('visit_requests', 'visit_requests.visit_request_id', '=', 'visit_sessions.visit_request_id')
+            ->where('visit_sessions.schedule_id', $schedule->schedule_id)
+            ->whereIn('visit_requests.status', self::CAPACITY_STATUSES)
             ->count();
+    }
+
+    /** Frees the seat of every session of a visit that no longer holds one. */
+    private function releaseSessionSlots(VisitRequest $visitRequest): void
+    {
+        VisitSchedule::whereIn('schedule_id', $visitRequest->sessions()->pluck('schedule_id'))
+            ->orderBy('time_slot_start')
+            ->lockForUpdate()
+            ->get()
+            ->each->releaseSlot();
     }
 
     private function assertVisitorAssignable(?VisitorProfile $visitor): void
@@ -618,15 +716,20 @@ class VisitAssignmentService
         }
     }
 
+    /**
+     * One active visit per visitor, PDL and day: a second session that day is
+     * part of the same visit, chosen when the visit is requested, never a
+     * separate visit (which would count twice toward the weekly limit).
+     */
     private function assertNoDuplicate(
         VisitorProfile $visitor,
         Pdl $pdl,
         VisitSchedule $schedule,
-        string $message = 'This visitor is already assigned to this PDL on the selected schedule.'
+        string $message = 'This visitor already has a visit with this PDL on the selected date.'
     ): void {
         $exists = VisitRequest::where('visitor_id', $visitor->visitor_id)
             ->where('pdl_id', $pdl->pdl_id)
-            ->where('schedule_id', $schedule->schedule_id)
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', $schedule->schedule_date->toDateString()))
             ->whereIn('status', self::CAPACITY_STATUSES)
             ->exists();
 
@@ -735,7 +838,7 @@ class VisitAssignmentService
             ScheduleAvailabilityService::REASON_NOT_IN_EFFECT => ['date', 'The selected date is outside the allowed visitation period.'],
             ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => ['relationshipId', 'Visits with this PDL are not available at this time. Please contact the facility for details.'],
             ScheduleAvailabilityService::REASON_CLOSED => ['startTime', 'This visiting slot is closed. Choose another available slot.'],
-            ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit request for this PDL in this time slot.'],
+            ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit with this PDL on this date.'],
             ScheduleAvailabilityService::REASON_FULL => ['startTime', 'This visiting slot is full. Choose another available slot.'],
             ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => ['schedule_id', self::WEEKLY_LIMIT_MESSAGE],
             default => ['startTime', 'This visiting slot is not available.'],
@@ -760,5 +863,19 @@ class VisitAssignmentService
         $end = substr((string) $schedule->time_slot_end, 0, 5);
 
         return "{$date} {$start}–{$end}";
+    }
+
+    /** "Oct 9, 2026 09:00–11:30", or "Oct 9, 2026 09:00–11:30 and 13:00–16:30" for a whole-day visit. */
+    private function visitLabel(VisitRequest $visitRequest): string
+    {
+        $schedules = $visitRequest->sessionSchedules()->get();
+        if ($schedules->isEmpty()) {
+            return $visitRequest->schedule ? $this->scheduleLabel($visitRequest->schedule) : 'the scheduled date';
+        }
+
+        $date = $schedules->first()->schedule_date?->format('M j, Y') ?? 'unknown date';
+        $ranges = $schedules->map(fn (VisitSchedule $s) => substr((string) $s->time_slot_start, 0, 5).'–'.substr((string) $s->time_slot_end, 0, 5));
+
+        return $date.' '.$ranges->implode(' and ');
     }
 }

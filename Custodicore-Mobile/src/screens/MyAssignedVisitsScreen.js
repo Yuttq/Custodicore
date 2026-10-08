@@ -28,6 +28,7 @@ import { useAuth } from '../hooks/useAuth';
 import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
+import { visitTimeText } from '../utils/activeVisits';
 
 const TABS = [
   { key: 'upcoming', label: 'Upcoming' },
@@ -144,7 +145,7 @@ function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnable
         <Text style={styles.pdlName} numberOfLines={2}>
           {item.pdlName}
         </Text>
-        <Text style={styles.timeText}>{item.timeLabel}</Text>
+        <Text style={styles.timeText}>{visitTimeText(item)}</Text>
         <View style={styles.chipRow}>
           <StatusChip status={chipStatus} />
         </View>

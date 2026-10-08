@@ -365,19 +365,24 @@ class VisitorVisitRequestTest extends TestCase
 
         // Two visits in the same week land after this request read slot
         // availability but before its transaction, so only the locked
-        // re-check in VisitAssignmentService can catch the limit.
+        // re-check in VisitAssignmentService can catch the limit. Neither is
+        // on Friday: a Friday visit with this PDL would make the request a
+        // same-day duplicate instead.
         $thursdayRule = FacilityVisitationRule::where('pdl_classification', 'drug_related')->sole();
         $this->bindAvailabilityRace(function () use ($thursdayRule) {
-            $thursday = VisitSchedule::create([
-                'rule_id' => $thursdayRule->rule_id,
-                'schedule_date' => '2026-10-08',
-                'time_slot_start' => '09:00:00',
-                'time_slot_end' => '11:30:00',
-                'max_capacity' => 30,
-                'slots_taken' => 0,
-                'status' => 'open',
-            ]);
-            foreach ([$thursday->schedule_id, $this->schedule->schedule_id] as $scheduleId) {
+            $scheduleIds = [];
+            foreach (['2026-10-08', '2026-10-10'] as $date) {
+                $scheduleIds[] = VisitSchedule::create([
+                    'rule_id' => $thursdayRule->rule_id,
+                    'schedule_date' => $date,
+                    'time_slot_start' => '09:00:00',
+                    'time_slot_end' => '11:30:00',
+                    'max_capacity' => 30,
+                    'slots_taken' => 0,
+                    'status' => 'open',
+                ])->schedule_id;
+            }
+            foreach ($scheduleIds as $scheduleId) {
                 VisitRequest::create([
                     'visitor_id' => $this->visitor->visitor_id,
                     'pdl_id' => $this->pdl->pdl_id,

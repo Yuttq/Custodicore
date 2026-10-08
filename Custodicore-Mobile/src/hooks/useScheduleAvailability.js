@@ -5,7 +5,8 @@ import { toVisitRequestParams } from '../utils/scheduleAvailability';
 /**
  * Loads visit-slot availability (GET /api/schedules/availability) and holds
  * the visitor's relationship / date / time-slot selection for the Home
- * calendar. Selecting a slot reserves nothing; `requestParams` is the body
+ * calendar. A slot is one session; a day's `wholeDay` option is all of its
+ * sessions as ONE visit. Selecting either reserves nothing; `requestParams` is the body
  * the Schedule tab submits to POST /api/visit-requests.
  *
  * @param {object} [options]
@@ -73,7 +74,10 @@ export default function useScheduleAvailability({
   const daysByDate = useMemo(() => relationship?.daysByDate ?? {}, [relationship]);
   const selectedDay = selectedDate ? (daysByDate[selectedDate] ?? null) : null;
   const selectedDaySlots = useMemo(() => selectedDay?.slots ?? [], [selectedDay]);
-  const selectedSlot = selectedDaySlots.find((s) => s.slotKey === selectedSlotKey) ?? null;
+  const selectedDayWholeDay = selectedDay?.wholeDay ?? null;
+  const selectedSlot =
+    selectedDaySlots.find((s) => s.slotKey === selectedSlotKey) ??
+    (selectedDayWholeDay?.slotKey === selectedSlotKey ? selectedDayWholeDay : null);
 
   // A reload can make the chosen date/slot unavailable — drop it then.
   useEffect(() => {
@@ -104,11 +108,13 @@ export default function useScheduleAvailability({
 
   const selectSlot = useCallback(
     (slotKey) => {
-      const slot = selectedDaySlots.find((s) => s.slotKey === slotKey);
+      const slot =
+        selectedDaySlots.find((s) => s.slotKey === slotKey) ??
+        (selectedDayWholeDay?.slotKey === slotKey ? selectedDayWholeDay : null);
       if (!slot?.available) return;
       setSelectedSlotKey(slotKey);
     },
-    [selectedDaySlots],
+    [selectedDaySlots, selectedDayWholeDay],
   );
 
   const clearSelection = useCallback(() => {
@@ -126,6 +132,7 @@ export default function useScheduleAvailability({
             endTime: selectedSlot.endTime,
             period: selectedSlot.period,
             slotKey: selectedSlot.slotKey,
+            startTimes: selectedSlot.startTimes ?? [selectedSlot.startTime],
           }
         : null,
     [selectedSlot, relationship],
@@ -148,6 +155,7 @@ export default function useScheduleAvailability({
     selectedDate,
     selectDate,
     selectedDaySlots,
+    selectedDayWholeDay,
     selectedSlotKey: selectedSlot ? selectedSlotKey : null,
     selectSlot,
     clearSelection,

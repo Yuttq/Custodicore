@@ -11,8 +11,10 @@ import {
   formatTime12,
   formatVisitingDays,
   manilaTodayIso,
+  middayBreakLabel,
   normalizeAvailabilityResponse,
   parseIsoDate,
+  periodLabel,
   shiftMonth,
   slotReasonLabel,
   toVisitRequestParams,
@@ -132,4 +134,72 @@ test('Phase 4 handoff params carry only ids and the chosen date/time', () => {
   assert.deepEqual(params, { relationshipId: '5', date: '2026-10-09', startTime: '13:00', endTime: '16:30' });
   assert.equal(toVisitRequestParams(null), null);
   assert.equal(toVisitRequestParams({ relationshipId: '5', date: 'bad', startTime: '13:00' }), null);
+});
+
+const WHOLE_DAY_SAMPLE = {
+  today: '2026-10-07',
+  relationships: [
+    {
+      relationshipId: 5,
+      days: [
+        {
+          date: '2026-10-09',
+          wholeDay: { available: true, reason: null, startTime: '09:00', endTime: '16:30', startTimes: ['09:00', '13:00'] },
+          slots: [
+            { startTime: '13:00', endTime: '16:30', available: true, capacity: 30, slotsRemaining: 12 },
+            { startTime: '09:00', endTime: '11:30', available: true, capacity: 30, slotsRemaining: 3 },
+          ],
+        },
+        {
+          date: '2026-10-11',
+          wholeDay: { available: false, reason: 'full', startTime: '09:00', endTime: '16:30', startTimes: ['09:00', '13:00'] },
+          slots: [
+            { startTime: '09:00', endTime: '11:30', available: false, reason: 'full', capacity: 30, slotsRemaining: 0 },
+            { startTime: '13:00', endTime: '16:30', available: true, capacity: 30, slotsRemaining: 30 },
+          ],
+        },
+        {
+          date: '2026-10-08',
+          wholeDay: null,
+          slots: [{ startTime: '09:00', endTime: '11:30', available: false, reason: 'not_eligible' }],
+        },
+      ],
+    },
+  ],
+};
+
+test('whole day is one selectable option spanning both sessions', () => {
+  const rel = normalizeAvailabilityResponse(WHOLE_DAY_SAMPLE).relationships[0];
+  const friday = rel.daysByDate['2026-10-09'].wholeDay;
+
+  assert.equal(friday.slotKey, '2026-10-09|whole_day');
+  assert.equal(friday.period, 'whole_day');
+  assert.equal(periodLabel(friday.period, friday.startTime), 'Whole day');
+  assert.equal(friday.startTime, '09:00');
+  assert.equal(friday.endTime, '16:30');
+  assert.deepEqual(friday.startTimes, ['09:00', '13:00']);
+  assert.equal(friday.available, true);
+  assert.equal(friday.slotsRemaining, 3, 'the tightest session limits the whole day');
+  assert.equal(middayBreakLabel(rel.daysByDate['2026-10-09'].slots), '11:30 AM – 1:00 PM');
+
+  const sunday = rel.daysByDate['2026-10-11'].wholeDay;
+  assert.equal(sunday.available, false);
+  assert.equal(sunday.reason, 'full');
+  // The afternoon alone is still bookable.
+  assert.equal(rel.daysByDate['2026-10-11'].available, true);
+
+  assert.equal(rel.daysByDate['2026-10-08'].wholeDay, null);
+});
+
+test('whole-day request params send every session start as one visit', () => {
+  const rel = normalizeAvailabilityResponse(WHOLE_DAY_SAMPLE).relationships[0];
+  const whole = rel.daysByDate['2026-10-09'].wholeDay;
+
+  assert.deepEqual(toVisitRequestParams({ ...whole, relationshipId: '5' }), {
+    relationshipId: '5',
+    date: '2026-10-09',
+    startTime: '09:00',
+    endTime: '16:30',
+    startTimes: ['09:00', '13:00'],
+  });
 });

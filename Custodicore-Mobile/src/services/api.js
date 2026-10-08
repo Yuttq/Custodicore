@@ -455,15 +455,18 @@ export async function getScheduleAvailability(params = {}) {
  * POST /api/visit-requests. The backend re-checks eligibility, availability,
  * capacity and duplicates; on success it returns the new visit (201) with
  * status `assigned` (awaiting staff review).
- * @param {{ relationshipId: string | number; date: string; startTime: string }} params
- *   date is YYYY-MM-DD, startTime is HH:MM (the slot's start).
+ * @param {{ relationshipId: string | number; date: string; startTime: string; startTimes?: string[] }} params
+ *   date is YYYY-MM-DD, startTime is HH:MM (the slot's start). startTimes
+ *   (whole day) lists every session start; the backend books them as ONE visit.
  */
-export async function createVisitRequest({ relationshipId, date, startTime }) {
+export async function createVisitRequest({ relationshipId, date, startTime, startTimes }) {
   try {
+    const sessions =
+      Array.isArray(startTimes) && startTimes.length > 1 ? { startTimes } : { startTime };
     const { data } = await client.post('/visit-requests', {
       relationshipId: Number(relationshipId),
       date,
-      startTime,
+      ...sessions,
     });
     return data;
   } catch (error) {

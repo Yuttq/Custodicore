@@ -154,6 +154,7 @@ export function formatVisitingDays(dayKeys) {
 
 /** @param {string} period @param {string} startTime */
 export function periodLabel(period, startTime) {
+  if (period === 'whole_day') return 'Whole day';
   if (period === 'morning') return 'Morning';
   if (period === 'afternoon') return 'Afternoon';
   return Number(String(startTime ?? '').slice(0, 2)) < 12 ? 'Morning' : 'Afternoon';
@@ -171,7 +172,51 @@ export function periodLabel(period, startTime) {
  * @property {number} capacity
  * @property {number} slotsRemaining
  * @property {string} relationshipId
+ * @property {string[]} [startTimes] whole-day option only: every session it books
  */
+
+export const WHOLE_DAY_PERIOD = 'whole_day';
+
+/**
+ * The day's sessions booked together as ONE visit (backend `wholeDay`),
+ * shaped like a slot so it can be selected the same way. Seats left is the
+ * tightest session's.
+ * @param {unknown} raw
+ * @param {string} date
+ * @param {AvailabilitySlot[]} slots the day's normalized slots
+ * @param {string} relationshipId
+ * @returns {AvailabilitySlot | null}
+ */
+function normalizeWholeDay(raw, date, slots, relationshipId) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.startTimes)) return null;
+  const startTimes = raw.startTimes.map((t) => String(t).slice(0, 5)).filter(Boolean).sort();
+  const sessions = slots.filter((s) => startTimes.includes(s.startTime));
+  if (startTimes.length < 2 || sessions.length !== startTimes.length) return null;
+  const available = raw.available === true && sessions.every((s) => s.available);
+  return {
+    slotKey: `${date}|${WHOLE_DAY_PERIOD}`,
+    date,
+    period: WHOLE_DAY_PERIOD,
+    startTime: sessions[0].startTime,
+    endTime: sessions[sessions.length - 1].endTime,
+    available,
+    reason: available ? null : (raw.reason ?? sessions.find((s) => !s.available)?.reason ?? null),
+    capacity: Math.min(...sessions.map((s) => s.capacity)),
+    slotsRemaining: Math.min(...sessions.map((s) => s.slotsRemaining)),
+    relationshipId,
+    startTimes,
+  };
+}
+
+/**
+ * "11:30 AM – 1:00 PM": the break between a whole-day visit's sessions.
+ * @param {AvailabilitySlot[]} slots the day's slots, sorted by start
+ * @returns {string | null}
+ */
+export function middayBreakLabel(slots) {
+  if (!Array.isArray(slots) || slots.length < 2) return null;
+  return formatSlotRange(slots[0].endTime, slots[1].startTime);
+}
 
 function normalizeSlot(raw, date, relationshipId) {
   if (!raw || typeof raw !== 'object') return null;
@@ -204,7 +249,12 @@ function normalizeRelationship(raw) {
         .map((s) => normalizeSlot(s, d.date, relationshipId))
         .filter(Boolean)
         .sort((a, b) => a.startTime.localeCompare(b.startTime));
-      const day = { date: d.date, available: slots.some((s) => s.available), slots };
+      const day = {
+        date: d.date,
+        available: slots.some((s) => s.available),
+        slots,
+        wholeDay: normalizeWholeDay(d.wholeDay, d.date, slots, relationshipId),
+      };
       daysByDate[d.date] = day;
       return day;
     });
@@ -261,14 +311,21 @@ export function visitingWindows(relationship) {
  * Visit-request parameters (POST /api/visit-requests). Only IDs and the
  * chosen date/time — no names or personal details. The backend must
  * re-check ownership, verification and capacity when the request is sent.
- * @param {{ relationshipId: string; date: string; startTime: string; endTime: string } | null} selection
+ * A whole-day selection also carries `startTimes` (every session it books);
+ * the backend makes them one visit.
+ * @param {{ relationshipId: string; date: string; startTime: string; endTime: string; startTimes?: string[] } | null} selection
  */
 export function toVisitRequestParams(selection) {
   if (!selection?.relationshipId || !parseIsoDate(selection.date) || !selection.startTime) return null;
-  return {
+  /** @type {{ relationshipId: string; date: string; startTime: string; endTime: string; startTimes?: string[] }} */
+  const params = {
     relationshipId: String(selection.relationshipId),
     date: selection.date,
     startTime: selection.startTime,
     endTime: selection.endTime,
   };
+  if (Array.isArray(selection.startTimes) && selection.startTimes.length > 1) {
+    params.startTimes = [...selection.startTimes];
+  }
+  return params;
 }

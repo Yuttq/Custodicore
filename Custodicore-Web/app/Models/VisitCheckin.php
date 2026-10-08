@@ -12,6 +12,7 @@ class VisitCheckin extends Model
 
     protected $fillable = [
         'visit_request_id',
+        'schedule_id',
         'qr_code_id',
         'id_surrendered_type',
         'id_surrender_time',
@@ -32,9 +33,23 @@ class VisitCheckin extends Model
         'id_returned_time' => 'datetime',
     ];
 
+    /** A gate record created without a session is for the visit's first session. */
+    protected static function booted(): void
+    {
+        static::creating(function (VisitCheckin $checkin) {
+            $checkin->schedule_id ??= VisitRequest::whereKey($checkin->visit_request_id)->value('schedule_id');
+        });
+    }
+
     public function visitRequest()
     {
         return $this->belongsTo(VisitRequest::class, 'visit_request_id', 'visit_request_id');
+    }
+
+    /** The session this gate record is for. */
+    public function schedule()
+    {
+        return $this->belongsTo(VisitSchedule::class, 'schedule_id', 'schedule_id');
     }
 
     public function qrCode()

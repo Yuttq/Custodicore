@@ -63,6 +63,34 @@ export function pickNextVisit(visits, now = new Date()) {
 }
 
 /**
+ * Time line for a visit card. A whole-day visit (morning + afternoon
+ * sessions) is one visit: "9:00 AM - 4:30 PM · Whole day".
+ * @param {{ timeLabel?: string | null; isWholeDay?: boolean } | null | undefined} visit
+ * @returns {string}
+ */
+export function visitTimeText(visit) {
+  const time = typeof visit?.timeLabel === 'string' ? visit.timeLabel : '';
+  if (!visit?.isWholeDay) return time;
+  return time ? `${time} · Whole day` : 'Whole day';
+}
+
+/**
+ * "Morning 9:00 AM - 11:30 AM · Afternoon 1:00 PM - 4:30 PM", or null for a
+ * single-session visit (its time line already says it all).
+ * @param {{ period?: string; timeLabel?: string }[] | null | undefined} sessions
+ * @returns {string | null}
+ */
+export function visitSessionsText(sessions) {
+  if (!Array.isArray(sessions) || sessions.length < 2) return null;
+  return sessions
+    .map((s) => {
+      const name = s?.period === 'morning' ? 'Morning' : s?.period === 'afternoon' ? 'Afternoon' : 'Session';
+      return s?.timeLabel ? `${name} ${s.timeLabel}` : name;
+    })
+    .join(' · ');
+}
+
+/**
  * The visit the QR Pass tab opens automatically: the nearest confirmed visit
  * dated today or later. Never falls back to another visit.
  * @template {{ status?: string; scheduledAt?: unknown }} T

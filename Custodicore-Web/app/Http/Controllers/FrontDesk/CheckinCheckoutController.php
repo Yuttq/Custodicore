@@ -9,6 +9,8 @@ use App\Models\QrCode;
 use App\Models\VisitCheckin;
 use App\Models\VisitRequest;
 use App\Models\VisitorId;
+use App\Models\VisitSchedule;
+use App\Services\VisitGateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,9 +29,19 @@ use Illuminate\View\View;
  * - Manual check-in backup
  * - Visitor check-out
  * - Today's gate history
+ *
+ * A visit may have a morning and an afternoon session (whole-day visit).
+ * Each check-in enters one session (see VisitGateService); a check-out with
+ * a later session still ahead is the midday exit and leaves the visit
+ * confirmed, the last one completes it.
  */
 class CheckinCheckoutController extends Controller
 {
+    public function __construct(
+        private VisitGateService $gate
+    ) {
+    }
+
     /**
      * TEMPORARY STAFF IDENTIFICATION
      *
@@ -61,21 +73,10 @@ class CheckinCheckoutController extends Controller
     public function index(): View
     {
         /*
-         * Visitors expected today who have not checked in yet.
+         * Visitors expected today: not inside now, with a session still
+         * to enter (includes a whole-day visitor out for the midday break).
          */
-        $expected = VisitRequest::where('status', 'confirmed')
-            ->whereHas('schedule', function ($q) {
-                $q->whereDate('schedule_date', today());
-            })
-            ->whereDoesntHave('checkin')
-            ->with([
-                'visitor',
-                'pdl',
-                'schedule',
-                'qrCode',
-            ])
-            ->orderBy('confirmed_at')
-            ->get();
+        $expected = $this->expectedToday();
 
         /*
          * Visitors currently inside the facility.
@@ -114,6 +115,56 @@ class CheckinCheckoutController extends Controller
                 'todayHistory'
             )
         );
+    }
+
+    /**
+     * Confirmed visits today whose visitor is not inside and that still have
+     * a session to enter. Shared with the Front Desk dashboard.
+     *
+     * @return \Illuminate\Support\Collection<int, VisitRequest>
+     */
+    public static function expectedToday()
+    {
+        $gate = app(VisitGateService::class);
+
+        return VisitRequest::where('status', 'confirmed')
+            ->whereHas('schedule', function ($q) {
+                $q->whereDate('schedule_date', today());
+            })
+            ->whereDoesntHave('checkins', fn ($q) => $q->where('status', 'checked_in'))
+            ->with([
+                'visitor',
+                'pdl',
+                'schedule',
+                'qrCode',
+            ])
+            ->orderBy('confirmed_at')
+            ->get()
+            ->filter(fn (VisitRequest $visit) => $gate->remainingSessions($visit)->isNotEmpty())
+            ->values();
+    }
+
+    /**
+     * Schedule block of a scan response for the session being entered.
+     */
+    private function sessionPayload(VisitRequest $visitRequest, VisitSchedule $session): array
+    {
+        $date = Carbon::parse($session->schedule_date);
+        $start = Carbon::parse($session->time_slot_start)->format('h:i A');
+        $end = Carbon::parse($session->time_slot_end)->format('h:i A');
+        $isReentry = $visitRequest->checkins()->exists();
+        $name = ucfirst($this->gate->sessionName($session));
+
+        return [
+            'date' => $date->format('M d, Y'),
+            'start' => $start,
+            'end' => $end,
+            'session' => $name,
+            'is_reentry' => $isReentry,
+            'whole_day' => $visitRequest->sessions()->count() > 1,
+            'display' => $date->format('M d, Y').' · '.$start.' - '.$end
+                .' · '.$name.($isReentry ? ' (re-entry)' : ''),
+        ];
     }
 
     /**
@@ -167,7 +218,7 @@ class CheckinCheckoutController extends Controller
              */
             if ($request->input('mode') === 'checkout') {
                 $visitRequest = $qr->visitRequest;
-                $checkin = $visitRequest?->checkin;
+                $checkin = $visitRequest ? $this->gate->activeCheckin($visitRequest) : null;
 
                 if (! $visitRequest || ! $checkin || $checkin->status !== 'checked_in') {
                     return response()->json([
@@ -254,10 +305,7 @@ class CheckinCheckoutController extends Controller
             /*
              * Prevent scanning an already checked-in visitor.
              */
-            if (
-                $visitRequest->checkin &&
-                $visitRequest->checkin->status === 'checked_in'
-            ) {
+            if ($this->gate->activeCheckin($visitRequest)) {
                 return response()->json([
                     'success' => false,
                     'message' =>
@@ -297,19 +345,17 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
-             * Schedule times.
+             * The session this entry is for (morning, or the afternoon
+             * re-entry of a whole-day visit).
              */
-            $scheduleStart = $visitRequest->schedule->time_slot_start
-                ? Carbon::parse(
-                    $visitRequest->schedule->time_slot_start
-                )->format('h:i A')
-                : '—';
+            [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
 
-            $scheduleEnd = $visitRequest->schedule->time_slot_end
-                ? Carbon::parse(
-                    $visitRequest->schedule->time_slot_end
-                )->format('h:i A')
-                : '—';
+            if (! $session) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $sessionError,
+                ], 422);
+            }
 
             /*
              * Get visitor's registered IDs.
@@ -382,23 +428,8 @@ class CheckinCheckoutController extends Controller
                 'registered_ids' =>
                     $registeredIds,
 
-                'schedule' => [
-                    'date' =>
-                        $scheduleDate->format('M d, Y'),
-
-                    'start' =>
-                        $scheduleStart,
-
-                    'end' =>
-                        $scheduleEnd,
-
-                    'display' =>
-                        $scheduleDate->format('M d, Y')
-                        . ' · '
-                        . $scheduleStart
-                        . ' - '
-                        . $scheduleEnd,
-                ],
+                'schedule' =>
+                    $this->sessionPayload($visitRequest, $session),
 
                 'checkin' => null,
             ]);
@@ -578,10 +609,7 @@ class CheckinCheckoutController extends Controller
             /*
              * Prevent duplicate check-in.
              */
-            if (
-                $visitRequest->checkin &&
-                $visitRequest->checkin->status === 'checked_in'
-            ) {
+            if ($this->gate->activeCheckin($visitRequest)) {
                 return response()->json([
                     'success' => false,
                     'message' =>
@@ -612,6 +640,15 @@ class CheckinCheckoutController extends Controller
                     'success' => false,
                     'message' =>
                         'This visit is not scheduled for today.',
+                ], 422);
+            }
+
+            [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
+
+            if (! $session) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $sessionError,
                 ], 422);
             }
 
@@ -672,6 +709,9 @@ class CheckinCheckoutController extends Controller
                 [
                     'visit_request_id' =>
                         $visitRequest->visit_request_id,
+
+                    'schedule_id' =>
+                        $session->schedule_id,
                 ],
                 [
                     'qr_code_id' =>
@@ -703,11 +743,17 @@ class CheckinCheckoutController extends Controller
             );
 
             /*
-             * Mark QR as used.
+             * Mark QR as used once no later session is left to enter.
+             * A whole-day visitor keeps the same QR for the afternoon
+             * re-entry.
              */
-            $qr->update([
-                'status' => 'used',
-            ]);
+            if ($this->gate->isLastSession($visitRequest, $session)) {
+                $qr->update([
+                    'status' => 'used',
+                ]);
+            }
+
+            $sessionName = $this->gate->sessionName($session);
 
             /*
              * Audit trail.
@@ -719,7 +765,7 @@ class CheckinCheckoutController extends Controller
                     'visit_checkins',
                     $checkin->checkin_id,
 
-                    "QR checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id}",
+                    "QR checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id} ({$sessionName})",
 
                     Module::CODE_CHECKIN_CHECKOUT
                 );
@@ -784,6 +830,9 @@ class CheckinCheckoutController extends Controller
 
                     'method' =>
                         'QR Scan',
+
+                    'session' =>
+                        ucfirst($sessionName),
                 ],
 
                 'new_id_pending' =>
@@ -919,15 +968,19 @@ class CheckinCheckoutController extends Controller
             /*
              * Prevent duplicate check-in.
              */
-            $existingCheckin = $visitRequest->checkin;
-
-            if (
-                $existingCheckin &&
-                $existingCheckin->status === 'checked_in'
-            ) {
+            if ($this->gate->activeCheckin($visitRequest)) {
                 return back()->with(
                     'error',
                     'This visitor is already checked in.'
+                );
+            }
+
+            [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
+
+            if (! $session) {
+                return back()->with(
+                    'error',
+                    $sessionError
                 );
             }
 
@@ -990,6 +1043,9 @@ class CheckinCheckoutController extends Controller
                 [
                     'visit_request_id' =>
                         $visitRequest->visit_request_id,
+
+                    'schedule_id' =>
+                        $session->schedule_id,
                 ],
                 [
                     'qr_code_id' =>
@@ -1029,9 +1085,12 @@ class CheckinCheckoutController extends Controller
             );
 
             /*
-             * Mark QR as used.
+             * Mark QR as used once no later session is left to enter.
              */
-            if ($qr->status !== 'used') {
+            if (
+                $qr->status !== 'used' &&
+                $this->gate->isLastSession($visitRequest, $session)
+            ) {
                 $qr->update([
                     'status' => 'used',
                 ]);
@@ -1061,7 +1120,7 @@ class CheckinCheckoutController extends Controller
                 'visit_checkins',
                 $checkin->checkin_id,
 
-                "Manually checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id}",
+                "Manually checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id} ({$this->gate->sessionName($session)})",
 
                 Module::CODE_CHECKIN_CHECKOUT
             );
@@ -1103,6 +1162,16 @@ class CheckinCheckoutController extends Controller
                 );
             }
 
+            $visitRequest = $checkin->visitRequest;
+
+            /*
+             * Leaving with a later session of the visit still ahead is
+             * the midday exit: the visit stays confirmed and the same QR
+             * admits the visitor again for the afternoon session.
+             */
+            $temporaryExit = $visitRequest
+                && $this->gate->hasReturnSession($visitRequest, $checkin);
+
             $checkin->update([
                 'check_out_time' =>
                     now(),
@@ -1121,12 +1190,18 @@ class CheckinCheckoutController extends Controller
             ]);
 
             /*
-             * Complete the visit request.
+             * Final check-out completes the visit and retires its QR.
              */
-            $checkin->visitRequest?->update([
-                'status' =>
-                    'completed',
-            ]);
+            if ($visitRequest && ! $temporaryExit) {
+                $visitRequest->update([
+                    'status' =>
+                        'completed',
+                ]);
+
+                $visitRequest->qrCode()
+                    ->where('status', 'active')
+                    ->update(['status' => 'used']);
+            }
 
         } catch (\Throwable $e) {
 
@@ -1152,7 +1227,9 @@ class CheckinCheckoutController extends Controller
                 'visit_checkins',
                 $checkin->checkin_id,
 
-                "Checked out visitor {$checkin->visitRequest?->visitor?->full_name}",
+                $temporaryExit
+                    ? "Visitor {$visitRequest->visitor?->full_name} exited for the midday break (visit request #{$visitRequest->visit_request_id} continues in the afternoon session)"
+                    : "Checked out visitor {$checkin->visitRequest?->visitor?->full_name}",
 
                 Module::CODE_CHECKIN_CHECKOUT
             );
@@ -1169,7 +1246,9 @@ class CheckinCheckoutController extends Controller
             ->route('frontdesk.checkin-checkout')
             ->with(
                 'status',
-                'Visitor checked out successfully.'
+                $temporaryExit
+                    ? 'Visitor exited for the midday break. The same QR pass admits them for the afternoon session.'
+                    : 'Visitor checked out successfully.'
             );
     }
 }

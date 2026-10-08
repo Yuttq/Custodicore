@@ -87,7 +87,7 @@ class VisitorController extends Controller
             'idDocuments',
             'relationships.pdl',
             'flags' => fn ($q) => $q->orderBy('created_at', 'desc'),
-            'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule'])->orderByDesc('assigned_at')->limit(10),
+            'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule', 'sessionSchedules'])->orderByDesc('assigned_at')->limit(10),
         ]);
 
         $assignableRelationships = $visitor->relationships
@@ -118,7 +118,7 @@ class VisitorController extends Controller
             ->select('visit_requests.*')
             ->where('visit_requests.status', 'assigned')
             ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
-            ->with(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment'])
+            ->with(['visitor', 'pdl', 'relationship', 'schedule', 'sessionSchedules', 'eligibilityAssessment'])
             ->orderBy('visit_schedules.schedule_date')
             ->orderBy('visit_schedules.time_slot_start')
             ->orderBy('visit_requests.assigned_at');

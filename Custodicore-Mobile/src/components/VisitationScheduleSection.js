@@ -8,9 +8,22 @@ import {
   formatDateLong,
   formatSlotRange,
   formatVisitingDays,
+  middayBreakLabel,
   periodLabel,
   visitingWindows,
+  WHOLE_DAY_PERIOD,
 } from '../utils/scheduleAvailability';
+
+/** What booking the whole day means at the gate. */
+function wholeDayNote(slots) {
+  const breakLabel = middayBreakLabel(slots);
+  return (
+    'Morning and afternoon sessions on the same day are one visit and count once toward ' +
+    'your weekly limit. You leave during the midday break' +
+    (breakLabel ? ` (${breakLabel})` : '') +
+    ' and re-enter for the afternoon with the same QR pass.'
+  );
+}
 
 function TextLink({ label, onPress, accessibilityLabel }) {
   return (
@@ -34,7 +47,7 @@ function TextLink({ label, onPress, accessibilityLabel }) {
  * staff review (`assigned`) — it is never confirmed here.
  * @param {object} props
  * @param {ReturnType<typeof import('../hooks/useScheduleAvailability').default>} props.schedule
- * @param {(params: { relationshipId: string; date: string; startTime: string }) => Promise<unknown>} props.onSubmitRequest
+ * @param {(params: { relationshipId: string; date: string; startTime: string; startTimes?: string[] }) => Promise<unknown>} props.onSubmitRequest
  * @param {() => void} [props.onViewPending] — shows the Pending tab
  */
 export default function VisitationScheduleSection({ schedule, onSubmitRequest, onViewPending }) {
@@ -53,6 +66,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     selectedDate,
     selectDate,
     selectedDaySlots,
+    selectedDayWholeDay,
     selectedSlotKey,
     selectSlot,
     clearSelection,
@@ -102,6 +116,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         relationshipId: requestParams.relationshipId,
         date: requestParams.date,
         startTime: requestParams.startTime,
+        // Whole day: both sessions, booked as one visit.
+        ...(requestParams.startTimes ? { startTimes: requestParams.startTimes } : {}),
       });
       clearSelection();
       setSubmitted(chosen);
@@ -229,6 +245,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
                 <Text style={styles.slotDate}>{formatDateLong(selectedDate)}</Text>
                 <TimeSlotList
                   slots={selectedDaySlots}
+                  wholeDay={selectedDayWholeDay}
                   selectedSlotKey={selectedSlotKey}
                   onSelectSlot={selectSlot}
                 />
@@ -246,6 +263,11 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
                 {periodLabel(selection.period, selection.startTime)} ·{' '}
                 {formatSlotRange(selection.startTime, selection.endTime)}
               </Text>
+              {selection.period === WHOLE_DAY_PERIOD ? (
+                <Text style={[styles.noVisit, styles.selectionNote]}>
+                  {wholeDayNote(selectedDaySlots)}
+                </Text>
+              ) : null}
               <View style={styles.selectionAction}>
                 <Button
                   title="Submit Visit Request"

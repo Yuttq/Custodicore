@@ -21,9 +21,10 @@
                         <p class="text-body font-semibold">{{ $visit->visitor?->full_name ?? '—' }}</p>
                         <p class="text-metadata text-text-secondary">Visiting {{ $visit->pdl?->full_name ?? '—' }} ({{ $visit->pdl?->pdl_number }})</p>
                     </div>
-                    @if ($visit->schedule)
+                    @if ($visit->sessionSchedules->isNotEmpty())
+                        {{-- A whole-day visit lists both sessions. --}}
                         <span class="text-metadata text-text-secondary">
-                            {{ substr($visit->schedule->time_slot_start, 0, 5) }}–{{ substr($visit->schedule->time_slot_end, 0, 5) }}
+                            {{ $visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ') }}
                         </span>
                     @endif
                 </li>

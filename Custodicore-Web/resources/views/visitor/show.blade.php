@@ -360,7 +360,10 @@
         <td class="muted-cell">
           @if ($vr->schedule)
             {{ $vr->schedule->schedule_date->format('M d, Y') }}
-            · {{ substr($vr->schedule->time_slot_start, 0, 5) }}–{{ substr($vr->schedule->time_slot_end, 0, 5) }}
+            · {{ ($vr->sessionSchedules->isNotEmpty() ? $vr->sessionSchedules : collect([$vr->schedule]))->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' and ') }}
+            @if ($vr->sessionSchedules->count() > 1)
+              (whole day)
+            @endif
           @else
             —
           @endif

@@ -28,6 +28,7 @@ import {
   canRespondToVisit,
 } from '../mock/assignedVisits.mock';
 import useVisitTimeline from '../hooks/useVisitTimeline';
+import { visitSessionsText, visitTimeText } from '../utils/activeVisits';
 
 const DETAIL_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -181,7 +182,10 @@ export default function VisitDetailsScreen({ navigation, route }) {
           <>
             <Card style={styles.card}>
               <InfoRow label="Date" value={visit.dateDisplay} />
-              <InfoRow label="Time" value={visit.timeLabel} />
+              <InfoRow label="Time" value={visitTimeText(visit)} />
+              {visitSessionsText(visit.sessions) ? (
+                <InfoRow label="Sessions" value={visitSessionsText(visit.sessions)} />
+              ) : null}
               <InfoRow label="Facility" value={visit.facility} />
               <InfoRow label="PDL Name" value={visit.pdlName} />
               <InfoRow label="Visit Type" value={visit.visitType} />

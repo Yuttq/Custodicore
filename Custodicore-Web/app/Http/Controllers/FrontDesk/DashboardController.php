@@ -11,13 +11,15 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
-        $expectedToday = VisitRequest::where('status', 'confirmed')
-            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()))
-            ->whereDoesntHave('checkin')
-            ->count();
+        // Includes a whole-day visitor out for the midday break.
+        $expected = CheckinCheckoutController::expectedToday();
+        $expectedToday = $expected->count();
 
         $insideNow = VisitCheckin::where('status', 'checked_in')->count();
-        $checkedOutToday = VisitCheckin::whereDate('check_out_time', today())->count();
+        // Visits, not gate records: a midday exit is not a completed visit.
+        $checkedOutToday = VisitRequest::where('status', 'completed')
+            ->whereHas('checkins', fn ($q) => $q->whereDate('check_out_time', today()))
+            ->count();
 
         $stats = [
             ['label' => 'Expected Today', 'value' => (string) $expectedToday, 'hint' => 'Confirmed, not yet checked in', 'accent' => 'info', 'icon' => 'calendar'],
@@ -25,13 +27,7 @@ class DashboardController extends Controller
             ['label' => 'Checked Out Today', 'value' => (string) $checkedOutToday, 'hint' => 'Completed visits today', 'accent' => 'warning', 'icon' => 'qrcode'],
         ];
 
-        $upcomingArrivals = VisitRequest::where('status', 'confirmed')
-            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()))
-            ->whereDoesntHave('checkin')
-            ->with(['visitor', 'pdl', 'schedule'])
-            ->orderBy('confirmed_at')
-            ->take(5)
-            ->get();
+        $upcomingArrivals = $expected->take(5)->load('sessionSchedules');
 
         return view('frontdesk.dashboard', compact('stats', 'upcomingArrivals'));
     }

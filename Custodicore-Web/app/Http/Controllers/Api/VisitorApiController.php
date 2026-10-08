@@ -53,7 +53,7 @@ class VisitorApiController extends Controller
             ->where('visit_requests.visitor_id', $visitor->visitor_id)
             ->whereIn('visit_requests.status', ['assigned', 'pending_confirmation', 'confirmed'])
             ->whereDate('visit_schedules.schedule_date', '>=', today()->toDateString())
-            ->with(['pdl', 'schedule'])
+            ->with(['pdl', 'schedule', 'sessionSchedules'])
             ->orderBy('visit_schedules.schedule_date')
             ->orderBy('visit_schedules.time_slot_start')
             ->orderBy('visit_requests.visit_request_id')
@@ -74,7 +74,7 @@ class VisitorApiController extends Controller
         $visitor = $this->currentVisitor($request);
 
         $visits = VisitRequest::where('visitor_id', $visitor->visitor_id)
-            ->with(['pdl', 'schedule'])
+            ->with(['pdl', 'schedule', 'sessionSchedules'])
             ->orderByDesc('assigned_at')
             ->get()
             ->map(fn ($v) => $this->visitPayload($v));
@@ -94,7 +94,7 @@ class VisitorApiController extends Controller
 
         $visits = VisitRequest::where('visitor_id', $visitor->visitor_id)
             ->whereIn('status', self::HISTORY_STATUSES)
-            ->with(['pdl', 'schedule'])
+            ->with(['pdl', 'schedule', 'sessionSchedules'])
             ->orderByDesc('assigned_at')
             ->get()
             ->map(fn ($v) => $this->visitPayload($v));
@@ -103,9 +103,12 @@ class VisitorApiController extends Controller
     }
 
     /**
-     * POST /api/visit-requests — the visitor requests one available slot for
-     * a verified PDL relationship. Created as `assigned` (awaiting Record
-     * Officer review); the visitor cannot confirm it themselves.
+     * POST /api/visit-requests — the visitor requests one visit for a
+     * verified PDL relationship: one day and one or more of its sessions —
+     * `startTime` for a single session, or `startTimes` (e.g. ["09:00",
+     * "13:00"]) for several, which form ONE visit (whole day). Created as
+     * `assigned` (awaiting Record Officer review); the visitor cannot
+     * confirm it themselves.
      */
     public function storeVisitRequest(Request $request, VisitAssignmentService $assignments, ScheduleAvailabilityService $availability): JsonResponse
     {
@@ -114,7 +117,9 @@ class VisitorApiController extends Controller
         $data = $request->validate([
             'relationshipId' => ['required', 'integer', 'min:1'],
             'date' => ['required', 'date_format:Y-m-d'],
-            'startTime' => ['required', 'date_format:H:i'],
+            'startTime' => ['required_without:startTimes', 'nullable', 'date_format:H:i'],
+            'startTimes' => ['required_without:startTime', 'nullable', 'array', 'min:1', 'max:4'],
+            'startTimes.*' => ['date_format:H:i', 'distinct'],
         ]);
 
         // Only the visitor's own relationship — anyone else's is "not found".
@@ -127,7 +132,7 @@ class VisitorApiController extends Controller
             $visitor,
             $relationship,
             CarbonImmutable::createFromFormat('Y-m-d', $data['date'], $availability->timezone())->startOfDay(),
-            $data['startTime']
+            $data['startTimes'] ?? $data['startTime']
         );
 
         return response()->json($this->visitPayload($visitRequest), 201);
@@ -193,10 +198,11 @@ class VisitorApiController extends Controller
             ], 409);
         }
 
-        $visitRequest->loadMissing(['pdl', 'schedule', 'qrCode', 'checkin']);
+        $visitRequest->loadMissing(['pdl', 'schedule', 'sessionSchedules', 'qrCode', 'checkins']);
 
         // Already checked in / QR consumed — do not re-issue a gate pass.
-        if ($visitRequest->checkin && $visitRequest->checkin->status === 'checked_in') {
+        // A whole-day visitor out for the midday break keeps the same QR.
+        if ($visitRequest->checkins->contains('status', 'checked_in')) {
             return response()->json([
                 'message' => 'You are already checked in. A new QR pass is not available.',
                 'status' => 'checked_in',
@@ -220,19 +226,19 @@ class VisitorApiController extends Controller
             $qr = QrCode::generateFor($visitRequest, $expiryMinutes);
         }
 
-        $schedule = $visitRequest->schedule;
+        $window = $this->visitWindow($visitRequest);
 
         return response()->json([
             'qrToken' => $qr->qr_token,
             'expiresAt' => optional($qr->expires_at)->toIso8601String(),
             'referenceNumber' => $this->referenceNumber($visitRequest),
             'schedule' => [
-                'scheduledAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $this->normalizeTime((string) $schedule->time_slot_start) . '+08:00' : null,
-                'endAt' => $schedule ? $schedule->schedule_date->format('Y-m-d') . 'T' . $this->normalizeTime((string) $schedule->time_slot_end) . '+08:00' : null,
-                'dateDisplay' => $schedule?->schedule_date?->format('F j, Y'),
-                'timeLabel' => ($schedule && $schedule->time_slot_start && $schedule->time_slot_end)
-                    ? $this->formatTimeLabel((string) $schedule->time_slot_start) . ' - ' . $this->formatTimeLabel((string) $schedule->time_slot_end)
-                    : null,
+                'scheduledAt' => $window['scheduledAt'],
+                'endAt' => $window['endAt'],
+                'dateDisplay' => $window['dateDisplay'],
+                'timeLabel' => $window['timeLabel'],
+                'isWholeDay' => $window['isWholeDay'],
+                'sessions' => $window['sessions'],
                 'pdlName' => $visitRequest->pdl?->full_name,
                 'facilityName' => 'BJMP Facility',
             ],
@@ -244,7 +250,7 @@ class VisitorApiController extends Controller
     public function timeline(Request $request, VisitRequest $visitRequest): JsonResponse
     {
         $this->authorizeOwnership($request, $visitRequest);
-        $visitRequest->loadMissing(['visitor.idDocuments', 'relationship', 'eligibilityAssessment', 'qrCode', 'checkin']);
+        $visitRequest->loadMissing(['visitor.idDocuments', 'relationship', 'eligibilityAssessment', 'qrCode', 'checkins']);
 
         $visitor = $visitRequest->visitor;
         $idVerified = $visitor?->idDocuments->firstWhere('verification_status', 'verified');
@@ -252,7 +258,13 @@ class VisitorApiController extends Controller
         $relationship = $visitRequest->relationship;
         $eligibility = $visitRequest->eligibilityAssessment;
         $qr = $visitRequest->qrCode;
-        $checkin = $visitRequest->checkin;
+        // A whole-day visit has a gate record per session: checked in at the
+        // first entry, checked out at the final exit (a midday exit is not
+        // the end of the visit).
+        $firstCheckIn = $visitRequest->checkins->whereNotNull('check_in_time')->min('check_in_time');
+        $finalCheckOut = $visitRequest->status === 'completed'
+            ? $visitRequest->checkins->whereNotNull('check_out_time')->max('check_out_time')
+            : null;
 
         // A visitor's own request (POST /api/visit-requests) has no
         // confirmation deadline — staff assignments always set one — and is
@@ -281,9 +293,9 @@ class VisitorApiController extends Controller
             ['id' => 'visitor_eligible', 'title' => 'Visitor Eligible', 'description' => 'You are cleared for visitation under current facility policy.', 'occurredAt' => $eligibility?->overall_result === 'eligible' ? $eligibility->assessed_at : null],
             ...$schedulingSteps,
             ['id' => 'qr_generated', 'title' => 'QR Generated', 'description' => 'Entry QR pass was issued for gate and front desk presentation.', 'occurredAt' => $qr?->generated_at],
-            ['id' => 'checked_in', 'title' => 'Checked In', 'description' => 'Check-in was recorded at the facility visitor entrance.', 'occurredAt' => $checkin?->check_in_time],
-            ['id' => 'checked_out', 'title' => 'Checked Out', 'description' => 'Check-out was recorded at the end of your visit session.', 'occurredAt' => $checkin?->check_out_time],
-            ['id' => 'visit_completed', 'title' => 'Visit Completed', 'description' => 'Visit session closed. Thank you for following facility rules.', 'occurredAt' => $visitRequest->status === 'completed' ? ($checkin?->check_out_time ?? $visitRequest->updated_at) : null],
+            ['id' => 'checked_in', 'title' => 'Checked In', 'description' => 'Check-in was recorded at the facility visitor entrance.', 'occurredAt' => $firstCheckIn],
+            ['id' => 'checked_out', 'title' => 'Checked Out', 'description' => 'Check-out was recorded at the end of your visit session.', 'occurredAt' => $finalCheckOut],
+            ['id' => 'visit_completed', 'title' => 'Visit Completed', 'description' => 'Visit session closed. Thank you for following facility rules.', 'occurredAt' => $visitRequest->status === 'completed' ? ($finalCheckOut ?? $visitRequest->updated_at) : null],
         ];
 
         $lastCompletedIndex = -1;
@@ -499,31 +511,53 @@ class VisitorApiController extends Controller
         return 'VIS-' . $visitRequest->assigned_at?->format('Y-md') . '-' . str_pad((string) $visitRequest->visit_request_id, 3, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * When the visit runs: from its first session's start to its last
+     * session's end. A whole-day visit (morning + afternoon) is still one
+     * visit; `sessions` lists its windows, with the midday break between.
+     */
+    private function visitWindow(VisitRequest $v): array
+    {
+        $schedules = $v->relationLoaded('sessionSchedules') ? $v->sessionSchedules : $v->sessionSchedules()->get();
+        if ($schedules->isEmpty() && $v->schedule) {
+            $schedules = collect([$v->schedule]);
+        }
+
+        $first = $schedules->first();
+        $last = $schedules->last();
+        $date = $first?->schedule_date;
+        $stamp = fn ($time) => ($date && $time) ? $date->format('Y-m-d').'T'.$this->normalizeTime((string) $time).'+08:00' : null;
+
+        return [
+            'scheduledAt' => $stamp($first?->time_slot_start),
+            'endAt' => $stamp($last?->time_slot_end),
+            'dateDisplay' => $date?->format('F j, Y'),
+            'timeLabel' => ($first?->time_slot_start && $last?->time_slot_end)
+                ? $this->formatTimeLabel((string) $first->time_slot_start).' - '.$this->formatTimeLabel((string) $last->time_slot_end)
+                : null,
+            'isWholeDay' => $schedules->count() > 1,
+            'sessions' => $schedules->map(fn ($s) => [
+                'period' => (int) substr((string) $s->time_slot_start, 0, 2) < 12 ? 'morning' : 'afternoon',
+                'startTime' => substr((string) $s->time_slot_start, 0, 5),
+                'endTime' => substr((string) $s->time_slot_end, 0, 5),
+                'timeLabel' => $this->formatTimeLabel((string) $s->time_slot_start).' - '.$this->formatTimeLabel((string) $s->time_slot_end),
+            ])->values()->all(),
+        ];
+    }
+
     private function visitPayload(VisitRequest $v): array
     {
-        $schedule = $v->schedule;
-        $start = $schedule?->time_slot_start;
-        $end = $schedule?->time_slot_end;
-        $date = $schedule?->schedule_date;
-
-        $scheduledAt = null;
-        $endAt = null;
-        if ($date && $start) {
-            $scheduledAt = $date->format('Y-m-d') . 'T' . $this->normalizeTime($start) . '+08:00';
-        }
-        if ($date && $end) {
-            $endAt = $date->format('Y-m-d') . 'T' . $this->normalizeTime($end) . '+08:00';
-        }
+        $window = $this->visitWindow($v);
 
         return [
             'id' => (string) $v->visit_request_id,
             'scheduleId' => (string) $v->visit_request_id,
-            'scheduledAt' => $scheduledAt,
-            'endAt' => $endAt,
-            'dateDisplay' => $date?->format('F j, Y'),
-            'timeLabel' => ($start && $end)
-                ? $this->formatTimeLabel($start) . ' - ' . $this->formatTimeLabel($end)
-                : null,
+            'scheduledAt' => $window['scheduledAt'],
+            'endAt' => $window['endAt'],
+            'dateDisplay' => $window['dateDisplay'],
+            'timeLabel' => $window['timeLabel'],
+            'isWholeDay' => $window['isWholeDay'],
+            'sessions' => $window['sessions'],
             'pdlName' => $v->pdl?->full_name,
             'facility' => 'BJMP Facility',
             'referenceNumber' => $this->referenceNumber($v),

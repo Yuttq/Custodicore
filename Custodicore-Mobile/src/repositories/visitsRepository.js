@@ -24,6 +24,9 @@ export function normalizeVisit(raw) {
     endAt: raw.endAt ?? null,
     dateDisplay: raw.dateDisplay ?? null,
     timeLabel: raw.timeLabel ?? null,
+    // Whole-day visit: one visit, morning + afternoon sessions.
+    isWholeDay: raw.isWholeDay === true,
+    sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
     pdlName: raw.pdlName ?? null,
     facility: raw.facility ?? 'BJMP Facility',
     referenceNumber: raw.referenceNumber ?? null,
@@ -68,7 +71,7 @@ export async function confirmAssignedVisit(visitId) {
 /**
  * Submits a visit request (POST /api/visit-requests). Always hits the API —
  * there is no mock path, so nothing is created unless the backend accepts it.
- * @param {{ relationshipId: string; date: string; startTime: string }} params
+ * @param {{ relationshipId: string; date: string; startTime: string; startTimes?: string[] }} params
  * @returns {Promise<object | null>} the created visit (status `assigned`)
  */
 export async function submitVisitRequest(params) {
