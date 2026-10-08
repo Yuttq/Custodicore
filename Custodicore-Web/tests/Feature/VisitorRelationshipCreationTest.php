@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Pdl;
+use App\Models\RelationshipDocument;
 use App\Models\StaffProfile;
+use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,9 +52,27 @@ class VisitorRelationshipCreationTest extends TestCase
     {
         return array_merge([
             'pdl_id' => $this->otherPdl->pdl_id,
-            'relationship_type' => 'immediate_family',
-            'priority_tier' => 'high_priority',
+            'relationship_type' => 'spouse',
         ], $overrides);
+    }
+
+    /** Valid ID + verified marriage certificate: everything a spouse needs. */
+    private function meetSpouseRequirements(VisitorPdlRelationship $relationship): void
+    {
+        VisitorId::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'id_type' => 'national_id',
+            'id_number' => 'ID-REQ-1',
+            'file_path' => 'visitor-ids/x.png',
+            'verification_status' => 'verified',
+        ]);
+        RelationshipDocument::create([
+            'relationship_id' => $relationship->relationship_id,
+            'requirement_key' => 'marriage_certificate',
+            'file_path' => 'relationship-documents/m.png',
+            'status' => 'verified',
+            'uploaded_at' => now(),
+        ]);
     }
 
     public function test_record_officer_can_create_a_pending_relationship(): void
@@ -71,7 +91,7 @@ class VisitorRelationshipCreationTest extends TestCase
 
         $this->assertNotNull($relationship);
         $this->assertSame('pending', $relationship->verification_status);
-        $this->assertSame('immediate_family', $relationship->relationship_type);
+        $this->assertSame('spouse', $relationship->relationship_type);
         $this->assertSame('high_priority', $relationship->priority_tier);
         $this->assertNull($relationship->verified_by);
         $this->assertNull($relationship->verified_at);
@@ -120,20 +140,32 @@ class VisitorRelationshipCreationTest extends TestCase
     {
         $this->actingAs($this->recordOfficerAccount)
             ->from(route('visitor.show', $this->visitor->visitor_id))
-            ->post($this->storeUrl(), $this->validPayload(['relationship_type' => 'spouse']))
+            ->post($this->storeUrl(), $this->validPayload(['relationship_type' => 'friend']))
             ->assertSessionHasErrors('relationship_type');
 
         $this->assertSame(1, VisitorPdlRelationship::count());
     }
 
-    public function test_invalid_priority_tier_is_rejected(): void
+    public function test_priority_tier_follows_bjmp_priority_and_ignores_input(): void
     {
         $this->actingAs($this->recordOfficerAccount)
-            ->from(route('visitor.show', $this->visitor->visitor_id))
-            ->post($this->storeUrl(), $this->validPayload(['priority_tier' => 'urgent']))
-            ->assertSessionHasErrors('priority_tier');
+            ->post($this->storeUrl(), $this->validPayload(['relationship_type' => 'extended_relative', 'priority_tier' => 'high_priority']))
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame(1, VisitorPdlRelationship::count());
+        $this->assertSame('requires_verification', VisitorPdlRelationship::where('pdl_id', $this->otherPdl->pdl_id)->value('priority_tier'));
+    }
+
+    public function test_verify_is_blocked_until_requirements_are_met(): void
+    {
+        $this->actingAs($this->recordOfficerAccount)->post($this->storeUrl(), $this->validPayload());
+        $relationship = VisitorPdlRelationship::where('pdl_id', $this->otherPdl->pdl_id)->firstOrFail();
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->from(route('visitor.show', $this->visitor->visitor_id))
+            ->post(route('visitor.relationships.verify', [$this->visitor->visitor_id, $relationship->relationship_id]))
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Marriage Certificate'));
+
+        $this->assertSame('pending', $relationship->fresh()->verification_status);
     }
 
     public function test_duplicate_visitor_pdl_relationship_is_rejected(): void
@@ -170,7 +202,7 @@ class VisitorRelationshipCreationTest extends TestCase
         VisitorPdlRelationship::create([
             'visitor_id' => $otherVisitor->visitor_id,
             'pdl_id' => $this->otherPdl->pdl_id,
-            'relationship_type' => 'approved_relative',
+            'relationship_type' => 'extended_relative',
             'priority_tier' => 'requires_verification',
         ]);
 
@@ -203,6 +235,7 @@ class VisitorRelationshipCreationTest extends TestCase
     {
         $this->actingAs($this->recordOfficerAccount)->post($this->storeUrl(), $this->validPayload());
         $relationship = VisitorPdlRelationship::where('pdl_id', $this->otherPdl->pdl_id)->firstOrFail();
+        $this->meetSpouseRequirements($relationship);
 
         $this->actingAs($this->recordOfficerAccount)
             ->from(route('visitor.show', $this->visitor->visitor_id))
@@ -234,6 +267,7 @@ class VisitorRelationshipCreationTest extends TestCase
             ->getJson('/api/schedules/availability')
             ->assertJsonPath('relationships', []);
 
+        $this->meetSpouseRequirements($relationship);
         $this->actingAs($this->recordOfficerAccount, 'web')
             ->post(route('visitor.relationships.verify', [$this->visitor->visitor_id, $relationship->relationship_id]));
 

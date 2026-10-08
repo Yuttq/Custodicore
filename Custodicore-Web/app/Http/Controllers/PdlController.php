@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CellBlock;
 use App\Models\Pdl;
 use App\Models\PdlLegalRecord;
 use App\Models\PdlDisciplinaryRecord;
@@ -83,11 +84,7 @@ class PdlController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        $cellBlocks = Pdl::query()
-            ->whereNotNull('cell_block')
-            ->distinct()
-            ->orderBy('cell_block')
-            ->pluck('cell_block');
+        $cellBlocks = CellBlock::orderBy('name')->pluck('name');
 
         $stats = [
             'total_population' => Pdl::count(),
@@ -104,16 +101,27 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     // REGISTER NEW PDL
     // -----------------------------------------------------------------
+    public function create()
+    {
+        $cellBlocks = $this->assignableCellBlocks();
+
+        return view('pdl.create', compact('cellBlocks'));
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'full_name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'middle_name' => ['nullable', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
             'alias' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['required', 'date'],
             'gender' => ['required', 'in:male,female,other'],
             'classification' => ['required', 'in:drug_related,non_drug_related'],
-            'cell_block' => ['nullable', 'string', 'max:100'],
+            'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($request->input('gender'))],
             'admission_date' => ['required', 'date'],
+        ], [
+            'cell_block.required' => 'Please select a cell for this PDL.',
         ]);
 
         try {
@@ -156,8 +164,9 @@ class PdlController extends Controller
         // (identity/relationship/history), which stays on the Visitor's
         // own page in Visitor Management and isn't duplicated here.
         $eligibilityStatus = $this->computeEligibilityStatus($pdl);
+        $cellBlocks = $this->assignableCellBlocks($pdl->cell_block);
 
-        return view('pdl.show', compact('pdl', 'eligibilityStatus'));
+        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks'));
     }
 
     private function computeEligibilityStatus(Pdl $pdl): array
@@ -188,15 +197,21 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function update(Request $request, Pdl $pdl)
     {
+        // A PDL in active custody must be in a cell; released, transferred
+        // and deceased PDLs may have none.
         $validated = $request->validate([
-            'full_name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'middle_name' => ['nullable', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
             'alias' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['required', 'date'],
             'gender' => ['required', 'in:male,female,other'],
             'classification' => ['required', 'in:drug_related,non_drug_related'],
-            'cell_block' => ['nullable', 'string', 'max:100'],
+            'cell_block' => ['required_if:custody_status,active', 'nullable', 'string', 'max:50', $this->cellBlockRule($request->input('gender'), $pdl, $request->input('custody_status'))],
             'admission_date' => ['required', 'date'],
             'custody_status' => ['required', 'in:active,released,transferred,deceased'],
+        ], [
+            'cell_block.required_if' => 'Please select a cell for this PDL.',
         ]);
 
         $statusChanged = $validated['custody_status'] !== $pdl->custody_status;
@@ -347,6 +362,53 @@ class PdlController extends Controller
         }
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Restriction lifted.');
+    }
+
+    /**
+     * Blocks offered in the Cell/Block dropdown, with occupancy counts.
+     * Inactive blocks are hidden, except the one a PDL is already in so the
+     * edit form can still show it.
+     */
+    private function assignableCellBlocks(?string $currentBlock = null)
+    {
+        return CellBlock::withOccupancy()
+            ->where(fn ($q) => $q->where('is_active', true)
+                ->when($currentBlock, fn ($q2) => $q2->orWhere('name', $currentBlock)))
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * The chosen block must exist, be active, match the PDL's gender and
+     * have a free bed. On edit, a PDL staying in their current block is
+     * left alone, and the bed check only applies when they'd be taking a
+     * new bed (moving blocks, or going back to active custody).
+     */
+    private function cellBlockRule(?string $gender, ?Pdl $pdl = null, ?string $newStatus = 'active'): \Closure
+    {
+        return function (string $attribute, $value, \Closure $fail) use ($gender, $pdl, $newStatus) {
+            $staysInSameBlock = $pdl && $value === $pdl->cell_block;
+
+            if ($staysInSameBlock && ($pdl->custody_status === CellBlock::OCCUPYING_STATUS || $newStatus !== CellBlock::OCCUPYING_STATUS)) {
+                return;
+            }
+
+            $block = CellBlock::withOccupancy()->where('name', $value)->first();
+
+            if (!$block || (!$block->is_active && !$staysInSameBlock)) {
+                $fail('Please choose a cell block from the list.');
+                return;
+            }
+
+            if (!$staysInSameBlock && !$block->acceptsGender($gender)) {
+                $fail("{$block->name} is designated for {$block->designation} PDLs only.");
+                return;
+            }
+
+            if ($newStatus === CellBlock::OCCUPYING_STATUS && $block->isFull()) {
+                $fail("{$block->name} is full ({$block->occupied()}/{$block->capacity} occupied). Choose another cell block.");
+            }
+        };
     }
 
     /**

@@ -60,6 +60,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/documents', [VisitorApiController::class, 'documents']);
     Route::post('/documents', [VisitorApiController::class, 'storeDocument']);
     Route::post('/relationships/{relationship}/supporting-document', [VisitorApiController::class, 'storeSupportingDocument']);
+    // One file per BJMP requirement (marriage certificate, CENOMAR, ...).
+    Route::post('/relationships/{relationship}/requirements/{requirementKey}', [VisitorApiController::class, 'storeRequirementDocument'])
+        ->where('requirementKey', '[a-z_]+');
 
     // Visit features need a staff-approved visitor (verification_status =
     // verified). Pending/rejected visitors can still use /me, /documents

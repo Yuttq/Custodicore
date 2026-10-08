@@ -11,6 +11,7 @@ use App\Models\VisitRequest;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use App\Mail\VisitorAccountApproved;
+use App\Services\RelationshipRequirements;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -86,6 +87,7 @@ class VisitorController extends Controller
             'account',
             'idDocuments',
             'relationships.pdl',
+            'relationships.documents',
             'flags' => fn ($q) => $q->orderBy('created_at', 'desc'),
             'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule', 'sessionSchedules'])->orderByDesc('assigned_at')->limit(10),
         ]);
@@ -275,10 +277,16 @@ class VisitorController extends Controller
                 Rule::unique('visitor_pdl_relationships', 'pdl_id')->where('visitor_id', $visitor->visitor_id),
             ],
             'relationship_type' => ['required', Rule::in(VisitorPdlRelationship::RELATIONSHIP_TYPES)],
-            'priority_tier' => ['required', Rule::in(VisitorPdlRelationship::PRIORITY_TIERS)],
+            'has_children_together' => ['nullable', 'boolean'],
         ], [
             'pdl_id.unique' => 'This visitor already has a relationship with the selected PDL.',
         ]);
+
+        // BJMP priority: spouse, parents and legal guardian.
+        $validated['priority_tier'] = VisitorPdlRelationship::priorityTierFor($validated['relationship_type']);
+        $validated['has_children_together'] = $validated['relationship_type'] === 'live_in_partner' && $request->filled('has_children_together')
+            ? $request->boolean('has_children_together')
+            : null;
 
         try {
             $relationship = VisitorPdlRelationship::create([
@@ -306,6 +314,12 @@ class VisitorController extends Controller
     public function verifyRelationship(VisitorProfile $visitor, VisitorPdlRelationship $relationship)
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
+
+        $requirements = RelationshipRequirements::for($relationship);
+        if (! RelationshipRequirements::allMet($requirements)) {
+            return back()->with('error', 'This relationship cannot be verified yet. Still needed: '
+                . implode(', ', RelationshipRequirements::unmetLabels($requirements)) . '.');
+        }
 
         try {
             $relationship->update([

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EligibilityAssessment;
 use App\Models\VisitRequest;
+use App\Services\RelationshipRequirements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -49,11 +50,16 @@ class EligibilityController extends Controller
     {
         $assessments = EligibilityAssessment::where('overall_result', 'flagged_for_review')
             ->whereNull('reviewed_at')
-            ->with(['visitRequest.visitor', 'visitRequest.pdl'])
+            ->with(['visitRequest.visitor.idDocuments', 'visitRequest.pdl', 'visitRequest.relationship.documents'])
             ->orderBy('assessed_at', 'asc') // oldest first — first flagged, first reviewed
             ->paginate(25);
 
-        return view('eligibility.index', compact('assessments'));
+        // BJMP requirements checklist for each request's relationship.
+        $requirements = $assessments->getCollection()->mapWithKeys(fn ($a) => [
+            $a->assessment_id => $a->visitRequest?->relationship ? RelationshipRequirements::for($a->visitRequest->relationship) : null,
+        ]);
+
+        return view('eligibility.index', compact('assessments', 'requirements'));
     }
 
     // -----------------------------------------------------------------
@@ -64,6 +70,19 @@ class EligibilityController extends Controller
         $validated = $request->validate([
             'decision' => ['required', 'in:eligible,rejected'],
         ]);
+
+        if ($validated['decision'] === 'eligible') {
+            $relationship = $assessment->visitRequest?->relationship;
+            if (! $relationship) {
+                return back()->with('error', 'This visit request has no PDL relationship, so it cannot be approved.');
+            }
+
+            $requirements = RelationshipRequirements::for($relationship);
+            if (! RelationshipRequirements::allMet($requirements)) {
+                return back()->with('error', 'Cannot approve yet. Still needed: '
+                    . implode(', ', RelationshipRequirements::unmetLabels($requirements)) . '.');
+            }
+        }
 
         try {
             $assessment->update([

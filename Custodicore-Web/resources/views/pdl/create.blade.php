@@ -15,11 +15,22 @@
 
 
     <p class="section-title"><span class="icon">👤</span> Personal Details</p>
-    <div class="row cols-2">
+    <div class="row cols-3">
       <div class="field-m">
-        <label>Full Name</label>
-        <input type="text" name="full_name" value="{{ old('full_name') }}" required>
+        <label>First Name</label>
+        <input type="text" name="first_name" value="{{ old('first_name') }}" maxlength="100" required>
       </div>
+      <div class="field-m">
+        <label>Middle Name (optional)</label>
+        <input type="text" name="middle_name" value="{{ old('middle_name') }}" maxlength="100">
+      </div>
+      <div class="field-m">
+        <label>Last Name</label>
+        <input type="text" name="last_name" value="{{ old('last_name') }}" maxlength="100" required>
+      </div>
+    </div>
+
+    <div class="row cols-3">
       <div class="field-m">
         <label>Alias (optional)</label>
         <input type="text" name="alias" value="{{ old('alias') }}">
@@ -55,10 +66,9 @@
         <label>Admission Date</label>
         <input type="date" name="admission_date" value="{{ old('admission_date', now()->toDateString()) }}" required>
       </div>
-      <div class="field-m">
-        <label>Cell/Block (optional)</label>
-        <input type="text" name="cell_block" value="{{ old('cell_block') }}" placeholder="e.g. Block A - 102">
-      </div>
+    </div>
+    <div class="row">
+      @include('pdl.partials.cell-block-select', ['selected' => old('cell_block')])
     </div>
 
     <div style="display:flex;gap:10px;margin-top:8px;">

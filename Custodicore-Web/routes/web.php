@@ -270,9 +270,10 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'index']
     )->name('pdl.index');
 
-    Route::get('/pdls/create', function () {
-        return view('pdl.create');
-    })->name('pdl.create');
+    Route::get(
+        '/pdls/create',
+        [\App\Http\Controllers\PdlController::class, 'create']
+    )->name('pdl.create');
 
     Route::post(
         '/pdls',
@@ -310,6 +311,28 @@ Route::middleware([
         '/pdls/{pdl}/restrictions/{restriction}/lift',
         [\App\Http\Controllers\PdlController::class, 'liftRestriction']
     )->name('pdl.restrictions.lift');
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cell Blocks (capacity + occupancy, feeds the PDL Cell/Block dropdown)
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get(
+        '/cell-blocks',
+        [\App\Http\Controllers\CellBlockController::class, 'index']
+    )->name('cell-blocks.index');
+
+    Route::post(
+        '/cell-blocks',
+        [\App\Http\Controllers\CellBlockController::class, 'store']
+    )->name('cell-blocks.store');
+
+    Route::put(
+        '/cell-blocks/{cellBlock}',
+        [\App\Http\Controllers\CellBlockController::class, 'update']
+    )->name('cell-blocks.update');
 
 
     /*
@@ -365,6 +388,43 @@ Route::middleware([
         '/visitors/{visitor}/relationships/{relationship}/reject',
         [App\Http\Controllers\VisitorController::class, 'rejectRelationship']
     )->name('visitor.relationships.reject');
+
+    // BJMP requirements per relationship (documents the visitor uploads
+    // from the app, officer confirmations, relationship details).
+    Route::patch(
+        '/visitors/{visitor}/relationships/{relationship}',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'updateDetails']
+    )->name('visitor.relationships.update');
+
+    Route::get(
+        '/visitors/{visitor}/relationships/{relationship}/supporting-document',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'legacyFile']
+    )->name('visitor.relationships.legacy-file');
+
+    Route::post(
+        '/visitors/{visitor}/relationships/{relationship}/confirmations/{key}',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'confirm']
+    )->name('visitor.relationships.confirm');
+
+    Route::delete(
+        '/visitors/{visitor}/relationships/{relationship}/confirmations/{key}',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'unconfirm']
+    )->name('visitor.relationships.unconfirm');
+
+    Route::get(
+        '/relationship-documents/{document}/file',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'file']
+    )->name('relationship-documents.file');
+
+    Route::post(
+        '/relationship-documents/{document}/verify',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'verifyDocument']
+    )->name('relationship-documents.verify');
+
+    Route::post(
+        '/relationship-documents/{document}/reject',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'rejectDocument']
+    )->name('relationship-documents.reject');
 
     Route::post(
         '/visitors/{visitor}/flags',

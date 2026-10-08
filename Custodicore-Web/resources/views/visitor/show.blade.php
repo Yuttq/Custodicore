@@ -131,6 +131,10 @@
       <thead><tr><th>PDL</th><th>Relationship</th><th>Priority</th><th>Status</th><th></th></tr></thead>
       <tbody>
         @foreach ($visitor->relationships as $rel)
+        @php
+          $relRequirements = \App\Services\RelationshipRequirements::for($rel);
+          $relReady = \App\Services\RelationshipRequirements::allMet($relRequirements);
+        @endphp
         <tr>
           <td>
             @if ($rel->pdl)
@@ -159,7 +163,11 @@
               @if ($rel->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                  @if ($relReady)
+                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                  @else
+                    <button type="submit" class="row-action" style="color:var(--green);opacity:.45;cursor:not-allowed;" disabled title="Complete all requirements below first">Verify</button>
+                  @endif
                 </form>
               @endif
               @if ($rel->verification_status !== 'rejected')
@@ -171,12 +179,17 @@
             </div>
           </td>
         </tr>
+        <tr class="req-row">
+          <td colspan="5">
+            @include('partials.relationship-requirements', ['relationship' => $rel, 'items' => $relRequirements])
+          </td>
+        </tr>
         @endforeach
       </tbody>
     </table>
   @endif
 
-  <details style="margin-top:14px;" {{ $errors->hasAny(['pdl_id', 'relationship_type', 'priority_tier']) && ! old('schedule_id') ? 'open' : '' }}>
+  <details style="margin-top:14px;" {{ $errors->hasAny(['pdl_id', 'relationship_type', 'has_children_together']) && ! old('schedule_id') ? 'open' : '' }}>
     <summary class="row-action" style="cursor:pointer;">Add PDL Relationship</summary>
     @if ($relatablePdls->isEmpty())
       <p class="empty-note" style="margin-top:12px;">No other PDLs are available to relate to this visitor.</p>
@@ -197,24 +210,26 @@
           </div>
           <div class="field-m">
             <label>Relationship Type</label>
-            <select name="relationship_type" required>
+            <select name="relationship_type" required data-rel-type>
               <option value="">— Select type —</option>
               @foreach (\App\Models\VisitorPdlRelationship::RELATIONSHIP_TYPES as $type)
-                <option value="{{ $type }}" {{ old('relationship_type') === $type ? 'selected' : '' }}>{{ ucwords(str_replace('_', ' ', $type)) }}</option>
+                <option value="{{ $type }}" {{ old('relationship_type') === $type ? 'selected' : '' }}>{{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$type] }}</option>
               @endforeach
             </select>
           </div>
           <div class="field-m">
-            <label>Priority Tier</label>
-            <select name="priority_tier" required>
-              @foreach (\App\Models\VisitorPdlRelationship::PRIORITY_TIERS as $tier)
-                <option value="{{ $tier }}" {{ old('priority_tier', 'requires_verification') === $tier ? 'selected' : '' }}>{{ ucwords(str_replace('_', ' ', $tier)) }}</option>
-              @endforeach
+            <label>Children together (live-in partners)</label>
+            <select name="has_children_together" data-children-select>
+              <option value="">Not recorded yet</option>
+              <option value="1" {{ old('has_children_together') === '1' ? 'selected' : '' }}>Has children together</option>
+              <option value="0" {{ old('has_children_together') === '0' ? 'selected' : '' }}>No children together</option>
             </select>
           </div>
         </div>
         <div class="muted-cell" style="margin-bottom:12px;font-size:12px;">
-          The relationship is added as pending. Verify it in the table above once the supporting details are confirmed.
+          Only direct relationships can visit. Friends and non-relatives are not allowed; extended relatives need official authorization.
+          Spouse, parent and legal guardian get high priority automatically. The relationship starts as pending, and the visitor
+          then uploads the required documents from the app.
         </div>
         <button class="btn btn-blue" type="submit">Add Relationship</button>
       </form>

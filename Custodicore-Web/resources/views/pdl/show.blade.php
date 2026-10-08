@@ -27,8 +27,16 @@
         data-password-confirm="Save changes to {{ $pdl->full_name }}'s profile? Enter your password to confirm.">
     @csrf
     @method('PUT')
+    @php $nameParts = $pdl->nameParts(); @endphp
+    @if ($pdl->first_name === null && $pdl->last_name === null)
+      <p class="field-hint" style="margin:0 0 12px 0;">This record only has a full name on file. The name fields below are a best guess. Please check them before saving.</p>
+    @endif
     <div class="row cols-3">
-      <div class="field-m"><label>Full Name</label><input type="text" name="full_name" value="{{ old('full_name', $pdl->full_name) }}" required></div>
+      <div class="field-m"><label>First Name</label><input type="text" name="first_name" value="{{ old('first_name', $nameParts['first']) }}" maxlength="100" required></div>
+      <div class="field-m"><label>Middle Name (optional)</label><input type="text" name="middle_name" value="{{ old('middle_name', $nameParts['middle']) }}" maxlength="100"></div>
+      <div class="field-m"><label>Last Name</label><input type="text" name="last_name" value="{{ old('last_name', $nameParts['last']) }}" maxlength="100" required></div>
+    </div>
+    <div class="row cols-3">
       <div class="field-m"><label>Alias</label><input type="text" name="alias" value="{{ old('alias', $pdl->alias) }}"></div>
       <div class="field-m">
         <label>Gender</label>
@@ -52,10 +60,12 @@
           <option value="non_drug_related" {{ old('classification', $pdl->classification) === 'non_drug_related' ? 'selected' : '' }}>Non-drug-related</option>
         </select>
       </div>
-      <div class="field-m"><label>Cell/Block</label><input type="text" name="cell_block" value="{{ old('cell_block', $pdl->cell_block) }}" placeholder="e.g. Block A - 102"></div>
+      <div class="field-m"><label>Admission Date</label><input type="date" name="admission_date" value="{{ old('admission_date', optional($pdl->admission_date)->format('Y-m-d')) }}" required></div>
+    </div>
+    <div class="row">
+      @include('pdl.partials.cell-block-select', ['selected' => old('cell_block', $pdl->cell_block), 'current' => $pdl->cell_block, 'required' => false])
     </div>
     <div class="row cols-2">
-      <div class="field-m"><label>Admission Date</label><input type="date" name="admission_date" value="{{ old('admission_date', optional($pdl->admission_date)->format('Y-m-d')) }}" required></div>
       <div class="field-m">
         <label>Custody Status</label>
         <select name="custody_status">

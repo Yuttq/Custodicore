@@ -24,6 +24,9 @@ class Pdl extends Model
     protected $fillable = [
         'pdl_number',
         'full_name',
+        'first_name',
+        'middle_name',
+        'last_name',
         'alias',
         'date_of_birth',
         'gender',
@@ -39,6 +42,45 @@ class Pdl extends Model
         'date_of_birth' => 'date',
         'admission_date' => 'date',
     ];
+
+    protected static function booted(): void
+    {
+        // full_name is what every list, search and mobile screen reads, so
+        // keep it in sync whenever the separate name parts are set.
+        static::saving(function (Pdl $pdl) {
+            if ($pdl->first_name !== null || $pdl->last_name !== null) {
+                $pdl->full_name = self::composeFullName($pdl->first_name, $pdl->middle_name, $pdl->last_name);
+            }
+        });
+    }
+
+    public static function composeFullName(?string $first, ?string $middle, ?string $last): string
+    {
+        return implode(' ', array_filter(array_map(fn ($part) => trim((string) $part), [$first, $middle, $last]), fn ($part) => $part !== ''));
+    }
+
+    /**
+     * First/middle/last for the edit form. Older PDLs only have full_name,
+     * so this falls back to a guess (first word / last word / the rest in
+     * the middle) for the officer to check before saving.
+     */
+    public function nameParts(): array
+    {
+        if ($this->first_name !== null || $this->last_name !== null) {
+            return ['first' => $this->first_name, 'middle' => $this->middle_name, 'last' => $this->last_name];
+        }
+
+        $words = preg_split('/\s+/', trim((string) $this->full_name), -1, PREG_SPLIT_NO_EMPTY);
+        if (count($words) < 2) {
+            return ['first' => $words[0] ?? '', 'middle' => null, 'last' => ''];
+        }
+
+        return [
+            'first' => array_shift($words),
+            'last' => array_pop($words),
+            'middle' => $words ? implode(' ', $words) : null,
+        ];
+    }
 
     // --- Relationships ------------------------------------------------
 

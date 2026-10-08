@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\QrCode;
+use App\Models\RelationshipDocument;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
+use App\Services\RelationshipRequirements;
 use App\Services\ScheduleAvailabilityService;
 use App\Services\VisitAssignmentService;
 use Carbon\CarbonImmutable;
@@ -425,7 +427,7 @@ class VisitorApiController extends Controller
         $visitor = $this->currentVisitor($request);
         $visitor->load([
             'idDocuments' => fn ($q) => $q->orderByDesc('uploaded_at')->orderByDesc('visitor_id_doc_id'),
-            'relationships' => fn ($q) => $q->with('pdl')->orderByDesc('created_at'),
+            'relationships' => fn ($q) => $q->with(['pdl', 'documents'])->orderByDesc('created_at'),
         ]);
 
         return response()->json([
@@ -473,6 +475,56 @@ class VisitorApiController extends Controller
         return response()->json($this->relationshipPayload($relationship->fresh('pdl')), 201);
     }
 
+    /**
+     * Uploads the file for one BJMP requirement of the visitor's own
+     * relationship (marriage certificate, CENOMAR, ...). The requirement must
+     * be one the relationship's checklist actually asks for and not already
+     * verified. The new file goes in as pending; staff verify or reject it.
+     */
+    public function storeRequirementDocument(Request $request, VisitorPdlRelationship $relationship, string $requirementKey): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+        abort_unless((int) $relationship->visitor_id === (int) $visitor->visitor_id, 404);
+
+        if ($relationship->verification_status === 'verified') {
+            return response()->json([
+                'message' => 'This relationship is already verified. Its documents cannot be replaced.',
+                'status' => 'verified',
+            ], 409);
+        }
+
+        $item = collect(RelationshipRequirements::for($relationship))->firstWhere('key', $requirementKey);
+        if (! $item || $item['kind'] !== 'document') {
+            return response()->json(['message' => 'This document is not required for this relationship.'], 422);
+        }
+        if (! $item['canUpload']) {
+            return response()->json(['message' => 'This document has already been verified.'], 409);
+        }
+
+        $request->validate([
+            'file' => self::DOCUMENT_FILE_RULES,
+        ], [
+            'file.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'file.max' => 'The file is too large. Maximum size is 10 MB.',
+        ]);
+
+        // Private disk — requirement documents are never publicly served.
+        $file = $request->file('file');
+        $document = RelationshipDocument::create([
+            'relationship_id' => $relationship->relationship_id,
+            'requirement_key' => $requirementKey,
+            'file_path' => $file->store('relationship-documents', 'local'),
+            'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
+            'status' => 'pending',
+            'uploaded_at' => now(),
+        ]);
+
+        AuditLog::record('create', 'relationship_documents', $document->document_id,
+            "Visitor uploaded {$item['label']} via mobile app", Module::CODE_VISITOR_MANAGEMENT);
+
+        return response()->json($this->relationshipPayload($relationship->fresh(['pdl', 'documents', 'visitor.idDocuments'])), 201);
+    }
+
     private function governmentIdPayload(VisitorId $d): array
     {
         return [
@@ -496,6 +548,18 @@ class VisitorApiController extends Controller
             'status' => $r->verification_status,
             'verifiedAt' => $r->verified_at ? \Carbon\Carbon::parse($r->verified_at)->toIso8601String() : null,
             'hasSupportingDocument' => (bool) $r->supporting_document_path,
+            'hasChildrenTogether' => $r->has_children_together,
+            // BJMP checklist. File paths stay private; only status is shared.
+            'requirements' => collect(RelationshipRequirements::for($r))->map(fn ($item) => [
+                'key' => $item['key'],
+                'kind' => $item['kind'],
+                'label' => $item['label'],
+                'description' => $item['description'],
+                'status' => $item['status'],
+                'canUpload' => $item['canUpload'] && $r->verification_status !== 'verified',
+                'rejectionReason' => $item['kind'] === 'document' && $item['status'] === 'rejected' ? $item['note'] : null,
+                'uploadedAt' => $item['document']?->uploaded_at?->toIso8601String(),
+            ])->values(),
         ];
     }
 

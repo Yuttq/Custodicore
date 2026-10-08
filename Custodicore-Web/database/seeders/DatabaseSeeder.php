@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Account;
+use App\Models\CellBlock;
 use App\Models\AuditLog;
 use App\Models\EligibilityAssessment;
 use App\Models\FacilityVisitationRule;
@@ -53,6 +54,7 @@ class DatabaseSeeder extends Seeder
         [$staff, $staffAccounts] = $this->seedStaff($roles);
         [$visitors, $visitorAccounts] = $this->seedVisitors($roles, $staff);
 
+        $this->seedCellBlocks();
         $pdls = $this->seedPdls($staff);
         $this->seedRestrictions($pdls, $staff);
         $relationships = $this->seedRelationships($visitors, $pdls);
@@ -280,6 +282,24 @@ class DatabaseSeeder extends Seeder
         return [$visitors, $accounts];
     }
 
+    private function seedCellBlocks(): void
+    {
+        $blocks = [
+            ['Dorm 1', 40, 'any'],
+            ['Dorm 2', 40, 'any'],
+            ['Dorm 3', 40, 'any'],
+            ['Dorm 4', 30, 'any'],
+            ['Dorm 5 (F)', 20, 'female'],
+        ];
+
+        foreach ($blocks as [$name, $capacity, $designation]) {
+            CellBlock::firstOrCreate(
+                ['name' => $name],
+                ['capacity' => $capacity, 'designation' => $designation, 'is_active' => true]
+            );
+        }
+    }
+
     private function seedPdls(array $staff): array
     {
         $rows = [
@@ -297,7 +317,8 @@ class DatabaseSeeder extends Seeder
             $pdls[$number] = Pdl::firstOrCreate(
                 ['pdl_number' => $number],
                 [
-                    'full_name' => $name,
+                    // Seed names are all "First M. Last".
+                    ...array_combine(['first_name', 'middle_name', 'last_name'], explode(' ', $name)),
                     'date_of_birth' => '1990-01-01',
                     'gender' => $gender,
                     'classification' => $classification,
@@ -334,11 +355,11 @@ class DatabaseSeeder extends Seeder
     private function seedRelationships(array $visitors, array $pdls): array
     {
         $rows = [
-            ['Maria D. Santos', 'PDL-0032', 'immediate_family', 'high_priority', 'verified'],
-            ['Carlo J. Ramos', 'PDL-0014', 'legal_counsel', 'high_priority', 'verified'],
-            ['Liza P. Aquino', 'PDL-0055', 'approved_relative', 'requires_verification', 'pending'],
-            ['Dante R. Cabrera', 'PDL-0091', 'unknown_or_other', 'requires_verification', 'pending'],
-            ['Fe M. Lopez', 'PDL-0102', 'immediate_family', 'high_priority', 'rejected'],
+            ['Maria D. Santos', 'PDL-0032', 'spouse', 'high_priority', 'verified'],
+            ['Carlo J. Ramos', 'PDL-0014', 'legal_counsel', 'requires_verification', 'verified'],
+            ['Liza P. Aquino', 'PDL-0055', 'extended_relative', 'requires_verification', 'pending'],
+            ['Dante R. Cabrera', 'PDL-0091', 'live_in_partner', 'requires_verification', 'pending'],
+            ['Fe M. Lopez', 'PDL-0102', 'parent', 'high_priority', 'rejected'],
         ];
 
         $relationships = [];

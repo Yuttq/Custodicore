@@ -24,6 +24,9 @@
       <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*') ? 'active' : '' }}">
         PDL Management
       </a>
+      <a href="{{ route('cell-blocks.index') }}" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
+        Cell Blocks
+      </a>
       <a href="{{ route('visitor.index') }}" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
         Visitor Management
       </a>
