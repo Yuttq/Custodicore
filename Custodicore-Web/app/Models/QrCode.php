@@ -50,14 +50,21 @@ class QrCode extends Model
     {
         // A visit request has at most one QR (unique visit_request_id) —
         // re-generating replaces rather than duplicates.
-        return self::updateOrCreate(
-            ['visit_request_id' => $visitRequest->visit_request_id],
-            [
-                'qr_token' => Str::random(64),
-                'generated_at' => now(),
-                'expires_at' => now()->addMinutes($expiryMinutes),
-                'status' => 'active',
-            ]
-        );
+        $qr = self::firstOrNew(['visit_request_id' => $visitRequest->visit_request_id]);
+        $qr->fill([
+            'qr_token' => Str::random(64),
+            'expires_at' => now()->addMinutes($expiryMinutes),
+            'status' => 'active',
+        ]);
+
+        // generated_at is when the pass was first issued (the timeline's
+        // "QR Generated" event); a token refresh does not move it.
+        if (! $qr->exists) {
+            $qr->generated_at = now();
+        }
+
+        $qr->save();
+
+        return $qr;
     }
 }

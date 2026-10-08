@@ -405,6 +405,42 @@ class WholeDayVisitTest extends TestCase
         $this->assertNull($steps['visit_completed']['occurredAt']);
     }
 
+    public function test_refreshing_the_qr_does_not_move_the_timeline_qr_generated_event(): void
+    {
+        $visit = $this->confirmedVisit();
+        $this->at('08:45');
+        $morningToken = $this->qrToken($visit);
+        $issuedAt = QrCode::where('qr_token', $morningToken)->sole()->generated_at->toIso8601String();
+
+        $this->at('09:05');
+        $this->checkIn($morningToken)->assertOk();
+        $this->at('11:30');
+        $this->checkOut($this->activeCheckin($visit))->assertRedirect();
+
+        // The 08:45 token has passed qr.expiry_minutes (180); the app fetches a fresh one.
+        $this->at('12:30');
+        $afternoonToken = $this->qrToken($visit);
+        $this->assertNotSame($morningToken, $afternoonToken, 'The token is still rotated.');
+
+        $qr = QrCode::where('visit_request_id', $visit->visit_request_id)->sole();
+        $this->assertSame($afternoonToken, $qr->qr_token);
+        $this->assertSame('active', $qr->status);
+        $this->assertTrue($qr->expires_at->equalTo(now()->addMinutes(180)), 'The refreshed token gets a new expiry.');
+        $this->assertSame($issuedAt, $qr->generated_at->toIso8601String());
+
+        $steps = collect($this->getJson("/api/schedules/{$visit->visit_request_id}/timeline")->assertOk()->json('steps'))->keyBy('id');
+        $this->assertSame($issuedAt, $steps['qr_generated']['occurredAt']);
+        $this->assertLessThan(
+            CarbonImmutable::parse($steps['checked_in']['occurredAt']),
+            CarbonImmutable::parse($steps['qr_generated']['occurredAt']),
+            'QR Generated precedes Checked In.'
+        );
+
+        // The refreshed token still admits the visitor for the afternoon.
+        $this->at('13:00');
+        $this->checkIn($afternoonToken)->assertOk()->assertJsonPath('checkin.session', 'Afternoon session');
+    }
+
     public function test_whole_day_visitor_cannot_reenter_before_the_afternoon_session_opens(): void
     {
         $visit = $this->confirmedVisit();
