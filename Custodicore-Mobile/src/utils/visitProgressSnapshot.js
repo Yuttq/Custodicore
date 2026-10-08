@@ -1,15 +1,20 @@
-/** Six-step visit progress snapshot (BJMP workflow, courier-style). */
+/**
+ * Six-step visit progress snapshot (BJMP workflow, courier-style).
+ * `requestStepId`: the backend reports a visitor-submitted request's steps under
+ * their own ids and titles (Request Submitted / Request Approved); when present,
+ * that step is shown with its backend title instead.
+ */
 export const VISIT_PROGRESS_SNAPSHOT_DEFS = [
   { label: 'Documents Verified', stepId: 'visitor_eligible' },
-  { label: 'Schedule Assigned', stepId: 'schedule_assigned' },
-  { label: 'Attendance Confirmed', stepId: 'attendance_confirmed' },
+  { label: 'Schedule Assigned', stepId: 'schedule_assigned', requestStepId: 'request_submitted' },
+  { label: 'Attendance Confirmed', stepId: 'attendance_confirmed', requestStepId: 'request_approved' },
   { label: 'QR Pass Ready', stepId: 'qr_generated' },
   { label: 'Check-In', stepId: 'checked_in' },
   { label: 'Visit Completed', stepId: 'visit_completed' },
 ];
 
 /** Closing events the backend appends for visits that ended without completing. */
-const TERMINAL_STEP_IDS = ['visit_declined', 'visit_cancelled', 'visit_no_show'];
+const TERMINAL_STEP_IDS = ['visit_declined', 'visit_cancelled', 'visit_no_show', 'request_rejected'];
 
 /**
  * @typedef {object} CompactVisitStep
@@ -94,15 +99,17 @@ function matchesStep(step, stepId) {
 }
 
 /**
- * A visitor-submitted request (`assigned`) has not been scheduled by staff yet.
- * The backend timeline still reports its submission as "Schedule Assigned"
- * (completed) with "Attendance Confirmed" current, so that step becomes the
- * current "Awaiting Staff Review" step and every later step stays pending.
+ * A visitor-submitted request (`assigned`) has not been reviewed by staff yet.
+ * The backend timeline reports its submission as completed with the next step
+ * current, so the submission step becomes the current "Awaiting Staff Review"
+ * step and every later step stays pending.
  * @param {CompactVisitStep[]} steps
  * @returns {CompactVisitStep[]}
  */
 function asAwaitingStaffReview(steps) {
-  const reviewIndex = steps.findIndex((step) => step.id === 'schedule_assigned');
+  const reviewIndex = steps.findIndex(
+    (step) => step.id === 'request_submitted' || step.id === 'schedule_assigned',
+  );
   if (reviewIndex === -1) return steps;
   return steps.map((step, i) => {
     if (i < reviewIndex) return step;
@@ -128,11 +135,14 @@ function asAwaitingStaffReview(steps) {
  * @returns {CompactVisitStep[]}
  */
 export function buildCompactVisitStepsFromTimeline(fullSteps, visitStatus) {
-  const base = VISIT_PROGRESS_SNAPSHOT_DEFS.map(({ label, stepId }) => {
-    const entry = fullSteps.find((s) => matchesStep(s, stepId));
+  const base = VISIT_PROGRESS_SNAPSHOT_DEFS.map(({ label, stepId, requestStepId }) => {
+    const requestEntry = requestStepId
+      ? fullSteps.find((s) => matchesStep(s, requestStepId))
+      : undefined;
+    const entry = requestEntry ?? fullSteps.find((s) => matchesStep(s, stepId));
     return {
-      id: stepId,
-      label,
+      id: requestEntry ? requestStepId : stepId,
+      label: requestEntry ? requestEntry.title : label,
       stepState: entry?.stepState ?? 'pending',
       description: entry?.description ?? '',
       occurredAt: entry?.occurredAt ?? null,

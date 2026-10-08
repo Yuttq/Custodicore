@@ -623,4 +623,114 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame('assigned', $visit->fresh()->status);
         $this->assertSame(1, $this->schedule->fresh()->slots_taken);
     }
+
+    // --------------------------------------------------------------- Timeline
+
+    /** GET /api/schedules/{id}/timeline as the visitor, keyed by step id. */
+    private function timelineSteps(VisitRequest $visit): \Illuminate\Support\Collection
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        return collect($this->getJson("/api/schedules/{$visit->visit_request_id}/timeline")
+            ->assertOk()->json('steps'))->keyBy('id');
+    }
+
+    private function staffAssignedVisit(): VisitRequest
+    {
+        return app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $this->relationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+    }
+
+    public function test_assigned_request_timeline_shows_request_submitted(): void
+    {
+        $steps = $this->timelineSteps($this->submittedRequest());
+
+        $this->assertSame('Request Submitted', $steps['request_submitted']['title']);
+        $this->assertSame('Your visit request was submitted and is awaiting review by facility staff.', $steps['request_submitted']['description']);
+        $this->assertSame('completed', $steps['request_submitted']['stepState']);
+        $this->assertSame('Request Approved', $steps['request_approved']['title']);
+        $this->assertSame('current', $steps['request_approved']['stepState']);
+        $this->assertNull($steps['request_approved']['occurredAt']);
+        $this->assertArrayNotHasKey('schedule_assigned', $steps);
+        $this->assertArrayNotHasKey('attendance_confirmed', $steps);
+    }
+
+    public function test_approved_request_timeline_shows_request_approved(): void
+    {
+        $visit = $this->submittedRequest();
+        app(VisitAssignmentService::class)->approveVisitorRequest($visit);
+
+        $steps = $this->timelineSteps($visit);
+
+        $this->assertSame(
+            ['account_created', 'documents_submitted', 'identity_verified', 'relationship_verified', 'visitor_eligible',
+                'request_submitted', 'request_approved', 'qr_generated', 'checked_in', 'checked_out', 'visit_completed'],
+            $steps->keys()->all()
+        );
+        $this->assertSame('Your visit request was submitted for review by facility staff.', $steps['request_submitted']['description']);
+        $this->assertSame('Request Approved', $steps['request_approved']['title']);
+        $this->assertSame('Your visit request was approved by facility staff.', $steps['request_approved']['description']);
+        $this->assertSame('completed', $steps['request_approved']['stepState']);
+        $this->assertNotNull($steps['request_approved']['occurredAt']);
+        $this->assertSame('current', $steps['qr_generated']['stepState']);
+    }
+
+    public function test_rejected_request_timeline_shows_request_rejected(): void
+    {
+        $visit = $this->submittedRequest();
+        app(VisitAssignmentService::class)->rejectVisitorRequest($visit, 'The PDL has a court hearing that day.');
+
+        $steps = $this->timelineSteps($visit);
+
+        $this->assertSame('Request Rejected', $steps['request_rejected']['title']);
+        $this->assertSame(
+            'Your visit request was rejected by facility staff. Reason: The PDL has a court hearing that day.',
+            $steps['request_rejected']['description']
+        );
+        $this->assertSame('completed', $steps['request_rejected']['stepState']);
+        $this->assertNotNull($steps['request_rejected']['occurredAt']);
+        $this->assertSame('request_rejected', $steps->keys()->last());
+        $this->assertSame('pending', $steps['request_approved']['stepState']);
+        $this->assertArrayNotHasKey('visit_cancelled', $steps);
+        $this->assertArrayNotHasKey('schedule_assigned', $steps);
+    }
+
+    public function test_staff_assigned_pending_confirmation_timeline_is_unchanged(): void
+    {
+        $steps = $this->timelineSteps($this->staffAssignedVisit());
+
+        $this->assertSame('Schedule Assigned', $steps['schedule_assigned']['title']);
+        $this->assertSame('An officer assigned your visit date and time. No self-booking is required.', $steps['schedule_assigned']['description']);
+        $this->assertSame('completed', $steps['schedule_assigned']['stepState']);
+        $this->assertSame('Attendance Confirmed', $steps['attendance_confirmed']['title']);
+        $this->assertSame('You confirmed attendance for the assigned visit window.', $steps['attendance_confirmed']['description']);
+        $this->assertSame('current', $steps['attendance_confirmed']['stepState']);
+        $this->assertArrayNotHasKey('request_submitted', $steps);
+        $this->assertArrayNotHasKey('request_approved', $steps);
+    }
+
+    public function test_staff_assigned_confirmed_timeline_is_unchanged(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        Sanctum::actingAs($this->visitorAccount);
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertOk();
+
+        $steps = $this->timelineSteps($visit);
+
+        $this->assertSame(
+            ['account_created', 'documents_submitted', 'identity_verified', 'relationship_verified', 'visitor_eligible',
+                'schedule_assigned', 'attendance_confirmed', 'qr_generated', 'checked_in', 'checked_out', 'visit_completed'],
+            $steps->keys()->all()
+        );
+        $this->assertSame('Schedule Assigned', $steps['schedule_assigned']['title']);
+        $this->assertSame('An officer assigned your visit date and time. No self-booking is required.', $steps['schedule_assigned']['description']);
+        $this->assertSame('Attendance Confirmed', $steps['attendance_confirmed']['title']);
+        $this->assertSame('You confirmed attendance for the assigned visit window.', $steps['attendance_confirmed']['description']);
+        $this->assertSame('completed', $steps['attendance_confirmed']['stepState']);
+        $this->assertSame('current', $steps['qr_generated']['stepState']);
+    }
 }

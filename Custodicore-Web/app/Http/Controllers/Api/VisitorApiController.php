@@ -281,14 +281,32 @@ class VisitorApiController extends Controller
         $qr = $visitRequest->qrCode;
         $checkin = $visitRequest->checkin;
 
+        // A visitor's own request (POST /api/visit-requests) has no
+        // confirmation deadline — staff assignments always set one — and is
+        // reviewed by staff rather than confirmed by the visitor, so its
+        // scheduling steps are worded for that. `assigned` only ever comes
+        // from a visitor request.
+        $visitorRequested = $visitRequest->status === 'assigned' || $visitRequest->confirmation_deadline === null;
+
+        $schedulingSteps = $visitorRequested
+            ? [
+                ['id' => 'request_submitted', 'title' => 'Request Submitted', 'description' => $visitRequest->status === 'assigned'
+                    ? 'Your visit request was submitted and is awaiting review by facility staff.'
+                    : 'Your visit request was submitted for review by facility staff.', 'occurredAt' => $visitRequest->assigned_at],
+                ['id' => 'request_approved', 'title' => 'Request Approved', 'description' => 'Your visit request was approved by facility staff.', 'occurredAt' => $visitRequest->confirmed_at],
+            ]
+            : [
+                ['id' => 'schedule_assigned', 'title' => 'Schedule Assigned', 'description' => 'An officer assigned your visit date and time. No self-booking is required.', 'occurredAt' => $visitRequest->assigned_at],
+                ['id' => 'attendance_confirmed', 'title' => 'Attendance Confirmed', 'description' => 'You confirmed attendance for the assigned visit window.', 'occurredAt' => $visitRequest->confirmed_at],
+            ];
+
         $steps = [
             ['id' => 'account_created', 'title' => 'Account Created', 'description' => 'Visitor portal account was created and activated.', 'occurredAt' => $visitor?->created_at],
             ['id' => 'documents_submitted', 'title' => 'Documents Submitted', 'description' => 'Required relationship and identification documents were uploaded.', 'occurredAt' => $idUploaded?->uploaded_at],
             ['id' => 'identity_verified', 'title' => 'Identity Verified', 'description' => 'Government-issued ID was reviewed and verified by the facility.', 'occurredAt' => $idVerified?->verified_at],
             ['id' => 'relationship_verified', 'title' => 'Relationship Verified', 'description' => 'Relationship to the PDL was confirmed against submitted records.', 'occurredAt' => $relationship?->verification_status === 'verified' ? $relationship->verified_at : null],
             ['id' => 'visitor_eligible', 'title' => 'Visitor Eligible', 'description' => 'You are cleared for visitation under current facility policy.', 'occurredAt' => $eligibility?->overall_result === 'eligible' ? $eligibility->assessed_at : null],
-            ['id' => 'schedule_assigned', 'title' => 'Schedule Assigned', 'description' => 'An officer assigned your visit date and time. No self-booking is required.', 'occurredAt' => $visitRequest->assigned_at],
-            ['id' => 'attendance_confirmed', 'title' => 'Attendance Confirmed', 'description' => 'You confirmed attendance for the assigned visit window.', 'occurredAt' => $visitRequest->confirmed_at],
+            ...$schedulingSteps,
             ['id' => 'qr_generated', 'title' => 'QR Generated', 'description' => 'Entry QR pass was issued for gate and front desk presentation.', 'occurredAt' => $qr?->generated_at],
             ['id' => 'checked_in', 'title' => 'Checked In', 'description' => 'Check-in was recorded at the facility visitor entrance.', 'occurredAt' => $checkin?->check_in_time],
             ['id' => 'checked_out', 'title' => 'Checked Out', 'description' => 'Check-out was recorded at the end of your visit session.', 'occurredAt' => $checkin?->check_out_time],
@@ -307,7 +325,17 @@ class VisitorApiController extends Controller
         // Closing event for visits that ended without completing. Uses the
         // real cancelled_at timestamp; no_show has no dedicated column, so
         // its time is left null rather than guessed.
-        if ($isTerminal) {
+        if ($isTerminal && $visitorRequested && $visitRequest->status === 'cancelled') {
+            // Only a staff rejection cancels a visitor's request.
+            $steps[] = [
+                'id' => 'request_rejected',
+                'title' => 'Request Rejected',
+                'description' => 'Your visit request was rejected by facility staff.'
+                    .($visitRequest->cancellation_reason ? " Reason: {$visitRequest->cancellation_reason}" : ''),
+                'occurredAt' => $visitRequest->cancelled_at,
+                'terminal' => true,
+            ];
+        } elseif ($isTerminal) {
             $terminal = [
                 'declined' => ['visit_declined', 'Visit Declined', 'You declined this assigned visit.'],
                 'cancelled' => ['visit_cancelled', 'Visit Cancelled', 'This visit was cancelled.'],
