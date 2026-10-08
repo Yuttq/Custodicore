@@ -22,7 +22,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * Visit requests have two distinct entry paths:
  *
- *   Staff assigns:    assign()               -> pending_confirmation -> visitor confirms -> confirmed
+ *   Staff assigns:    assign()               -> pending_confirmation -> visitor confirms (confirmed)
+ *                                                                       or declines (declined)
  *   Visitor requests: submitVisitorRequest() -> assigned -> staff approves (confirmed) or rejects (cancelled)
  *
  * `assigned` is staff review only — the visitor API never confirms or
@@ -300,6 +301,77 @@ class VisitAssignmentService
         });
     }
 
+    /**
+     * Visitor confirms a staff-assigned visit: pending_confirmation -> confirmed.
+     * Refused once the confirmation deadline or the visit date has passed, or
+     * when the visitor, PDL or relationship no longer meets the rules the
+     * visit was assigned under.
+     */
+    public function confirmAssignedVisit(VisitRequest $visitRequest): VisitRequest
+    {
+        return DB::transaction(function () use ($visitRequest) {
+            $visitRequest = $this->lockPendingConfirmation($visitRequest, 'confirm');
+            $visitRequest->load(['visitor.account', 'pdl.activeRestrictions', 'relationship', 'schedule']);
+
+            if ($visitRequest->confirmation_deadline?->isPast()) {
+                throw ValidationException::withMessages([
+                    'confirmation_deadline' => 'The deadline to confirm this visit has passed. Please contact the facility.',
+                ]);
+            }
+
+            if ($visitRequest->schedule->schedule_date->lt(now()->startOfDay())) {
+                throw ValidationException::withMessages([
+                    'schedule_id' => 'This visit date has already passed and can no longer be confirmed.',
+                ]);
+            }
+
+            $this->assertVisitorAssignable($visitRequest->visitor);
+            $this->assertPdlAssignable($visitRequest->pdl);
+            $this->assertRelationshipAssignable($visitRequest->relationship, $visitRequest->visitor, $visitRequest->pdl);
+
+            $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
+
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                'visit_confirmed',
+                'Visit Confirmed',
+                'Your attendance has been recorded. Arrive 15 minutes early with valid ID.',
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                'Visitor confirmed attendance via mobile app', Module::CODE_VISIT_SCHEDULING);
+
+            return $visitRequest->fresh(['pdl', 'schedule']);
+        });
+    }
+
+    /**
+     * Visitor declines a staff-assigned visit: pending_confirmation -> declined,
+     * releasing its seat. The row lock and status re-check mean a repeated or
+     * racing decline/confirm fails instead of releasing the seat twice.
+     */
+    public function declineAssignedVisit(VisitRequest $visitRequest, string $reason): VisitRequest
+    {
+        return DB::transaction(function () use ($visitRequest, $reason) {
+            $visitRequest = $this->lockPendingConfirmation($visitRequest, 'decline');
+
+            $visitRequest->update([
+                'status' => 'declined',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $reason,
+            ]);
+
+            VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first()?->releaseSlot();
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                'Visitor declined assigned visit via mobile app', Module::CODE_VISIT_SCHEDULING);
+
+            return $visitRequest->fresh(['pdl', 'schedule']);
+        });
+    }
+
     public function occupiedSlots(VisitSchedule $schedule): int
     {
         return VisitRequest::where('schedule_id', $schedule->schedule_id)
@@ -457,6 +529,31 @@ class VisitAssignmentService
         if (! $locked || $locked->status !== 'assigned') {
             throw ValidationException::withMessages([
                 'status' => 'Only visit requests awaiting review can be approved or rejected.',
+            ]);
+        }
+
+        return $locked;
+    }
+
+    /**
+     * Locks a staff-assigned visit still awaiting the visitor's answer
+     * (`pending_confirmation`). $action is 'confirm' or 'decline'.
+     */
+    private function lockPendingConfirmation(VisitRequest $visitRequest, string $action): VisitRequest
+    {
+        $locked = VisitRequest::whereKey($visitRequest->visit_request_id)->lockForUpdate()->first();
+
+        if ($locked?->status === 'assigned' && $action === 'confirm') {
+            throw ValidationException::withMessages([
+                'status' => 'This visit request is awaiting review by the facility and cannot be confirmed yet.',
+            ]);
+        }
+
+        if (! $locked || $locked->status !== 'pending_confirmation') {
+            throw ValidationException::withMessages([
+                'status' => $action === 'confirm'
+                    ? 'This visit can no longer be confirmed.'
+                    : 'This visit can no longer be declined.',
             ]);
         }
 

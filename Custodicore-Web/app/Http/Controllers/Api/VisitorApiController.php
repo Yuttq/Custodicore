@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Module;
-use App\Models\Notification;
 use App\Models\QrCode;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
@@ -19,7 +18,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Backs the mobile app's visit-related calls in src/services/api.js.
@@ -132,58 +130,25 @@ class VisitorApiController extends Controller
      * `assigned` is a visitor-submitted request awaiting staff review and can
      * only be approved by a Record Officer.
      */
-    public function confirm(Request $request, VisitRequest $visitRequest): JsonResponse
+    public function confirm(Request $request, VisitRequest $visitRequest, VisitAssignmentService $assignments): JsonResponse
     {
         $this->authorizeOwnership($request, $visitRequest);
 
-        if ($visitRequest->status === 'assigned') {
-            throw ValidationException::withMessages(['status' => 'This visit request is awaiting review by the facility and cannot be confirmed yet.']);
-        }
-
-        if ($visitRequest->status !== 'pending_confirmation') {
-            throw ValidationException::withMessages(['status' => 'This visit can no longer be confirmed.']);
-        }
-
-        $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
-
-        Notification::notify(
-            $request->user()->account_id,
-            'visit_confirmed',
-            'Visit Confirmed',
-            'Your attendance has been recorded. Arrive 15 minutes early with valid ID.',
-            'visit_requests',
-            $visitRequest->visit_request_id
-        );
-
-        AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
-            'Visitor confirmed attendance via mobile app', Module::CODE_VISIT_SCHEDULING);
-
-        return response()->json($this->visitPayload($visitRequest->fresh(['pdl', 'schedule'])));
+        return response()->json($this->visitPayload($assignments->confirmAssignedVisit($visitRequest)));
     }
 
-    public function decline(Request $request, VisitRequest $visitRequest): JsonResponse
+    /**
+     * `declined` is only for a staff-assigned visit; a request awaiting
+     * staff review (`assigned`) is approved or rejected by staff.
+     */
+    public function decline(Request $request, VisitRequest $visitRequest, VisitAssignmentService $assignments): JsonResponse
     {
         $this->authorizeOwnership($request, $visitRequest);
 
-        // `declined` is only for a staff-assigned visit; a request awaiting
-        // staff review (`assigned`) is approved or rejected by staff.
-        if ($visitRequest->status !== 'pending_confirmation') {
-            throw ValidationException::withMessages(['status' => 'This visit can no longer be declined.']);
-        }
-
-        $visitRequest->update([
-            'status' => 'declined',
-            'cancelled_at' => now(),
-            'cancellation_reason' => $request->input('reason', 'Visitor unable to attend (declined via mobile app)'),
-        ]);
-
-        $visitRequest->loadMissing('schedule');
-        $visitRequest->schedule?->releaseSlot();
-
-        AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
-            'Visitor declined assigned visit via mobile app', Module::CODE_VISIT_SCHEDULING);
-
-        return response()->json($this->visitPayload($visitRequest->fresh(['pdl', 'schedule'])));
+        return response()->json($this->visitPayload($assignments->declineAssignedVisit(
+            $visitRequest,
+            $request->input('reason', 'Visitor unable to attend (declined via mobile app)')
+        )));
     }
 
     public function qr(Request $request, VisitRequest $visitRequest): JsonResponse

@@ -425,6 +425,221 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertNotNull($visit->confirmation_deadline);
     }
 
+    // ------------------------------------ Visitor confirm / decline (staff-assigned)
+
+    public function test_visitor_confirms_a_pending_visit(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertOk()
+            ->assertJsonPath('id', (string) $visit->visit_request_id)
+            ->assertJsonPath('status', 'confirmed');
+
+        $visit->refresh();
+        $this->assertSame('confirmed', $visit->status);
+        $this->assertNotNull($visit->confirmed_at);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken, 'Confirming keeps the seat.');
+        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)
+            ->where('title', 'Visit Confirmed')
+            ->where('related_record_id', $visit->visit_request_id)
+            ->exists());
+        $this->assertTrue(AuditLog::where('record_type', 'visit_requests')
+            ->where('record_id', $visit->visit_request_id)
+            ->where('description', 'Visitor confirmed attendance via mobile app')
+            ->exists());
+    }
+
+    public function test_visitor_cannot_confirm_after_the_confirmation_deadline(): void
+    {
+        // Default window is 48h from Wed 10:00 -> Fri 10:00; the visit is Fri 09:00.
+        $visit = $this->staffAssignedVisit();
+        $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 10:30:00', 'Asia/Manila'));
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('confirmation_deadline');
+
+        $this->assertSame('pending_confirmation', $visit->fresh()->status);
+        $this->assertNull($visit->fresh()->confirmed_at);
+    }
+
+    public function test_visitor_cannot_confirm_a_visit_whose_date_has_passed(): void
+    {
+        $visit = app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $this->relationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+            // Deadline still open, so only the visit date can refuse it.
+            'confirmation_deadline' => '2026-10-20 12:00:00',
+        ]);
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 12:00:00', 'Asia/Manila'));
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('schedule_id');
+
+        $this->assertSame('pending_confirmation', $visit->fresh()->status);
+    }
+
+    public function test_visitor_cannot_confirm_when_the_relationship_was_rejected(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        $this->relationship->update(['verification_status' => 'rejected']);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('relationship_id');
+
+        $this->assertSame('pending_confirmation', $visit->fresh()->status);
+    }
+
+    public function test_visitor_cannot_confirm_when_the_pdl_became_ineligible(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        PdlRestriction::create([
+            'pdl_id' => $this->pdl->pdl_id,
+            'restriction_type' => 'quarantine',
+            'status' => 'active',
+            'start_date' => '2026-10-01',
+            'reason' => 'Health protocol',
+            'imposed_by' => StaffProfile::first()->staff_id,
+        ]);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('pdl_id');
+
+        $this->assertSame('pending_confirmation', $visit->fresh()->status);
+    }
+
+    public function test_visitor_declines_a_pending_visit_and_releases_exactly_one_seat(): void
+    {
+        [, $otherVisitor, $otherRelationship] = $this->makeOtherVisitor();
+        $visit = $this->staffAssignedVisit();
+        app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $otherVisitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $otherRelationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+        $this->assertSame(2, $this->schedule->fresh()->slots_taken);
+        $this->assertSame('full', $this->schedule->fresh()->status);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline", ['reason' => 'Medical Reason'])
+            ->assertOk()
+            ->assertJsonPath('status', 'declined')
+            ->assertJsonPath('cancellationReason', 'Medical Reason');
+
+        $visit->refresh();
+        $this->assertSame('declined', $visit->status);
+        $this->assertNotNull($visit->cancelled_at);
+        $schedule = $this->schedule->fresh();
+        $this->assertSame(1, (int) $schedule->slots_taken);
+        $this->assertSame('open', $schedule->status);
+        $this->assertTrue(AuditLog::where('record_type', 'visit_requests')
+            ->where('record_id', $visit->visit_request_id)
+            ->where('description', 'Visitor declined assigned visit via mobile app')
+            ->exists());
+    }
+
+    public function test_repeated_decline_does_not_release_another_seat(): void
+    {
+        [, $otherVisitor, $otherRelationship] = $this->makeOtherVisitor();
+        $visit = $this->staffAssignedVisit();
+        app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $otherVisitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $otherRelationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")->assertOk();
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertSame(1, AuditLog::where('record_id', $visit->visit_request_id)
+            ->where('description', 'Visitor declined assigned visit via mobile app')
+            ->count());
+    }
+
+    public function test_decline_after_confirm_is_refused_and_keeps_the_seat(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertOk();
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame('confirmed', $visit->fresh()->status);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken, 'A confirmed visit keeps its seat.');
+    }
+
+    public function test_confirm_after_decline_is_refused(): void
+    {
+        $visit = $this->staffAssignedVisit();
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")->assertOk();
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $visit->refresh();
+        $this->assertSame('declined', $visit->status);
+        $this->assertNull($visit->confirmed_at);
+        $this->assertSame(0, $this->schedule->fresh()->slots_taken);
+    }
+
+    public function test_stale_visit_instance_cannot_decline_after_a_concurrent_confirm(): void
+    {
+        // Both requests loaded the visit while it was pending; the second to
+        // take the row lock must see the committed status, not its own copy.
+        $stale = $this->staffAssignedVisit();
+        $service = app(VisitAssignmentService::class);
+
+        $service->confirmAssignedVisit(VisitRequest::find($stale->visit_request_id));
+        $this->assertSame('pending_confirmation', $stale->status);
+
+        try {
+            $service->declineAssignedVisit($stale, 'Late decline');
+            $this->fail('A stale pending instance must not decline a confirmed visit.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('status', $e->errors());
+        }
+
+        $this->assertSame('confirmed', $stale->fresh()->status);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
+    }
+
+    public function test_other_or_unauthenticated_visitors_cannot_confirm_or_decline(): void
+    {
+        $visit = $this->staffAssignedVisit();
+
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertUnauthorized();
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")->assertUnauthorized();
+
+        [$otherAccount] = $this->makeOtherVisitor();
+        Sanctum::actingAs($otherAccount);
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertNotFound();
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/decline")->assertNotFound();
+
+        $this->assertSame('pending_confirmation', $visit->fresh()->status);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
+    }
+
     // ------------------------------------------------------------ Staff
 
     public function test_record_officer_sees_pending_visitor_requests(): void
