@@ -222,6 +222,11 @@
   </details>
 </div>
 
+{{-- ================= VISIT REQUESTS AWAITING REVIEW ================= --}}
+@if ($pendingVisitRequests->isNotEmpty())
+  @include('visitor.partials.pending-visit-requests', ['showVisitor' => false])
+@endif
+
 {{-- ================= ASSIGN VISIT ================= --}}
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Assign Visit</h2></div>
@@ -361,7 +366,8 @@
           @endif
         </td>
         <td>
-          <span class="badge transferred"><span class="dot"></span>{{ strtoupper(str_replace('_', ' ', $vr->status)) }}</span>
+          {{-- `assigned` is a visitor-submitted request awaiting staff review. --}}
+          <span class="badge transferred"><span class="dot"></span>{{ $vr->status === 'assigned' ? 'AWAITING REVIEW' : strtoupper(str_replace('_', ' ', $vr->status)) }}</span>
         </td>
         <td class="muted-cell">{{ optional($vr->assigned_at)->format('M d, Y') ?? '—' }}</td>
       </tr>

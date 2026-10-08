@@ -249,10 +249,11 @@ export function getMyVisitsTab(status) {
   return 'upcoming';
 }
 
+/**
+ * Whether the visitor can confirm/decline. `assigned` is a visitor-submitted
+ * request awaiting staff review — only staff can approve or reject it.
+ * @param {string} status
+ */
 export function canRespondToVisit(status) {
-  return (
-    status === 'pending_confirmation' ||
-    status === 'assigned' ||
-    status === 'scheduled'
-  );
+  return status === 'pending_confirmation' || status === 'scheduled';
 }

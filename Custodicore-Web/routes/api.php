@@ -73,6 +73,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // relationships (Home calendar). Books nothing.
         Route::get('/schedules/availability', [ScheduleAvailabilityController::class, 'index']);
 
+        // The visitor requests one available slot. Created as `assigned`
+        // (awaiting Record Officer review) — see VisitAssignmentService.
+        Route::post('/visit-requests', [VisitorApiController::class, 'storeVisitRequest'])->middleware('throttle:10,1');
+
         Route::post('/schedules/{visitRequest}/confirm', [VisitorApiController::class, 'confirm']);
         Route::post('/schedules/{visitRequest}/decline', [VisitorApiController::class, 'decline']);
         Route::get('/schedules/{visitRequest}/qr', [VisitorApiController::class, 'qr']);

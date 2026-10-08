@@ -11,6 +11,9 @@ use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
+use App\Services\ScheduleAvailabilityService;
+use App\Services\VisitAssignmentService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -93,11 +96,51 @@ class VisitorApiController extends Controller
         return response()->json(['visits' => $visits->values()]);
     }
 
+    /**
+     * POST /api/visit-requests — the visitor requests one available slot for
+     * a verified PDL relationship. Created as `assigned` (awaiting Record
+     * Officer review); the visitor cannot confirm it themselves.
+     */
+    public function storeVisitRequest(Request $request, VisitAssignmentService $assignments, ScheduleAvailabilityService $availability): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+
+        $data = $request->validate([
+            'relationshipId' => ['required', 'integer', 'min:1'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'startTime' => ['required', 'date_format:H:i'],
+        ]);
+
+        // Only the visitor's own relationship — anyone else's is "not found".
+        $relationship = VisitorPdlRelationship::where('relationship_id', $data['relationshipId'])
+            ->where('visitor_id', $visitor->visitor_id)
+            ->first();
+        abort_unless($relationship, 404, 'Relationship not found.');
+
+        $visitRequest = $assignments->submitVisitorRequest(
+            $visitor,
+            $relationship,
+            CarbonImmutable::createFromFormat('Y-m-d', $data['date'], $availability->timezone())->startOfDay(),
+            $data['startTime']
+        );
+
+        return response()->json($this->visitPayload($visitRequest), 201);
+    }
+
+    /**
+     * Visitor confirms a staff-assigned visit (pending_confirmation only).
+     * `assigned` is a visitor-submitted request awaiting staff review and can
+     * only be approved by a Record Officer.
+     */
     public function confirm(Request $request, VisitRequest $visitRequest): JsonResponse
     {
         $this->authorizeOwnership($request, $visitRequest);
 
-        if (! in_array($visitRequest->status, ['assigned', 'pending_confirmation'])) {
+        if ($visitRequest->status === 'assigned') {
+            throw ValidationException::withMessages(['status' => 'This visit request is awaiting review by the facility and cannot be confirmed yet.']);
+        }
+
+        if ($visitRequest->status !== 'pending_confirmation') {
             throw ValidationException::withMessages(['status' => 'This visit can no longer be confirmed.']);
         }
 
@@ -122,7 +165,9 @@ class VisitorApiController extends Controller
     {
         $this->authorizeOwnership($request, $visitRequest);
 
-        if (! in_array($visitRequest->status, ['assigned', 'pending_confirmation'])) {
+        // `declined` is only for a staff-assigned visit; a request awaiting
+        // staff review (`assigned`) is approved or rejected by staff.
+        if ($visitRequest->status !== 'pending_confirmation') {
             throw ValidationException::withMessages(['status' => 'This visit can no longer be declined.']);
         }
 
@@ -147,7 +192,14 @@ class VisitorApiController extends Controller
 
         $status = $visitRequest->status;
 
-        if (in_array($status, ['pending_confirmation', 'assigned'], true)) {
+        if ($status === 'assigned') {
+            return response()->json([
+                'message' => 'Your visit request is awaiting review by the facility. A QR pass is issued once it is approved.',
+                'status' => $status,
+            ], 409);
+        }
+
+        if ($status === 'pending_confirmation') {
             return response()->json([
                 'message' => 'Confirm your visit attendance before a QR pass can be issued.',
                 'status' => $status,

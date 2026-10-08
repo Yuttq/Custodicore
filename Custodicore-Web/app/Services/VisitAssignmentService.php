@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditLog;
 use App\Models\EligibilityAssessment;
+use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Notification;
 use App\Models\Pdl;
@@ -13,15 +14,27 @@ use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Record Officer visit assignment — creates a visit_request at
- * pending_confirmation, reserves schedule capacity, and notifies the visitor.
+ * Visit requests have two distinct entry paths:
+ *
+ *   Staff assigns:    assign()               -> pending_confirmation -> visitor confirms -> confirmed
+ *   Visitor requests: submitVisitorRequest() -> assigned -> staff approves (confirmed) or rejects (cancelled)
+ *
+ * `assigned` is staff review only — the visitor API never confirms or
+ * declines it. Both paths reserve schedule capacity on creation.
  */
 class VisitAssignmentService
 {
+    public function __construct(
+        private ScheduleAvailabilityService $availability
+    ) {
+    }
+
     /** Statuses that still occupy a schedule slot. */
     public const CAPACITY_STATUSES = [
         'assigned',
@@ -95,6 +108,195 @@ class VisitAssignmentService
             );
 
             return $visitRequest->fresh(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment']);
+        });
+    }
+
+    /**
+     * A visitor's own request for one slot. The slot must be available
+     * exactly as GET /api/schedules/availability reports it; the
+     * visit_schedules row is created on demand. Creates the request as
+     * `assigned` (awaiting Record Officer review) and reserves a seat.
+     */
+    public function submitVisitorRequest(
+        VisitorProfile $visitor,
+        VisitorPdlRelationship $relationship,
+        CarbonImmutable $date,
+        string $startTime
+    ): VisitRequest {
+        if ((int) $relationship->visitor_id !== (int) $visitor->visitor_id) {
+            throw ValidationException::withMessages(['relationshipId' => 'Relationship not found.']);
+        }
+
+        if (! $relationship->isVerified()) {
+            throw ValidationException::withMessages([
+                'relationshipId' => 'This relationship has not been verified yet. Visits can only be requested for verified PDL relationships.',
+            ]);
+        }
+
+        $slot = $this->availability->slotFor($visitor, $relationship, $date, $startTime);
+        if (! $slot) {
+            throw ValidationException::withMessages([
+                'startTime' => 'There is no visiting slot at this time on the selected date.',
+            ]);
+        }
+        if (! $slot['available']) {
+            [$field, $message] = $this->unavailableSlotError($slot['reason']);
+            throw ValidationException::withMessages([$field => $message]);
+        }
+
+        $visitor->loadMissing('account');
+        $pdl = Pdl::with('activeRestrictions')->find($relationship->pdl_id);
+        $this->assertVisitorAssignable($visitor);
+        $this->assertPdlAssignable($pdl);
+        $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
+
+        $rule = FacilityVisitationRule::findOrFail($slot['ruleId']);
+
+        return DB::transaction(function () use ($visitor, $pdl, $relationship, $rule, $date, $slot) {
+            $scheduleId = $slot['scheduleId'] ?? $this->createScheduleRow($rule, $date);
+
+            $schedule = VisitSchedule::with('rule')->whereKey($scheduleId)->lockForUpdate()->first();
+
+            // Re-checked under the lock: the slot may have filled, closed or
+            // been taken by this visitor since availability was read.
+            $this->assertScheduleAssignable($schedule, $pdl);
+            if ($this->occupiedSlots($schedule) >= $schedule->max_capacity) {
+                throw ValidationException::withMessages([
+                    'schedule_id' => 'This schedule is full. Choose another available slot.',
+                ]);
+            }
+            $this->assertNoDuplicate(
+                $visitor, $pdl, $schedule,
+                'You already have a visit request for this PDL in this time slot.'
+            );
+
+            $visitRequest = VisitRequest::create([
+                'visitor_id' => $visitor->visitor_id,
+                'pdl_id' => $pdl->pdl_id,
+                'relationship_id' => $relationship->relationship_id,
+                'schedule_id' => $schedule->schedule_id,
+                'status' => 'assigned',
+                'confirmation_deadline' => null,
+            ]);
+
+            $schedule->reserveSlot();
+
+            EligibilityAssessment::assessFor($visitRequest->fresh([
+                'visitor.idDocuments',
+                'visitor.flags',
+                'pdl.restrictions',
+                'relationship',
+            ]));
+
+            $scheduleLabel = $this->scheduleLabel($schedule);
+            Notification::notify(
+                $visitor->account_id,
+                'visits',
+                'Visit Request Submitted',
+                "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record(
+                'create',
+                'visit_requests',
+                $visitRequest->visit_request_id,
+                "Visitor submitted visit request for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
+                Module::CODE_VISIT_SCHEDULING
+            );
+
+            return $visitRequest->fresh(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment']);
+        });
+    }
+
+    /**
+     * Record Officer approves a visitor-submitted request: assigned -> confirmed.
+     * The seat reserved at submission stays reserved.
+     */
+    public function approveVisitorRequest(VisitRequest $visitRequest): VisitRequest
+    {
+        return DB::transaction(function () use ($visitRequest) {
+            $visitRequest = $this->lockReviewableRequest($visitRequest);
+            $visitRequest->load(['visitor.account', 'pdl.activeRestrictions', 'relationship', 'schedule']);
+
+            $this->assertVisitorAssignable($visitRequest->visitor);
+            $this->assertPdlAssignable($visitRequest->pdl);
+
+            if (! $visitRequest->relationship?->isVerified()) {
+                throw ValidationException::withMessages([
+                    'relationship_id' => 'The visitor\'s relationship to this PDL is no longer verified. Reject the request instead.',
+                ]);
+            }
+
+            if ($visitRequest->schedule->schedule_date->lt(now()->startOfDay())) {
+                throw ValidationException::withMessages([
+                    'schedule_id' => 'This visit date has already passed. Reject the request instead.',
+                ]);
+            }
+
+            $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
+
+            $scheduleLabel = $this->scheduleLabel($visitRequest->schedule);
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                'visit_confirmed',
+                'Visit Request Approved',
+                "Your visit with {$visitRequest->pdl->full_name} on {$scheduleLabel} is confirmed. Arrive 15 minutes early with valid ID.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record(
+                'update',
+                'visit_requests',
+                $visitRequest->visit_request_id,
+                "Record Officer approved visit request for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel})",
+                Module::CODE_VISIT_SCHEDULING
+            );
+
+            return $visitRequest->fresh(['visitor', 'pdl', 'schedule']);
+        });
+    }
+
+    /**
+     * Record Officer rejects a visitor-submitted request: assigned -> cancelled,
+     * releasing the seat reserved at submission.
+     */
+    public function rejectVisitorRequest(VisitRequest $visitRequest, string $reason): VisitRequest
+    {
+        return DB::transaction(function () use ($visitRequest, $reason) {
+            $visitRequest = $this->lockReviewableRequest($visitRequest);
+
+            $visitRequest->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $reason,
+            ]);
+
+            $schedule = VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first();
+            $schedule?->releaseSlot();
+
+            $visitRequest->load(['visitor', 'pdl']);
+            $scheduleLabel = $schedule ? $this->scheduleLabel($schedule) : 'the requested schedule';
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                'visits',
+                'Visit Request Not Approved',
+                "Your request to visit {$visitRequest->pdl->full_name} on {$scheduleLabel} was not approved. Reason: {$reason}",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record(
+                'update',
+                'visit_requests',
+                $visitRequest->visit_request_id,
+                "Record Officer rejected visit request for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel}): {$reason}",
+                Module::CODE_VISIT_SCHEDULING
+            );
+
+            return $visitRequest->fresh(['visitor', 'pdl', 'schedule']);
         });
     }
 
@@ -228,8 +430,12 @@ class VisitAssignmentService
         }
     }
 
-    private function assertNoDuplicate(VisitorProfile $visitor, Pdl $pdl, VisitSchedule $schedule): void
-    {
+    private function assertNoDuplicate(
+        VisitorProfile $visitor,
+        Pdl $pdl,
+        VisitSchedule $schedule,
+        string $message = 'This visitor is already assigned to this PDL on the selected schedule.'
+    ): void {
         $exists = VisitRequest::where('visitor_id', $visitor->visitor_id)
             ->where('pdl_id', $pdl->pdl_id)
             ->where('schedule_id', $schedule->schedule_id)
@@ -238,9 +444,66 @@ class VisitAssignmentService
 
         if ($exists) {
             throw ValidationException::withMessages([
-                'schedule_id' => 'This visitor is already assigned to this PDL on the selected schedule.',
+                'schedule_id' => $message,
             ]);
         }
+    }
+
+    /** Locks a visit request that is still awaiting staff review (`assigned`). */
+    private function lockReviewableRequest(VisitRequest $visitRequest): VisitRequest
+    {
+        $locked = VisitRequest::whereKey($visitRequest->visit_request_id)->lockForUpdate()->first();
+
+        if (! $locked || $locked->status !== 'assigned') {
+            throw ValidationException::withMessages([
+                'status' => 'Only visit requests awaiting review can be approved or rejected.',
+            ]);
+        }
+
+        return $locked;
+    }
+
+    /**
+     * Creates the visit_schedules row for a rule's slot on $date. If another
+     * request created it first (unique schedule_date + time_slot_start +
+     * rule_id), uses that row instead. The insert runs in a savepoint so the
+     * failed attempt does not abort the surrounding transaction.
+     */
+    private function createScheduleRow(FacilityVisitationRule $rule, CarbonImmutable $date): int
+    {
+        try {
+            return DB::transaction(fn () => VisitSchedule::create([
+                'rule_id' => $rule->rule_id,
+                'schedule_date' => $date->toDateString(),
+                'time_slot_start' => $rule->time_slot_start,
+                'time_slot_end' => $rule->time_slot_end,
+                'max_capacity' => $rule->max_capacity,
+                'slots_taken' => 0,
+                'status' => 'open',
+            ])->schedule_id);
+        } catch (UniqueConstraintViolationException) {
+            return (int) VisitSchedule::where('rule_id', $rule->rule_id)
+                ->whereDate('schedule_date', $date->toDateString())
+                ->where('time_slot_start', $rule->time_slot_start)
+                ->lockForUpdate()
+                ->value('schedule_id');
+        }
+    }
+
+    /** @return array{0:string,1:string} field + visitor-facing message for an unavailable slot */
+    private function unavailableSlotError(?string $reason): array
+    {
+        return match ($reason) {
+            ScheduleAvailabilityService::REASON_PAST => ['date', 'This date has already passed. Choose an upcoming visiting day.'],
+            ScheduleAvailabilityService::REASON_ENDED => ['startTime', 'This visiting slot has already ended today. Choose a later slot.'],
+            ScheduleAvailabilityService::REASON_NOT_ELIGIBLE => ['date', 'Visits with this PDL are not held on the selected day.'],
+            ScheduleAvailabilityService::REASON_NOT_IN_EFFECT => ['date', 'The selected date is outside the allowed visitation period.'],
+            ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => ['relationshipId', 'Visits with this PDL are not available at this time. Please contact the facility for details.'],
+            ScheduleAvailabilityService::REASON_CLOSED => ['startTime', 'This visiting slot is closed. Choose another available slot.'],
+            ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit request for this PDL in this time slot.'],
+            ScheduleAvailabilityService::REASON_FULL => ['startTime', 'This visiting slot is full. Choose another available slot.'],
+            default => ['startTime', 'This visiting slot is not available.'],
+        };
     }
 
     private function resolveDeadline(mixed $raw): Carbon

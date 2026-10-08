@@ -12,8 +12,9 @@ const VARIANTS = {
     bg: colors.warning,
     fg: colors.textPrimary,
   },
+  // Visitor-submitted request awaiting staff review.
   assigned: {
-    label: 'Assigned',
+    label: 'Awaiting Review',
     bg: colors.warning,
     fg: colors.textPrimary,
   },

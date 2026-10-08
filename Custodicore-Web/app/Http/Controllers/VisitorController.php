@@ -7,6 +7,7 @@ use App\Models\VisitorProfile;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorFlag;
+use App\Models\VisitRequest;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use App\Mail\VisitorAccountApproved;
@@ -63,13 +64,17 @@ class VisitorController extends Controller
             ->paginate(25)
             ->withQueryString();
 
+        // Visitor-submitted visit requests awaiting review, soonest visit first.
+        $pendingVisitRequests = $this->pendingVisitRequests()->get();
+
         $stats = [
             'total_visitors' => VisitorProfile::count(),
             'pending_verification' => VisitorProfile::where('verification_status', 'pending')->count(),
             'flagged' => VisitorProfile::whereHas('activeFlags')->count(),
+            'pending_visit_requests' => $pendingVisitRequests->count(),
         ];
 
-        return view('visitor.index', compact('visitors', 'query', 'status', 'stats'));
+        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'pendingVisitRequests'));
     }
 
     // -----------------------------------------------------------------
@@ -99,7 +104,24 @@ class VisitorController extends Controller
             ->orderBy('full_name')
             ->get(['pdl_id', 'pdl_number', 'full_name', 'custody_status']);
 
-        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls'));
+        $pendingVisitRequests = $this->pendingVisitRequests()
+            ->where('visit_requests.visitor_id', $visitor->visitor_id)
+            ->get();
+
+        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls', 'pendingVisitRequests'));
+    }
+
+    /** Visitor-submitted visit requests (`assigned`) awaiting Record Officer review. */
+    private function pendingVisitRequests()
+    {
+        return VisitRequest::query()
+            ->select('visit_requests.*')
+            ->where('visit_requests.status', 'assigned')
+            ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
+            ->with(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment'])
+            ->orderBy('visit_schedules.schedule_date')
+            ->orderBy('visit_schedules.time_slot_start')
+            ->orderBy('visit_requests.assigned_at');
     }
 
     // -----------------------------------------------------------------

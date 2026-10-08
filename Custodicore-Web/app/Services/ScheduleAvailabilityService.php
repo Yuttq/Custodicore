@@ -17,7 +17,8 @@ use Illuminate\Support\Collection;
  * every date in the range — visit_schedules rows are only seeded for a few
  * dates, so they are used as an overlay (capacity taken, full, closed) when
  * one exists for that date + slot, never as the list of possible slots.
- * Nothing is written: viewing availability creates no visit_schedules rows.
+ * Nothing is written: viewing availability creates no visit_schedules rows
+ * (VisitAssignmentService::submitVisitorRequest creates one on demand).
  *
  * Unavailable slots carry a machine-readable `reason`:
  *   past             — the date is before today (Asia/Manila)
@@ -93,6 +94,29 @@ class ScheduleAvailabilityService
         return $relationships->map(fn (VisitorPdlRelationship $relationship) => $this->relationshipAvailability(
             $relationship, $rules, $schedules, $occupied, $ownBookings, $from, $to, $now
         ))->values()->all();
+    }
+
+    /**
+     * The one slot starting at $startTime ("HH:MM") on $date for this
+     * relationship, with the same availability/reason the calendar shows,
+     * or null when the facility has no slot at that time that day.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function slotFor(
+        VisitorProfile $visitor,
+        VisitorPdlRelationship $relationship,
+        CarbonImmutable $date,
+        string $startTime
+    ): ?array {
+        $relationship->loadMissing('pdl.activeRestrictions');
+        if (! $relationship->pdl) {
+            return null;
+        }
+
+        $result = $this->forRelationships($visitor, collect([$relationship]), $date, $date)[0];
+
+        return collect($result['days'][0]['slots'] ?? [])->firstWhere('startTime', $this->hm($startTime));
     }
 
     private function relationshipAvailability(

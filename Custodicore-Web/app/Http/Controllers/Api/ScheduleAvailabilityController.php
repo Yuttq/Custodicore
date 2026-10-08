@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
  * GET /api/schedules/availability — read-only visit-slot availability for
  * the approved visitor's own verified PDL relationships (mobile Home
  * calendar). Selecting a slot here books nothing; the visit request itself
- * is a later phase. See ScheduleAvailabilityService for the slot rules.
+ * is POST /api/visit-requests. See ScheduleAvailabilityService for the slot rules.
  */
 class ScheduleAvailabilityController extends Controller
 {

@@ -6,7 +6,7 @@
   <h1>Visitor Management</h1>
 </div>
 
-<section class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px;">
+<section class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
   <div class="stat-card accent-blue">
     <div class="stat-label">Total Visitors</div>
     <div class="stat-value">{{ $stats['total_visitors'] }}</div>
@@ -19,7 +19,13 @@
     <div class="stat-label">Flagged</div>
     <div class="stat-value">{{ $stats['flagged'] }}</div>
   </div>
+  <a class="stat-card accent-teal" href="#visit-requests" style="text-decoration:none;color:inherit;">
+    <div class="stat-label">Visit Requests to Review</div>
+    <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
+  </a>
 </section>
+
+@include('visitor.partials.pending-visit-requests', ['showVisitor' => true])
 
 <form class="filters" method="GET" action="{{ route('visitor.index') }}" style="grid-template-columns:2fr 1.2fr auto;">
   <div class="field">

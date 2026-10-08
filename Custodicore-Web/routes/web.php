@@ -381,6 +381,17 @@ Route::middleware([
         [\App\Http\Controllers\VisitAssignmentController::class, 'store']
     )->name('visitor.visits.assign');
 
+    // Visitor-submitted visit requests (`assigned`) awaiting staff review.
+    Route::post(
+        '/visitors/{visitor}/visit-requests/{visitRequest}/approve',
+        [\App\Http\Controllers\VisitRequestReviewController::class, 'approve']
+    )->name('visitor.visit-requests.approve');
+
+    Route::post(
+        '/visitors/{visitor}/visit-requests/{visitRequest}/reject',
+        [\App\Http\Controllers\VisitRequestReviewController::class, 'reject']
+    )->name('visitor.visit-requests.reject');
+
 
     /*
     |--------------------------------------------------------------------------
