@@ -16,6 +16,7 @@ use App\Models\VisitSchedule;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -28,6 +29,10 @@ use Illuminate\Validation\ValidationException;
  *
  * `assigned` is staff review only — the visitor API never confirms or
  * declines it. Both paths reserve schedule capacity on creation.
+ *
+ * Time-based transitions (`php artisan visits:expire`):
+ *   pending_confirmation -> cancelled  once confirmation_deadline passes (seat released)
+ *   confirmed            -> no_show    once the visit date is before today, never checked in
  */
 class VisitAssignmentService
 {
@@ -369,6 +374,112 @@ class VisitAssignmentService
                 'Visitor declined assigned visit via mobile app', Module::CODE_VISIT_SCHEDULING);
 
             return $visitRequest->fresh(['pdl', 'schedule']);
+        });
+    }
+
+    /** IDs of staff-assigned visits whose confirmation deadline has passed unanswered. */
+    public function overduePendingConfirmationIds(): Collection
+    {
+        return VisitRequest::where('status', 'pending_confirmation')
+            ->whereNotNull('confirmation_deadline')
+            ->where('confirmation_deadline', '<', now())
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * pending_confirmation -> cancelled once the confirmation deadline has
+     * passed, releasing its seat. Not `declined`: the visitor never answered.
+     * The confirmation_deadline is kept so the visit still reads as
+     * staff-assigned. Returns false (no change) when the visit was already
+     * answered, expired by another run, or is not yet overdue.
+     */
+    public function expirePendingConfirmation(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (
+                ! $visitRequest
+                || $visitRequest->status !== 'pending_confirmation'
+                || ! $visitRequest->confirmation_deadline?->isPast()
+            ) {
+                return false;
+            }
+
+            $visitRequest->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => 'The confirmation deadline passed without a response.',
+            ]);
+
+            $schedule = VisitSchedule::whereKey($visitRequest->schedule_id)->lockForUpdate()->first();
+            $schedule?->releaseSlot();
+
+            $visitRequest->load(['visitor', 'pdl']);
+            $scheduleLabel = $schedule ? $this->scheduleLabel($schedule) : 'the assigned schedule';
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                'visits',
+                'Visit Cancelled — Not Confirmed',
+                "Your assigned visit with {$visitRequest->pdl->full_name} on {$scheduleLabel} was cancelled because it was not confirmed before the deadline. Please contact the facility to reschedule.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System cancelled assigned visit for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel}): confirmation deadline passed",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
+    }
+
+    /**
+     * IDs of confirmed visits whose schedule date is before today and that
+     * were never checked in. A visit that was checked in but not checked out
+     * was attended, so it is left for the front desk to close.
+     */
+    public function missedConfirmedVisitIds(): Collection
+    {
+        return VisitRequest::where('status', 'confirmed')
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '<', today()->toDateString()))
+            ->whereDoesntHave('checkin', fn ($q) => $q->whereNotNull('check_in_time'))
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * confirmed -> no_show once the visit date has passed without a check-in.
+     * The seat stays counted (no_show is a capacity status). Returns false
+     * (no change) when the visit is no longer confirmed, is today or later,
+     * or was checked in.
+     */
+    public function markNoShow(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (! $visitRequest || $visitRequest->status !== 'confirmed') {
+                return false;
+            }
+
+            $visitRequest->load(['schedule', 'checkin', 'visitor', 'pdl']);
+
+            if (
+                ! $visitRequest->schedule?->schedule_date?->lt(today())
+                || $visitRequest->checkin?->check_in_time
+            ) {
+                return false;
+            }
+
+            $visitRequest->update(['status' => 'no_show']);
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System marked visit as no-show for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$this->scheduleLabel($visitRequest->schedule)}): not checked in on the visit date",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
         });
     }
 
