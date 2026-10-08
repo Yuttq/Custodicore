@@ -353,6 +353,53 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame(30, (int) $schedule->slots_taken);
     }
 
+    public function test_weekly_limit_reached_after_availability_was_read_is_rejected_without_side_effects(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        // Availability shows the Friday afternoon slot as open.
+        $slot = collect($this->getJson('/api/schedules/availability?from='.self::FRIDAY.'&to='.self::FRIDAY)
+            ->assertOk()
+            ->json('relationships.0.days.0.slots'))->firstWhere('startTime', '13:00');
+        $this->assertTrue($slot['available']);
+
+        // Two visits in the same week land after this request read slot
+        // availability but before its transaction, so only the locked
+        // re-check in VisitAssignmentService can catch the limit.
+        $thursdayRule = FacilityVisitationRule::where('pdl_classification', 'drug_related')->sole();
+        $this->bindAvailabilityRace(function () use ($thursdayRule) {
+            $thursday = VisitSchedule::create([
+                'rule_id' => $thursdayRule->rule_id,
+                'schedule_date' => '2026-10-08',
+                'time_slot_start' => '09:00:00',
+                'time_slot_end' => '11:30:00',
+                'max_capacity' => 30,
+                'slots_taken' => 0,
+                'status' => 'open',
+            ]);
+            foreach ([$thursday->schedule_id, $this->schedule->schedule_id] as $scheduleId) {
+                VisitRequest::create([
+                    'visitor_id' => $this->visitor->visitor_id,
+                    'pdl_id' => $this->pdl->pdl_id,
+                    'relationship_id' => $this->relationship->relationship_id,
+                    'schedule_id' => $scheduleId,
+                    'status' => 'confirmed',
+                    'confirmation_deadline' => null,
+                ]);
+            }
+        });
+
+        $this->submit(['startTime' => '13:00'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'schedule_id' => 'You have reached the maximum number of visits allowed for this calendar week.',
+            ]);
+
+        $this->assertSame(2, VisitRequest::count(), 'Only the two racing visits exist.');
+        $this->assertSame(0, VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->count(), 'The on-demand row is rolled back.');
+        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
+    }
+
     /** Runs $race right after the request reads slot availability. */
     private function bindAvailabilityRace(\Closure $race): void
     {

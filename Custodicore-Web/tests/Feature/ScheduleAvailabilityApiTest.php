@@ -7,8 +7,10 @@ use App\Models\FacilityVisitationRule;
 use App\Models\Pdl;
 use App\Models\PdlRestriction;
 use App\Models\StaffProfile;
+use App\Models\SystemSetting;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
+use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -386,6 +388,189 @@ class ScheduleAvailabilityApiTest extends TestCase
         $this->availability(['from' => '2026-10-20', 'to' => '2026-10-10'])->assertUnprocessable();
         $this->availability(['from' => '2026-10-01', 'to' => '2027-03-01'])->assertUnprocessable();
         $this->availability(['from' => '10/07/2026'])->assertUnprocessable();
+    }
+
+    // ------------------------------------------- Visitor's own bookings
+
+    /**
+     * An existing visit for $relationship's visitor in the $date/$start slot,
+     * using the rule already seeded for that slot (never a new rule, so the
+     * calendar under test is unchanged) and the slot's schedule row.
+     */
+    private function visitOn(
+        VisitorPdlRelationship $relationship,
+        string $date,
+        string $start,
+        string $status = 'confirmed'
+    ): VisitRequest {
+        $relationship->loadMissing('pdl');
+        $rule = FacilityVisitationRule::where('pdl_classification', $relationship->pdl->classification)
+            ->where('day_of_week', strtolower(CarbonImmutable::parse($date)->format('D')))
+            ->where('time_slot_start', $start.':00')
+            ->sole();
+        $schedule = VisitSchedule::where('rule_id', $rule->rule_id)->whereDate('schedule_date', $date)->first()
+            ?? VisitSchedule::create([
+                'rule_id' => $rule->rule_id,
+                'schedule_date' => $date,
+                'time_slot_start' => $rule->time_slot_start,
+                'time_slot_end' => $rule->time_slot_end,
+                'max_capacity' => $rule->max_capacity,
+                'slots_taken' => 0,
+                'status' => 'open',
+            ]);
+
+        return VisitRequest::create([
+            'visitor_id' => $relationship->visitor_id,
+            'pdl_id' => $relationship->pdl_id,
+            'relationship_id' => $relationship->relationship_id,
+            'schedule_id' => $schedule->schedule_id,
+            'status' => $status,
+            'confirmation_deadline' => null,
+        ]);
+    }
+
+    public function test_already_scheduled_slot_is_unavailable(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+
+        $slot = $this->slot($relationship, '2026-10-09', '09:00');
+        $this->assertFalse($slot['available']);
+        $this->assertSame('already_scheduled', $slot['reason']);
+        $this->assertSame(1, $slot['slotsRemaining']);
+        $this->assertSame((string) $this->schedule->schedule_id, $slot['scheduleId']);
+    }
+
+    // ------------------------------------------------------ Weekly limit
+
+    public function test_slots_in_a_week_at_the_weekly_limit_are_unavailable(): void
+    {
+        // Default visit.max_per_week of 2, both used in the week Mon 10-05 – Sun 10-11.
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        $this->visitOn($this->relationship, '2026-10-11', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+
+        foreach (['2026-10-09', '2026-10-11'] as $date) {
+            $slot = $this->slot($relationship, $date, '13:00');
+            $this->assertFalse($slot['available'], $date);
+            $this->assertSame('weekly_limit', $slot['reason'], $date);
+            // Capacity is still the slot's own, not the visitor's.
+            $this->assertSame(30, $slot['capacity']);
+            $this->assertSame(30, $slot['slotsRemaining']);
+            $this->assertFalse($this->day($relationship, $date)['available'], $date);
+        }
+
+        // The following week is unaffected.
+        $this->assertTrue($this->slot($relationship, '2026-10-16', '09:00')['available']);
+        $this->assertTrue($this->slot($relationship, '2026-10-16', '13:00')['available']);
+        $this->assertTrue($this->day($relationship, '2026-10-18')['available']);
+    }
+
+    public function test_weekly_limit_counts_visits_before_the_requested_range(): void
+    {
+        // Both visits are on Fri 10-09; the requested range starts Sat 10-10,
+        // still inside the same Mon 10-05 – Sun 10-11 week.
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        $this->visitOn($this->relationship, '2026-10-09', '13:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability(['from' => '2026-10-10', 'to' => '2026-10-18'])
+            ->assertOk()
+            ->json('relationships.0');
+
+        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-11', '09:00')['reason']);
+        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-11', '13:00')['reason']);
+        $this->assertTrue($this->slot($relationship, '2026-10-16', '13:00')['available']);
+    }
+
+    public function test_one_visit_below_the_weekly_limit_keeps_slots_available(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-11', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+
+        $this->assertTrue($this->slot($relationship, '2026-10-09', '09:00')['available']);
+        $this->assertTrue($this->slot($relationship, '2026-10-09', '13:00')['available']);
+        $this->assertTrue($this->slot($relationship, '2026-10-11', '13:00')['available']);
+    }
+
+    public function test_cancelled_and_declined_visits_do_not_count_toward_the_weekly_limit(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-09', '09:00', 'cancelled');
+        $this->visitOn($this->relationship, '2026-10-11', '09:00', 'declined');
+        $this->visitOn($this->relationship, '2026-10-11', '13:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+
+        $this->assertTrue($this->slot($relationship, '2026-10-09', '09:00')['available']);
+        $this->assertTrue($this->slot($relationship, '2026-10-09', '13:00')['available']);
+        $this->assertTrue($this->slot($relationship, '2026-10-11', '09:00')['available']);
+    }
+
+    public function test_weekly_limit_applies_across_relationships(): void
+    {
+        // Both visits are with a different (drug-related) PDL.
+        $drug = $this->makeDrugRelatedRelationship();
+        $this->visitOn($drug, '2026-10-08', '09:00');
+        $this->visitOn($drug, '2026-10-10', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $response = $this->availability()->assertOk();
+        $own = $response->json('relationships.0');
+        $other = $response->json('relationships.1');
+        $this->assertSame((string) $this->relationship->relationship_id, $own['relationshipId']);
+        $this->assertSame((string) $drug->relationship_id, $other['relationshipId']);
+
+        $this->assertSame('weekly_limit', $this->slot($own, '2026-10-09', '09:00')['reason']);
+        $this->assertSame('weekly_limit', $this->slot($own, '2026-10-09', '13:00')['reason']);
+        $this->assertSame('weekly_limit', $this->slot($own, '2026-10-11', '13:00')['reason']);
+        $this->assertSame('weekly_limit', $this->slot($other, '2026-10-08', '13:00')['reason']);
+
+        $this->assertTrue($this->slot($own, '2026-10-16', '09:00')['available']);
+        $this->assertTrue($this->slot($other, '2026-10-15', '09:00')['available']);
+    }
+
+    public function test_more_specific_reasons_take_precedence_over_weekly_limit(): void
+    {
+        $this->schedule->update(['slots_taken' => 2]); // Fri 09:00, capacity 2
+        $this->visitOn($this->relationship, '2026-10-11', '09:00');
+        $this->visitOn($this->relationship, '2026-10-11', '13:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+
+        $this->assertSame('full', $this->slot($relationship, '2026-10-09', '09:00')['reason']);
+        $this->assertSame('already_scheduled', $this->slot($relationship, '2026-10-11', '09:00')['reason']);
+        $this->assertSame('already_scheduled', $this->slot($relationship, '2026-10-11', '13:00')['reason']);
+        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-09', '13:00')['reason']);
+    }
+
+    public function test_weekly_limit_follows_the_setting(): void
+    {
+        $setting = SystemSetting::create([
+            'setting_key' => 'visit.max_per_week',
+            'setting_value' => '0',
+            'updated_by' => StaffProfile::first()->staff_id,
+        ]);
+        Sanctum::actingAs($this->visitorAccount);
+
+        // Zero allows no visits, even in a week with none booked.
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+        $this->assertSame([], $this->availableDays($relationship));
+        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-16', '13:00')['reason']);
+
+        $setting->update(['setting_value' => '3']);
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        $this->visitOn($this->relationship, '2026-10-11', '09:00');
+
+        $relationship = $this->availability()->assertOk()->json('relationships.0');
+        $this->assertTrue($this->slot($relationship, '2026-10-09', '13:00')['available']);
     }
 
     // ------------------------------------------------------- Announcements

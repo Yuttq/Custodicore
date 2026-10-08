@@ -50,6 +50,8 @@ class VisitAssignmentService
         'no_show',
     ];
 
+    public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for this calendar week.';
+
     /**
      * @param  array{visitor_id:int,pdl_id:int,relationship_id:int,schedule_id:int,confirmation_deadline?:string|null}  $input
      */
@@ -638,6 +640,8 @@ class VisitAssignmentService
     /**
      * `visit.max_per_week`: a visitor may hold at most N capacity-status
      * visits (across all PDLs) in one Monday–Sunday week of schedule_date.
+     * The counting rules live in ScheduleAvailabilityService, which also
+     * reports `weekly_limit` slots; this is the authoritative re-check.
      *
      * Runs inside the creating transaction, but the lock held there is on
      * the target schedule row only, so two concurrent requests by the same
@@ -646,33 +650,13 @@ class VisitAssignmentService
     private function assertWeeklyVisitLimit(VisitorProfile $visitor, VisitSchedule $schedule): void
     {
         $day = CarbonImmutable::parse($schedule->schedule_date->toDateString());
-        $weekStart = $day->startOfWeek(CarbonImmutable::MONDAY)->toDateString();
-        $weekEnd = $day->endOfWeek(CarbonImmutable::SUNDAY)->toDateString();
+        $count = $this->availability->weeklyVisitCounts($visitor, $day, $day)[$this->availability->weekStart($day)] ?? 0;
 
-        $count = VisitRequest::where('visitor_id', $visitor->visitor_id)
-            ->whereIn('status', self::CAPACITY_STATUSES)
-            ->whereHas('schedule', fn ($q) => $q
-                ->whereDate('schedule_date', '>=', $weekStart)
-                ->whereDate('schedule_date', '<=', $weekEnd))
-            ->count();
-
-        if ($count >= $this->maxVisitsPerWeek()) {
+        if ($count >= $this->availability->maxVisitsPerWeek()) {
             throw ValidationException::withMessages([
-                'schedule_id' => 'You have reached the maximum number of visits allowed for this calendar week.',
+                'schedule_id' => self::WEEKLY_LIMIT_MESSAGE,
             ]);
         }
-    }
-
-    /** Zero or negative allows no visits; a missing or non-integer value falls back to 2. */
-    private function maxVisitsPerWeek(): int
-    {
-        $raw = trim((string) SystemSetting::value('visit.max_per_week', '2'));
-
-        if (preg_match('/^-?\d+$/', $raw) !== 1) {
-            return 2;
-        }
-
-        return max((int) $raw, 0);
     }
 
     /** Locks a visit request that is still awaiting staff review (`assigned`). */
@@ -753,6 +737,7 @@ class VisitAssignmentService
             ScheduleAvailabilityService::REASON_CLOSED => ['startTime', 'This visiting slot is closed. Choose another available slot.'],
             ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit request for this PDL in this time slot.'],
             ScheduleAvailabilityService::REASON_FULL => ['startTime', 'This visiting slot is full. Choose another available slot.'],
+            ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => ['schedule_id', self::WEEKLY_LIMIT_MESSAGE],
             default => ['startTime', 'This visiting slot is not available.'],
         };
     }

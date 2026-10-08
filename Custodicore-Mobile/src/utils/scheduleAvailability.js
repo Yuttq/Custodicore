@@ -25,6 +25,7 @@ export const SLOT_REASON_LABELS = {
   closed: 'Closed',
   already_scheduled: 'Already scheduled',
   full: 'Full',
+  weekly_limit: 'Weekly limit reached',
 };
 
 /**

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FacilityVisitationRule;
+use App\Models\SystemSetting;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
@@ -29,6 +30,7 @@ use Illuminate\Support\Collection;
  *   closed           — the overlaid visit_schedules row is closed
  *   already_scheduled — this visitor already has an active visit for this PDL in this slot
  *   full             — no capacity left
+ *   weekly_limit     — the visitor already holds visit.max_per_week visits that week
  */
 class ScheduleAvailabilityService
 {
@@ -40,6 +42,7 @@ class ScheduleAvailabilityService
     public const REASON_CLOSED = 'closed';
     public const REASON_ALREADY_SCHEDULED = 'already_scheduled';
     public const REASON_FULL = 'full';
+    public const REASON_WEEKLY_LIMIT = 'weekly_limit';
 
     private const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -90,10 +93,63 @@ class ScheduleAvailabilityService
         $schedules = $this->schedulesInRange($from, $to);
         $occupied = $this->occupiedBySchedule($schedules);
         $ownBookings = $this->visitorBookings($visitor, $schedules);
+        $weekly = [
+            'counts' => $this->weeklyVisitCounts($visitor, $from, $to),
+            'limit' => $this->maxVisitsPerWeek(),
+        ];
 
         return $relationships->map(fn (VisitorPdlRelationship $relationship) => $this->relationshipAvailability(
-            $relationship, $rules, $schedules, $occupied, $ownBookings, $from, $to, $now
+            $relationship, $rules, $schedules, $occupied, $ownBookings, $weekly, $from, $to, $now
         ))->values()->all();
+    }
+
+    /** Zero or negative allows no visits; a missing or non-integer value falls back to 2. */
+    public function maxVisitsPerWeek(): int
+    {
+        $raw = trim((string) SystemSetting::value('visit.max_per_week', '2'));
+
+        if (preg_match('/^-?\d+$/', $raw) !== 1) {
+            return 2;
+        }
+
+        return max((int) $raw, 0);
+    }
+
+    /**
+     * `visit.max_per_week` counts: the visitor's visits in capacity statuses
+     * (across all PDLs) per Monday–Sunday week of visit_schedules.schedule_date,
+     * over the complete weeks covering [from, to].
+     *
+     * @return array<string, int> weekStart (Y-m-d Monday) => visits that week
+     */
+    public function weeklyVisitCounts(VisitorProfile $visitor, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $weekStart = $this->weekStart($from);
+        $weekEnd = CarbonImmutable::parse($this->weekStart($to))->addDays(6)->toDateString();
+
+        $counts = [];
+        VisitRequest::query()
+            ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
+            ->where('visit_requests.visitor_id', $visitor->visitor_id)
+            ->whereIn('visit_requests.status', VisitAssignmentService::CAPACITY_STATUSES)
+            ->whereDate('visit_schedules.schedule_date', '>=', $weekStart)
+            ->whereDate('visit_schedules.schedule_date', '<=', $weekEnd)
+            ->selectRaw('visit_schedules.schedule_date as schedule_date, COUNT(*) as aggregate')
+            ->groupBy('visit_schedules.schedule_date')
+            ->toBase()
+            ->get()
+            ->each(function ($row) use (&$counts) {
+                $week = $this->weekStart(CarbonImmutable::parse(substr((string) $row->schedule_date, 0, 10)));
+                $counts[$week] = ($counts[$week] ?? 0) + (int) $row->aggregate;
+            });
+
+        return $counts;
+    }
+
+    /** The Monday (Y-m-d) of $date's Monday–Sunday week. */
+    public function weekStart(CarbonImmutable $date): string
+    {
+        return $date->startOfWeek(CarbonImmutable::MONDAY)->toDateString();
     }
 
     /**
@@ -125,6 +181,7 @@ class ScheduleAvailabilityService
         Collection $schedules,
         array $occupied,
         array $ownBookings,
+        array $weekly,
         CarbonImmutable $from,
         CarbonImmutable $to,
         CarbonImmutable $now
@@ -138,7 +195,7 @@ class ScheduleAvailabilityService
         for ($date = $from; $date->lte($to); $date = $date->addDay()) {
             $days[] = $this->dayAvailability(
                 $date, $relationship, $classificationRules, $rules, $schedules,
-                $occupied, $ownBookings, $pdlAvailable, $now
+                $occupied, $ownBookings, $weekly, $pdlAvailable, $now
             );
         }
 
@@ -176,6 +233,7 @@ class ScheduleAvailabilityService
         Collection $schedules,
         array $occupied,
         array $ownBookings,
+        array $weekly,
         bool $pdlAvailable,
         CarbonImmutable $now
     ): array {
@@ -189,7 +247,7 @@ class ScheduleAvailabilityService
         if ($effectiveRules->isNotEmpty()) {
             foreach ($effectiveRules as $rule) {
                 $slots[] = $this->ruleSlot(
-                    $date, $rule, $relationship, $schedules, $occupied, $ownBookings, $pdlAvailable, $now
+                    $date, $rule, $relationship, $schedules, $occupied, $ownBookings, $weekly, $pdlAvailable, $now
                 );
             }
         } else {
@@ -230,6 +288,7 @@ class ScheduleAvailabilityService
         Collection $schedules,
         array $occupied,
         array $ownBookings,
+        array $weekly,
         bool $pdlAvailable,
         CarbonImmutable $now
     ): array {
@@ -253,6 +312,9 @@ class ScheduleAvailabilityService
         }
         if (! $reason && ($schedule?->status === 'full' || $remaining <= 0)) {
             $reason = self::REASON_FULL;
+        }
+        if (! $reason && ($weekly['counts'][$this->weekStart($date)] ?? 0) >= $weekly['limit']) {
+            $reason = self::REASON_WEEKLY_LIMIT;
         }
 
         return $this->slotPayload($date, $rule, $relationship, [
