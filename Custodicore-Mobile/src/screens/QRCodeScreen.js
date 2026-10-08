@@ -29,8 +29,12 @@ import {
   resolveScheduleIdForQr,
 } from '../repositories/qrRepository';
 import { formatDate, formatTime } from '../utils';
+import { pickQrVisit } from '../utils/activeVisits';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+/** Shown (as the "No Active QR Pass" state) when no visit qualifies for a pass. */
+const NO_ACTIVE_QR_MESSAGE = 'No active QR pass.';
 
 /**
  * @param {Record<string, unknown>} data
@@ -147,7 +151,9 @@ function isNoActiveQrPassError(message) {
     normalized.includes('qr pass is not available') ||
     normalized.includes('only available once your visit is confirmed') ||
     normalized.includes('already checked in') ||
-    normalized.includes('already been used')
+    normalized.includes('already been used') ||
+    // 409 for an `assigned` visit request still awaiting staff review
+    normalized.includes('awaiting review')
   );
 }
 
@@ -156,10 +162,16 @@ function isNoActiveQrPassError(message) {
  */
 export default function QRCodeScreen({ route, navigation }) {
   const scheduleIdParam = route?.params?.scheduleId ?? route?.params?.visitId;
-  const { visits, getVisitById, refreshVisits } = useVisits();
+  const {
+    visits,
+    loading: visitsLoading,
+    error: visitsError,
+    getVisitById,
+    refreshVisits,
+  } = useVisits();
 
   // Reload visits on focus so a newly approved visit is picked up; a changed
-  // preferredVisitId then reloads the pass below. Not skipping the first
+  // autoSelection then reloads the pass below. Not skipping the first
   // focus: this tab mounts lazily, long after the session's initial load.
   useFocusEffect(
     useCallback(() => {
@@ -169,10 +181,17 @@ export default function QRCodeScreen({ route, navigation }) {
     }, [refreshVisits]),
   );
 
-  const preferredVisitId = useMemo(() => {
-    const confirmed = visits.find((v) => v.status === 'confirmed');
-    return confirmed?.id ?? visits[0]?.id;
-  }, [visits]);
+  // Automatic selection (no explicit visit passed in): the nearest confirmed
+  // visit today or later. 'none' = visits loaded, nothing eligible;
+  // 'pending' = list still loading; 'fallback' = list failed to load, so keep
+  // the previous behaviour of asking the backend for the upcoming visit.
+  const autoSelection = useMemo(() => {
+    const qrVisit = pickQrVisit(visits);
+    if (qrVisit) return `visit:${qrVisit.id}`;
+    if (visitsError) return 'fallback';
+    if (visitsLoading) return 'pending';
+    return 'none';
+  }, [visits, visitsError, visitsLoading]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -202,6 +221,22 @@ export default function QRCodeScreen({ route, navigation }) {
 
   const load = useCallback(
     async (mode = 'initial') => {
+      let requestedId = scheduleIdParam;
+      if (requestedId == null) {
+        // Wait for the visits list; the effect reruns once it settles.
+        if (autoSelection === 'pending') return;
+        if (autoSelection === 'none') {
+          setResolvedScheduleId(null);
+          setQrPayload(null);
+          setError(NO_ACTIVE_QR_MESSAGE);
+          setLoading(false);
+          return;
+        }
+        if (autoSelection.startsWith('visit:')) {
+          requestedId = autoSelection.slice('visit:'.length);
+        }
+      }
+
       const silent = mode === 'refresh' && hasLoadedOnce.current;
       if (silent) setRefreshing(true);
       else {
@@ -209,9 +244,7 @@ export default function QRCodeScreen({ route, navigation }) {
         setError(null);
       }
       try {
-        const sid = await resolveScheduleIdForQr(
-          scheduleIdParam ?? preferredVisitId,
-        );
+        const sid = await resolveScheduleIdForQr(requestedId);
         setResolvedScheduleId(sid);
         const data = await fetchQrTokenPayload(sid);
         const normalized = normalizeQrPayload(
@@ -233,13 +266,13 @@ export default function QRCodeScreen({ route, navigation }) {
         else setLoading(false);
       }
     },
-    [scheduleIdParam, preferredVisitId, applyExpiry],
+    [scheduleIdParam, autoSelection, applyExpiry],
   );
 
   useEffect(() => {
     hasLoadedOnce.current = false;
     load('initial');
-  }, [scheduleIdParam, preferredVisitId, load]);
+  }, [scheduleIdParam, autoSelection, load]);
 
   useEffect(() => {
     if (!qrPayload?.expiresAt) return undefined;

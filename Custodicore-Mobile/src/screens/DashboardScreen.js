@@ -20,6 +20,7 @@ import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitTimeline from '../hooks/useVisitTimeline';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
+import { pickNextVisit } from '../utils/activeVisits';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
@@ -329,19 +330,7 @@ export default function DashboardScreen({ navigation }) {
     [verification, user?.verificationStatus],
   );
 
-  const nextVisit = useMemo(() => {
-    const assigned = visits.filter(
-      (v) =>
-        v.status === 'confirmed' ||
-        v.status === 'pending_confirmation' ||
-        v.status === 'assigned' ||
-        v.status === 'scheduled',
-    );
-    if (assigned.length === 0) return null;
-    return [...assigned].sort(
-      (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt),
-    )[0];
-  }, [visits]);
+  const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
 
   // Real timeline for the next visit (GET /api/schedules/{id}/timeline).
   const { steps: nextVisitSteps } = useVisitTimeline(nextVisit?.id ?? null, nextVisit?.status);
