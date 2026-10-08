@@ -45,10 +45,18 @@ class VisitorApiController extends Controller
     {
         $visitor = $this->currentVisitor($request);
 
-        $visit = VisitRequest::where('visitor_id', $visitor->visitor_id)
-            ->whereIn('status', ['assigned', 'pending_confirmation', 'confirmed'])
+        // Earliest visit dated today or later (same rule as the mobile
+        // pickNextVisit). A past visit still awaiting `visits:expire` is skipped.
+        $visit = VisitRequest::query()
+            ->select('visit_requests.*')
+            ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
+            ->where('visit_requests.visitor_id', $visitor->visitor_id)
+            ->whereIn('visit_requests.status', ['assigned', 'pending_confirmation', 'confirmed'])
+            ->whereDate('visit_schedules.schedule_date', '>=', today()->toDateString())
             ->with(['pdl', 'schedule'])
-            ->orderBy('assigned_at')
+            ->orderBy('visit_schedules.schedule_date')
+            ->orderBy('visit_schedules.time_slot_start')
+            ->orderBy('visit_requests.visit_request_id')
             ->first();
 
         if (! $visit) {
