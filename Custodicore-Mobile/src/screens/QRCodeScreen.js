@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect } from '@react-navigation/native';
 import moment from 'moment';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -155,7 +156,18 @@ function isNoActiveQrPassError(message) {
  */
 export default function QRCodeScreen({ route, navigation }) {
   const scheduleIdParam = route?.params?.scheduleId ?? route?.params?.visitId;
-  const { visits, getVisitById } = useVisits();
+  const { visits, getVisitById, refreshVisits } = useVisits();
+
+  // Reload visits on focus so a newly approved visit is picked up; a changed
+  // preferredVisitId then reloads the pass below. Not skipping the first
+  // focus: this tab mounts lazily, long after the session's initial load.
+  useFocusEffect(
+    useCallback(() => {
+      refreshVisits().catch(() => {
+        // error already stored in VisitsContext
+      });
+    }, [refreshVisits]),
+  );
 
   const preferredVisitId = useMemo(() => {
     const confirmed = visits.find((v) => v.status === 'confirmed');

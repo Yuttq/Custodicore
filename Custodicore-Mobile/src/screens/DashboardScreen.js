@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -292,8 +293,24 @@ function AnnouncementsSection({ state }) {
  */
 export default function DashboardScreen({ navigation }) {
   const { registrationSummary, user, isApprovedVisitor } = useAuth();
-  const { visits } = useVisits();
+  const { visits, refreshVisits } = useVisits();
   const { verification } = useVisitorVerification();
+
+  // Reload visits when Home regains focus so staff decisions (e.g. an
+  // approved request) show up. The first focus is skipped: VisitsProvider
+  // already loads visits when the session starts.
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+      refreshVisits().catch(() => {
+        // error already stored in VisitsContext
+      });
+    }, [refreshVisits]),
+  );
   const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
   const announcements = useAnnouncements();
 

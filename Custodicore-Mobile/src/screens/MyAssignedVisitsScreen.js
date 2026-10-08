@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -216,9 +217,21 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
     }
   }, [refreshVisits]);
 
-  useEffect(() => {
-    fetchVisits(false);
-  }, [fetchVisits]);
+  // The tab stays mounted, so reload on every focus: the first one with the
+  // full loading state, later ones quietly so staff decisions show up.
+  const loadedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadedOnce.current) {
+        loadedOnce.current = true;
+        fetchVisits(false);
+        return;
+      }
+      refreshVisits().catch(() => {
+        // error already stored in VisitsContext
+      });
+    }, [fetchVisits, refreshVisits]),
+  );
 
   const filteredVisits = useMemo(() => {
     const filtered = visits.filter((v) => getMyVisitsTab(v.status) === activeTab);
