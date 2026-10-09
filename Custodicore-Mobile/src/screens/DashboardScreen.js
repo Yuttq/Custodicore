@@ -17,7 +17,6 @@ import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useAnnouncements from '../hooks/useAnnouncements';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
-import useVisitTimeline from '../hooks/useVisitTimeline';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
@@ -25,17 +24,6 @@ import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
-
-const GRAY_UPCOMING = '#9CA3AF';
-
-const HOME_STEP_LABELS = {
-  visitor_eligible: 'Documents Verified',
-  schedule_assigned: 'Schedule Assigned',
-  attendance_confirmed: 'Attendance Confirmed',
-  qr_generated: 'QR Pass Ready',
-  checked_in: 'Check-In',
-  visit_completed: 'Visit Completed',
-};
 
 function getTimeGreeting() {
   const hour = new Date().getHours();
@@ -55,21 +43,17 @@ function getInitials(fullName) {
 }
 
 /**
- * Maps the real verification state (GET /api/documents, falling back to the
- * /api/me status) onto the existing strip styles.
- * @param {string | null | undefined} verificationStatus — verification_* UI key
- * @param {string | null | undefined} backendStatus — pending | verified | rejected
+ * Verification reminder for Home, or null when none is needed. Profile shows
+ * the verified badge, so Home only speaks up when the backend status
+ * (GET /api/documents, falling back to the cached /api/me value) explicitly
+ * says pending or rejected — e.g. staff changed it after this session began.
+ * Verified, missing, or not-yet-loaded statuses show nothing.
+ * @param {{ backendStatus?: string | null; verificationStatus?: string } | null | undefined} verification
+ * @param {string | null | undefined} meStatus — pending | verified | rejected
  */
-function resolveVerificationDisplay(verificationStatus, backendStatus) {
-  if (verificationStatus === 'verification_verified' || backendStatus === 'verified') {
-    return {
-      label: 'Verified Visitor',
-      icon: 'shield-checkmark',
-      accent: colors.success,
-      bg: 'rgba(22, 163, 74, 0.1)',
-    };
-  }
-  if (verificationStatus === 'verification_rejected' || backendStatus === 'rejected') {
+function resolveVerificationReminder(verification, meStatus) {
+  const status = verification?.backendStatus ?? meStatus;
+  if (status === 'rejected') {
     return {
       label: 'Verification Rejected',
       icon: 'close-circle-outline',
@@ -77,22 +61,21 @@ function resolveVerificationDisplay(verificationStatus, backendStatus) {
       bg: 'rgba(239, 68, 68, 0.08)',
     };
   }
-  if (
-    verificationStatus === 'verification_under_review' ||
-    (!verificationStatus && backendStatus === 'pending')
-  ) {
+  if (status !== 'pending') return null;
+  // Pending with nothing uploaded yet (known only from GET /api/documents).
+  if (verification?.verificationStatus === 'verification_pending') {
     return {
-      label: 'Documents Under Review',
-      icon: 'time-outline',
-      accent: colors.primaryNavy,
-      bg: 'rgba(15, 61, 122, 0.08)',
+      label: 'Verification Required',
+      icon: 'alert-circle-outline',
+      accent: colors.warning,
+      bg: 'rgba(245, 158, 11, 0.12)',
     };
   }
   return {
-    label: 'Verification Required',
-    icon: 'alert-circle-outline',
-    accent: colors.warning,
-    bg: 'rgba(245, 158, 11, 0.12)',
+    label: 'Documents Under Review',
+    icon: 'time-outline',
+    accent: colors.primaryNavy,
+    bg: 'rgba(15, 61, 122, 0.08)',
   };
 }
 
@@ -138,62 +121,6 @@ function CompactVerificationStatus({ display, onViewDocuments }) {
         <Text style={styles.verificationActionText}>View Documents</Text>
         <Ionicons name="chevron-forward" size={14} color={colors.primaryTeal} />
       </Pressable>
-    </View>
-  );
-}
-
-/**
- * @param {object} props
- * @param {import('../utils/visitProgressSnapshot').CompactVisitStep} props.step
- * @param {boolean} props.isLast
- */
-function HomeTimelineStep({ step, isLast }) {
-  const isCompleted = step.stepState === 'completed';
-  const isCurrent = step.stepState === 'current';
-  const lineColor = isCompleted ? colors.success : colors.border;
-
-  return (
-    <View style={styles.timelineRow}>
-      <View style={styles.timelineTrack}>
-        {isCompleted ? (
-          <View style={styles.dotDone}>
-            <Ionicons name="checkmark" size={11} color={colors.white} />
-          </View>
-        ) : isCurrent ? (
-          <View style={styles.dotCurrent}>
-            <View style={styles.dotCurrentInner} />
-          </View>
-        ) : (
-          <View style={styles.dotPending} />
-        )}
-        {!isLast ? <View style={[styles.timelineLine, { backgroundColor: lineColor }]} /> : null}
-      </View>
-      <View style={[styles.timelineBody, !isLast && styles.timelineBodySpaced]}>
-        <Text
-          style={[
-            styles.timelineLabel,
-            isCompleted && styles.timelineLabelDone,
-            isCurrent && styles.timelineLabelCurrent,
-            step.stepState === 'pending' && styles.timelineLabelPending,
-          ]}
-        >
-          {step.label}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-/**
- * @param {object} props
- * @param {import('../utils/visitProgressSnapshot').CompactVisitStep[]} props.steps
- */
-function HomeVisualTimeline({ steps }) {
-  return (
-    <View style={styles.timelinePanel}>
-      {steps.map((step, index) => (
-        <HomeTimelineStep key={step.id} step={step} isLast={index === steps.length - 1} />
-      ))}
     </View>
   );
 }
@@ -289,9 +216,10 @@ function AnnouncementsSection({ state }) {
 }
 
 /**
- * Visitor home dashboard — a quick overview: verification, upcoming visit,
- * progress snapshot (v2.1) and compact announcements. The visitation schedule
- * calendar lives under My Visits → Schedule.
+ * Visitor home dashboard — a quick overview: the next visit, a verification
+ * reminder when one is needed, and compact announcements. Visit progress lives
+ * in Visit Details → Timeline; the visitation schedule under My Visits →
+ * Schedule.
  */
 export default function DashboardScreen({ navigation }) {
   const { registrationSummary, user, isApprovedVisitor } = useAuth();
@@ -322,27 +250,12 @@ export default function DashboardScreen({ navigation }) {
   const greeting = useMemo(() => getTimeGreeting(), []);
   const initials = useMemo(() => getInitials(visitorName), [visitorName]);
 
-  const verificationDisplay = useMemo(
-    () =>
-      resolveVerificationDisplay(
-        verification?.verificationStatus,
-        verification?.backendStatus ?? user?.verificationStatus,
-      ),
+  const verificationReminder = useMemo(
+    () => resolveVerificationReminder(verification, user?.verificationStatus),
     [verification, user?.verificationStatus],
   );
 
   const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
-
-  // Real timeline for the next visit (GET /api/schedules/{id}/timeline).
-  const { steps: nextVisitSteps } = useVisitTimeline(nextVisit?.id ?? null, nextVisit?.status);
-  const timelineSteps = useMemo(
-    () =>
-      nextVisitSteps.map((step) => ({
-        ...step,
-        label: HOME_STEP_LABELS[step.id] ?? step.label,
-      })),
-    [nextVisitSteps],
-  );
 
   const tabBarInset = useTabBarScrollInset();
 
@@ -365,16 +278,9 @@ export default function DashboardScreen({ navigation }) {
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
   }, [navigation, nextVisit]);
 
-  const onViewFullTimeline = useCallback(() => {
-    if (!nextVisit) return;
-    navigation.navigate('Timeline', {
-      scheduleId: nextVisit.id,
-      visitId: nextVisit.id,
-      visitStatus: nextVisit.status,
-      pdlName: nextVisit.pdlName,
-      referenceNumber: nextVisit.referenceNumber,
-    });
-  }, [navigation, nextVisit]);
+  const onOpenSchedule = useCallback(() => {
+    navigation.navigate('Schedule', { tab: 'schedule' });
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -393,10 +299,12 @@ export default function DashboardScreen({ navigation }) {
           <DashboardAvatar photoUri={profile.photoUri} initials={initials} />
         </View>
 
-        <CompactVerificationStatus
-          display={verificationDisplay}
-          onViewDocuments={onViewDocuments}
-        />
+        {verificationReminder ? (
+          <CompactVerificationStatus
+            display={verificationReminder}
+            onViewDocuments={onViewDocuments}
+          />
+        ) : null}
 
         <Text style={styles.sectionLabel}>Upcoming Visit</Text>
         {nextVisit ? (
@@ -418,37 +326,25 @@ export default function DashboardScreen({ navigation }) {
         ) : (
           <Card style={styles.visitCard}>
             <Text style={styles.noVisit}>
-              No upcoming assigned visits. Choose an available visitation slot and submit a
-              visit request for staff review.
+              You have no upcoming visits. Request a visit by choosing an available visitation
+              slot; facility staff will review your request.
             </Text>
             <View style={styles.noVisitAction}>
               <Button
-                title="View My Visits"
+                title="Request a Visit"
                 variant="secondary"
-                onPress={() => navigation.navigate('Schedule')}
-                accessibilityLabel="View my assigned visits"
+                onPress={onOpenSchedule}
+                accessibilityLabel="Request a visit from the visitation schedule"
               />
             </View>
           </Card>
         )}
 
-        {nextVisit && timelineSteps.length > 0 ? (
-          <View style={styles.progressSection}>
-            <Text style={styles.sectionLabel}>Visit Progress</Text>
-            <HomeVisualTimeline steps={timelineSteps} />
-            <TextLink
-              label="View Full Timeline"
-              onPress={onViewFullTimeline}
-              accessibilityLabel="View full visit timeline"
-            />
-          </View>
-        ) : null}
-
         {isApprovedVisitor ? (
           <View style={styles.scheduleLink}>
             <TextLink
               label="View Visitation Schedule"
-              onPress={() => navigation.navigate('Schedule', { tab: 'schedule' })}
+              onPress={onOpenSchedule}
               accessibilityLabel="View visitation schedule in My Visits"
             />
           </View>
@@ -582,93 +478,6 @@ const styles = StyleSheet.create({
   },
   noVisitAction: {
     marginTop: spacing.xs,
-  },
-  progressSection: {
-    marginBottom: spacing.md,
-  },
-  timelinePanel: {
-    backgroundColor: colors.card,
-    borderRadius: layout.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  timelineRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  timelineTrack: {
-    width: 22,
-    alignItems: 'center',
-    marginRight: spacing.sm,
-    alignSelf: 'stretch',
-  },
-  dotDone: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.success,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  dotCurrent: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.primaryTeal,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  dotCurrentInner: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.primaryTeal,
-  },
-  dotPending: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: GRAY_UPCOMING,
-    backgroundColor: colors.white,
-    zIndex: 1,
-  },
-  timelineLine: {
-    flex: 1,
-    width: 2,
-    marginTop: spacing.xs,
-    minHeight: spacing.sm,
-    borderRadius: 1,
-  },
-  timelineBody: {
-    flex: 1,
-    paddingTop: spacing.xs,
-  },
-  timelineBodySpaced: {
-    paddingBottom: spacing.xs,
-  },
-  timelineLabel: {
-    ...typography.metadata,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  timelineLabelDone: {
-    color: colors.textPrimary,
-  },
-  timelineLabelCurrent: {
-    color: colors.primaryNavy,
-    fontWeight: '700',
-  },
-  timelineLabelPending: {
-    color: GRAY_UPCOMING,
-    fontWeight: '500',
   },
   textLink: {
     flexDirection: 'row',
