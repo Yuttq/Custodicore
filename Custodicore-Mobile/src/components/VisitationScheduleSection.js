@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
+import RelationshipPicker from './RelationshipPicker';
 import TimeSlotList from './TimeSlotList';
 import VisitCalendar from './VisitCalendar';
 import {
@@ -169,31 +170,11 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
   } else {
     info = (
       <>
-        {relationships.length > 1 ? (
-          <View style={styles.chipRow}>
-            {relationships.map((r) => {
-              const active = r.relationshipId === relationship.relationshipId;
-              return (
-                <Pressable
-                  key={r.relationshipId}
-                  onPress={() => selectRelationship(r.relationshipId)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    active && styles.chipActive,
-                    pressed && styles.pressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Show schedule for ${r.pdlName ?? 'PDL'}`}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {r.pdlName ?? 'PDL'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
+        <RelationshipPicker
+          relationships={relationships}
+          selectedId={relationship.relationshipId}
+          onSelect={selectRelationship}
+        />
         {relationship.pdlName ? (
           <Text style={styles.visitPdl}>{relationship.pdlName}</Text>
         ) : null}
@@ -399,32 +380,6 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontWeight: '600',
     marginTop: spacing.sm,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: layout.chipRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  chipActive: {
-    borderColor: colors.primaryNavy,
-    backgroundColor: colors.primaryNavy,
-  },
-  chipText: {
-    ...typography.metadata,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  chipTextActive: {
-    color: colors.white,
   },
   slotDate: {
     ...typography.body,

@@ -16,7 +16,7 @@ const UPCOMING_STATUSES = ['assigned', 'pending_confirmation', 'confirmed'];
  * @param {{ scheduledAt?: unknown }} visit
  * @returns {string | null} "YYYY-MM-DD" (Manila) or null
  */
-function scheduledDateIso(visit) {
+export function scheduledDateIso(visit) {
   const at = visit?.scheduledAt;
   if (typeof at !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(at)) return null;
   return at.slice(0, 10);

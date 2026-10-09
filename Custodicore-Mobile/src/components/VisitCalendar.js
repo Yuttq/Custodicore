@@ -14,6 +14,12 @@ import {
 
 const GRAY_INACTIVE = '#C4C9D2';
 const CELL_SIZE = 40;
+const CELL_SIZE_COMPACT = 34;
+
+const MARKER_LABELS = {
+  pending: 'pending visit',
+  confirmed: 'confirmed visit',
+};
 
 function monthIndex(year, month) {
   return year * 12 + (month - 1);
@@ -31,6 +37,10 @@ function monthIndex(year, month) {
  * @param {string | null} [props.maxDate] — last date with availability data
  * @param {string | null} [props.selectedDate]
  * @param {(date: string) => void} props.onSelectDate
+ * @param {Record<string, 'pending' | 'confirmed'>} [props.markedDates] — the
+ *   visitor's own visits; passing it adds Pending / Confirmed to the legend
+ * @param {boolean} [props.showSelection=true] — false hides the Selected legend
+ * @param {boolean} [props.compact=false] — smaller day cells
  */
 export default function VisitCalendar({
   daysByDate,
@@ -39,6 +49,9 @@ export default function VisitCalendar({
   maxDate,
   selectedDate,
   onSelectDate,
+  markedDates,
+  showSelection = true,
+  compact = false,
 }) {
   const [visible, setVisible] = useState(() => {
     const start =
@@ -59,6 +72,13 @@ export default function VisitCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to range changes
   }, [minIndex, maxIndex]);
 
+  // A date selected from outside (e.g. Home → Schedule) — show its month.
+  useEffect(() => {
+    const p = parseIsoDate(selectedDate);
+    if (!p) return;
+    setVisible((v) => (v.year === p.year && v.month === p.month ? v : { year: p.year, month: p.month }));
+  }, [selectedDate]);
+
   const weeks = useMemo(() => buildMonthGrid(visible.year, visible.month), [visible]);
   const canGoBack = minIndex == null || visibleIndex > minIndex;
   const canGoForward = maxIndex == null || visibleIndex < maxIndex;
@@ -71,6 +91,10 @@ export default function VisitCalendar({
     const isAvailable = inRange && !isPast && Boolean(daysByDate[date]?.available);
     const isSelected = date === selectedDate && isAvailable;
     const isToday = date === today;
+    const marker = markedDates?.[date];
+    const markerLabel = marker ? MARKER_LABELS[marker] : null;
+    const isPending = marker === 'pending' && !isSelected;
+    const isConfirmed = marker === 'confirmed' && !isSelected;
     const dayNumber = Number(date.slice(8, 10));
 
     return (
@@ -80,14 +104,17 @@ export default function VisitCalendar({
         onPress={() => onSelectDate(date)}
         disabled={!isAvailable}
         accessibilityRole="button"
-        accessibilityLabel={`${formatDateLong(date)}, ${isAvailable ? 'available' : 'unavailable'}`}
+        accessibilityLabel={`${formatDateLong(date)}, ${markerLabel ? `${markerLabel}, ` : ''}${isAvailable ? 'available' : 'unavailable'}`}
         accessibilityState={{ disabled: !isAvailable, selected: isSelected }}
       >
         {({ pressed }) => (
           <View
             style={[
               styles.dayCircle,
+              compact && styles.dayCircleCompact,
               isAvailable && styles.dayAvailable,
+              isPending && styles.dayPending,
+              isConfirmed && styles.dayConfirmed,
               isSelected && styles.daySelected,
               pressed && isAvailable && styles.pressed,
             ]}
@@ -96,13 +123,16 @@ export default function VisitCalendar({
               style={[
                 styles.dayText,
                 isAvailable ? styles.dayTextAvailable : styles.dayTextInactive,
-                isSelected && styles.dayTextSelected,
+                isPending && styles.dayTextPending,
+                (isSelected || isConfirmed) && styles.dayTextSelected,
               ]}
             >
               {dayNumber}
             </Text>
             {isToday ? (
-              <View style={[styles.todayDot, isSelected && styles.todayDotSelected]} />
+              <View
+                style={[styles.todayDot, (isSelected || isConfirmed) && styles.todayDotSelected]}
+              />
             ) : null}
           </View>
         )}
@@ -165,10 +195,24 @@ export default function VisitCalendar({
           <View style={[styles.legendSwatch, styles.dayAvailable]} />
           <Text style={styles.legendText}>Available</Text>
         </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendSwatch, styles.daySelected]} />
-          <Text style={styles.legendText}>Selected</Text>
-        </View>
+        {markedDates ? (
+          <>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, styles.dayPending]} />
+              <Text style={styles.legendText}>Pending</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, styles.dayConfirmed]} />
+              <Text style={styles.legendText}>Confirmed</Text>
+            </View>
+          </>
+        ) : null}
+        {showSelection ? (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, styles.daySelected]} />
+            <Text style={styles.legendText}>Selected</Text>
+          </View>
+        ) : null}
         <View style={styles.legendItem}>
           <View style={[styles.legendSwatch, styles.legendInactive]} />
           <Text style={styles.legendText}>Unavailable</Text>
@@ -219,9 +263,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
+  dayCircleCompact: {
+    width: CELL_SIZE_COMPACT,
+    height: CELL_SIZE_COMPACT,
+    borderRadius: CELL_SIZE_COMPACT / 2,
+  },
   dayAvailable: {
     backgroundColor: 'rgba(13, 165, 138, 0.1)',
     borderColor: colors.primaryTeal,
+  },
+  dayPending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.16)',
+    borderColor: colors.warning,
+    borderStyle: 'dashed',
+  },
+  dayConfirmed: {
+    backgroundColor: colors.successStrong,
+    borderColor: colors.successStrong,
   },
   daySelected: {
     backgroundColor: colors.primaryNavy,
@@ -236,6 +294,10 @@ const styles = StyleSheet.create({
   },
   dayTextInactive: {
     color: GRAY_INACTIVE,
+  },
+  dayTextPending: {
+    fontWeight: '700',
+    color: colors.warningText,
   },
   dayTextSelected: {
     color: colors.white,

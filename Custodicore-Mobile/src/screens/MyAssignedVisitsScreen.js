@@ -1,5 +1,13 @@
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   FlatList,
@@ -29,6 +37,13 @@ import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
 import { visitTimeText } from '../utils/activeVisits';
+import { formatDateLong } from '../utils/scheduleAvailability';
+import {
+  INITIAL_HANDOFF,
+  handoffReducer,
+  nextHandoffStep,
+  readHandoffParams,
+} from '../utils/scheduleHandoff';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 const TABS = [
@@ -173,6 +188,106 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
       navigation.setParams({ tab: undefined });
     }
   }, [requestedTab, navigation]);
+
+  // Home handoff: `navigate('Schedule', { tab: 'schedule', relationshipId?,
+  // date? })` — see utils/scheduleHandoff. Params are consumed once; the
+  // request waits for fresh availability, and a manual choice cancels it.
+  const requestedDate = route?.params?.date;
+  const requestedRelationshipId = route?.params?.relationshipId;
+  const [handoff, dispatchHandoff] = useReducer(handoffReducer, INITIAL_HANDOFF);
+  const {
+    loading: scheduleLoading,
+    error: scheduleError,
+    reload: reloadSchedule,
+    relationships: scheduleRelationships,
+    relationship: scheduleRelationship,
+    daysByDate: scheduleDaysByDate,
+    selectRelationship,
+    selectDate,
+    selectSlot,
+    clearSelection,
+  } = schedule;
+  // Read by the params effect without re-running it when loading changes.
+  const scheduleLoadingRef = useRef(scheduleLoading);
+  useLayoutEffect(() => {
+    scheduleLoadingRef.current = scheduleLoading;
+  }, [scheduleLoading]);
+
+  useEffect(() => {
+    const { consumed, request, reload } = readHandoffParams(
+      { date: requestedDate, relationshipId: requestedRelationshipId },
+      scheduleLoadingRef.current,
+    );
+    if (!consumed) return;
+    navigation.setParams({ date: undefined, relationshipId: undefined });
+    if (!request) return;
+    setActiveTab('schedule');
+    dispatchHandoff({ type: 'request', request });
+    // reload() sets `loading` in this same update, so the request waits for it.
+    if (reload) reloadSchedule();
+  }, [requestedDate, requestedRelationshipId, navigation, reloadSchedule]);
+
+  const scheduleRelationshipId = scheduleRelationship?.relationshipId ?? null;
+  useEffect(() => {
+    const { request } = handoff;
+    const step = nextHandoffStep(request, {
+      loading: scheduleLoading,
+      error: scheduleError,
+      relationships: scheduleRelationships,
+      relationshipId: scheduleRelationshipId,
+      daysByDate: scheduleDaysByDate,
+    });
+    switch (step.type) {
+      case 'idle':
+      case 'wait':
+        return;
+      case 'select_relationship':
+        // The date (if any) is resolved on the next render, against that
+        // relationship's daysByDate.
+        selectRelationship(step.relationshipId);
+        return;
+      case 'select_date':
+        clearSelection();
+        selectDate(step.date);
+        dispatchHandoff({ type: 'settle', request });
+        return;
+      case 'date_unavailable':
+        clearSelection();
+        dispatchHandoff({ type: 'settle', request, notice: { date: step.date } });
+        return;
+      default:
+        // done / drop: leave the Schedule in its normal state.
+        dispatchHandoff({ type: 'settle', request });
+    }
+  }, [
+    handoff,
+    scheduleLoading,
+    scheduleError,
+    scheduleRelationships,
+    scheduleRelationshipId,
+    scheduleDaysByDate,
+    selectRelationship,
+    selectDate,
+    clearSelection,
+  ]);
+
+  // The Schedule section's own choices go through these, so a handoff still
+  // waiting for availability can never replace what the visitor picked.
+  const scheduleForSection = {
+    ...schedule,
+    selectRelationship: (id) => {
+      dispatchHandoff({ type: 'manual' });
+      selectRelationship(id);
+    },
+    selectDate: (date) => {
+      dispatchHandoff({ type: 'manual' });
+      selectDate(date);
+    },
+    selectSlot: (slotKey) => {
+      dispatchHandoff({ type: 'manual' });
+      selectSlot(slotKey);
+    },
+  };
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -339,8 +454,18 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {handoff.notice ? (
+            <Text
+              style={styles.handoffNotice}
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert"
+            >
+              {formatDateLong(handoff.notice.date)} is no longer available. Please choose
+              another date.
+            </Text>
+          ) : null}
           <VisitationScheduleSection
-            schedule={schedule}
+            schedule={scheduleForSection}
             onSubmitRequest={submitVisitRequest}
             onViewPending={() => setActiveTab('pending')}
           />
@@ -443,6 +568,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: layout.screenPadding,
+  },
+  handoffNotice: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.warningText,
+    marginBottom: spacing.sm,
   },
   loadErrorText: {
     ...typography.metadata,

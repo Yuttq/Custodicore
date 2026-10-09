@@ -13,13 +13,18 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import RelationshipPicker from '../components/RelationshipPicker';
+import VisitCalendar from '../components/VisitCalendar';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useAnnouncements from '../hooks/useAnnouncements';
+import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
+import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
+import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
@@ -139,6 +144,122 @@ function TextLink({ label, onPress, accessibilityLabel }) {
   );
 }
 
+/**
+ * Visitation calendar for Home: availability (GET /api/schedules/availability)
+ * for one relationship at a time, with the visitor's own pending / confirmed
+ * visits marked. Tapping an available date opens My Visits → Schedule with
+ * that date; slots are chosen and requested there, never here.
+ * @param {object} props
+ * @param {ReturnType<typeof useScheduleAvailability>} props.schedule
+ * @param {Record<string, 'pending' | 'confirmed'>} props.markedDates
+ * @param {(date: string) => void} props.onSelectDate
+ */
+function HomeVisitCalendar({ schedule, markedDates, onSelectDate }) {
+  const {
+    loading,
+    error,
+    reload,
+    message,
+    today,
+    from,
+    to,
+    relationships,
+    relationship,
+    selectRelationship,
+    daysByDate,
+  } = schedule;
+  const hasAvailableDate = useMemo(
+    () => Object.values(daysByDate).some((d) => d.available),
+    [daysByDate],
+  );
+
+  let content;
+  if (loading && !relationship) {
+    content = <ActivityIndicator color={colors.primaryTeal} />;
+  } else if (error && !relationship) {
+    content = (
+      <>
+        <Text style={styles.noVisit}>{error}</Text>
+        <TextLink label="Try Again" onPress={reload} accessibilityLabel="Reload visit availability" />
+      </>
+    );
+  } else if (!relationship) {
+    content = (
+      <Text style={styles.noVisit}>
+        {message ?? 'A verified PDL relationship is required to view visit availability.'}
+      </Text>
+    );
+  } else {
+    content = (
+      <>
+        <RelationshipPicker
+          relationships={relationships}
+          selectedId={relationship.relationshipId}
+          onSelect={selectRelationship}
+        />
+        {relationship.pdlName ? (
+          <Text style={styles.visitPdl}>{relationship.pdlName}</Text>
+        ) : null}
+        {relationship.message ? (
+          <Text style={styles.calendarWarning}>{relationship.message}</Text>
+        ) : !hasAvailableDate && !loading ? (
+          <Text style={styles.calendarWarning}>
+            No visit dates are available in the coming weeks. Please check again later.
+          </Text>
+        ) : (
+          <Text style={styles.noVisit}>
+            Tap an available date to choose a time slot and request a visit.
+          </Text>
+        )}
+        <VisitCalendar
+          key={relationship.relationshipId}
+          daysByDate={daysByDate}
+          today={today}
+          minDate={from}
+          maxDate={to}
+          selectedDate={null}
+          onSelectDate={onSelectDate}
+          markedDates={markedDates}
+          showSelection={false}
+          compact
+        />
+      </>
+    );
+  }
+
+  return (
+    <View style={styles.homeSection}>
+      <Text style={styles.sectionLabel}>Visitation Calendar</Text>
+      <Card style={styles.visitCard}>{content}</Card>
+    </View>
+  );
+}
+
+/**
+ * "Pinned · Schedule · Oct 7, 2026" above an announcement title, from the
+ * fields GET /api/announcements already returns.
+ * @param {object} props
+ * @param {{ pinned: boolean; category?: string | null; createdAt?: string | null }} props.item
+ */
+function AnnouncementMeta({ item }) {
+  const details = [
+    announcementCategoryLabel(item.category),
+    formatAnnouncementDate(item.createdAt),
+  ].filter(Boolean);
+  if (!item.pinned && details.length === 0) return null;
+
+  return (
+    <View style={styles.announcementMeta}>
+      {item.pinned ? <Text style={styles.pinnedLabel}>Pinned</Text> : null}
+      {details.length > 0 ? (
+        <Text style={styles.announcementMetaText} numberOfLines={1}>
+          {details.join(' · ')}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const ANNOUNCEMENTS_PREVIEW = 2;
 /** Bodies longer than this are likely clamped in the compact preview. */
 const ANNOUNCEMENT_BODY_PREVIEW_CHARS = 90;
@@ -185,6 +306,7 @@ function AnnouncementsSection({ state }) {
               color={colors.primaryNavy}
             />
             <View style={styles.announcementBody}>
+              <AnnouncementMeta item={item} />
               <Text style={styles.announcementTitle} numberOfLines={expanded ? undefined : 1}>
                 {item.title}
               </Text>
@@ -217,18 +339,21 @@ function AnnouncementsSection({ state }) {
 
 /**
  * Visitor home dashboard — a quick overview: the next visit, a verification
- * reminder when one is needed, and compact announcements. Visit progress lives
- * in Visit Details → Timeline; the visitation schedule under My Visits →
- * Schedule.
+ * reminder when one is needed, a visitation calendar, and compact
+ * announcements. Visit progress lives in Visit Details → Timeline; slot
+ * selection and visit requests under My Visits → Schedule.
  */
 export default function DashboardScreen({ navigation }) {
   const { registrationSummary, user, isApprovedVisitor } = useAuth();
   const { visits, refreshVisits } = useVisits();
   const { verification } = useVisitorVerification();
+  // Availability is an approved-visitor API (visitor.approved middleware).
+  const schedule = useScheduleAvailability({ enabled: isApprovedVisitor });
+  const { reload: reloadAvailability } = schedule;
 
-  // Reload visits when Home regains focus so staff decisions (e.g. an
-  // approved request) show up. The first focus is skipped: VisitsProvider
-  // already loads visits when the session starts.
+  // Reload visits and availability when Home regains focus so staff
+  // decisions and new requests show up. The first focus is skipped:
+  // VisitsProvider and useScheduleAvailability already load on mount.
   const focusedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
@@ -239,7 +364,8 @@ export default function DashboardScreen({ navigation }) {
       refreshVisits().catch(() => {
         // error already stored in VisitsContext
       });
-    }, [refreshVisits]),
+      reloadAvailability();
+    }, [refreshVisits, reloadAvailability]),
   );
   const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
   const announcements = useAnnouncements();
@@ -256,6 +382,18 @@ export default function DashboardScreen({ navigation }) {
   );
 
   const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
+
+  const { relationship, relationships, today: availabilityToday } = schedule;
+  const markedDates = useMemo(
+    () =>
+      relationship && availabilityToday
+        ? buildVisitDateMarkers(
+            visitsForRelationship(visits, relationship, relationships),
+            availabilityToday,
+          )
+        : {},
+    [visits, relationship, relationships, availabilityToday],
+  );
 
   const tabBarInset = useTabBarScrollInset();
 
@@ -278,9 +416,22 @@ export default function DashboardScreen({ navigation }) {
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
   }, [navigation, nextVisit]);
 
+  // Schedule opens on the relationship Home shows (when there is one).
+  const relationshipId = relationship?.relationshipId ?? null;
   const onOpenSchedule = useCallback(() => {
-    navigation.navigate('Schedule', { tab: 'schedule' });
-  }, [navigation]);
+    navigation.navigate(
+      'Schedule',
+      relationshipId ? { tab: 'schedule', relationshipId } : { tab: 'schedule' },
+    );
+  }, [navigation, relationshipId]);
+
+  const onSelectCalendarDate = useCallback(
+    (date) => {
+      if (!relationshipId) return;
+      navigation.navigate('Schedule', { tab: 'schedule', date, relationshipId });
+    },
+    [navigation, relationshipId],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -341,13 +492,20 @@ export default function DashboardScreen({ navigation }) {
         )}
 
         {isApprovedVisitor ? (
-          <View style={styles.scheduleLink}>
-            <TextLink
-              label="View Visitation Schedule"
-              onPress={onOpenSchedule}
-              accessibilityLabel="View visitation schedule in My Visits"
+          <>
+            <HomeVisitCalendar
+              schedule={schedule}
+              markedDates={markedDates}
+              onSelectDate={onSelectCalendarDate}
             />
-          </View>
+            <View style={styles.scheduleLink}>
+              <TextLink
+                label="View Visitation Schedule"
+                onPress={onOpenSchedule}
+                accessibilityLabel="View visitation schedule in My Visits"
+              />
+            </View>
+          </>
         ) : null}
 
         <AnnouncementsSection state={announcements} />
@@ -497,6 +655,28 @@ const styles = StyleSheet.create({
   },
   homeSection: {
     marginBottom: spacing.sm,
+  },
+  calendarWarning: {
+    ...typography.metadata,
+    color: colors.warningText,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  announcementMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  pinnedLabel: {
+    ...typography.statusLabel,
+    color: colors.primaryTeal,
+    fontWeight: '700',
+  },
+  announcementMetaText: {
+    ...typography.statusLabel,
+    color: colors.textSecondary,
+    flexShrink: 1,
   },
   announcementRow: {
     flexDirection: 'row',
