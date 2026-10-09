@@ -29,6 +29,7 @@ import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
 import { visitTimeText } from '../utils/activeVisits';
+import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 const TABS = [
   { key: 'upcoming', label: 'Upcoming' },
@@ -38,29 +39,6 @@ const TABS = [
 ];
 
 const LOADING_MS = 500;
-
-/** Maps visit status to StatusChip keys for the BJMP visitation workflow. */
-const VISIT_STATUS_CHIP = {
-  pending_confirmation: 'pending_confirmation',
-  assigned: 'assigned',
-  scheduled: 'pending_confirmation',
-  confirmed: 'confirmed',
-  qr_ready: 'qr_ready',
-  checked_in: 'checked_in',
-  checked_out: 'completed',
-  completed: 'completed',
-  cancelled: 'cancelled',
-  declined: 'declined',
-  no_show: 'no_show',
-  unable_to_attend: 'declined',
-};
-
-/**
- * @param {string} status
- */
-function resolveVisitStatusChip(status) {
-  return VISIT_STATUS_CHIP[status] ?? 'pending';
-}
 
 function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
   if (!hasAnyVisits && tab === 'upcoming') {

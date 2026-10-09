@@ -16,6 +16,7 @@ import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
 import { goBackOr } from '../utils/safeNavigation';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
+import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** @typedef {ReturnType<typeof import('../utils/visitHistoryNormalize').normalizeVisitHistoryRecord>} HistoryRecord */
 
@@ -134,7 +135,7 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
           <Card style={styles.card}>
             <Text style={styles.visitDate}>{record.dateDisplay}</Text>
             <View style={styles.chipRow}>
-              <StatusChip status={record.status} />
+              <StatusChip status={resolveVisitStatusChip(record.status)} />
             </View>
 
             <DetailField label="Date" value={record.dateDisplay} />

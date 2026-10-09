@@ -29,6 +29,7 @@ import {
 } from '../mock/assignedVisits.mock';
 import useVisitTimeline from '../hooks/useVisitTimeline';
 import { visitSessionsText, visitTimeText } from '../utils/activeVisits';
+import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 const DETAIL_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -146,7 +147,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
       <StackScreenHeader title="Visit Details" navigation={navigation} />
 
       <View style={styles.statusRow}>
-        <StatusChip status={visit.status} />
+        <StatusChip status={resolveVisitStatusChip(visit.status)} />
       </View>
 
       <View style={commonStyles.segmentedControl}>

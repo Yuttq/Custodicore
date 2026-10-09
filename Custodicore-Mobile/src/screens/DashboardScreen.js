@@ -21,6 +21,7 @@ import useVisitTimeline from '../hooks/useVisitTimeline';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
+import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
@@ -405,7 +406,7 @@ export default function DashboardScreen({ navigation }) {
                 <Text style={styles.visitDate}>{nextVisit.dateDisplay}</Text>
                 <Text style={styles.visitTime}>{visitTimeText(nextVisit)}</Text>
               </View>
-              <StatusChip status={nextVisit.status} />
+              <StatusChip status={resolveVisitStatusChip(nextVisit.status)} />
             </View>
             <Text style={styles.visitPdl}>{nextVisit.pdlName}</Text>
             <Button
