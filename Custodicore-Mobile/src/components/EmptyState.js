@@ -35,7 +35,7 @@ export default function EmptyState({
           accessibilityIgnoresInvertColors
         />
       )}
-      <Text style={[typography.pageTitle, styles.title]}>{title}</Text>
+      <Text style={[typography.cardTitle, styles.title]}>{title}</Text>
       <Text style={messageStyle}>{message}</Text>
       {children ? <View style={styles.actions}>{children}</View> : null}
     </View>
@@ -77,11 +77,11 @@ const styles = StyleSheet.create({
     maxWidth: spacing.xl * 10,
   },
   messageError: {
-    color: colors.danger,
+    color: colors.dangerStrong,
   },
   actions: {
     marginTop: spacing.md,
-    alignSelf: 'stretch',
+    alignSelf: 'center',
     maxWidth: spacing.xl * 9,
     width: '100%',
   },

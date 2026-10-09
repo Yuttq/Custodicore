@@ -5,7 +5,7 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const VARIANTS = {
-  confirmed: { label: 'Confirmed', bg: colors.success, fg: colors.white },
+  confirmed: { label: 'Confirmed', bg: colors.successStrong, fg: colors.white },
   pending: { label: 'Pending', bg: colors.warning, fg: colors.textPrimary },
   pending_confirmation: {
     label: 'Awaiting Confirmation',
@@ -23,14 +23,14 @@ const VARIANTS = {
     bg: 'rgba(37, 99, 235, 0.12)',
     fg: colors.info,
   },
-  checked_in: { label: 'Checked-In', bg: colors.success, fg: colors.white },
+  checked_in: { label: 'Checked-In', bg: colors.successStrong, fg: colors.white },
   scheduled: {
     label: 'Awaiting Confirmation',
     bg: 'rgba(37, 99, 235, 0.12)',
     fg: colors.info,
   },
-  cancelled: { label: 'Cancelled', bg: colors.danger, fg: colors.white },
-  declined: { label: 'Declined', bg: colors.danger, fg: colors.white },
+  cancelled: { label: 'Cancelled', bg: colors.dangerStrong, fg: colors.white },
+  declined: { label: 'Declined', bg: colors.dangerStrong, fg: colors.white },
   no_show: {
     label: 'No Show',
     bg: 'rgba(107, 114, 128, 0.2)',
@@ -38,7 +38,7 @@ const VARIANTS = {
   },
   unable_to_attend: {
     label: 'Declined',
-    bg: colors.danger,
+    bg: colors.dangerStrong,
     fg: colors.white,
   },
   completed: {
@@ -46,7 +46,7 @@ const VARIANTS = {
     bg: 'rgba(107, 114, 128, 0.15)',
     fg: colors.textPrimary,
   },
-  verified: { label: 'Verified', bg: colors.success, fg: colors.white },
+  verified: { label: 'Verified', bg: colors.successStrong, fg: colors.white },
   pending_verification: {
     label: 'Pending Verification',
     bg: colors.warning,
@@ -69,12 +69,12 @@ const VARIANTS = {
   },
   document_verified: {
     label: 'Verified',
-    bg: colors.success,
+    bg: colors.successStrong,
     fg: colors.white,
   },
   document_rejected: {
     label: 'Rejected',
-    bg: colors.danger,
+    bg: colors.dangerStrong,
     fg: colors.white,
   },
   verification_pending: {
@@ -89,12 +89,12 @@ const VARIANTS = {
   },
   verification_verified: {
     label: 'Verified',
-    bg: colors.success,
+    bg: colors.successStrong,
     fg: colors.white,
   },
   verification_rejected: {
     label: 'Rejected',
-    bg: colors.danger,
+    bg: colors.dangerStrong,
     fg: colors.white,
   },
 };

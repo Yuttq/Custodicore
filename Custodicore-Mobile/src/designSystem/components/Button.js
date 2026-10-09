@@ -16,12 +16,34 @@ const PRESS_FEEDBACK = Platform.select({
   default: { opacity: 0.9 },
 });
 
+/** Per-variant colors; container/label styles are defined below. */
+const VARIANTS = {
+  primary: {
+    container: 'primary',
+    label: 'labelPrimary',
+    ripple: 'rgba(255,255,255,0.25)',
+    spinner: colors.white,
+  },
+  secondary: {
+    container: 'secondary',
+    label: 'labelSecondary',
+    ripple: 'rgba(10,122,103,0.12)',
+    spinner: colors.primaryTealDark,
+  },
+  destructive: {
+    container: 'destructive',
+    label: 'labelDestructive',
+    ripple: 'rgba(255,255,255,0.25)',
+    spinner: colors.white,
+  },
+};
+
 /**
  * v2.1 Button
  * @param {object} props
  * @param {string} props.title
  * @param {() => void} props.onPress
- * @param {'primary'|'secondary'} [props.variant]
+ * @param {'primary'|'secondary'|'destructive'} [props.variant]
  * @param {boolean} [props.loading]
  * @param {boolean} [props.disabled]
  * @param {string} [props.accessibilityLabel]
@@ -35,6 +57,11 @@ export function Button({
   accessibilityLabel,
 }) {
   const isDisabled = disabled || loading;
+  // Unknown variants render as secondary, as before. Own-property check keeps
+  // inherited keys such as "toString" or "__proto__" from matching.
+  const v = Object.prototype.hasOwnProperty.call(VARIANTS, variant)
+    ? VARIANTS[variant]
+    : VARIANTS.secondary;
 
   return (
     <Pressable
@@ -43,36 +70,18 @@ export function Button({
       accessibilityState={{ disabled: isDisabled }}
       onPress={onPress}
       disabled={isDisabled}
-      android_ripple={
-        isDisabled
-          ? undefined
-          : {
-              color:
-                variant === 'primary'
-                  ? 'rgba(255,255,255,0.25)'
-                  : 'rgba(13,165,138,0.12)',
-            }
-      }
+      android_ripple={isDisabled ? undefined : { color: v.ripple }}
       style={({ pressed }) => [
         styles.base,
-        variant === 'primary' ? styles.primary : styles.secondary,
+        styles[v.container],
         pressed && !isDisabled && PRESS_FEEDBACK,
         isDisabled && styles.disabled,
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'primary' ? colors.white : colors.primaryTeal}
-        />
+        <ActivityIndicator color={v.spinner} />
       ) : (
-        <Text
-          style={[
-            styles.label,
-            variant === 'primary' ? styles.labelPrimary : styles.labelSecondary,
-          ]}
-        >
-          {title}
-        </Text>
+        <Text style={[styles.label, styles[v.label]]}>{title}</Text>
       )}
     </Pressable>
   );
@@ -87,12 +96,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   primary: {
-    backgroundColor: colors.primaryTeal,
+    backgroundColor: colors.primaryTealDark,
   },
   secondary: {
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  destructive: {
+    backgroundColor: colors.dangerStrong,
   },
   label: {
     ...typography.body,
@@ -100,6 +112,7 @@ const styles = StyleSheet.create({
   },
   labelPrimary: { color: colors.white },
   labelSecondary: { color: colors.textPrimary },
+  labelDestructive: { color: colors.white },
   disabled: { opacity: 0.55 },
 });
 
