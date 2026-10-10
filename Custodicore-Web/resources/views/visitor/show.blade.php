@@ -54,7 +54,9 @@
 
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
     @if ($visitor->verification_status !== 'verified')
-      <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}">
+      <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}"
+            data-confirm="Approve {{ $visitor->full_name }}'s account? They will be notified and can start using visitor services in the app."
+            data-confirm-title="Approve visitor" data-confirm-ok="Approve">
         @csrf
         <button class="btn btn-blue" type="submit">Approve Visitor</button>
       </form>
@@ -62,12 +64,14 @@
     @if ($visitor->verification_status !== 'rejected')
       <details>
         <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject Visitor</summary>
-        <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" style="margin-top:12px;">
+        <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" style="margin-top:12px;"
+              data-confirm="Reject {{ $visitor->full_name }}'s account? They will be notified with the reason you entered."
+              data-confirm-title="Reject visitor" data-confirm-ok="Reject" data-confirm-danger>
           @csrf
           <div class="row">
             <div class="field-m">
               <label>Reason (shown to the visitor)</label>
-              <textarea name="rejection_reason" maxlength="500" placeholder="e.g. The uploaded ID photo is unreadable. Please upload a clearer copy."></textarea>
+              <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The uploaded ID photo is unreadable. Please upload a clearer copy."></textarea>
             </div>
           </div>
           <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);">Confirm Rejection</button>
@@ -100,13 +104,17 @@
           <td>
             <div style="display:flex;gap:8px;">
               @if ($doc->verification_status !== 'verified')
-                <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}">
+                <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
+                      data-confirm="Mark this {{ $doc->typeLabel() }} as verified? Only do this after checking it matches the visitor."
+                      data-confirm-title="Verify ID" data-confirm-ok="Verify">
                   @csrf
                   <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
                 </form>
               @endif
               @if ($doc->verification_status !== 'rejected')
-                <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}">
+                <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
+                      data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor will need to upload a new one."
+                      data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
                   @csrf
                   <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
                 </form>
@@ -161,7 +169,9 @@
           <td>
             <div style="display:flex;gap:8px;">
               @if ($rel->verification_status !== 'verified')
-                <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}">
+                <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}"
+                      data-confirm="Verify {{ $visitor->full_name }} as {{ $rel->relationshipLabel() }} of {{ $rel->pdl?->full_name ?? 'this PDL' }}? Its requirements will be locked."
+                      data-confirm-title="Verify relationship" data-confirm-ok="Verify">
                   @csrf
                   @if ($relReady)
                     <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
@@ -171,7 +181,9 @@
                 </form>
               @endif
               @if ($rel->verification_status !== 'rejected')
-                <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}">
+                <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}"
+                      data-confirm="Reject this relationship? The visitor will not be able to visit {{ $rel->pdl?->full_name ?? 'this PDL' }}."
+                      data-confirm-title="Reject relationship" data-confirm-ok="Reject" data-confirm-danger>
                   @csrf
                   <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
                 </form>
@@ -194,7 +206,9 @@
     @if ($relatablePdls->isEmpty())
       <p class="empty-note" style="margin-top:12px;">No other PDLs are available to relate to this visitor.</p>
     @else
-      <form method="POST" action="{{ route('visitor.relationships.store', $visitor->visitor_id) }}" style="margin-top:12px;">
+      <form method="POST" action="{{ route('visitor.relationships.store', $visitor->visitor_id) }}" style="margin-top:12px;"
+            data-confirm="Add this PDL relationship for {{ $visitor->full_name }}? It starts as pending until its requirements are met."
+            data-confirm-title="Add relationship" data-confirm-ok="Add">
         @csrf
         <div class="row cols-3">
           <div class="field-m">
@@ -253,7 +267,9 @@
   @elseif ($assignableRelationships->isEmpty())
     <p class="empty-note">Register and verify a visitor↔PDL relationship before assigning a visit.</p>
   @else
-    <form method="POST" action="{{ route('visitor.visits.assign', $visitor->visitor_id) }}" id="assignVisitForm">
+    <form method="POST" action="{{ route('visitor.visits.assign', $visitor->visitor_id) }}" id="assignVisitForm"
+          data-confirm="Assign this visit to {{ $visitor->full_name }}? They will be asked to confirm it in the app."
+          data-confirm-title="Assign visit" data-confirm-ok="Assign">
       @csrf
 
       <div class="row cols-2">
@@ -418,7 +434,8 @@
           <td class="muted-cell">{{ $flag->created_at->format('M d, Y') }}</td>
           <td>
             @if ($flag->isActive())
-              <form method="POST" action="{{ route('visitor.flags.resolve', [$visitor->visitor_id, $flag->flag_id]) }}">
+              <form method="POST" action="{{ route('visitor.flags.resolve', [$visitor->visitor_id, $flag->flag_id]) }}"
+                    data-confirm="Mark this flag as resolved?" data-confirm-title="Resolve flag" data-confirm-ok="Resolve">
                 @csrf
                 <button type="submit" class="row-action">Resolve</button>
               </form>
@@ -432,7 +449,9 @@
 
   <details style="margin-top:14px;">
     <summary class="row-action" style="cursor:pointer;">Flag This Visitor</summary>
-    <form method="POST" action="{{ route('visitor.flags.store', $visitor->visitor_id) }}" style="margin-top:12px;">
+    <form method="POST" action="{{ route('visitor.flags.store', $visitor->visitor_id) }}" style="margin-top:12px;"
+          data-confirm="Flag {{ $visitor->full_name }}? Active flags send their visit requests to eligibility review."
+          data-confirm-title="Flag visitor" data-confirm-ok="Add flag" data-confirm-danger>
       @csrf
       <div class="row cols-2">
         <div class="field-m">
@@ -448,7 +467,7 @@
         </div>
       </div>
       <div class="row">
-        <div class="field-m"><label>Description</label><textarea name="description" required></textarea></div>
+        <div class="field-m"><label>Description</label><textarea name="description" required minlength="10" maxlength="1000"></textarea></div>
       </div>
       <button class="btn btn-blue" type="submit">Add Flag</button>
     </form>

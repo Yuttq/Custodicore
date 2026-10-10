@@ -66,7 +66,7 @@
             <tr>
               <td>
                 <div class="pdl-cell">
-                  <div class="pdl-avatar">{{ $pdl->initials() }}</div>
+                  @include('pdl.partials.avatar', ['pdl' => $pdl, 'class' => 'pdl-avatar'])
                   <div>
                     <a class="pdl-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">{{ $pdl->full_name }}</a>
                     <div class="pdl-id">{{ $pdl->pdl_number }}</div>

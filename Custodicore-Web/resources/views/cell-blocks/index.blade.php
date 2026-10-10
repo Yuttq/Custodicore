@@ -71,7 +71,8 @@
 {{-- Add / edit modal (one form, switched between POST and PUT) --}}
 <div class="modal-overlay" id="cellBlockModal" onclick="if (event.target === this) closeCellBlockModal()">
   <div class="modal modal-narrow">
-    <form method="POST" id="cellBlockForm" action="{{ route('cell-blocks.store') }}">
+    <form method="POST" id="cellBlockForm" action="{{ route('cell-blocks.store') }}"
+          data-confirm="Save this cell block?" data-confirm-title="Save cell block" data-confirm-ok="Save">
       @csrf
       <input type="hidden" name="_method" id="cellBlockMethod" value="POST">
       <div class="modal-header">

@@ -285,6 +285,12 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'show']
     )->name('pdl.show');
 
+    // PDL photo from the private disk (never publicly reachable).
+    Route::get(
+        '/pdls/{pdl}/photo',
+        [\App\Http\Controllers\PdlController::class, 'photo']
+    )->name('pdl.photo');
+
     // Editing a PDL's details requires the Record Officer to re-enter
     // their own password as the final step.
     Route::put(

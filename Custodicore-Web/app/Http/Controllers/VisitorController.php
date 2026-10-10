@@ -178,9 +178,16 @@ class VisitorController extends Controller
     {
         // Shown to the visitor in the app — keep it to what they can act on.
         $data = $request->validate([
-            'rejection_reason' => ['nullable', 'string', 'max:500'],
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'rejection_reason.required' => 'Tell the visitor why their account was not approved.',
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
         ]);
-        $reason = trim((string) ($data['rejection_reason'] ?? '')) ?: null;
+        $reason = trim((string) $data['rejection_reason']);
+
+        if ($visitor->verification_status === 'rejected') {
+            return back()->with('error', 'This visitor is already rejected.');
+        }
 
         try {
             $visitor->update([
@@ -225,6 +232,10 @@ class VisitorController extends Controller
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
 
+        if ($idDocument->verification_status === 'verified') {
+            return back()->with('error', 'This ID document is already verified.');
+        }
+
         try {
             $idDocument->update([
                 'verification_status' => 'verified',
@@ -245,6 +256,10 @@ class VisitorController extends Controller
     public function rejectId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
+
+        if ($idDocument->verification_status === 'rejected') {
+            return back()->with('error', 'This ID document is already rejected.');
+        }
 
         try {
             $idDocument->update([
@@ -315,6 +330,10 @@ class VisitorController extends Controller
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
 
+        if ($relationship->verification_status === 'verified') {
+            return back()->with('error', 'This relationship is already verified.');
+        }
+
         $requirements = RelationshipRequirements::for($relationship);
         if (! RelationshipRequirements::allMet($requirements)) {
             return back()->with('error', 'This relationship cannot be verified yet. Still needed: '
@@ -342,6 +361,10 @@ class VisitorController extends Controller
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
 
+        if ($relationship->verification_status === 'rejected') {
+            return back()->with('error', 'This relationship is already rejected.');
+        }
+
         try {
             $relationship->update([
                 'verification_status' => 'rejected',
@@ -366,8 +389,15 @@ class VisitorController extends Controller
     {
         $validated = $request->validate([
             'flag_type' => ['required', 'in:' . implode(',', VisitorFlag::TYPES)],
-            'description' => ['required', 'string'],
+            'description' => ['required', 'string', 'min:10', 'max:1000'],
+        ], [
+            'description.min' => 'Describe the reason for the flag in at least 10 characters.',
         ]);
+
+        // One open flag per type is enough; resolve it before adding another.
+        if ($visitor->flags()->where('flag_type', $validated['flag_type'])->where('status', 'active')->exists()) {
+            return back()->withInput()->withErrors(['flag_type' => 'This visitor already has an active flag of this type.']);
+        }
 
         try {
             VisitorFlag::create([
@@ -387,6 +417,10 @@ class VisitorController extends Controller
     public function resolveFlag(VisitorProfile $visitor, VisitorFlag $flag)
     {
         abort_unless($flag->visitor_id === $visitor->visitor_id, 404);
+
+        if ($flag->status !== 'active') {
+            return back()->with('error', 'This flag has already been resolved.');
+        }
 
         try {
             $flag->update([

@@ -59,7 +59,8 @@
           <td class="muted-cell" style="max-width:220px;">{{ $a->flagged_reason }}</td>
           <td>
             <div style="display:flex;gap:8px;">
-              <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}">
+              <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}"
+                    data-confirm="Approve this visit request for {{ $a->visitRequest->visitor->full_name ?? 'this visitor' }}?" data-confirm-title="Approve visit" data-confirm-ok="Approve">
                 @csrf
                 <input type="hidden" name="decision" value="eligible">
                 @if ($ready)
@@ -68,7 +69,8 @@
                   <button type="submit" class="row-action" style="color:var(--green);opacity:.45;cursor:not-allowed;" disabled title="All requirements must be met first">Approve</button>
                 @endif
               </form>
-              <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}">
+              <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}"
+                    data-confirm="Reject this visit request for {{ $a->visitRequest->visitor->full_name ?? 'this visitor' }}?" data-confirm-title="Reject visit" data-confirm-ok="Reject" data-confirm-danger>
                 @csrf
                 <input type="hidden" name="decision" value="rejected">
                 <button type="submit" class="row-action" style="color:var(--red);">Reject</button>

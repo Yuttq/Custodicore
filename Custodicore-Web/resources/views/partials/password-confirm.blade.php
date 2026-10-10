@@ -46,6 +46,9 @@
     <div class="ccpw-head" id="ccpw-title">Confirm with your password</div>
     <div class="ccpw-body">
         <p class="ccpw-msg" id="ccpw-msg">Enter your password to finish this change.</p>
+        {{-- "What changed" review; filled by ccFormChanges() from partials/action-confirm when that partial is on the page. --}}
+        <p class="cc-review-title" id="ccpw-review-title" hidden>Changes to save</p>
+        <dl class="cc-review" id="ccpw-review" hidden style="margin-bottom:16px;"></dl>
         <label for="ccpw-input">Your password ({{ auth()->user()?->displayName() }})</label>
         <input type="password" id="ccpw-input" autocomplete="current-password" />
         <label class="ccpw-show"><input type="checkbox" id="ccpw-toggle" /> Show password</label>
@@ -95,6 +98,24 @@
         err.hidden = true;
         ok.disabled = false;
         ok.textContent = 'Confirm & Save';
+
+        var review = document.getElementById('ccpw-review');
+        var reviewTitle = document.getElementById('ccpw-review-title');
+        if (typeof window.ccFormChanges === 'function') {
+            var changes = window.ccFormChanges(form);
+            if (changes.length) {
+                window.ccRenderReview(review, changes, true);
+            } else {
+                review.innerHTML = '<div class="cc-review-row"><dd style="grid-column:1/-1;color:#6B7280;">No changes were made.</dd></div>';
+            }
+            review.hidden = false;
+            reviewTitle.hidden = false;
+            dlg.style.width = 'min(560px, calc(100vw - 32px))';
+        } else {
+            review.hidden = true;
+            reviewTitle.hidden = true;
+        }
+
         dlg.showModal();
         input.focus();
     }, true);

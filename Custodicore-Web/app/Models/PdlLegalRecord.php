@@ -22,6 +22,11 @@ class PdlLegalRecord extends Model
 
     const CREATED_AT = 'created_at';
 
+    // $timestamps is off, so Eloquent won't cast created_at by itself.
+    protected $casts = [
+        'created_at' => 'datetime',
+    ];
+
     public function pdl()
     {
         return $this->belongsTo(Pdl::class, 'pdl_id', 'pdl_id');

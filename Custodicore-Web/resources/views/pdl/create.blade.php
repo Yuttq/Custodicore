@@ -10,37 +10,41 @@
 </div>
 
 <div class="panel">
-  <form method="POST" action="{{ route('pdl.store') }}">
+  <form method="POST" action="{{ route('pdl.store') }}" enctype="multipart/form-data"
+        data-confirm="Register this PDL? Please double-check the name, dates, cell and photo before continuing."
+        data-confirm-title="Register PDL" data-confirm-ok="Register">
     @csrf
 
-
     <p class="section-title"><span class="icon">👤</span> Personal Details</p>
+    <div class="row">
+      @include('pdl.partials.photo-field', ['required' => true])
+    </div>
     <div class="row cols-3">
       <div class="field-m">
         <label>First Name</label>
-        <input type="text" name="first_name" value="{{ old('first_name') }}" maxlength="100" required>
+        <input type="text" name="first_name" value="{{ old('first_name') }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
       </div>
       <div class="field-m">
         <label>Middle Name (optional)</label>
-        <input type="text" name="middle_name" value="{{ old('middle_name') }}" maxlength="100">
+        <input type="text" name="middle_name" value="{{ old('middle_name') }}" maxlength="100" pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
       </div>
       <div class="field-m">
         <label>Last Name</label>
-        <input type="text" name="last_name" value="{{ old('last_name') }}" maxlength="100" required>
+        <input type="text" name="last_name" value="{{ old('last_name') }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
       </div>
     </div>
 
     <div class="row cols-3">
       <div class="field-m">
         <label>Alias (optional)</label>
-        <input type="text" name="alias" value="{{ old('alias') }}">
+        <input type="text" name="alias" value="{{ old('alias') }}" maxlength="150">
       </div>
     </div>
 
     <div class="row cols-3">
       <div class="field-m">
         <label>Date of Birth</label>
-        <input type="date" name="date_of_birth" value="{{ old('date_of_birth') }}" required>
+        <input type="date" name="date_of_birth" value="{{ old('date_of_birth') }}" required min="1900-01-02" max="{{ now()->subYears(18)->toDateString() }}">
       </div>
       <div class="field-m">
         <label>Gender</label>
@@ -64,7 +68,7 @@
     <div class="row cols-2">
       <div class="field-m">
         <label>Admission Date</label>
-        <input type="date" name="admission_date" value="{{ old('admission_date', now()->toDateString()) }}" required>
+        <input type="date" name="admission_date" value="{{ old('admission_date', now()->toDateString()) }}" required max="{{ now()->toDateString() }}">
       </div>
     </div>
     <div class="row">

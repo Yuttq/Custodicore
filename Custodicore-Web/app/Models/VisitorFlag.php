@@ -30,6 +30,8 @@ class VisitorFlag extends Model
 
     protected $casts = [
         'resolved_at' => 'datetime',
+        // $timestamps is off, so Eloquent won't cast created_at by itself.
+        'created_at' => 'datetime',
     ];
 
     public function visitor()

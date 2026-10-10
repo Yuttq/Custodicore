@@ -77,6 +77,9 @@ class RelationshipRequirementController extends Controller
         if ($locked = $this->abortIfLocked($document->relationship)) {
             return $locked;
         }
+        if ($document->status !== 'pending') {
+            return back()->with('error', 'This document has already been reviewed.');
+        }
 
         $document->update([
             'status' => 'verified',
@@ -94,13 +97,17 @@ class RelationshipRequirementController extends Controller
     public function rejectDocument(Request $request, RelationshipDocument $document)
     {
         $validated = $request->validate([
-            'rejection_reason' => ['required', 'string', 'max:500'],
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
         ], [
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
             'rejection_reason.required' => 'Tell the visitor why this document was rejected.',
         ]);
 
         if ($locked = $this->abortIfLocked($document->relationship)) {
             return $locked;
+        }
+        if ($document->status !== 'pending') {
+            return back()->with('error', 'This document has already been reviewed.');
         }
 
         $document->update([

@@ -16,6 +16,11 @@ use Illuminate\Validation\Rule;
  */
 class CellBlockController extends Controller
 {
+    private const MESSAGES = [
+        'name.regex' => 'Cell block name may only contain letters, numbers, spaces and ( ) # . / -',
+        'name.unique' => 'A cell block with this name already exists.',
+    ];
+
     public function index()
     {
         $cellBlocks = CellBlock::withOccupancy()->orderBy('name')->get();
@@ -33,10 +38,10 @@ class CellBlockController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:50', Rule::unique('cell_blocks', 'name')],
+            'name' => ['required', 'string', 'max:50', "regex:/^[\pL\pN][\pL\pN\s()#.\/\-]*$/u", Rule::unique('cell_blocks', 'name')],
             'capacity' => ['required', 'integer', 'min:1', 'max:1000'],
             'designation' => ['required', Rule::in(CellBlock::DESIGNATIONS)],
-        ]);
+        ], self::MESSAGES);
 
         $block = CellBlock::create([...$validated, 'name' => trim($validated['name']), 'is_active' => true]);
 
@@ -48,11 +53,11 @@ class CellBlockController extends Controller
     public function update(Request $request, CellBlock $cellBlock)
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:50', Rule::unique('cell_blocks', 'name')->ignore($cellBlock->cell_block_id, 'cell_block_id')],
+            'name' => ['required', 'string', 'max:50', "regex:/^[\pL\pN][\pL\pN\s()#.\/\-]*$/u", Rule::unique('cell_blocks', 'name')->ignore($cellBlock->cell_block_id, 'cell_block_id')],
             'capacity' => ['required', 'integer', 'min:1', 'max:1000'],
             'designation' => ['required', Rule::in(CellBlock::DESIGNATIONS)],
             'is_active' => ['nullable', 'boolean'],
-        ]);
+        ], self::MESSAGES);
         $validated['name'] = trim($validated['name']);
         $validated['is_active'] = $request->boolean('is_active');
 
