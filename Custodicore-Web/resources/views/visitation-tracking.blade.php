@@ -28,7 +28,7 @@
         <tr>
           <td>
             <div class="name-cell">
-              <div class="thumb">{{ $pdl->initials() }}</div>
+              @include('pdl.partials.avatar', ['pdl' => $pdl])
               <span class="full-name" style="cursor:default;">{{ $pdl->full_name }}</span>
             </div>
           </td>

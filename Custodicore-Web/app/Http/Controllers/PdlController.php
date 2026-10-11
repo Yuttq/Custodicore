@@ -11,9 +11,15 @@ use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Support\Sanitizer;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class PdlController extends Controller
 {
+    // PDL photo: a real picture (checked from the file's content, not just
+    // its name), JPG/PNG/WEBP, at most 5 MB.
+    private const PHOTO_RULES = ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
+
     /**
      * TEMPORARY STAND-IN — not real auth.
      *
@@ -106,7 +112,8 @@ class PdlController extends Controller
     }
 
     // -----------------------------------------------------------------
-    // INPUT CLEANING + DUPLICATE CHECK (shared by register and edit)
+    // INPUT CLEANING (shared by register and edit; the duplicate-person
+    // check lives in validateProfile())
     // -----------------------------------------------------------------
 
     /** Cleans names/alias/cell before validation so "JUAN  dela cruz " is stored as "Juan Dela Cruz". */
@@ -119,34 +126,6 @@ class PdlController extends Controller
             'alias' => Sanitizer::text($request->input('alias')),
             'cell_block' => Sanitizer::text($request->input('cell_block')),
         ]);
-    }
-
-    /**
-     * Same first + middle + last name AND same date of birth = same person:
-     * refuse a second profile for them (data redundancy).
-     */
-    private function duplicatePdlRule(Request $request, ?Pdl $ignore = null): \Closure
-    {
-        return function (string $attribute, $value, \Closure $fail) use ($request, $ignore) {
-            $lower = fn ($v) => mb_strtolower((string) $v);
-
-            $existing = Pdl::query()
-                ->whereRaw('LOWER(first_name) = ?', [$lower($request->input('first_name'))])
-                ->whereRaw('LOWER(last_name) = ?', [$lower($value)])
-                ->whereRaw("LOWER(COALESCE(middle_name, '')) = ?", [$lower($request->input('middle_name'))])
-                ->whereDate('date_of_birth', (string) $request->input('date_of_birth'))
-                ->when($ignore, fn ($q) => $q->where('pdl_id', '!=', $ignore->pdl_id))
-                ->first();
-
-            if ($existing) {
-                $fail("This PDL looks like a duplicate of {$existing->pdl_number} ({$existing->full_name}): same name and date of birth.");
-            }
-        };
-    }
-
-    private function nameRules(bool $required): array
-    {
-        return array_merge($required ? ['required'] : ['nullable'], ['string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX]);
     }
 
     // -----------------------------------------------------------------
@@ -163,34 +142,24 @@ class PdlController extends Controller
     {
         $this->cleanPdlInput($request);
 
-        $validated = $request->validate([
-            'first_name' => $this->nameRules(true),
-            'middle_name' => $this->nameRules(false),
-            'last_name' => array_merge($this->nameRules(true), [$this->duplicatePdlRule($request)]),
-            'alias' => ['nullable', 'string', 'max:255'],
-            'date_of_birth' => ['required', 'date', 'after:1900-01-01', 'before_or_equal:today'],
-            'gender' => ['required', 'in:male,female,other'],
-            'classification' => ['required', 'in:drug_related,non_drug_related'],
+        $validated = $this->validateProfile($request, [
             'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($request->input('gender'))],
-            'admission_date' => ['required', 'date', 'after_or_equal:date_of_birth', 'before_or_equal:today'],
-        ], [
-            'cell_block.required' => 'Please select a cell for this PDL.',
-            'first_name.regex' => 'The first name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'middle_name.regex' => 'The middle name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'last_name.regex' => 'The last name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'date_of_birth.before_or_equal' => 'The date of birth cannot be in the future.',
-            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
-            'admission_date.after_or_equal' => 'The admission date cannot be before the date of birth.',
+            'photo' => ['required', ...self::PHOTO_RULES],
         ]);
+        unset($validated['photo']);
+
+        $photoPath = $request->file('photo')->store('pdl-photos', 'local');
 
         try {
             $pdl = Pdl::create([
                 ...$validated,
+                'photo_path' => $photoPath,
                 'pdl_number' => 'PDL-' . now()->format('Y') . '-' . str_pad((string) (Pdl::max('pdl_id') + 1), 5, '0', STR_PAD_LEFT),
                 'custody_status' => 'active',
                 'registered_by' => $this->currentStaffId(),
             ]);
         } catch (\Throwable $e) {
+            Storage::disk('local')->delete($photoPath); // don't leave an orphaned file behind
             Log::error('PDL registration failed: ' . $e->getMessage());
             return redirect()
                 ->back()
@@ -215,7 +184,7 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function show(Pdl $pdl)
     {
-        $pdl->load(['legalRecords', 'disciplinaryRecords', 'restrictions']);
+        $pdl->load(['legalRecords', 'disciplinaryRecords', 'restrictions', 'registeredBy']);
 
         // Visitation eligibility status, shown on the PDL's own page — this
         // is PDL-side information (is *this PDL* currently clear to
@@ -225,7 +194,19 @@ class PdlController extends Controller
         $eligibilityStatus = $this->computeEligibilityStatus($pdl);
         $cellBlocks = $this->assignableCellBlocks($pdl->cell_block);
 
-        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks'));
+        // Visiting days for this PDL's classification, from the facility's
+        // current visitation rules (e.g. "Thu, Sat").
+        $dayOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+        $visitingDays = \App\Models\FacilityVisitationRule::where('pdl_classification', $pdl->classification)
+            ->whereDate('effective_from', '<=', today())
+            ->where(fn ($q) => $q->whereNull('effective_to')->orWhereDate('effective_to', '>=', today()))
+            ->pluck('day_of_week')
+            ->unique()
+            ->sortBy(fn ($d) => array_search($d, $dayOrder, true))
+            ->map(fn ($d) => ucfirst($d))
+            ->implode(', ');
+
+        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visitingDays'));
     }
 
     private function computeEligibilityStatus(Pdl $pdl): array
@@ -256,39 +237,41 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function update(Request $request, Pdl $pdl)
     {
-        // A PDL in active custody must be in a cell; released, transferred
-        // and deceased PDLs may have none.
         $this->cleanPdlInput($request);
 
-        $validated = $request->validate([
-            'first_name' => $this->nameRules(true),
-            'middle_name' => $this->nameRules(false),
-            'last_name' => array_merge($this->nameRules(true), [$this->duplicatePdlRule($request, $pdl)]),
-            'alias' => ['nullable', 'string', 'max:255'],
-            'date_of_birth' => ['required', 'date', 'after:1900-01-01', 'before_or_equal:today'],
-            'gender' => ['required', 'in:male,female,other'],
-            'classification' => ['required', 'in:drug_related,non_drug_related'],
+        // A PDL in active custody must be in a cell; released, transferred
+        // and deceased PDLs may have none.
+        $validated = $this->validateProfile($request, [
             'cell_block' => ['required_if:custody_status,active', 'nullable', 'string', 'max:50', $this->cellBlockRule($request->input('gender'), $pdl, $request->input('custody_status'))],
-            'admission_date' => ['required', 'date', 'after_or_equal:date_of_birth', 'before_or_equal:today'],
             'custody_status' => ['required', 'in:active,released,transferred,deceased'],
-        ], [
-            'cell_block.required_if' => 'Please select a cell for this PDL.',
-            'first_name.regex' => 'The first name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'middle_name.regex' => 'The middle name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'last_name.regex' => 'The last name may only contain letters, spaces, dots, apostrophes and hyphens.',
-            'date_of_birth.before_or_equal' => 'The date of birth cannot be in the future.',
-            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
-            'admission_date.after_or_equal' => 'The admission date cannot be before the date of birth.',
-        ]);
+            'photo' => ['nullable', ...self::PHOTO_RULES],
+        ], $pdl);
+        unset($validated['photo']);
+
+        // A deceased PDL's record is final; it can't be moved back into custody.
+        if ($pdl->custody_status === 'deceased' && $validated['custody_status'] !== 'deceased') {
+            return back()->withInput()->withErrors([
+                'custody_status' => 'This PDL is recorded as deceased. The custody status can no longer be changed.',
+            ]);
+        }
 
         $statusChanged = $validated['custody_status'] !== $pdl->custody_status;
         $cellChanged = $validated['cell_block'] !== $pdl->cell_block;
         $previousStatus = $pdl->custody_status;
         $previousCell = $pdl->cell_block;
 
+        $oldPhoto = $pdl->photo_path;
+        $newPhoto = $request->hasFile('photo') ? $request->file('photo')->store('pdl-photos', 'local') : null;
+        if ($newPhoto) {
+            $validated['photo_path'] = $newPhoto;
+        }
+
         try {
             $pdl->update($validated);
         } catch (\Throwable $e) {
+            if ($newPhoto) {
+                Storage::disk('local')->delete($newPhoto);
+            }
             Log::error('PDL update failed: ' . $e->getMessage());
             return redirect()
                 ->back()
@@ -313,9 +296,27 @@ class PdlController extends Controller
             );
         }
 
+        if ($newPhoto) {
+            // Saved successfully, so the previous picture is no longer needed.
+            if ($oldPhoto) {
+                Storage::disk('local')->delete($oldPhoto);
+            }
+            $this->logAudit('update', 'pdl_profiles', $pdl->pdl_id, "Photo replaced for {$pdl->full_name} (password re-confirmed)");
+        }
+
         return redirect()
             ->route('pdl.show', $pdl->pdl_id)
             ->with('success', 'PDL profile updated.');
+    }
+
+    /** Serves the PDL's photo from the private disk to signed-in staff. */
+    public function photo(Pdl $pdl)
+    {
+        abort_unless($pdl->photo_path && Storage::disk('local')->exists($pdl->photo_path), 404);
+
+        return Storage::disk('local')->response($pdl->photo_path, null, [
+            'Cache-Control' => 'private, max-age=86400',
+        ]);
     }
 
     // -----------------------------------------------------------------
@@ -332,13 +333,18 @@ class PdlController extends Controller
         ]);
 
         $validated = $request->validate([
-            // The same case number cannot be entered twice for one PDL.
-            'case_number' => ['required', 'string', 'max:50',
-                \Illuminate\Validation\Rule::unique('pdl_legal_records', 'case_number')->where('pdl_id', $pdl->pdl_id)],
-            'offense' => ['required', 'string', 'max:255'],
+            'case_number' => [
+                'required', 'string', 'max:50', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\/\-]*$/',
+                // The same case can't be filed twice on one PDL.
+                Rule::unique('pdl_legal_records', 'case_number')->where('pdl_id', $pdl->pdl_id),
+            ],
+            'offense' => ['required', 'string', 'min:3', 'max:255'],
             'court' => ['nullable', 'string', 'max:150'],
             'case_status' => ['nullable', 'string', 'max:100'],
-            'remarks' => ['nullable', 'string'],
+            'remarks' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'case_number.regex' => 'Case number may only contain letters, numbers, spaces, dots, slashes and dashes.',
+            'case_number.unique' => 'This case number is already on file for this PDL.',
         ]);
 
         try {
@@ -368,11 +374,17 @@ class PdlController extends Controller
             'action_taken' => Sanitizer::text($request->input('action_taken')),
         ]);
 
+        $admitted = $pdl->admission_date->toDateString();
         $validated = $request->validate([
-            'incident_date' => ['required', 'date', 'before_or_equal:today'],
-            'description' => ['required', 'string'],
+            // An incident can only happen while the PDL is in custody.
+            'incident_date' => ['required', 'date', 'before_or_equal:today', "after_or_equal:{$admitted}"],
+            'description' => ['required', 'string', 'min:10', 'max:2000'],
             'action_taken' => ['nullable', 'string', 'max:255'],
             'triggers_restriction' => ['nullable', 'boolean'],
+        ], [
+            'incident_date.before_or_equal' => 'The incident date cannot be in the future.',
+            'incident_date.after_or_equal' => 'The incident date cannot be before the PDL\'s admission (' . $pdl->admission_date->format('M j, Y') . ').',
+            'description.min' => 'Describe the incident in at least 10 characters.',
         ]);
         $validated['triggers_restriction'] = $request->boolean('triggers_restriction');
 
@@ -400,12 +412,26 @@ class PdlController extends Controller
     {
         $request->merge(['reason' => Sanitizer::text($request->input('reason'))]);
 
+        $admitted = $pdl->admission_date->toDateString();
         $validated = $request->validate([
-            'restriction_type' => ['required', 'in:' . implode(',', PdlRestriction::TYPES)],
-            'start_date' => ['required', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'reason' => ['required', 'string', 'max:255'],
+            'restriction_type' => [
+                'required', 'in:' . implode(',', PdlRestriction::TYPES),
+                // Only one active restriction of each type at a time.
+                Rule::unique('pdl_restrictions', 'restriction_type')->where('pdl_id', $pdl->pdl_id)->where('status', 'active'),
+            ],
+            'start_date' => ['required', 'date', "after_or_equal:{$admitted}"],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date', 'after_or_equal:today'],
+            'reason' => ['required', 'string', 'min:5', 'max:255'],
+        ], [
+            'restriction_type.unique' => 'This PDL already has an active restriction of this type. Lift it first or edit that one.',
+            'start_date.after_or_equal' => 'The start date cannot be before the PDL\'s admission (' . $pdl->admission_date->format('M j, Y') . ').',
+            'end_date.after_or_equal' => 'The end date must be on or after the start date and not in the past.',
+            'reason.min' => 'Give a reason of at least 5 characters.',
         ]);
+
+        if ($pdl->custody_status !== 'active') {
+            return back()->withInput()->with('error', 'Restrictions can only be added to PDLs in active custody.');
+        }
 
         try {
             PdlRestriction::create([
@@ -433,10 +459,17 @@ class PdlController extends Controller
     {
         abort_unless($restriction->pdl_id === $pdl->pdl_id, 404);
 
+        if (! $restriction->isActive()) {
+            return back()->with('error', 'This restriction has already been lifted.');
+        }
+
         try {
             $restriction->update([
                 'status' => 'lifted',
-                'end_date' => $restriction->end_date ?? now()->toDateString(),
+                // Lifted early → it ends today, not on the originally planned date.
+                'end_date' => $restriction->end_date && $restriction->end_date->lte(today())
+                    ? $restriction->end_date
+                    : now()->toDateString(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Lifting restriction failed: ' . $e->getMessage());
@@ -446,6 +479,73 @@ class PdlController extends Controller
         }
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Restriction lifted.');
+    }
+
+    /**
+     * Shared rules for registering and editing a PDL profile. $extra adds
+     * the fields that differ (cell_block, custody_status).
+     *
+     * Beyond the field formats: the PDL must be at least 18 on admission
+     * (minors are not held in BJMP jails), the admission can't be in the
+     * future or before birth, the composed full name must fit its column,
+     * and the same person (name + birth date) can't be registered twice.
+     */
+    private function validateProfile(Request $request, array $extra, ?Pdl $pdl = null): array
+    {
+        $name = ['string', 'max:100', "regex:/^\\pL[\\pL\\s.'\\-]*$/u"];
+
+        $validator = validator($request->all(), [
+            'first_name' => ['required', ...$name],
+            'middle_name' => ['nullable', ...$name],
+            'last_name' => ['required', ...$name],
+            'alias' => ['nullable', 'string', 'max:150'],
+            'date_of_birth' => ['required', 'date', 'before:today', 'after:1900-01-01'],
+            'gender' => ['required', 'in:male,female,other'],
+            'classification' => ['required', 'in:drug_related,non_drug_related'],
+            'admission_date' => ['required', 'date', 'before_or_equal:today', 'after:date_of_birth'],
+            ...$extra,
+        ], [
+            'first_name.regex' => 'First name may only contain letters, spaces, dots, apostrophes and dashes.',
+            'middle_name.regex' => 'Middle name may only contain letters, spaces, dots, apostrophes and dashes.',
+            'last_name.regex' => 'Last name may only contain letters, spaces, dots, apostrophes and dashes.',
+            'date_of_birth.before' => 'The date of birth must be in the past.',
+            'date_of_birth.after' => 'Please enter a valid date of birth.',
+            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
+            'admission_date.after' => 'The admission date must be after the date of birth.',
+            'cell_block.required' => 'Please select a cell for this PDL.',
+            'cell_block.required_if' => 'Please select a cell for this PDL.',
+            'photo.required' => 'Please add a photo of the PDL.',
+            'photo.image' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.mimes' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.max' => 'The photo is too large. Maximum size is 5 MB.',
+            'photo.uploaded' => 'The photo could not be uploaded. Try a smaller picture (up to 5 MB).',
+        ]);
+
+        $validator->after(function ($v) use ($request, $pdl) {
+            if ($v->errors()->hasAny(['first_name', 'middle_name', 'last_name', 'date_of_birth', 'admission_date'])) {
+                return;
+            }
+
+            $fullName = Pdl::composeFullName($request->input('first_name'), $request->input('middle_name'), $request->input('last_name'));
+            if (mb_strlen($fullName) > 150) {
+                $v->errors()->add('last_name', 'The full name is too long (150 characters at most in total).');
+            }
+
+            $birth = \Carbon\Carbon::parse($request->input('date_of_birth'));
+            if ($birth->diffInYears(\Carbon\Carbon::parse($request->input('admission_date'))) < 18) {
+                $v->errors()->add('date_of_birth', 'A PDL must be at least 18 years old on the admission date.');
+            }
+
+            $duplicate = Pdl::where('full_name', $fullName)
+                ->whereDate('date_of_birth', $birth->toDateString())
+                ->when($pdl, fn ($q) => $q->where('pdl_id', '!=', $pdl->pdl_id))
+                ->first();
+            if ($duplicate) {
+                $v->errors()->add('first_name', "A PDL with this name and date of birth is already registered ({$duplicate->pdl_number}).");
+            }
+        });
+
+        return $validator->validate();
     }
 
     /**

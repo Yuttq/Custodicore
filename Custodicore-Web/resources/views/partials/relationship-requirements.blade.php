@@ -62,38 +62,45 @@
         @unless ($locked)
           <div class="req-actions">
             @if ($item['kind'] === 'document' && $item['status'] === 'pending_review')
-              <form method="POST" action="{{ route('relationship-documents.verify', $item['document']->document_id) }}">
+              <form method="POST" action="{{ route('relationship-documents.verify', $item['document']->document_id) }}"
+                    data-confirm="Mark the {{ $item['label'] }} as verified? Only do this after checking the file is genuine and readable."
+                    data-confirm-title="Verify document" data-confirm-ok="Verify">
                 @csrf
                 <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
               </form>
               <details class="req-inline">
                 <summary class="row-action" style="color:var(--red);">Reject</summary>
-                <form method="POST" action="{{ route('relationship-documents.reject', $item['document']->document_id) }}" class="req-inline-form">
+                <form method="POST" action="{{ route('relationship-documents.reject', $item['document']->document_id) }}" class="req-inline-form"
+                      data-confirm="Reject the {{ $item['label'] }}? The visitor will see your reason and must upload a new one."
+                      data-confirm-title="Reject document" data-confirm-ok="Reject" data-confirm-danger>
                   @csrf
-                  <input type="text" name="rejection_reason" maxlength="500" required placeholder="Reason shown to the visitor">
+                  <input type="text" name="rejection_reason" data-label="Reason (shown to the visitor)" minlength="5" maxlength="500" required placeholder="Reason shown to the visitor">
                   <button type="submit" class="btn btn-outline-neutral" style="padding:7px 12px;">Reject</button>
                 </form>
               </details>
             @elseif ($item['kind'] === 'confirmation' && $item['status'] !== 'met')
-              <form method="POST" action="{{ route('visitor.relationships.confirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}" class="req-inline-form">
+              <form method="POST" action="{{ route('visitor.relationships.confirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}" class="req-inline-form"
+                    data-confirm="Confirm: {{ $item['label'] }}?" data-confirm-title="Confirm requirement" data-confirm-ok="Confirm">
                 @csrf
                 @if ($item['key'] === 'accompanying_guardian')
-                  <input type="text" name="note" maxlength="150" required placeholder="Name of parent/guardian">
+                  <input type="text" name="note" data-label="Accompanying parent/guardian" maxlength="150" required placeholder="Name of parent/guardian">
                 @endif
                 <button type="submit" class="btn btn-outline-neutral" style="padding:7px 12px;">Confirm</button>
               </form>
             @elseif ($item['kind'] === 'confirmation')
-              <form method="POST" action="{{ route('visitor.relationships.unconfirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}">
+              <form method="POST" action="{{ route('visitor.relationships.unconfirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}"
+                    data-confirm="Remove the confirmation for {{ $item['label'] }}?" data-confirm-title="Undo confirmation" data-confirm-ok="Undo" data-confirm-danger>
                 @csrf
                 @method('DELETE')
                 <button type="submit" class="row-action" style="color:var(--muted);">Undo</button>
               </form>
             @elseif ($item['key'] === 'children_together')
-              <form method="POST" action="{{ route('visitor.relationships.update', [$visitorId, $relationship->relationship_id]) }}" class="req-inline-form">
+              <form method="POST" action="{{ route('visitor.relationships.update', [$visitorId, $relationship->relationship_id]) }}" class="req-inline-form"
+                    data-confirm="Save whether they have children together? This decides which documents are required." data-confirm-title="Save details" data-confirm-ok="Save">
                 @csrf
                 @method('PATCH')
                 <input type="hidden" name="relationship_type" value="{{ $relationship->relationship_type }}">
-                <select name="has_children_together" required>
+                <select name="has_children_together" required data-label="Children together">
                   <option value="">Select…</option>
                   <option value="1">Yes, they have children</option>
                   <option value="0">No children</option>
@@ -117,10 +124,12 @@
   {{-- Relationship details drive the checklist; changing them on a verified relationship sends it back to pending. --}}
   <details class="req-details" {{ $relationship->isLegacyType() ? 'open' : '' }}>
     <summary class="row-action">Change relationship details</summary>
-    <form method="POST" action="{{ route('visitor.relationships.update', [$visitorId, $relationship->relationship_id]) }}" class="req-inline-form" style="margin-top:10px;">
+    <form method="POST" action="{{ route('visitor.relationships.update', [$visitorId, $relationship->relationship_id]) }}" class="req-inline-form" style="margin-top:10px;"
+          data-confirm="Change this relationship's details? The required documents may change{{ $locked ? ', and the relationship goes back to pending' : '' }}."
+          data-confirm-title="Change relationship details" data-confirm-ok="Save">
       @csrf
       @method('PATCH')
-      <select name="relationship_type" required data-rel-type>
+      <select name="relationship_type" required data-rel-type data-label="Relationship">
         @if ($relationship->isLegacyType())
           <option value="">Select the specific relationship…</option>
         @endif
@@ -128,7 +137,7 @@
           <option value="{{ $type }}" {{ $relationship->relationship_type === $type ? 'selected' : '' }}>{{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$type] }}</option>
         @endforeach
       </select>
-      <select name="has_children_together" data-children-select>
+      <select name="has_children_together" data-children-select data-label="Children together">
         <option value="">Children together: not recorded</option>
         <option value="1" {{ $relationship->has_children_together === true ? 'selected' : '' }}>Has children together</option>
         <option value="0" {{ $relationship->has_children_together === false ? 'selected' : '' }}>No children together</option>

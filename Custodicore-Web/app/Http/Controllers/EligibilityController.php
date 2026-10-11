@@ -71,6 +71,10 @@ class EligibilityController extends Controller
             'decision' => ['required', 'in:eligible,rejected'],
         ]);
 
+        if (! $assessment->needsReview()) {
+            return back()->with('error', 'This assessment has already been reviewed.');
+        }
+
         if ($validated['decision'] === 'eligible') {
             $relationship = $assessment->visitRequest?->relationship;
             if (! $relationship) {

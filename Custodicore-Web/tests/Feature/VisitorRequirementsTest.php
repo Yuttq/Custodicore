@@ -203,8 +203,13 @@ class VisitorRequirementsTest extends TestCase
         $verifyUrl = "/visitors/{$this->visitor->visitor_id}/relationships/{$this->relationship->relationship_id}/verify";
         $this->post($verifyUrl)->assertSessionHas('error');
 
+        // A reviewed document can't be reviewed again; the visitor uploads a new one.
+        $this->post("/relationship-documents/{$doc->document_id}/verify")->assertSessionHas('error');
+        $this->travel(1)->minutes();
+        $newDoc = $this->document('marriage_certificate');
+
         $this->verifiedId();
-        $this->post("/relationship-documents/{$doc->document_id}/verify");
+        $this->post("/relationship-documents/{$newDoc->document_id}/verify");
         $this->post($verifyUrl)->assertSessionHas('success');
         $this->assertSame('verified', $this->relationship->fresh()->verification_status);
     }

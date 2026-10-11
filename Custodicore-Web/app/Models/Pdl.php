@@ -126,6 +126,17 @@ class Pdl extends Model
 
     // --- Convenience accessors -----------------------------------------
 
+    /** URL of the PDL's photo, or null when none was uploaded (show initials). */
+    public function photoUrl(): ?string
+    {
+        if (! $this->photo_path) {
+            return null;
+        }
+
+        // ?v= changes with the file, so a replaced photo isn't served from cache.
+        return route('pdl.photo', $this->pdl_id) . '?v=' . substr(md5($this->photo_path), 0, 8);
+    }
+
     public function initials(): string
     {
         $parts = preg_split('/\s+/', trim($this->full_name));

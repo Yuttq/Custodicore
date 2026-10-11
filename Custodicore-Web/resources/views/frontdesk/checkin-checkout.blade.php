@@ -1033,6 +1033,78 @@
             </div>
         </div>
 
+
+        {{-- ========================================================
+            TODAY'S CHECK-INS
+        ======================================================== --}}
+        <div class="cc-card mt-lg">
+
+            <div class="flex items-center justify-between gap-sm">
+                <div>
+                    <p class="text-card-title">Today's Check-Ins</p>
+                    <p class="text-metadata text-text-secondary">Check-ins for today</p>
+                </div>
+                <span class="cc-chip cc-chip-info">{{ $todayHistory->count() }} today</span>
+            </div>
+
+            <div class="mt-md overflow-x-auto">
+                    <table class="w-full text-left text-body">
+                        <thead>
+                            <tr class="border-b border-border text-section-label text-text-secondary">
+                                <th class="py-sm pr-md">Visitor</th>
+                                <th class="py-sm pr-md">PDL</th>
+                                <th class="py-sm pr-md">ID Held</th>
+                                <th class="py-sm pr-md">Checked In</th>
+                                <th class="py-sm pr-md">Method</th>
+                                <th class="py-sm pr-md">Checked In By</th>
+                                <th class="py-sm pr-md">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            @forelse ($todayHistory as $checkin)
+                                @php $visit = $checkin->visitRequest; @endphp
+                                <tr>
+                                    <td class="py-sm pr-md">
+                                        <span class="font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</span>
+                                        @if ($visit?->relationship)
+                                            <span class="block text-metadata text-text-secondary">{{ $visit->relationship->relationshipLabel() }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">
+                                        {{ $visit?->pdl?->full_name ?? '—' }}
+                                        @if ($visit?->pdl?->pdl_number)
+                                            <span class="block text-metadata text-text-secondary">{{ $visit->pdl->pdl_number }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">{{ $checkin->id_surrendered_type ? ucwords(str_replace('_', ' ', $checkin->id_surrendered_type)) : '—' }}</td>
+                                    <td class="py-sm pr-md">{{ $checkin->check_in_time?->format('g:i A') ?? '—' }}</td>
+                                    <td class="py-sm pr-md">
+                                        @if ($checkin->verification_method === 'manual_override')
+                                            <span class="cc-chip cc-chip-warning" @if ($checkin->override_reason) title="{{ $checkin->override_reason }}" @endif>Manual</span>
+                                        @else
+                                            <span class="cc-chip cc-chip-info">QR</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">{{ $checkin->checkInOfficer?->full_name ?? '—' }}</td>
+                                    <td class="py-sm pr-md">
+                                        @if ($checkin->isCheckedIn())
+                                            <span class="cc-chip cc-chip-success">Inside</span>
+                                        @else
+                                            <span class="cc-chip cc-chip-info">Checked Out</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="py-md text-center text-text-secondary">No check-ins yet today.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+        </div>
+
     </section>
 
 
@@ -2082,6 +2154,84 @@
         <div
             id="checkoutScannerError"
             class="hidden mt-lg rounded-lg border border-red-200 bg-red-50 p-md text-body text-red-700">
+        </div>
+
+
+        {{-- ========================================================
+            TODAY'S CHECK-OUTS
+        ======================================================== --}}
+        <div class="cc-card mt-lg">
+
+            <div class="flex items-center justify-between gap-sm">
+                <div>
+                    <p class="text-card-title">Today's Check-Outs</p>
+                    <p class="text-metadata text-text-secondary">Check-outs for today</p>
+                </div>
+                <span class="cc-chip cc-chip-info">{{ $todayCheckouts->count() }} today</span>
+            </div>
+
+            <div class="mt-md overflow-x-auto">
+                    <table class="w-full text-left text-body">
+                        <thead>
+                            <tr class="border-b border-border text-section-label text-text-secondary">
+                                <th class="py-sm pr-md">Visitor</th>
+                                <th class="py-sm pr-md">PDL</th>
+                                <th class="py-sm pr-md">Checked In</th>
+                                <th class="py-sm pr-md">Checked Out</th>
+                                <th class="py-sm pr-md">Duration</th>
+                                <th class="py-sm pr-md">ID Returned</th>
+                                <th class="py-sm pr-md">Checked Out By</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            @forelse ($todayCheckouts as $checkin)
+                                @php
+                                    $visit = $checkin->visitRequest;
+                                    $minutes = $checkin->check_in_time && $checkin->check_out_time
+                                        ? (int) $checkin->check_in_time->diffInMinutes($checkin->check_out_time)
+                                        : null;
+                                @endphp
+                                <tr>
+                                    <td class="py-sm pr-md">
+                                        <span class="font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</span>
+                                        @if ($visit?->relationship)
+                                            <span class="block text-metadata text-text-secondary">{{ $visit->relationship->relationshipLabel() }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">
+                                        {{ $visit?->pdl?->full_name ?? '—' }}
+                                        @if ($visit?->pdl?->pdl_number)
+                                            <span class="block text-metadata text-text-secondary">{{ $visit->pdl->pdl_number }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">
+                                        {{ $checkin->check_in_time?->format('g:i A') ?? '—' }}
+                                        @if ($checkin->check_in_time && ! $checkin->check_in_time->isToday())
+                                            <span class="block text-metadata text-text-secondary">{{ $checkin->check_in_time->format('M j') }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">{{ $checkin->check_out_time->format('g:i A') }}</td>
+                                    <td class="py-sm pr-md">{{ $minutes === null ? '—' : ($minutes >= 60 ? intdiv($minutes, 60).'h '.($minutes % 60).'m' : $minutes.'m') }}</td>
+                                    <td class="py-sm pr-md">
+                                        @if ($checkin->id_returned_time)
+                                            <span class="cc-chip cc-chip-success">{{ $checkin->id_returned_time->format('g:i A') }}</span>
+                                        @elseif ($checkin->id_surrendered_type)
+                                            <span class="cc-chip cc-chip-danger">Not returned</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td class="py-sm pr-md">{{ $checkin->checkOutOfficer?->full_name ?? '—' }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="py-md text-center text-text-secondary">No check-outs yet today.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
         </div>
 
     </section>

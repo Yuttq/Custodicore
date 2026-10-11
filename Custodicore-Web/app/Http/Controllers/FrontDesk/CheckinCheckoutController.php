@@ -101,10 +101,30 @@ class CheckinCheckoutController extends Controller
             ->with([
                 'visitRequest.visitor',
                 'visitRequest.pdl',
+                'visitRequest.relationship',
                 'visitRequest.schedule',
                 'qrCode',
+                'checkInOfficer',
+                'checkOutOfficer',
             ])
             ->orderByDesc('check_in_time')
+            ->get();
+
+        /*
+         * Today's check-outs (the visitor may have entered on an earlier day).
+         */
+        $todayCheckouts = VisitCheckin::whereDate(
+                'check_out_time',
+                today()
+            )
+            ->with([
+                'visitRequest.visitor',
+                'visitRequest.pdl',
+                'visitRequest.relationship',
+                'checkInOfficer',
+                'checkOutOfficer',
+            ])
+            ->orderByDesc('check_out_time')
             ->get();
 
         return view(
@@ -112,7 +132,8 @@ class CheckinCheckoutController extends Controller
             compact(
                 'expected',
                 'insideNow',
-                'todayHistory'
+                'todayHistory',
+                'todayCheckouts'
             )
         );
     }

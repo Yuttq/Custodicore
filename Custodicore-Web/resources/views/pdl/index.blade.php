@@ -69,7 +69,7 @@
         </td>
         <td>
           <div class="name-cell">
-            <div class="thumb">{{ $pdl->initials() }}</div>
+            @include('pdl.partials.avatar', ['pdl' => $pdl])
             <a class="full-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">
               {{ $pdl->full_name }}
               @if ($pdl->alias) <span class="muted-cell">"{{ $pdl->alias }}"</span> @endif

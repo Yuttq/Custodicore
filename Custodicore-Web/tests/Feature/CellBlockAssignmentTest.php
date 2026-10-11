@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\CellBlock;
 use App\Models\Pdl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -16,12 +18,14 @@ class CellBlockAssignmentTest extends TestCase
 {
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
+    use MakesTestImages;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->seedPhase1Fixtures();
         $this->withoutVite();
+        Storage::fake('local');
         $this->actingAs($this->recordOfficerAccount, 'web');
     }
 
@@ -34,6 +38,7 @@ class CellBlockAssignmentTest extends TestCase
             'gender' => 'male',
             'classification' => 'drug_related',
             'admission_date' => '2026-10-01',
+            'photo' => $this->fakePhoto(),
         ], $overrides);
     }
 
