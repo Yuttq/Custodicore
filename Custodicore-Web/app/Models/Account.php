@@ -44,7 +44,10 @@ class Account extends Authenticatable
     // google_id (verified Google `sub`, see the 2026_10_05 migration) is
     // deliberately NOT fillable: it must only ever be set explicitly from a
     // server-verified Google ID token, never mass-assigned from request data.
-    protected $hidden = ['password_hash', 'google_id'];
+    protected $hidden = ['password_hash', 'google_id', 'invitation_token_hash'];
+
+    // invitation_* and password_set_at are deliberately NOT fillable either:
+    // only App\Services\Auth\StaffInvitationService sets them.
 
     // email_verified_at is deliberately NOT fillable either: it is only set
     // by App\Services\Auth\EmailVerificationService (a used verification
@@ -59,6 +62,9 @@ class Account extends Authenticatable
             'email_verified_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
+            'invitation_sent_at' => 'datetime',
+            'invitation_expires_at' => 'datetime',
+            'password_set_at' => 'datetime',
         ];
     }
 
@@ -109,6 +115,21 @@ class Account extends Authenticatable
     public function hasVerifiedEmail(): bool
     {
         return $this->email_verified_at !== null;
+    }
+
+    /**
+     * A staff account whose owner has not opened the setup link yet:
+     * 'pending' (link still valid), 'expired' (needs a new link) or null
+     * (set up / no invitation). While this is not null the account cannot
+     * sign in — its password is a random value nobody knows.
+     */
+    public function invitationState(): ?string
+    {
+        if ($this->invitation_token_hash === null) {
+            return null;
+        }
+
+        return $this->invitation_expires_at !== null && $this->invitation_expires_at->isPast() ? 'expired' : 'pending';
     }
 
     /** Only Visitor accounts may authenticate through the mobile API. */

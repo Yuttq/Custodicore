@@ -7,7 +7,7 @@
         'flagged_for_review' => 'warning', 'requires_review' => 'warning', 'assigned' => 'warning',
         'rejected' => 'danger', 'declined' => 'danger', 'restricted' => 'danger', 'no_show' => 'danger',
         'has_prior_violations' => 'danger', 'flagged' => 'danger', 'suspended' => 'danger', 'inactive' => 'danger',
-        'checked_in' => 'info', 'transferred' => 'neutral', 'deceased' => 'neutral', 'closed' => 'neutral', 'void' => 'neutral',
+        'checked_in' => 'info', 'invited' => 'info', 'invite_expired' => 'warning', 'transferred' => 'neutral', 'deceased' => 'neutral', 'closed' => 'neutral', 'void' => 'neutral',
     ];
     $variant = $map[$status] ?? 'neutral';
     $label = ucwords(str_replace('_', ' ', (string) $status));

@@ -58,6 +58,11 @@ class LoginController extends Controller
                 ->withErrors(['email' => 'These credentials do not match a staff account.']);
         }
 
+        if ($account->invitationState() !== null) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => 'Your account setup is not finished. Open the setup link sent to your email or mobile number, or ask the Warden to send a new one.']);
+        }
+
         if ($account->status !== 'active') {
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => "This account is {$account->status}. Contact the Warden to restore access."]);

@@ -11,6 +11,17 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Text messages (staff account setup link). 'log' only writes to the
+    // Laravel log — set SMS_DRIVER=semaphore and SEMAPHORE_API_KEY to send
+    // real SMS through semaphore.co. See App\Services\SmsSender.
+    'sms' => [
+        'driver' => env('SMS_DRIVER', 'log'),
+        'semaphore' => [
+            'key' => env('SEMAPHORE_API_KEY'),
+            'sender' => env('SEMAPHORE_SENDER_NAME'),
+        ],
+    ],
+
     // Google Sign-In (mobile visitors). Comma-separated OAuth client IDs a
     // Google ID token's `aud` claim may match (e.g. the web client ID the
     // mobile app requests ID tokens for). Empty = Google Sign-In disabled.

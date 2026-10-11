@@ -26,26 +26,57 @@
             </div>
         </div>
 
-        <div class="cc-card">
-            <p class="text-card-title">Most Visited PDLs</p>
-            <p class="text-metadata text-text-secondary">This month</p>
+        <div class="space-y-lg">
+            <div class="cc-card">
+                <p class="text-card-title">Most Visited PDLs</p>
+                <p class="text-metadata text-text-secondary">This month</p>
 
-            <ul class="mt-md space-y-sm">
-                @foreach ($mostVisitedPdls as $pdl)
-                    <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
-                        <div class="flex items-center gap-sm">
-                            @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
-                            <div>
-                                <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
-                                <p class="text-metadata text-text-secondary">{{ $pdl['pdl_number'] }}</p>
+                <ul class="mt-md space-y-sm">
+                    @forelse ($mostVisitedPdls as $pdl)
+                        <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
+                            <div class="flex items-center gap-sm">
+                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
+                                <div>
+                                    <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
+                                    <p class="text-metadata text-text-secondary">{{ $pdl['pdl_number'] }}</p>
+                                </div>
                             </div>
-                        </div>
-                        <span class="flex items-center gap-xs text-body font-semibold text-primary-navy">
-                            {{ $pdl['visits_this_month'] }}
-                        </span>
-                    </li>
-                @endforeach
-            </ul>
+                            <span class="flex items-center gap-xs text-body font-semibold text-primary-navy">
+                                {{ $pdl['visits_this_month'] }}
+                            </span>
+                        </li>
+                    @empty
+                        <li class="text-metadata text-text-secondary">No visits recorded this month yet.</li>
+                    @endforelse
+                </ul>
+            </div>
+
+            <div class="cc-card">
+                <p class="text-card-title">Least Visited PDLs</p>
+                <p class="text-metadata text-text-secondary">PDLs in custody with the fewest visits this month</p>
+
+                <ul class="mt-md space-y-sm">
+                    @forelse ($leastVisitedPdls as $pdl)
+                        <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
+                            <div class="flex items-center gap-sm">
+                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
+                                <div>
+                                    <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
+                                    <p class="text-metadata text-text-secondary">
+                                        {{ $pdl['pdl_number'] }} ·
+                                        {{ $pdl['last_visit'] ? 'Last visit ' . $pdl['last_visit'] : 'No visit on record' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="flex items-center gap-xs text-body font-semibold {{ $pdl['visits_this_month'] === 0 ? 'text-warning' : 'text-primary-navy' }}">
+                                {{ $pdl['visits_this_month'] }}
+                            </span>
+                        </li>
+                    @empty
+                        <li class="text-metadata text-text-secondary">No PDLs in custody yet.</li>
+                    @endforelse
+                </ul>
+            </div>
         </div>
     </div>
 @endsection

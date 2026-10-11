@@ -78,11 +78,35 @@ class DashboardController extends Controller
             ->values()
             ->all();
 
+        // The other end of the same measure: PDLs in active custody with the
+        // FEWEST visits assigned this month (zero counts), so staff can see
+        // who is not receiving visitors. Ties go to whoever was visited
+        // longest ago (never visited first).
+        $leastVisitedPdls = Pdl::query()
+            ->where('custody_status', 'active')
+            ->withCount(['visitRequests as visits_this_month' => fn ($q) => $q
+                ->whereMonth('assigned_at', now()->month)
+                ->whereYear('assigned_at', now()->year)])
+            ->withMax('visitRequests as last_visit_at', 'assigned_at')
+            ->orderBy('visits_this_month')
+            ->orderBy('last_visit_at')
+            ->orderBy('pdl_number')
+            ->take(3)
+            ->get()
+            ->map(fn ($pdl) => [
+                'pdl_number' => $pdl->pdl_number,
+                'full_name' => $pdl->full_name,
+                'visits_this_month' => (int) $pdl->visits_this_month,
+                'last_visit' => $pdl->last_visit_at ? \Illuminate\Support\Carbon::parse($pdl->last_visit_at)->format('M j, Y') : null,
+            ])
+            ->all();
+
         return view('admin.dashboard.index', compact(
             'stats',
             'peakHours',
             'visitsTrend',
-            'mostVisitedPdls'
+            'mostVisitedPdls',
+            'leastVisitedPdls'
         ));
     }
 }

@@ -10,6 +10,7 @@ use App\Models\PdlRestriction;
 use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Support\Sanitizer;
 
 class PdlController extends Controller
 {
@@ -27,7 +28,9 @@ class PdlController extends Controller
      */
     private function currentStaffId(): int
     {
-        $staff = \App\Models\StaffProfile::first();
+        // The signed-in officer's own profile; the first profile is only a
+        // fallback (e.g. an account with no staff_profiles row yet).
+        $staff = auth()->user()?->staffProfile ?? \App\Models\StaffProfile::first();
 
         if (!$staff) {
             throw new \RuntimeException(
@@ -66,16 +69,20 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function index(Request $request)
     {
-        $query = trim((string) $request->input('q', ''));
+        $query = Sanitizer::text((string) $request->input('q', '')) ?? '';
         $status = trim((string) $request->input('status', ''));
         $cellBlock = trim((string) $request->input('cell', ''));
 
         $pdls = Pdl::query()
             ->when($query !== '', function ($q) use ($query) {
-                $q->where(function ($q2) use ($query) {
-                    $q2->where('full_name', 'like', "%{$query}%")
-                        ->orWhere('alias', 'like', "%{$query}%")
-                        ->orWhere('pdl_number', 'like', "%{$query}%");
+                $like = Sanitizer::like($query);
+                $q->where(function ($q2) use ($like) {
+                    $q2->where('full_name', 'like', $like)
+                        ->orWhere('last_name', 'like', $like)
+                        ->orWhere('first_name', 'like', $like)
+                        ->orWhere('middle_name', 'like', $like)
+                        ->orWhere('alias', 'like', $like)
+                        ->orWhere('pdl_number', 'like', $like);
                 });
             })
             ->when($status !== '', fn ($q) => $q->where('custody_status', $status))
@@ -99,6 +106,50 @@ class PdlController extends Controller
     }
 
     // -----------------------------------------------------------------
+    // INPUT CLEANING + DUPLICATE CHECK (shared by register and edit)
+    // -----------------------------------------------------------------
+
+    /** Cleans names/alias/cell before validation so "JUAN  dela cruz " is stored as "Juan Dela Cruz". */
+    private function cleanPdlInput(Request $request): void
+    {
+        $request->merge([
+            'first_name' => Sanitizer::name($request->input('first_name')),
+            'middle_name' => Sanitizer::name($request->input('middle_name')),
+            'last_name' => Sanitizer::name($request->input('last_name')),
+            'alias' => Sanitizer::text($request->input('alias')),
+            'cell_block' => Sanitizer::text($request->input('cell_block')),
+        ]);
+    }
+
+    /**
+     * Same first + middle + last name AND same date of birth = same person:
+     * refuse a second profile for them (data redundancy).
+     */
+    private function duplicatePdlRule(Request $request, ?Pdl $ignore = null): \Closure
+    {
+        return function (string $attribute, $value, \Closure $fail) use ($request, $ignore) {
+            $lower = fn ($v) => mb_strtolower((string) $v);
+
+            $existing = Pdl::query()
+                ->whereRaw('LOWER(first_name) = ?', [$lower($request->input('first_name'))])
+                ->whereRaw('LOWER(last_name) = ?', [$lower($value)])
+                ->whereRaw("LOWER(COALESCE(middle_name, '')) = ?", [$lower($request->input('middle_name'))])
+                ->whereDate('date_of_birth', (string) $request->input('date_of_birth'))
+                ->when($ignore, fn ($q) => $q->where('pdl_id', '!=', $ignore->pdl_id))
+                ->first();
+
+            if ($existing) {
+                $fail("This PDL looks like a duplicate of {$existing->pdl_number} ({$existing->full_name}): same name and date of birth.");
+            }
+        };
+    }
+
+    private function nameRules(bool $required): array
+    {
+        return array_merge($required ? ['required'] : ['nullable'], ['string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX]);
+    }
+
+    // -----------------------------------------------------------------
     // REGISTER NEW PDL
     // -----------------------------------------------------------------
     public function create()
@@ -110,18 +161,26 @@ class PdlController extends Controller
 
     public function store(Request $request)
     {
+        $this->cleanPdlInput($request);
+
         $validated = $request->validate([
-            'first_name' => ['required', 'string', 'max:100'],
-            'middle_name' => ['nullable', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
+            'first_name' => $this->nameRules(true),
+            'middle_name' => $this->nameRules(false),
+            'last_name' => array_merge($this->nameRules(true), [$this->duplicatePdlRule($request)]),
             'alias' => ['nullable', 'string', 'max:255'],
-            'date_of_birth' => ['required', 'date'],
+            'date_of_birth' => ['required', 'date', 'after:1900-01-01', 'before_or_equal:today'],
             'gender' => ['required', 'in:male,female,other'],
             'classification' => ['required', 'in:drug_related,non_drug_related'],
             'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($request->input('gender'))],
-            'admission_date' => ['required', 'date'],
+            'admission_date' => ['required', 'date', 'after_or_equal:date_of_birth', 'before_or_equal:today'],
         ], [
             'cell_block.required' => 'Please select a cell for this PDL.',
+            'first_name.regex' => 'The first name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'middle_name.regex' => 'The middle name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'last_name.regex' => 'The last name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'date_of_birth.before_or_equal' => 'The date of birth cannot be in the future.',
+            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
+            'admission_date.after_or_equal' => 'The admission date cannot be before the date of birth.',
         ]);
 
         try {
@@ -199,19 +258,27 @@ class PdlController extends Controller
     {
         // A PDL in active custody must be in a cell; released, transferred
         // and deceased PDLs may have none.
+        $this->cleanPdlInput($request);
+
         $validated = $request->validate([
-            'first_name' => ['required', 'string', 'max:100'],
-            'middle_name' => ['nullable', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
+            'first_name' => $this->nameRules(true),
+            'middle_name' => $this->nameRules(false),
+            'last_name' => array_merge($this->nameRules(true), [$this->duplicatePdlRule($request, $pdl)]),
             'alias' => ['nullable', 'string', 'max:255'],
-            'date_of_birth' => ['required', 'date'],
+            'date_of_birth' => ['required', 'date', 'after:1900-01-01', 'before_or_equal:today'],
             'gender' => ['required', 'in:male,female,other'],
             'classification' => ['required', 'in:drug_related,non_drug_related'],
             'cell_block' => ['required_if:custody_status,active', 'nullable', 'string', 'max:50', $this->cellBlockRule($request->input('gender'), $pdl, $request->input('custody_status'))],
-            'admission_date' => ['required', 'date'],
+            'admission_date' => ['required', 'date', 'after_or_equal:date_of_birth', 'before_or_equal:today'],
             'custody_status' => ['required', 'in:active,released,transferred,deceased'],
         ], [
             'cell_block.required_if' => 'Please select a cell for this PDL.',
+            'first_name.regex' => 'The first name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'middle_name.regex' => 'The middle name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'last_name.regex' => 'The last name may only contain letters, spaces, dots, apostrophes and hyphens.',
+            'date_of_birth.before_or_equal' => 'The date of birth cannot be in the future.',
+            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
+            'admission_date.after_or_equal' => 'The admission date cannot be before the date of birth.',
         ]);
 
         $statusChanged = $validated['custody_status'] !== $pdl->custody_status;
@@ -256,8 +323,18 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function storeLegalRecord(Request $request, Pdl $pdl)
     {
+        $request->merge([
+            'case_number' => mb_strtoupper((string) Sanitizer::text($request->input('case_number'))),
+            'offense' => Sanitizer::text($request->input('offense')),
+            'court' => Sanitizer::text($request->input('court')),
+            'case_status' => Sanitizer::text($request->input('case_status')),
+            'remarks' => Sanitizer::paragraph($request->input('remarks')),
+        ]);
+
         $validated = $request->validate([
-            'case_number' => ['required', 'string', 'max:50'],
+            // The same case number cannot be entered twice for one PDL.
+            'case_number' => ['required', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('pdl_legal_records', 'case_number')->where('pdl_id', $pdl->pdl_id)],
             'offense' => ['required', 'string', 'max:255'],
             'court' => ['nullable', 'string', 'max:150'],
             'case_status' => ['nullable', 'string', 'max:100'],
@@ -286,8 +363,13 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function storeDisciplinaryRecord(Request $request, Pdl $pdl)
     {
+        $request->merge([
+            'description' => Sanitizer::paragraph($request->input('description')),
+            'action_taken' => Sanitizer::text($request->input('action_taken')),
+        ]);
+
         $validated = $request->validate([
-            'incident_date' => ['required', 'date'],
+            'incident_date' => ['required', 'date', 'before_or_equal:today'],
             'description' => ['required', 'string'],
             'action_taken' => ['nullable', 'string', 'max:255'],
             'triggers_restriction' => ['nullable', 'boolean'],
@@ -316,6 +398,8 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function storeRestriction(Request $request, Pdl $pdl)
     {
+        $request->merge(['reason' => Sanitizer::text($request->input('reason'))]);
+
         $validated = $request->validate([
             'restriction_type' => ['required', 'in:' . implode(',', PdlRestriction::TYPES)],
             'start_date' => ['required', 'date'],

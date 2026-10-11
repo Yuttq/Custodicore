@@ -32,6 +32,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // explicit, and resolved lazily via closure since routes/web.php
         // hasn't been loaded yet when withMiddleware() runs.
         $middleware->redirectGuestsTo(fn () => route('login'));
+
+        // The opposite case: someone who is ALREADY signed in opens a
+        // guest-only page (e.g. /login). Laravel's default sends them to a
+        // fixed '/dashboard', which is the Record Officer dashboard and shows
+        // 403 to a Warden or Front Desk officer. 'home' sends each role to
+        // its own dashboard instead.
+        $middleware->redirectUsersTo(fn () => route('home'));
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

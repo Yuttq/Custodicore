@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\VisitorController;
 
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\StaffSetupController;
 
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\CustodyHistoryController;
@@ -71,6 +72,23 @@ Route::get('/email/verify/{token}', [EmailVerificationController::class, 'show']
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])
     ->middleware('throttle:10,1,email-verify-web')
     ->name('email-verification.verify');
+
+/*
+|--------------------------------------------------------------------------
+| Staff account setup
+|--------------------------------------------------------------------------
+| Public: opened from the link the Warden's "Register Officer" sends to a
+| new officer by email and SMS. The officer chooses their own password
+| here. GET only shows the form; the single-use token is consumed by the
+| POST. See StaffSetupController / StaffInvitationService.
+*/
+
+Route::get('/staff/setup/{token}', [StaffSetupController::class, 'show'])
+    ->middleware('throttle:20,1,staff-setup-page')
+    ->name('staff-setup.show');
+Route::post('/staff/setup', [StaffSetupController::class, 'submit'])
+    ->middleware('throttle:10,1,staff-setup-submit')
+    ->name('staff-setup.submit');
 
 /*
 |--------------------------------------------------------------------------
@@ -144,6 +162,11 @@ Route::prefix('admin')
         Route::patch('/users/{id}/toggle-status', [UserController::class, 'toggleStatus'])
             ->middleware('reauth')
             ->name('users.toggle-status');
+
+        // New link for an officer who has not finished setting up (the old
+        // link stops working). Changes no one's details, so no password prompt.
+        Route::post('/users/{id}/resend-invite', [UserController::class, 'resendInvite'])
+            ->name('users.resend-invite');
 
 
         /*

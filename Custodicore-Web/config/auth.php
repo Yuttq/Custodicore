@@ -64,5 +64,19 @@ return [
         'expire' => (int) env('EMAIL_VERIFICATION_EXPIRE', 1440),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Staff Account Setup Link
+    |--------------------------------------------------------------------------
+    |
+    | Hours the "set up your account" link sent to a new officer stays valid
+    | (single-use; see App\Services\Auth\StaffInvitationService).
+    |
+    */
+
+    'staff_invitation' => [
+        'expire_hours' => (int) env('STAFF_INVITATION_EXPIRE_HOURS', 72),
+    ],
+
     'password_timeout' => 10800,
 ];
