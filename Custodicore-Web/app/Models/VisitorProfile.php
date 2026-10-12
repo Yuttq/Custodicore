@@ -66,4 +66,12 @@ class VisitorProfile extends Model
     {
         return $this->verification_status === 'verified';
     }
+
+    /** At least one government ID checked and verified by staff. Required before approving the account. */
+    public function hasVerifiedId(): bool
+    {
+        return $this->relationLoaded('idDocuments')
+            ? $this->idDocuments->contains('verification_status', 'verified')
+            : $this->idDocuments()->where('verification_status', 'verified')->exists();
+    }
 }

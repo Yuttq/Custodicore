@@ -58,7 +58,12 @@
             data-confirm="Approve {{ $visitor->full_name }}'s account? They will be notified and can start using visitor services in the app."
             data-confirm-title="Approve visitor" data-confirm-ok="Approve">
         @csrf
-        <button class="btn btn-blue" type="submit">Approve Visitor</button>
+        @if ($visitor->hasVerifiedId())
+          <button class="btn btn-blue" type="submit">Approve Visitor</button>
+        @else
+          <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="Verify a government ID first">Approve Visitor</button>
+          <div class="field-hint" style="margin-top:6px;">Verify one of their government IDs below before approving.</div>
+        @endif
       </form>
     @endif
     @if ($visitor->verification_status !== 'rejected')
@@ -103,6 +108,9 @@
           <td class="muted-cell">{{ $doc->verifiedBy?->full_name ?? '—' }}</td>
           <td>
             <div style="display:flex;gap:8px;">
+              @if ($doc->file_path)
+                <a class="row-action" href="{{ route('visitor.ids.file', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" target="_blank" rel="noopener">View ID</a>
+              @endif
               @if ($doc->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
                       data-confirm="Mark this {{ $doc->typeLabel() }} as verified? Only do this after checking it matches the visitor."
@@ -472,5 +480,16 @@
       <button class="btn btn-blue" type="submit">Add Flag</button>
     </form>
   </details>
+</div>
+
+{{-- ================= ACTIVITY HISTORY ================= --}}
+<div class="panel" style="margin-top:20px;">
+  <div class="panel-header">
+    <h2>Activity History</h2>
+    <a class="row-action" href="{{ route('activity-log.index', ['q' => $visitor->full_name]) }}">Open in Activity Log</a>
+  </div>
+  <div class="timeline-scroll">
+    @include('partials.activity-timeline', ['entries' => $activity, 'registeredAt' => $visitor->created_at])
+  </div>
 </div>
 @endsection

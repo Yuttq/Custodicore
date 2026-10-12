@@ -129,6 +129,18 @@ class VisitorEmailVerificationFlowTest extends TestCase
         return $account;
     }
 
+    /** Accounts can only be approved once staff have verified a government ID. */
+    private function giveVerifiedId(Account $account): void
+    {
+        VisitorId::create([
+            'visitor_id' => $account->visitorProfile->visitor_id,
+            'id_type' => 'national_id',
+            'id_number' => 'ID-APPROVE-1',
+            'file_path' => 'visitor-ids/id.png',
+            'verification_status' => 'verified',
+        ]);
+    }
+
     private function bearer(string $token): self
     {
         return $this->withHeader('Authorization', 'Bearer '.$token);
@@ -568,6 +580,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
     {
         $account = $this->makeVisitor('pending@example.com', 'pending');
         $profile = $account->visitorProfile;
+        $this->giveVerifiedId($account);
         $token = $this->login('pending@example.com')->json('token');
         $this->bearer($token)->getJson('/api/visits')->assertForbidden();
 
@@ -629,6 +642,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
     public function test_approving_a_rejected_visitor_clears_the_reason(): void
     {
         $account = $this->makeVisitor('rejected@example.com', 'rejected', ['rejection_reason' => 'Unreadable ID.']);
+        $this->giveVerifiedId($account);
 
         $this->actingAs($this->recordOfficerAccount)
             ->post(route('visitor.approve', $account->visitorProfile->visitor_id))

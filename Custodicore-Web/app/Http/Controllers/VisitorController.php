@@ -16,6 +16,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class VisitorController extends Controller
@@ -110,7 +111,9 @@ class VisitorController extends Controller
             ->where('visit_requests.visitor_id', $visitor->visitor_id)
             ->get();
 
-        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls', 'pendingVisitRequests'));
+        $activity = \App\Services\ActivityLog::forVisitor($visitor);
+
+        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls', 'pendingVisitRequests', 'activity'));
     }
 
     /** Visitor-submitted visit requests (`assigned`) awaiting Record Officer review. */
@@ -135,6 +138,12 @@ class VisitorController extends Controller
     {
         if ($visitor->verification_status === 'verified') {
             return back()->with('success', 'This visitor is already approved.');
+        }
+
+        // Identity first: only visitors with a staff-verified government ID can be approved.
+        if (! $visitor->hasVerifiedId()) {
+            return back()->with('error', 'This visitor can\'t be approved yet: verify one of their government IDs first. '
+                . ($visitor->idDocuments()->exists() ? 'Open the ID, check it matches the visitor, then click Verify.' : 'They haven\'t uploaded an ID yet.'));
         }
 
         try {
@@ -251,6 +260,15 @@ class VisitorController extends Controller
             "Verified {$idDocument->typeLabel()} for {$visitor->full_name}");
 
         return back()->with('success', 'ID document verified.');
+    }
+
+    /** The uploaded ID picture, for staff to check against the visitor. */
+    public function idFile(VisitorProfile $visitor, VisitorId $idDocument)
+    {
+        abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
+        abort_unless($idDocument->file_path && Storage::disk('public')->exists($idDocument->file_path), 404);
+
+        return Storage::disk('public')->response($idDocument->file_path);
     }
 
     public function rejectId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
@@ -400,7 +418,7 @@ class VisitorController extends Controller
         }
 
         try {
-            VisitorFlag::create([
+            $flag = VisitorFlag::create([
                 ...$validated,
                 'visitor_id' => $visitor->visitor_id,
                 'flagged_by' => $this->currentStaffId(),
@@ -410,6 +428,9 @@ class VisitorController extends Controller
             Log::error('Flagging visitor failed: ' . $e->getMessage());
             return back()->with('error', 'Could not add this flag. ' . $e->getMessage());
         }
+
+        $this->logAudit('create', 'visitor_flags', $flag->flag_id,
+            "Flagged {$visitor->full_name}: {$flag->typeLabel()}");
 
         return back()->with('success', 'Visitor flagged.');
     }
@@ -432,6 +453,9 @@ class VisitorController extends Controller
             Log::error('Resolving flag failed: ' . $e->getMessage());
             return back()->with('error', 'Could not resolve this flag. ' . $e->getMessage());
         }
+
+        $this->logAudit('update', 'visitor_flags', $flag->flag_id,
+            "Resolved {$flag->typeLabel()} flag for {$visitor->full_name}");
 
         return back()->with('success', 'Flag resolved.');
     }

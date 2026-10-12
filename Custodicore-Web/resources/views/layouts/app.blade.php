@@ -30,6 +30,11 @@
       <a href="{{ route('visitor.index') }}" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
         Visitor Management
       </a>
+      @php $pendingAccounts = \App\Models\VisitorProfile::where('verification_status', 'pending')->count(); @endphp
+      <a href="{{ route('account-reviews.index') }}" class="{{ request()->routeIs('account-reviews.*') ? 'active' : '' }}">
+        Account Reviews
+        @if ($pendingAccounts)<span class="nav-count" title="{{ $pendingAccounts }} waiting">{{ $pendingAccounts }}</span>@endif
+      </a>
       <a href="{{ route('eligibility.index') }}" class="{{ request()->routeIs('eligibility.*') ? 'active' : '' }}">
         Eligibility Review
       </a>
@@ -39,6 +44,9 @@
       </a>
       <a href="{{ route('visitation-tracking.index') }}" class="{{ request()->routeIs('visitation-tracking.*') ? 'active' : '' }}">
         Visitation Tracking
+      </a>
+      <a href="{{ route('activity-log.index') }}" class="{{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
+        Activity Log
       </a>
     </nav>
     <div class="sidebar-bottom">

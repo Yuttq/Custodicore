@@ -382,6 +382,23 @@ Route::middleware([
 
     // Staff review of the visitor's submitted information/documents
     // (visitor_profiles.verification_status). Separate from email verification.
+    // Read-only log of everything done in the Records area.
+    Route::get(
+        '/activity-log',
+        [\App\Http\Controllers\ActivityLogController::class, 'index']
+    )->name('activity-log.index');
+
+    // Queue of visitor accounts waiting for approval (identity check).
+    Route::get(
+        '/account-reviews',
+        [\App\Http\Controllers\AccountReviewController::class, 'index']
+    )->name('account-reviews.index');
+
+    Route::get(
+        '/visitors/{visitor}/ids/{idDocument}/file',
+        [\App\Http\Controllers\VisitorController::class, 'idFile']
+    )->name('visitor.ids.file');
+
     Route::post(
         '/visitors/{visitor}/approve',
         [\App\Http\Controllers\VisitorController::class, 'approve']

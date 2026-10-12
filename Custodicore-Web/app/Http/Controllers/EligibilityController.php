@@ -40,6 +40,8 @@ class EligibilityController extends Controller
             'rejected' => 'Rejected — ' . $assessment->flagged_reason,
         };
 
+        $this->logAudit('create', $assessment->assessment_id, "Ran eligibility check for visit request #{$visitRequest->visit_request_id}: {$label}");
+
         return back()->with('success', "Eligibility check complete: {$label}");
     }
 
@@ -124,8 +126,24 @@ class EligibilityController extends Controller
             return back()->with('error', 'Could not save this review. ' . $e->getMessage());
         }
 
+        $assessment->loadMissing(['visitRequest.visitor', 'visitRequest.pdl']);
+        $this->logAudit('update', $assessment->assessment_id,
+            ($validated['decision'] === 'eligible' ? 'Approved' : 'Rejected')
+            . ' visit request #' . $assessment->visit_request_id
+            . ' for ' . ($assessment->visitRequest?->visitor?->full_name ?? 'visitor')
+            . ' to see ' . ($assessment->visitRequest?->pdl?->full_name ?? 'PDL'));
+
         return redirect()
             ->route('eligibility.index')
             ->with('success', 'Review saved: marked as ' . $validated['decision'] . '.');
+    }
+
+    private function logAudit(string $actionType, int $recordId, string $description): void
+    {
+        try {
+            \App\Models\AuditLog::record($actionType, 'eligibility_assessments', $recordId, $description, \App\Models\Module::CODE_ELIGIBILITY_ASSESSMENT);
+        } catch (\Throwable $e) {
+            Log::warning('Audit log write failed (main action still succeeded): ' . $e->getMessage());
+        }
     }
 }

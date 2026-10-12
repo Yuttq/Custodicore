@@ -348,7 +348,7 @@ class PdlController extends Controller
         ]);
 
         try {
-            PdlLegalRecord::create([
+            $record = PdlLegalRecord::create([
                 ...$validated,
                 'pdl_id' => $pdl->pdl_id,
                 'recorded_by' => $this->currentStaffId(),
@@ -360,6 +360,9 @@ class PdlController extends Controller
                 ->withInput()
                 ->with('error', 'Could not add this legal record. ' . $this->friendlyMessage($e));
         }
+
+        $this->logAudit('create', 'pdl_legal_records', $record->legal_record_id,
+            "Added legal record {$record->case_number} ({$record->offense}) for {$pdl->full_name}");
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Legal record added.');
     }
@@ -389,7 +392,7 @@ class PdlController extends Controller
         $validated['triggers_restriction'] = $request->boolean('triggers_restriction');
 
         try {
-            PdlDisciplinaryRecord::create([
+            $record = PdlDisciplinaryRecord::create([
                 ...$validated,
                 'pdl_id' => $pdl->pdl_id,
                 'recorded_by' => $this->currentStaffId(),
@@ -401,6 +404,9 @@ class PdlController extends Controller
                 ->withInput()
                 ->with('error', 'Could not add this disciplinary record. ' . $this->friendlyMessage($e));
         }
+
+        $this->logAudit('create', 'pdl_disciplinary_records', $record->getKey(),
+            "Added disciplinary record for {$pdl->full_name} (incident on {$record->incident_date->format('M j, Y')})");
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Disciplinary record added.');
     }
@@ -434,7 +440,7 @@ class PdlController extends Controller
         }
 
         try {
-            PdlRestriction::create([
+            $restriction = PdlRestriction::create([
                 ...$validated,
                 'pdl_id' => $pdl->pdl_id,
                 'status' => 'active',
@@ -447,6 +453,9 @@ class PdlController extends Controller
                 ->withInput()
                 ->with('error', 'Could not add this restriction. ' . $this->friendlyMessage($e));
         }
+
+        $this->logAudit('create', 'pdl_restrictions', $restriction->restriction_id,
+            'Added ' . str_replace('_', ' ', $restriction->restriction_type) . " restriction for {$pdl->full_name}: {$restriction->reason}");
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Restriction added.');
     }
@@ -477,6 +486,9 @@ class PdlController extends Controller
                 ->back()
                 ->with('error', 'Could not lift this restriction. ' . $this->friendlyMessage($e));
         }
+
+        $this->logAudit('update', 'pdl_restrictions', $restriction->restriction_id,
+            'Lifted ' . str_replace('_', ' ', $restriction->restriction_type) . " restriction for {$pdl->full_name}");
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Restriction lifted.');
     }
