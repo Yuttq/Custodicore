@@ -154,7 +154,7 @@ class CellBlockAssignmentTest extends TestCase
 
         $this->put("/pdls/{$this->pdl->pdl_id}", [
             'first_name' => 'Renamed',
-            'last_name' => 'PDL',
+            'last_name' => 'Santos', // names are case-normalized (Sanitizer::name), so avoid ALL CAPS here
             'date_of_birth' => '1990-01-01',
             'gender' => 'male',
             'classification' => 'non_drug_related',
@@ -164,7 +164,7 @@ class CellBlockAssignmentTest extends TestCase
             'current_password' => 'password',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('Renamed PDL', $this->pdl->fresh()->full_name);
+        $this->assertSame('Renamed Santos', $this->pdl->fresh()->full_name);
         $this->assertSame(1, $block->fresh()->occupied());
     }
 

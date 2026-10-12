@@ -46,20 +46,45 @@ class EligibilityController extends Controller
     // -----------------------------------------------------------------
     // Review queue — assessments flagged for human review
     // -----------------------------------------------------------------
-    public function index()
+    public function index(Request $request)
     {
-        $assessments = EligibilityAssessment::where('overall_result', 'flagged_for_review')
+        $queue = EligibilityAssessment::where('overall_result', 'flagged_for_review')
             ->whereNull('reviewed_at')
-            ->with(['visitRequest.visitor.idDocuments', 'visitRequest.pdl', 'visitRequest.relationship.documents'])
+            ->with(['visitRequest.visitor.idDocuments', 'visitRequest.pdl', 'visitRequest.schedule', 'visitRequest.relationship.documents'])
             ->orderBy('assessed_at', 'asc') // oldest first — first flagged, first reviewed
-            ->paginate(25);
+            ->get();
 
         // BJMP requirements checklist for each request's relationship.
-        $requirements = $assessments->getCollection()->mapWithKeys(fn ($a) => [
+        $requirements = $queue->mapWithKeys(fn ($a) => [
             $a->assessment_id => $a->visitRequest?->relationship ? RelationshipRequirements::for($a->visitRequest->relationship) : null,
         ]);
+        $isReady = fn ($a) => $requirements[$a->assessment_id] !== null && RelationshipRequirements::allMet($requirements[$a->assessment_id]);
 
-        return view('eligibility.index', compact('assessments', 'requirements'));
+        $counts = [
+            'all' => $queue->count(),
+            'ready' => $queue->filter($isReady)->count(),
+            'waiting' => $queue->reject($isReady)->count(),
+        ];
+
+        // Filter tabs. The queue is small, so filter in memory and page by hand.
+        $show = in_array($request->query('show'), ['ready', 'waiting'], true) ? $request->query('show') : 'all';
+        $filtered = (match ($show) {
+            'ready' => $queue->filter($isReady),
+            'waiting' => $queue->reject($isReady),
+            default => $queue,
+        })->values();
+
+        $perPage = 15;
+        $page = max(1, (int) $request->query('page', 1));
+        $assessments = new \Illuminate\Pagination\LengthAwarePaginator(
+            $filtered->forPage($page, $perPage)->values(),
+            $filtered->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        return view('eligibility.index', compact('assessments', 'requirements', 'counts', 'show'));
     }
 
     // -----------------------------------------------------------------

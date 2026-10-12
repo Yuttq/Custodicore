@@ -264,7 +264,13 @@ class VisitorRequirementsTest extends TestCase
         ]);
 
         $this->actingAs($this->recordOfficerAccount, 'web');
-        $this->get('/eligibility')->assertOk()->assertSee('0 of 2 met')->assertSee('Marriage Certificate');
+        $this->get('/eligibility')->assertOk()->assertSee('0 of 2 met')->assertSee('Marriage Certificate')
+            ->assertSee('Waiting on: Valid Government ID, Marriage Certificate')
+            ->assertSee('ID not verified yet');
+
+        // Filter tabs: the request is missing requirements, not ready.
+        $this->get('/eligibility?show=ready')->assertOk()->assertSee('No requests are ready to approve yet.');
+        $this->get('/eligibility?show=waiting')->assertOk()->assertSee($this->visitor->full_name);
 
         $this->post("/eligibility/{$assessment->assessment_id}/review", ['decision' => 'eligible'])
             ->assertSessionHas('error', fn ($m) => str_contains($m, 'Marriage Certificate'));
