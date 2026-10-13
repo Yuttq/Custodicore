@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,19 +20,26 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { requestPasswordReset } from '../services/forgotPasswordService';
+import {
+  describePasswordResetError,
+  requestPasswordReset,
+} from '../services/forgotPasswordService';
 import { validateEmail, validateRequired } from '../utils';
 
 /**
- * Forgot password — mock reset link request (v2.1 visitor auth).
+ * Forgot password — POST /api/auth/password/forgot. The success screen is
+ * only shown after the backend accepted the request; its message is the
+ * same whether or not the address is registered.
  */
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  // Blocks a second tap before the `submitting` state re-renders.
+  const inFlight = useRef(false);
 
   const onSubmit = useCallback(async () => {
-    if (submitting) return;
+    if (inFlight.current) return;
 
     const trimmedEmail = String(email || '').trim();
     const next = {};
@@ -43,14 +51,26 @@ export default function ForgotPasswordScreen({ navigation }) {
     setErrors(next);
     if (Object.keys(next).length) return;
 
+    inFlight.current = true;
     setSubmitting(true);
     try {
-      await requestPasswordReset(trimmedEmail);
-      navigation.navigate('ForgotPasswordSuccess', { email: trimmedEmail });
+      const result = await requestPasswordReset(trimmedEmail);
+      navigation.navigate('ForgotPasswordSuccess', {
+        email: trimmedEmail,
+        message: result.message,
+      });
+    } catch (e) {
+      const fieldError = Array.isArray(e?.errors?.email) ? e.errors.email[0] : null;
+      if (e?.status === 422 && fieldError) {
+        setErrors({ email: fieldError });
+      } else {
+        Alert.alert('Forgot Password', describePasswordResetError(e));
+      }
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
-  }, [email, navigation, submitting]);
+  }, [email, navigation]);
 
   return (
     <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right', 'bottom']}>

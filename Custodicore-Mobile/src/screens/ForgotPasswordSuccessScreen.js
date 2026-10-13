@@ -1,16 +1,35 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, layout, spacing, typography } from '../designSystem';
-import { resendPasswordReset } from '../services/forgotPasswordService';
+import {
+  PASSWORD_RESET_GENERIC_MESSAGE,
+  PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
+  describePasswordResetError,
+  resendPasswordReset,
+} from '../services/forgotPasswordService';
+import { cooldownAfterResendError } from '../utils/passwordResetCooldown';
 
 /**
- * Post–forgot-password confirmation (mock — v2.1 visitor auth).
+ * Shown after POST /api/auth/password/forgot succeeded. The message never
+ * says whether the address is registered. The emailed link opens a web page
+ * to choose a new password; the visitor then signs in here as usual.
+ * Route params: `email`, `message` (the backend's generic message).
  */
 export default function ForgotPasswordSuccessScreen({ navigation, route }) {
   const email = route.params?.email ?? '';
+  const message = route.params?.message || PASSWORD_RESET_GENERIC_MESSAGE;
   const [resending, setResending] = useState(false);
+  // A link was just requested: start in cooldown.
+  const [cooldown, setCooldown] = useState(PASSWORD_RESET_RESEND_COOLDOWN_SECONDS);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const id = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   const onBackToLogin = useCallback(() => {
     navigation.reset({
@@ -20,15 +39,23 @@ export default function ForgotPasswordSuccessScreen({ navigation, route }) {
   }, [navigation]);
 
   const onResend = useCallback(async () => {
-    if (resending) return;
+    if (inFlight.current || cooldown > 0 || !email) return;
+    inFlight.current = true;
     setResending(true);
     try {
       const result = await resendPasswordReset(email);
-      Alert.alert('', result.message, [{ text: 'OK' }]);
+      setCooldown(PASSWORD_RESET_RESEND_COOLDOWN_SECONDS);
+      Alert.alert('Reset link', result.message, [{ text: 'OK' }]);
+    } catch (e) {
+      // Rate-limited: start the countdown so it can't be retried at once.
+      const wait = cooldownAfterResendError(e, PASSWORD_RESET_RESEND_COOLDOWN_SECONDS);
+      if (wait > 0) setCooldown(wait);
+      Alert.alert('Reset link', describePasswordResetError(e), [{ text: 'OK' }]);
     } finally {
+      inFlight.current = false;
       setResending(false);
     }
-  }, [email, resending]);
+  }, [cooldown, email]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -50,9 +77,10 @@ export default function ForgotPasswordSuccessScreen({ navigation, route }) {
 
         <Text style={styles.title}>Check Your Email</Text>
         <Text style={styles.message}>
-          If an account exists for this email address, a password reset link has been sent.
+          {message}
           {'\n\n'}
-          Please check your inbox and spam folder.
+          Please check your inbox and spam folder. Open the link to choose a new password, then
+          sign in here.
         </Text>
 
         <View style={styles.actions}>
@@ -64,10 +92,10 @@ export default function ForgotPasswordSuccessScreen({ navigation, route }) {
           <View style={styles.secondaryWrap}>
             <Button
               variant="secondary"
-              title="Resend Link"
+              title={cooldown > 0 ? `Resend Link (${cooldown}s)` : 'Resend Link'}
               onPress={onResend}
               loading={resending}
-              disabled={resending}
+              disabled={resending || cooldown > 0 || !email}
               accessibilityLabel="Resend password reset link"
             />
           </View>

@@ -39,6 +39,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // 403 to a Warden or Front Desk officer. 'home' sends each role to
         // its own dashboard instead.
         $middleware->redirectUsersTo(fn () => route('home'));
+
+        // Stock StartSession, except pages whose URL carries a secret (the
+        // password reset link) are not stored as the session's previous URL.
+        // See App\Http\Middleware\StartSession.
+        $middleware->web(replace: [
+            \Illuminate\Session\Middleware\StartSession::class => \App\Http\Middleware\StartSession::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

@@ -124,6 +124,19 @@ With MySQL, Laravel (`php artisan serve --host=0.0.0.0 --port=8000`), Vite (`npm
 
 Automated backend tests: `php vendor/bin/phpunit --testsuite Feature` in `Custodicore-Web/` (runs on in-memory SQLite — it never touches the MySQL database).
 
+## Forgot Password (visitors)
+
+1. App → **Forgot Password?** → `POST /api/auth/password/forgot {email}`. The answer is always the same generic "If an account exists…" message, so it can't be used to find accounts. Limited to 6/min per IP and 3 per 10 min per email address (429 after that).
+2. Only an **active Visitor** account with no pending staff invitation gets an email (Google-linked visitors included). Staff, inactive/suspended and unknown addresses get the same response and no email.
+3. The email links to `APP_URL/password/reset/{token}?email=…` (route `password.reset`), a web page where the visitor picks a new password: at least 8 characters with a letter and a number, max 72, no leading or trailing spaces, confirmed, not their email address.
+4. On success the password is changed, the link stops working, every app session of that account is signed out, and an audit-log entry is written. The visitor then logs in to the app with the new password.
+
+Links use Laravel's password broker (`config/auth.php` → `passwords.accounts`): stored hashed in `password_reset_tokens`, valid for 60 minutes, single use, and a new request replaces the old link. A reset does **not** mark the email as verified — an unverified visitor still has to use the verification link. Code: `App\Services\Auth\PasswordResetService`, `App\Http\Controllers\Auth\PasswordResetController`.
+
+**To test locally:** set `APP_URL` in `Custodicore-Web/.env` to an address your phone can open (e.g. `http://YOUR-PC-LAN-IP:8000`), and `MAIL_MAILER=log` to read the email (with the link) in `storage/logs/laravel.log` instead of sending it — or configure the `MAIL_*` SMTP settings to deliver it. Run `php artisan config:clear` after changing `.env`. Tests: `php artisan test --filter=PasswordResetTest`.
+
+> **Warning:** `MAIL_MAILER=log` writes every email — including working password-reset links and their tokens — into `storage/logs/laravel.log`. Use it for local testing only, never in production. Production must use a properly configured mail transport (the `MAIL_*` SMTP settings or another real mailer).
+
 ## Design system
 
 The web dashboards use a small shared set of Tailwind tokens (`Custodicore-Web/tailwind.config.js`) so every page looks like one product:
@@ -138,7 +151,8 @@ The web dashboards use a small shared set of Tailwind tokens (`Custodicore-Web/t
 - **A visitor's overall verification status never changes.** Staff can verify/reject individual IDs and relationships, but nothing sets `visitor_profiles.verification_status`, so a newly registered visitor shows "Under Review" indefinitely.
 - **Supporting documents** (marriage certificate, etc.) can only be uploaded after staff link the visitor to a PDL; staff pages don't display uploaded files yet, and staff verify/reject actions don't notify the visitor.
 - **No staff page creates visit schedules** — they come from the seeder (see Backend setup step 4).
-- `/auth/google` (mobile Google Sign-In) intentionally returns HTTP 501 — no OAuth credentials are set up yet. Forgot Password is not implemented.
+- `/auth/google` (mobile Google Sign-In) intentionally returns HTTP 501 — no OAuth credentials are set up yet.
+- **Forgot Password is visitor-only.** Staff still ask their Warden administrator to reset a password (as the web login page says).
 - The mobile app has only been tested in the Expo web build and against the API — test on a real Android device (especially camera/gallery ID upload) before relying on it.
 
 ## Where to look for more detail

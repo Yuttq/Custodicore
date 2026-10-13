@@ -78,6 +78,16 @@ class Account extends Authenticatable
         return 'password_hash';
     }
 
+    /**
+     * Overrides the CanResetPassword trait (inherited from Authenticatable),
+     * whose default calls $this->notify() — Account has no Notifiable (see
+     * above), so that would fail. Sends the reset email directly instead.
+     */
+    public function sendPasswordResetNotification(#[\SensitiveParameter] $token)
+    {
+        app(\App\Services\Auth\PasswordResetService::class)->sendLink($this, $token);
+    }
+
     public function role()
     {
         return $this->belongsTo(Role::class, 'role_id');

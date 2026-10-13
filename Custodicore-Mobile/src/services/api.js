@@ -103,6 +103,10 @@ function toRequestError(error) {
     if (body?.errors && typeof body.errors === 'object') {
       err.errors = body.errors;
     }
+    // Seconds until a rate-limited (429) request may be retried, when the backend says.
+    if (Number.isFinite(body?.retryAfter)) {
+      err.retryAfter = body.retryAfter;
+    }
     return err;
   }
   if (error instanceof Error) return error;
@@ -216,6 +220,22 @@ export async function register(payload) {
 export async function resendVerificationEmail(email) {
   try {
     const { data } = await client.post('/auth/email/resend', { email });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Requests a password reset link — POST /auth/password/forgot. The backend
+ * answers the same way whether or not the address is registered; the link
+ * opens a web page where the visitor chooses a new password.
+ * Returns `{ status, message }`; 429 when requested too often.
+ * @param {string} email
+ */
+export async function requestPasswordReset(email) {
+  try {
+    const { data } = await client.post('/auth/password/forgot', { email });
     return data;
   } catch (error) {
     throw toRequestError(error);

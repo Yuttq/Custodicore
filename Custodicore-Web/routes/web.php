@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\VisitorController;
 
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\StaffSetupController;
 
 use App\Http\Controllers\LegalController;
@@ -72,6 +73,24 @@ Route::get('/email/verify/{token}', [EmailVerificationController::class, 'show']
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])
     ->middleware('throttle:10,1,email-verify-web')
     ->name('email-verification.verify');
+
+/*
+|--------------------------------------------------------------------------
+| Visitor password reset
+|--------------------------------------------------------------------------
+| Public: opened from the link in the reset email the mobile app's "Forgot
+| Password" requests (POST /api/auth/password/forgot). GET only shows the
+| form; the single-use token is consumed by the POST. Never signs anyone
+| in. 'password.reset' is the name Laravel's password broker expects.
+| See PasswordResetController / PasswordResetService.
+*/
+
+Route::get('/password/reset/{token}', [PasswordResetController::class, 'show'])
+    ->middleware('throttle:20,1,password-reset-page')
+    ->name('password.reset');
+Route::post('/password/reset', [PasswordResetController::class, 'reset'])
+    ->middleware('throttle:10,1,password-reset-submit')
+    ->name('password.update');
 
 /*
 |--------------------------------------------------------------------------

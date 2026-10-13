@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\NotificationApiController;
 use App\Http\Controllers\Api\ScheduleAvailabilityController;
 use App\Http\Controllers\Api\VisitorApiController;
 use App\Http\Controllers\Auth\EmailVerificationController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\LegalController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +47,9 @@ Route::prefix('auth')->group(function () {
     // limited per email address inside the controller.
     Route::post('/email/verify', [EmailVerificationController::class, 'verifyApi'])->middleware('throttle:10,1,email-verify');
     Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:6,1,email-resend');
+    // Forgot password: emails a reset link (eligible visitors only), same
+    // answer for every address. Also limited per email inside the controller.
+    Route::post('/password/forgot', [PasswordResetController::class, 'forgot'])->middleware('throttle:6,1,password-forgot');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });
 

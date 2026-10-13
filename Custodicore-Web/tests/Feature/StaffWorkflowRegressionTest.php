@@ -31,12 +31,20 @@ class StaffWorkflowRegressionTest extends TestCase
 
     private function confirmedVisitWithQr(): array
     {
+        // Assign the day before the visit, so the default confirmation
+        // window (visit.confirmation_window_hours = 48, from now) is still
+        // open on the visit morning — whatever day the suite runs on. The
+        // schedule date is the next Friday from the real date, so assigning
+        // at the real "now" could be up to 7 days before it.
+        $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
         $visit = app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_id' => $this->relationship->relationship_id,
             'schedule_id' => $this->schedule->schedule_id,
         ]);
+        $this->assertTrue($visit->confirmation_deadline->gt($this->schedule->schedule_date->copy()->setTime(9, 30)));
+
         // QR passes are only valid on the visit day.
         $this->travelTo($this->schedule->schedule_date->copy()->setTime(9, 30));
 
