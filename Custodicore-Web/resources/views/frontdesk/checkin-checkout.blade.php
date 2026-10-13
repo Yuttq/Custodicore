@@ -4,6 +4,12 @@
 
 @section('content')
 
+{{-- Search lists for the manual check-in / check-out backups. --}}
+<script>
+    window.frontDeskExpectedVisitors = @json($manualCheckinVisitors);
+    window.frontDeskInsideVisitors = @json($manualCheckoutVisitors);
+</script>
+
 <div class="space-y-lg">
 
     {{-- ============================================================
@@ -194,6 +200,12 @@
 
                                 Camera is ready. Please present the visitor's QR code.
 
+                            </div>
+
+                            <div
+                                id="scannerError"
+                                role="alert"
+                                class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-center text-metadata font-semibold text-red-700">
                             </div>
 
                         </div>
@@ -472,39 +484,10 @@
                                 <select
                                     id="manualIdType"
                                     class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
-
-                                    <option value="">
-                                        Select ID type
-                                    </option>
-
-                                    <option value="national_id">
-                                        National ID
-                                    </option>
-
-                                    <option value="drivers_license">
-                                        Driver's License
-                                    </option>
-
-                                    <option value="passport">
-                                        Passport
-                                    </option>
-
-                                    <option value="umid">
-                                        UMID
-                                    </option>
-
-                                    <option value="philhealth_id">
-                                        PhilHealth ID
-                                    </option>
-
-                                    <option value="voters_id">
-                                        Voter's ID
-                                    </option>
-
-                                    <option value="other">
-                                        Other
-                                    </option>
-
+                                    <option value="">Select ID type</option>
+                                    @foreach (\App\Models\VisitorId::TYPE_LABELS as $idTypeValue => $idTypeLabel)
+                                        <option value="{{ $idTypeValue }}">{{ $idTypeLabel }}</option>
+                                    @endforeach
                                 </select>
 
                             </div>
@@ -524,6 +507,10 @@
                                     type="text"
                                     id="manualIdNumber"
                                     placeholder="Enter the visitor's physical ID number"
+                                    maxlength="50"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    autocapitalize="characters"
                                     class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
 
                             </div>
@@ -542,8 +529,12 @@
                                 <textarea
                                     id="overrideReason"
                                     rows="3"
+                                    minlength="10"
+                                    maxlength="255"
                                     placeholder="Example: Visitor QR code could not be scanned."
                                     class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body"></textarea>
+
+                                <p class="mt-xs text-right text-metadata text-text-secondary" aria-live="polite"><span id="overrideReasonCount">0</span>/255 · at least 10 characters</p>
 
                             </div>
 
@@ -565,6 +556,12 @@
 
                             </div>
 
+
+                            <div
+                                id="manualCheckInError"
+                                role="alert"
+                                class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-body font-semibold text-red-700">
+                            </div>
 
                             <div class="mt-md flex justify-end">
 
@@ -902,18 +899,14 @@
                             <label for="new_id_type" class="text-section-label text-text-secondary">NEW ID TYPE</label>
                             <select id="new_id_type" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
                                 <option value="">Select ID type</option>
-                                <option value="national_id">National ID</option>
-                                <option value="drivers_license">Driver's License</option>
-                                <option value="passport">Passport</option>
-                                <option value="umid">UMID</option>
-                                <option value="philhealth_id">PhilHealth ID</option>
-                                <option value="voters_id">Voter's ID</option>
-                                <option value="other">Other</option>
+                                @foreach (\App\Models\VisitorId::TYPE_LABELS as $idTypeValue => $idTypeLabel)
+                                    <option value="{{ $idTypeValue }}">{{ $idTypeLabel }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div>
                             <label for="new_id_number" class="text-section-label text-text-secondary">NEW ID NUMBER</label>
-                            <input type="text" id="new_id_number" placeholder="Enter the new ID number" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                            <input type="text" id="new_id_number" placeholder="e.g. 0111-2233-4455" maxlength="50" autocomplete="off" spellcheck="false" autocapitalize="characters" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
                         </div>
                     </div>
 
@@ -930,7 +923,38 @@
                     </div>
 
                     <div id="otherReasonContainer" class="hidden mt-md">
-                        <textarea id="new_id_other_reason" rows="3" placeholder="Explain the reason for the new ID." class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body"></textarea>
+                        <textarea id="new_id_other_reason" rows="3" maxlength="255" placeholder="Explain the reason for the new ID." class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body"></textarea>
+                    </div>
+
+                    <div class="mt-md rounded-lg border border-border p-md">
+                        <p class="text-section-label text-text-secondary">ID PHOTO <span class="normal-case font-normal">(optional, recommended)</span></p>
+                        <p class="mt-xs text-metadata text-text-secondary">Helps the Records Officer verify this ID later. Hold the ID flat and close to the camera.</p>
+
+                        <div id="newIdPhotoCamera" class="hidden mt-md">
+                            <video id="newIdPhotoVideo" autoplay playsinline muted class="w-full max-w-md rounded-lg border border-border bg-black"></video>
+                        </div>
+
+                        <div id="newIdPhotoPreview" class="hidden mt-md">
+                            <img id="newIdPhotoImage" alt="Captured photo of the new ID" class="w-full max-w-md rounded-lg border border-border">
+                            <p class="mt-xs text-metadata font-semibold text-green-700">Photo attached</p>
+                        </div>
+
+                        <div class="mt-md flex flex-wrap gap-sm">
+                            <button type="button" id="newIdPhotoStartBtn" class="cc-btn-secondary">Take Photo</button>
+                            <button type="button" id="newIdPhotoCaptureBtn" class="hidden cc-btn-primary">Capture</button>
+                            <button type="button" id="newIdPhotoCancelBtn" class="hidden cc-btn-secondary">Cancel</button>
+                            <label class="cc-btn-secondary cursor-pointer" id="newIdPhotoUploadLabel">
+                                Upload Photo
+                                <input type="file" id="newIdPhotoFile" accept="image/jpeg,image/png" class="hidden">
+                            </label>
+                            <button type="button" id="newIdPhotoRemoveBtn" class="hidden cc-btn-secondary">Remove Photo</button>
+                        </div>
+                    </div>
+
+                    <div
+                        id="newIdError"
+                        role="alert"
+                        class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-body font-semibold text-red-700">
                     </div>
 
                     <label class="mt-md flex items-start gap-sm rounded-lg border border-border p-md">
@@ -1007,11 +1031,25 @@
 
                 <div class="mt-lg rounded-xl border border-border bg-background p-md">
                     <p class="text-section-label text-text-secondary">VERIFICATION CHECKLIST</p>
+                    <div id="summaryCheckOverall" role="status" class="mt-md hidden rounded-lg border p-md text-body font-semibold"></div>
                     <div class="mt-md grid grid-cols-1 gap-sm md:grid-cols-2">
-                        <div id="summaryCheckVisitor" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">Visitor identity</span><span id="summaryCheckVisitorText" class="float-right text-body font-semibold">Pending</span></div>
-                        <div id="summaryCheckSchedule" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">Schedule compliance</span><span id="summaryCheckScheduleText" class="float-right text-body font-semibold">Pending</span></div>
-                        <div id="summaryCheckPdl" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">PDL eligibility</span><span id="summaryCheckPdlText" class="float-right text-body font-semibold">Pending</span></div>
-                        <div id="summaryCheckId" class="rounded-lg border border-border bg-surface p-md"><span class="summary-status-dot inline-block h-2 w-2 rounded-full bg-gray-400"></span><span class="ml-sm text-body">ID verification</span><span id="summaryCheckIdText" class="float-right text-body font-semibold">Pending</span></div>
+                        @foreach ([
+                            'Visitor' => 'Visitor identity',
+                            'Schedule' => 'Schedule compliance',
+                            'Pdl' => 'PDL eligibility',
+                            'Id' => 'ID verification',
+                        ] as $checkKey => $checkLabel)
+                            <div id="summaryCheck{{ $checkKey }}" class="flex items-start gap-sm rounded-lg border border-border bg-surface p-md">
+                                <span class="summary-status-icon mt-xs inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-300 text-xs font-bold leading-none text-white" aria-hidden="true">–</span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-start justify-between gap-sm">
+                                        <span class="text-body font-semibold text-text-primary">{{ $checkLabel }}</span>
+                                        <span id="summaryCheck{{ $checkKey }}Text" class="text-right text-body font-semibold text-text-secondary">Pending</span>
+                                    </div>
+                                    <p id="summaryCheck{{ $checkKey }}Reason" class="mt-xs text-metadata text-text-secondary"></p>
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
                 </div>
 
@@ -1022,6 +1060,12 @@
                         <div><p class="text-section-label text-text-secondary">ID NUMBER</p><p id="summaryIdNumber" class="mt-xs text-body font-semibold">—</p></div>
                         <div><p class="text-section-label text-text-secondary">STATUS</p><p id="summaryIdStatus" class="mt-xs text-body font-semibold">—</p></div>
                     </div>
+                </div>
+
+                <div
+                    id="checkinSummaryError"
+                    role="alert"
+                    class="mt-lg hidden rounded-lg border border-red-200 bg-red-50 p-md text-body font-semibold text-red-700">
                 </div>
 
                 <div class="mt-lg flex flex-col-reverse gap-sm border-t border-border pt-lg sm:flex-row sm:justify-between">
@@ -3233,34 +3277,90 @@ function showCheckinStep(step) {
         set('summaryIdNumber', idNumber);
         set('summaryIdStatus', idStatus);
 
+        /*
+         * Verification checklist. Each check is pass, warn (allowed, but
+         * flagged for review) or fail (blocks Confirm Check-In), with a
+         * short reason so the officer knows what to do.
+         */
+        const details = window.frontDeskCheckinDetails;
+        const visitStatus = text('resultVisitStatus');
+        const pdlStatus = text('resultPdlStatus');
+
         const checks = [
-            ['summaryCheckVisitor', 'summaryCheckVisitorText', true, 'Verified'],
-            ['summaryCheckSchedule', 'summaryCheckScheduleText', text('resultVisitStatus').toLowerCase() === 'approved', 'Verified'],
-            ['summaryCheckPdl', 'summaryCheckPdlText', /eligible/i.test(text('resultPdlStatus')), 'Eligible'],
-            ['summaryCheckId', 'summaryCheckIdText', true, idStatus]
+            {
+                key: 'Visitor',
+                ...(details && details.visitor_verified === false
+                    ? { state: 'fail', label: 'Not verified', reason: 'The visitor account has not been approved by the Records Officer.' }
+                    : { state: 'pass', label: 'Verified', reason: details ? 'Approved account · QR pass matched' : 'QR pass matched' }),
+            },
+            {
+                key: 'Schedule',
+                ...(['confirmed', 'approved'].includes(visitStatus.toLowerCase())
+                    ? { state: 'pass', label: 'On schedule', reason: `Confirmed visit · ${text('resultScheduleTime')}` }
+                    : { state: 'fail', label: 'Failed', reason: `Visit status is "${visitStatus}", not confirmed.` }),
+            },
+            {
+                key: 'Pdl',
+                ...(/^eligible$/i.test(pdlStatus)
+                    ? { state: 'pass', label: 'Eligible', reason: 'No active restrictions' }
+                    : { state: 'fail', label: 'Not eligible', reason: `PDL status: ${pdlStatus}. Visits are not allowed.` }),
+            },
+            {
+                key: 'Id',
+                ...(idMatchStatus === 'replaced'
+                    ? { state: 'warn', label: 'Pending review', reason: `New ${idType} recorded · the Records Officer will verify it.` }
+                    : { state: 'pass', label: 'Matched', reason: `${idType} matched and surrendered` }),
+            },
         ];
 
-        checks.forEach(([boxId, textId, ok, label]) => {
-            const box = document.getElementById(boxId);
-            const status = document.getElementById(textId);
-            const dot = box?.querySelector('.summary-status-dot');
-            box?.classList.remove('border-green-200','bg-green-50','border-red-200','bg-red-50','border-border','bg-surface');
-            if (ok) {
-                box?.classList.add('border-green-200','bg-green-50');
-                dot?.classList.remove('bg-gray-400','bg-red-500');
-                dot?.classList.add('bg-green-500');
-                status?.classList.remove('text-red-600');
-                status?.classList.add('text-green-600');
-                if (status) status.textContent = label;
-            } else {
-                box?.classList.add('border-red-200','bg-red-50');
-                dot?.classList.remove('bg-gray-400','bg-green-500');
-                dot?.classList.add('bg-red-500');
-                status?.classList.remove('text-green-600');
-                status?.classList.add('text-red-600');
-                if (status) status.textContent = 'Failed';
-            }
+        // Literal class strings so Tailwind keeps them in the build.
+        const checkStyles = {
+            pass: { box: ['border-green-200', 'bg-green-50'], icon: ['bg-green-600'], text: ['text-green-700'], symbol: '✓' },
+            warn: { box: ['border-amber-200', 'bg-amber-50'], icon: ['bg-amber-500'], text: ['text-amber-700'], symbol: '!' },
+            fail: { box: ['border-red-200', 'bg-red-50'], icon: ['bg-red-600'], text: ['text-red-700'], symbol: '✕' },
+        };
+        const allStyleClasses = Object.values(checkStyles).flatMap(st => [...st.box, ...st.icon, ...st.text]);
+
+        checks.forEach(check => {
+            const style = checkStyles[check.state];
+            const box = document.getElementById(`summaryCheck${check.key}`);
+            const icon = box?.querySelector('.summary-status-icon');
+            const status = document.getElementById(`summaryCheck${check.key}Text`);
+            const reason = document.getElementById(`summaryCheck${check.key}Reason`);
+
+            box?.classList.remove('border-border', 'bg-surface', ...allStyleClasses);
+            box?.classList.add(...style.box);
+            icon?.classList.remove('bg-gray-300', ...allStyleClasses);
+            icon?.classList.add(...style.icon);
+            if (icon) icon.textContent = style.symbol;
+            status?.classList.remove('text-text-secondary', ...allStyleClasses);
+            status?.classList.add(...style.text);
+            if (status) status.textContent = check.label;
+            if (reason) reason.textContent = check.reason;
         });
+
+        const failed = checks.filter(check => check.state === 'fail').length;
+        const warned = checks.filter(check => check.state === 'warn').length;
+        const overall = document.getElementById('summaryCheckOverall');
+        const overallState = failed ? 'fail' : (warned ? 'warn' : 'pass');
+
+        if (overall) {
+            overall.classList.remove('hidden', ...allStyleClasses);
+            overall.classList.add(...checkStyles[overallState].box, ...checkStyles[overallState].text);
+            overall.textContent = failed
+                ? `✕ ${failed} check${failed > 1 ? 's' : ''} failed. Check-in is blocked until ${failed > 1 ? 'they are' : 'it is'} resolved.`
+                : (warned
+                    ? '! Ready to check in. One item is flagged for Records Officer review.'
+                    : '✓ All checks passed. Ready to check in.');
+        }
+
+        const confirmBtn = document.getElementById('confirmCheckInBtn');
+        if (confirmBtn && confirmBtn.textContent.trim() !== 'Processing...') {
+            confirmBtn.disabled = failed > 0;
+            confirmBtn.title = failed > 0 ? 'Resolve the failed checks before checking in.' : '';
+            confirmBtn.classList.toggle('opacity-50', failed > 0);
+            confirmBtn.classList.toggle('cursor-not-allowed', failed > 0);
+        }
 
         showCheckinStep(4);
     });
@@ -3456,6 +3556,145 @@ function showCheckinStep(step) {
                 manualCheckoutVisitorSearch.focus();
 
             }
+
+
+            selectedCheckinId = null;
+
+            const returned = document.getElementById('checkoutIdReturned');
+
+            if (returned) {
+                returned.checked = false;
+            }
+
+            const confirmBtn = document.getElementById('manualCheckoutConfirmBtn');
+
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+            }
+
+        }
+    );
+
+
+    /* ============================================================
+       MANUAL CHECKOUT SEARCH
+       Filters visitors currently inside (window.frontDeskInsideVisitors)
+       by name or Visitor ID; picking one fills the active-visit panel.
+    ============================================================ */
+
+    const manualCheckoutSearchResults =
+        document.getElementById(
+            'manualCheckoutSearchResults'
+        );
+
+    const insideVisitors =
+        Array.isArray(window.frontDeskInsideVisitors)
+            ? window.frontDeskInsideVisitors
+            : [];
+
+    const escapeCheckoutHtml = (value) =>
+        String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+
+    function hideManualCheckoutResults() {
+
+        if (manualCheckoutSearchResults) {
+            manualCheckoutSearchResults.innerHTML = '';
+            manualCheckoutSearchResults.classList.add('hidden');
+        }
+
+    }
+
+    function renderManualCheckoutResults(query) {
+
+        if (!manualCheckoutSearchResults) {
+            return;
+        }
+
+        const q = query.trim().toLowerCase();
+
+        if (!q) {
+            hideManualCheckoutResults();
+            return;
+        }
+
+        const matches = insideVisitors.filter(function (visitor) {
+            return String(visitor.visitorName || '').toLowerCase().includes(q)
+                || String(visitor.visitorId || '').toLowerCase().includes(q);
+        });
+
+        manualCheckoutSearchResults.innerHTML = '';
+
+        if (matches.length === 0) {
+
+            manualCheckoutSearchResults.innerHTML = `
+                <div class="p-md text-metadata text-text-secondary">
+                    ${insideVisitors.length === 0
+                        ? 'No visitors are currently inside the facility.'
+                        : 'No checked-in visitor matches this search.'}
+                </div>
+            `;
+
+            manualCheckoutSearchResults.classList.remove('hidden');
+
+            return;
+        }
+
+        matches.forEach(function (visitor) {
+
+            const result = document.createElement('button');
+
+            result.type = 'button';
+
+            result.className =
+                'block w-full border-b border-border px-md py-md text-left transition hover:bg-background';
+
+            result.innerHTML = `
+                <div class="flex items-center justify-between gap-md">
+                    <div class="min-w-0">
+                        <p class="text-body font-semibold text-text-primary">${escapeCheckoutHtml(visitor.visitorName)}</p>
+                        <p class="mt-xs text-metadata text-text-secondary">Visitor ID: ${escapeCheckoutHtml(visitor.visitorId ?? '—')}</p>
+                        <p class="mt-xs text-metadata text-text-secondary">Visiting ${escapeCheckoutHtml(visitor.pdlName)} (${escapeCheckoutHtml(visitor.pdlNumber)})</p>
+                        <p class="mt-xs text-metadata text-text-secondary">Checked in ${escapeCheckoutHtml(visitor.checkinTime)}</p>
+                    </div>
+                    <span class="shrink-0 text-metadata font-semibold text-text-secondary">Select</span>
+                </div>
+            `;
+
+            result.addEventListener('click', function () {
+
+                hideManualCheckoutResults();
+
+                if (manualCheckoutVisitorSearch) {
+                    manualCheckoutVisitorSearch.value = visitor.visitorName;
+                }
+
+                window.dispatchEvent(
+                    new CustomEvent(
+                        'custodicore:checkout-manual-selected',
+                        { detail: visitor }
+                    )
+                );
+
+            });
+
+            manualCheckoutSearchResults.appendChild(result);
+
+        });
+
+        manualCheckoutSearchResults.classList.remove('hidden');
+
+    }
+
+    manualCheckoutVisitorSearch?.addEventListener(
+        'input',
+        function () {
+
+            renderManualCheckoutResults(this.value);
 
         }
     );
@@ -3844,7 +4083,8 @@ function showCheckinStep(step) {
             }
 
 
-            copyCheckoutInformation();
+            // The manual panel already holds this visitor's details.
+            copyCheckoutConfirmation();
 
             showCheckoutStep(4);
 
@@ -3874,6 +4114,8 @@ function showCheckinStep(step) {
 
 
             copyCheckoutInformation();
+
+            copyCheckoutConfirmation();
 
             showCheckoutStep(4);
 
@@ -4160,7 +4402,45 @@ function showCheckinStep(step) {
                     data.idType,
 
                 checkoutIdNumber:
-                    data.idNumber
+                    data.idNumber,
+
+                checkoutInfoVisitorDetails:
+                    data.pdlName
+                        ? `Visiting ${data.pdlName} (${data.pdlNumber})`
+                        : undefined,
+
+                checkoutInfoRelationship:
+                    data.relationship,
+
+                checkoutInfoPdlStatus:
+                    data.pdlStatus,
+
+                checkoutInfoScheduleDate:
+                    data.scheduleDate,
+
+                checkoutInfoScheduleTime:
+                    data.scheduleTime,
+
+                checkoutInfoScheduleBuilding:
+                    data.building,
+
+                checkoutInfoScheduleClassification:
+                    data.classification,
+
+                checkoutInfoVisitStatus:
+                    data.visitStatus,
+
+                checkoutInfoRegisteredIdType:
+                    data.registeredIdType,
+
+                checkoutInfoRegisteredIdNumber:
+                    data.registeredIdNumber,
+
+                checkoutInfoRegisteredIdStatus:
+                    data.registeredIdStatus,
+
+                checkoutInfoStatus:
+                    data.status
 
             };
 

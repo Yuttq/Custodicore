@@ -21,6 +21,9 @@ final class Sanitizer
 
     public const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
+    /** Government ID number as stored: capitals, digits, single spaces, hyphens and slashes. */
+    public const ID_NUMBER_REGEX = '/^[A-Z0-9](?:[A-Z0-9 \/-]*[A-Z0-9])?$/';
+
     /** Plain single-line text: no tags, no control/zero-width characters, single spaces. */
     public static function text(?string $value): ?string
     {
@@ -141,6 +144,34 @@ final class Sanitizer
         $value = self::text($value);
 
         return $value === null ? null : mb_strtolower(str_replace(' ', '', $value));
+    }
+
+    /**
+     * Government ID number: "a12 - 345  678" -> "A12-345 678". Upper-cases,
+     * single spaces, no spaces around hyphens or slashes.
+     */
+    public static function idNumber(?string $value): ?string
+    {
+        $value = self::text($value);
+        if ($value === null) {
+            return null;
+        }
+
+        $value = preg_replace('/\s*([\/-])\s*/', '$1', mb_strtoupper($value)) ?? '';
+
+        return $value === '' ? null : $value;
+    }
+
+    /** A token pasted or scanned from a QR code: all whitespace removed. */
+    public static function token(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = preg_replace('/\s+/u', '', strip_tags($value)) ?? '';
+
+        return $value === '' ? null : $value;
     }
 
     /** Escapes % _ \ so a search box value is matched literally inside LIKE. */

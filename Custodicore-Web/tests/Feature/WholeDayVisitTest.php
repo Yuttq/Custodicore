@@ -557,7 +557,7 @@ class WholeDayVisitTest extends TestCase
         $this->actingAs($this->frontDeskAccount, 'web');
 
         $this->at('09:30');
-        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", ['override_reason' => 'Phone battery dead'])->assertRedirect();
+        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", $this->manualCheckInForm())->assertRedirect();
         $this->assertSame((int) $this->schedule->schedule_id, (int) $this->activeCheckin($visit)->schedule_id);
         $this->assertSame('active', $visit->qrCode()->value('status'));
 
@@ -566,7 +566,7 @@ class WholeDayVisitTest extends TestCase
 
         $this->at('13:00');
         $this->actingAs($this->frontDeskAccount, 'web');
-        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", ['override_reason' => 'Phone battery dead'])->assertRedirect();
+        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", $this->manualCheckInForm())->assertRedirect();
         $this->assertSame((int) $this->afternoonSchedule()->schedule_id, (int) $this->activeCheckin($visit)->schedule_id);
         $this->assertSame('used', $visit->qrCode()->value('status'));
 
@@ -574,7 +574,7 @@ class WholeDayVisitTest extends TestCase
         $this->at('14:00');
         $this->checkOut($this->activeCheckin($visit))->assertRedirect();
         $this->actingAs($this->frontDeskAccount, 'web');
-        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in")
+        $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", $this->manualCheckInForm())
             ->assertSessionHas('error', 'This visit is not confirmed.');
         $this->assertSame(2, VisitCheckin::count());
     }
@@ -636,5 +636,16 @@ class WholeDayVisitTest extends TestCase
             ->assertSuccessful();
 
         $this->assertSame('confirmed', $visit->fresh()->status);
+    }
+
+    /** What the Front Desk page posts for a manual check-in (ManualCheckInRequest). */
+    private function manualCheckInForm(): array
+    {
+        return [
+            'verification_method' => 'manual_override',
+            'id_surrendered_type' => 'national_id',
+            'id_number' => 'N01-23-456789',
+            'override_reason' => 'Phone battery dead',
+        ];
     }
 }

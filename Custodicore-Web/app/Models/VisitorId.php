@@ -19,6 +19,16 @@ class VisitorId extends Model
         'umid',
     ];
 
+    /** Display names, written the way the IDs are printed. Same order as TYPES. */
+    public const TYPE_LABELS = [
+        'national_id' => 'National ID',
+        'drivers_license' => "Driver's License",
+        'passport' => 'Passport',
+        'voters_id' => "Voter's ID",
+        'philhealth_id' => 'PhilHealth ID',
+        'umid' => 'UMID',
+    ];
+
     protected $fillable = [
         'visitor_id',
         'id_type',
@@ -79,8 +89,7 @@ class VisitorId extends Model
 
     public function typeLabel(): string
     {
-        return ucwords(
-            str_replace('_', ' ', $this->id_type)
-        );
+        return self::TYPE_LABELS[$this->id_type]
+            ?? ucwords(str_replace('_', ' ', (string) $this->id_type));
     }
 }

@@ -75,8 +75,18 @@
                     </div>
                 @endif
                 @if (session('error'))
-                    <div class="cc-card border-l-4 border-l-danger">
+                    <div class="cc-card border-l-4 border-l-danger" role="alert">
                         {{ session('error') }}
+                    </div>
+                @endif
+                @if ($errors->any())
+                    <div class="cc-card border-l-4 border-l-danger" role="alert">
+                        <p class="font-semibold">Please correct the following:</p>
+                        <ul class="mt-xs list-disc pl-lg text-body">
+                            @foreach ($errors->all() as $message)
+                                <li>{{ $message }}</li>
+                            @endforeach
+                        </ul>
                     </div>
                 @endif
 

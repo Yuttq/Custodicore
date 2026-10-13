@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\FrontDesk;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\FrontDesk\ManualCheckInRequest;
+use App\Http\Requests\FrontDesk\QrCheckInRequest;
+use App\Http\Requests\FrontDesk\ScanQrRequest;
 use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\QrCode;
@@ -17,6 +20,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -127,13 +132,76 @@ class CheckinCheckoutController extends Controller
             ->orderByDesc('check_out_time')
             ->get();
 
+        /*
+         * Search lists for the manual (no-QR) check-in and check-out
+         * backups, read by frontdesk-checkin.js and the page script.
+         */
+        $manualCheckinVisitors = $expected->map(function (VisitRequest $visit) {
+            $session = $this->gate->remainingSessions($visit)->first() ?? $visit->schedule;
+            $registered = $this->registeredIds($visit->visitor?->visitor_id)->first() ?? [];
+
+            return [
+                'visitRequestId' => $visit->visit_request_id,
+                'registeredIdType' => $registered['type_label'] ?? 'No verified ID on file',
+                'registeredIdNumber' => $registered['number'] ?? '—',
+                'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
+                'visitorId' => $visit->visitor?->visitor_id,
+                'visitorName' => $visit->visitor?->full_name ?? '—',
+                'pdlName' => $visit->pdl?->full_name ?? '—',
+                'pdlNumber' => $visit->pdl?->pdl_number ?? '—',
+                'scheduleDate' => $session ? Carbon::parse($session->schedule_date)->format('M d, Y') : null,
+                'scheduleStart' => $session ? Carbon::parse($session->time_slot_start)->format('h:i A') : null,
+                'scheduleEnd' => $session ? Carbon::parse($session->time_slot_end)->format('h:i A') : null,
+            ];
+        })->values();
+
+        $manualCheckoutVisitors = $insideNow->filter(fn (VisitCheckin $c) => $c->visitRequest)
+            ->map(function (VisitCheckin $checkin) {
+                $visit = $checkin->visitRequest;
+                $details = $this->visitDetails($visit, 'Checked in');
+                $registeredIds = $this->registeredIds($visit->visitor?->visitor_id);
+                $registered = $registeredIds->first() ?? [];
+                $surrendered = $this->surrenderedId($checkin);
+                $session = VisitSchedule::find($checkin->schedule_id) ?? $visit->schedule;
+
+                return [
+                    'checkinId' => $checkin->checkin_id,
+                    'visitorId' => $visit->visitor?->visitor_id,
+                    'visitorName' => $visit->visitor?->full_name ?? '—',
+                    'pdlName' => $visit->pdl?->full_name ?? '—',
+                    'pdlNumber' => $visit->pdl?->pdl_number ?? '—',
+                    'relationship' => $details['relationship'],
+                    'pdlStatus' => $details['pdl_status'],
+                    'building' => $details['building'],
+                    'classification' => $details['classification'],
+                    'visitStatus' => $details['visit_status'],
+                    'scheduleDate' => $session ? Carbon::parse($session->schedule_date)->format('M d, Y') : '—',
+                    'scheduleTime' => $session
+                        ? Carbon::parse($session->time_slot_start)->format('h:i A').' – '
+                            .Carbon::parse($session->time_slot_end)->format('h:i A')
+                            .' ('.ucfirst($this->gate->sessionName($session)).')'
+                        : '—',
+                    'checkinTime' => $checkin->check_in_time
+                        ? Carbon::parse($checkin->check_in_time)->format('M d, Y h:i A')
+                        : '—',
+                    'status' => 'Inside Facility',
+                    'registeredIdType' => $registered['type_label'] ?? '—',
+                    'registeredIdNumber' => $registered['number'] ?? '—',
+                    'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
+                    'idType' => $surrendered['type_label'],
+                    'idNumber' => $surrendered['number'],
+                ];
+            })->values();
+
         return view(
             'frontdesk.checkin-checkout',
             compact(
                 'expected',
                 'insideNow',
                 'todayHistory',
-                'todayCheckouts'
+                'todayCheckouts',
+                'manualCheckinVisitors',
+                'manualCheckoutVisitors'
             )
         );
     }
@@ -189,6 +257,114 @@ class CheckinCheckoutController extends Controller
     }
 
     /**
+     * Visit details shown on the scan result panels (check-in and
+     * check-out): relationship, PDL eligibility, housing, classification
+     * and visit status.
+     */
+    private function visitDetails(VisitRequest $visitRequest, string $visitStatus): array
+    {
+        $visitRequest->loadMissing(['relationship', 'pdl.activeRestrictions']);
+        $pdl = $visitRequest->pdl;
+
+        $pdlStatus = match (true) {
+            ! $pdl => '—',
+            $pdl->custody_status !== 'active' => ucfirst((string) $pdl->custody_status),
+            $pdl->activeRestrictions->isNotEmpty() => 'Restricted',
+            default => 'Eligible',
+        };
+
+        return [
+            'visitor_id' => $visitRequest->visitor?->visitor_id,
+            'visitor_verified' => (bool) $visitRequest->visitor?->isVerified(),
+            'relationship' => $visitRequest->relationship?->relationshipLabel() ?? '—',
+            'pdl_status' => $pdlStatus,
+            'building' => $pdl?->cell_block ?: '—',
+            'classification' => match ($pdl?->classification) {
+                'drug_related' => 'Drug-related',
+                'non_drug_related' => 'Non-drug-related',
+                default => '—',
+            },
+            'visit_status' => $visitStatus,
+        ];
+    }
+
+    /**
+     * Decodes a `data:image/jpeg|png;base64,...` ID photo. Returns the image
+     * bytes and file extension, or null when it is not a valid JPG/PNG
+     * under 5 MB.
+     *
+     * @return array{contents: string, extension: string}|null
+     */
+    private function decodeIdPhoto(string $dataUrl): ?array
+    {
+        if (! preg_match('#^data:image/(jpeg|png);base64,(.+)$#s', $dataUrl, $m)) {
+            return null;
+        }
+
+        $contents = base64_decode($m[2], true);
+
+        if ($contents === false || strlen($contents) > 5 * 1024 * 1024) {
+            return null;
+        }
+
+        $info = @getimagesizefromstring($contents);
+
+        if (! $info || ! in_array($info['mime'] ?? null, ['image/jpeg', 'image/png'], true)) {
+            return null;
+        }
+
+        return [
+            'contents' => $contents,
+            'extension' => $info['mime'] === 'image/png' ? 'png' : 'jpg',
+        ];
+    }
+
+    /**
+     * The ID a visitor surrendered at check-in: the newest record of that
+     * type (a replacement ID is still pending review), as label + number.
+     *
+     * @return array{type: ?string, type_label: string, number: string}
+     */
+    private function surrenderedId(VisitCheckin $checkin): array
+    {
+        $type = $checkin->id_surrendered_type;
+        $visitorId = $checkin->visitRequest?->visitor_id;
+
+        $record = $type && $visitorId
+            ? VisitorId::where('visitor_id', $visitorId)
+                ->where('id_type', $type)
+                ->orderByDesc('uploaded_at')
+                ->first()
+            : null;
+
+        return [
+            'type' => $type,
+            'type_label' => $type ? (new VisitorId(['id_type' => $type]))->typeLabel() : '—',
+            'number' => $record?->id_number ?? '—',
+        ];
+    }
+
+    /**
+     * Visitor's verified IDs, newest first, for the scan result panels.
+     */
+    private function registeredIds(?int $visitorId): \Illuminate\Support\Collection
+    {
+        return VisitorId::where('visitor_id', $visitorId)
+            ->whereIn('verification_status', ['verified', 'approved'])
+            ->orderByDesc('verified_at')
+            ->get()
+            ->map(fn (VisitorId $id) => [
+                'id' => $id->visitor_id_doc_id,
+                'type' => $id->id_type,
+                'type_label' => $id->typeLabel(),
+                'number' => $id->id_number,
+                'status' => $id->verification_status,
+                'reason' => $id->reason,
+            ])
+            ->values();
+    }
+
+    /**
      * ---------------------------------------------------------------
      * QR SCANNER
      * ---------------------------------------------------------------
@@ -198,15 +374,10 @@ class CheckinCheckoutController extends Controller
      * It does NOT create a check-in.
      * It does NOT mark the QR as used.
      */
-    public function scanQr(Request $request): JsonResponse
+    public function scanQr(ScanQrRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'qr_token' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-        ]);
+        // Cleaned and validated by ScanQrRequest.
+        $data = $request->validated();
 
         try {
 
@@ -249,17 +420,25 @@ class CheckinCheckoutController extends Controller
                     ], 422);
                 }
 
+                $registeredIds = $this->registeredIds($visitRequest->visitor?->visitor_id);
+                $session = VisitSchedule::find($checkin->schedule_id) ?? $visitRequest->schedule;
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Checked-in visitor found.',
                     'visit_request_id' => $visitRequest->visit_request_id,
                     'checkin_id' => $checkin->checkin_id,
+                    'status_label' => 'Inside Facility',
                     'visitor' => [
                         'visitor_id' => $visitRequest->visitor?->visitor_id,
                         'name' => $visitRequest->visitor?->full_name ?? '—',
                         'pdl' => $visitRequest->pdl?->full_name ?? '—',
                         'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
                     ],
+                    'details' => $this->visitDetails($visitRequest, 'Checked in'),
+                    'schedule' => $session ? $this->sessionPayload($visitRequest, $session) : null,
+                    'registered_ids' => $registeredIds,
+                    'surrendered_id' => $this->surrenderedId($checkin),
                     'checkin' => [
                         'checkin_id' => $checkin->checkin_id,
                         'visitor_name' => $visitRequest->visitor?->full_name ?? '—',
@@ -381,41 +560,7 @@ class CheckinCheckoutController extends Controller
             /*
              * Get visitor's registered IDs.
              */
-            $registeredIds = VisitorId::where(
-                'visitor_id',
-                $visitRequest->visitor?->visitor_id
-            )
-                ->whereIn(
-                    'verification_status',
-                    [
-                        'verified',
-                        'approved',
-                    ]
-                )
-                ->orderByDesc('verified_at')
-                ->get()
-                ->map(function ($id) {
-                    return [
-                        'id' =>
-                            $id->visitor_id_doc_id,
-
-                        'type' =>
-                            $id->id_type,
-
-                        'type_label' =>
-                            $id->typeLabel(),
-
-                        'number' =>
-                            $id->id_number,
-
-                        'status' =>
-                            $id->verification_status,
-
-                        'reason' =>
-                            $id->reason,
-                    ];
-                })
-                ->values();
+            $registeredIds = $this->registeredIds($visitRequest->visitor?->visitor_id);
 
             return response()->json([
                 'success' => true,
@@ -452,6 +597,9 @@ class CheckinCheckoutController extends Controller
                 'schedule' =>
                     $this->sessionPayload($visitRequest, $session),
 
+                'details' =>
+                    $this->visitDetails($visitRequest, 'Confirmed'),
+
                 'checkin' => null,
             ]);
 
@@ -465,7 +613,7 @@ class CheckinCheckoutController extends Controller
             return response()->json([
                 'success' => false,
                 'message' =>
-                    'Could not process the QR code.',
+                    'Could not process the QR code. Please scan again, or use Manual Check-In if it keeps failing.',
             ], 500);
         }
     }
@@ -490,67 +638,21 @@ class CheckinCheckoutController extends Controller
      * It is stored as pending verification for the Records Officer.
      */
     public function confirmQrCheckIn(
-        Request $request
+        QrCheckInRequest $request
     ): JsonResponse {
 
-        $data = $request->validate([
-            'qr_token' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+        // Cleaned and validated by QrCheckInRequest (a different ID requires its type, number and reason).
+        $data = $request->validated();
 
-            'id_surrendered_type' => [
-                'required',
-                'string',
-                'max:50',
-            ],
+        $newIdPhoto = null;
 
-            /*
-             * Existing registered ID matched?
-             */
-            'id_match_status' => [
-                'required',
-                'in:matched,replaced',
-            ],
+        if ($data['id_match_status'] === 'replaced' && ! empty($data['new_id_photo'])) {
+            $newIdPhoto = $this->decodeIdPhoto($data['new_id_photo']);
 
-            /*
-             * New/replacement ID information.
-             */
-            'new_id_type' => [
-                'nullable',
-                'string',
-                'max:50',
-            ],
-
-            'new_id_number' => [
-                'nullable',
-                'string',
-                'max:100',
-            ],
-
-            'new_id_reason' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-        ]);
-
-        /*
-         * If the officer says the registered ID was replaced,
-         * require the new ID details and reason.
-         */
-        if ($data['id_match_status'] === 'replaced') {
-
-            if (
-                empty($data['new_id_type']) ||
-                empty($data['new_id_number']) ||
-                empty($data['new_id_reason'])
-            ) {
+            if (! $newIdPhoto) {
                 return response()->json([
                     'success' => false,
-                    'message' =>
-                        'New ID type, new ID number, and reason are required when the registered ID does not match.',
+                    'message' => 'The ID photo could not be read. Retake it as a JPG or PNG image under 5 MB, or remove it.',
                 ], 422);
             }
         }
@@ -688,6 +790,14 @@ class CheckinCheckoutController extends Controller
                 $data['id_match_status'] === 'replaced'
             ) {
 
+                $photoPath = $newIdPhoto
+                    ? 'visitor-ids/'.Str::random(40).'.'.$newIdPhoto['extension']
+                    : null;
+
+                if ($photoPath) {
+                    Storage::disk('public')->put($photoPath, $newIdPhoto['contents']);
+                }
+
                 VisitorId::create([
                     'visitor_id' =>
                         $visitRequest->visitor?->visitor_id,
@@ -699,7 +809,7 @@ class CheckinCheckoutController extends Controller
                         $data['new_id_number'],
 
                     'file_path' =>
-                        null,
+                        $photoPath,
 
                     /*
                      * IMPORTANT:
@@ -870,7 +980,7 @@ class CheckinCheckoutController extends Controller
             return response()->json([
                 'success' => false,
                 'message' =>
-                    'Could not complete the check-in.',
+                    'Could not complete the check-in. Please try again, or contact the system administrator if it keeps happening.',
             ], 500);
         }
     }
@@ -881,74 +991,12 @@ class CheckinCheckoutController extends Controller
      * ---------------------------------------------------------------
      */
     public function checkIn(
-        Request $request,
+        ManualCheckInRequest $request,
         VisitRequest $visitRequest
     ): RedirectResponse {
 
-        $data = $request->validate([
-            'verification_method' => [
-                'nullable',
-                'in:qr_scan,manual_override',
-            ],
-
-            'override_reason' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-
-            'id_surrendered_type' => [
-                'nullable',
-                'string',
-                'max:50',
-            ],
-
-            /*
-             * New replacement ID.
-             */
-            'id_match_status' => [
-                'nullable',
-                'in:matched,replaced',
-            ],
-
-            'new_id_type' => [
-                'nullable',
-                'string',
-                'max:50',
-            ],
-
-            'new_id_number' => [
-                'nullable',
-                'string',
-                'max:100',
-            ],
-
-            'new_id_reason' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-        ]);
-
-        /*
-         * If a replacement ID is being submitted,
-         * require complete replacement information.
-         */
-        if (
-            ($data['id_match_status'] ?? null) === 'replaced'
-        ) {
-
-            if (
-                empty($data['new_id_type']) ||
-                empty($data['new_id_number']) ||
-                empty($data['new_id_reason'])
-            ) {
-                return back()->with(
-                    'error',
-                    'New ID type, new ID number, and reason are required for a replacement ID.'
-                );
-            }
-        }
+        // Cleaned and validated by ManualCheckInRequest.
+        $data = $request->validated();
 
         try {
 
@@ -1126,8 +1174,7 @@ class CheckinCheckoutController extends Controller
 
             return back()->with(
                 'error',
-                'Could not check this visitor in. ' .
-                $e->getMessage()
+                'Could not check this visitor in. Please try again, or contact the system administrator if it keeps happening.'
             );
         }
 
@@ -1141,7 +1188,8 @@ class CheckinCheckoutController extends Controller
                 'visit_checkins',
                 $checkin->checkin_id,
 
-                "Manually checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id} ({$this->gate->sessionName($session)})",
+                "Manually checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id} ({$this->gate->sessionName($session)}). "
+                    .'Surrendered '.(new VisitorId(['id_type' => $data['id_surrendered_type']]))->typeLabel()." {$data['id_number']}. Reason: {$data['override_reason']}",
 
                 Module::CODE_CHECKIN_CHECKOUT
             );
@@ -1233,8 +1281,7 @@ class CheckinCheckoutController extends Controller
 
             return back()->with(
                 'error',
-                'Could not check this visitor out. ' .
-                $e->getMessage()
+                'Could not check this visitor out. Please try again, or contact the system administrator if it keeps happening.'
             );
         }
 

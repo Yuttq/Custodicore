@@ -23,6 +23,13 @@ function initializeFrontDeskScanner() {
     const scannerError =
         document.getElementById("scannerError");
 
+    // Optional replacement-ID photo (JPEG data URL) and its camera stream.
+    let newIdPhoto =
+        null;
+
+    let newIdPhotoStream =
+        null;
+
     const scanResult =
         document.getElementById("scanResult");
 
@@ -486,33 +493,177 @@ function initializeFrontDeskScanner() {
     |--------------------------------------------------------------------------
     */
 
+    /*
+     * Each check-in section (scanner, new ID, summary, manual) has its own
+     * error box; a message shows in the ones whose section is on screen,
+     * so it appears where the officer clicked.
+     */
+    const errorBoxes = () => [
+        scannerError,
+        document.getElementById("newIdError"),
+        document.getElementById("checkinSummaryError"),
+        document.getElementById("manualCheckInError"),
+    ].filter(Boolean);
+
+
     function showError(message) {
 
-        if (!scannerError) {
-            return;
-        }
+        const boxes =
+            errorBoxes();
 
-        scannerError.textContent =
-            message;
+        const onScreen =
+            boxes.filter((box) => box.parentElement?.offsetParent);
 
-        scannerError.classList.remove(
-            "hidden"
-        );
+        (onScreen.length ? onScreen : boxes).forEach((box) => {
+            box.textContent =
+                message;
+
+            box.classList.remove(
+                "hidden"
+            );
+        });
     }
 
 
     function hideError() {
 
-        if (!scannerError) {
+        errorBoxes().forEach((box) => {
+            box.textContent =
+                "";
+
+            box.classList.add(
+                "hidden"
+            );
+        });
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FIELD VALIDATION
+    |--------------------------------------------------------------------------
+    | Same rules as the server (App\Http\Requests\FrontDesk, App\Support\
+    | Sanitizer), so the officer sees every problem on its field before the
+    | request is sent. The server still validates everything.
+    */
+
+    const ID_NUMBER_PATTERN =
+        /^[A-Z0-9](?:[A-Z0-9 /-]*[A-Z0-9])?$/;
+
+    /** "a12 - 345  678" -> "A12-345 678", like Sanitizer::idNumber(). */
+    function cleanIdNumber(value) {
+
+        return String(value ?? "")
+            .replace(/<[^>]*>/g, "")
+            .toUpperCase()
+            .replace(/\s+/g, " ")
+            .replace(/\s*([/-])\s*/g, "$1")
+            .trim();
+    }
+
+    /** Problem with an ID number, or null when it is fine. */
+    function idNumberProblem(value) {
+
+        if (!value) {
+            return "Enter the ID number.";
+        }
+
+        if (value.length < 4) {
+            return "The ID number is too short. Check it against the physical ID.";
+        }
+
+        if (!ID_NUMBER_PATTERN.test(value)) {
+            return "Use only letters, numbers, spaces, hyphens and slashes.";
+        }
+
+        return null;
+    }
+
+    function setFieldError(input, message) {
+
+        if (!input) {
             return;
         }
 
-        scannerError.textContent =
-            "";
+        const errorId =
+            `${input.id}FieldError`;
 
-        scannerError.classList.add(
-            "hidden"
-        );
+        let note =
+            document.getElementById(errorId);
+
+        if (!note) {
+
+            note = document.createElement("p");
+            note.id = errorId;
+            note.className = "mt-xs text-metadata font-semibold text-red-700";
+
+            // A checkbox sits inside its label; put the note under the whole line.
+            const anchor =
+                input.type === "checkbox"
+                    ? (input.closest("label") ?? input)
+                    : input;
+
+            anchor.insertAdjacentElement("afterend", note);
+        }
+
+        note.textContent = message;
+
+        input.classList.add("border-red-500");
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", errorId);
+    }
+
+    function clearFieldError(input) {
+
+        if (!input) {
+            return;
+        }
+
+        document.getElementById(`${input.id}FieldError`)?.remove();
+
+        input.classList.remove("border-red-500");
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+    }
+
+    /**
+     * Marks each [input, problem] pair; returns true when all are fine.
+     * Otherwise shows a summary and focuses the first problem.
+     */
+    function checkFields(pairs) {
+
+        let first = null;
+
+        pairs.forEach(([input, problem]) => {
+
+            if (problem) {
+
+                setFieldError(input, problem);
+                first ??= input;
+
+            } else {
+
+                clearFieldError(input);
+            }
+        });
+
+        if (first) {
+
+            const count =
+                pairs.filter(([, problem]) => problem).length;
+
+            showError(
+                count === 1
+                    ? pairs.find(([, problem]) => problem)[1]
+                    : `Please fix the ${count} highlighted fields.`
+            );
+
+            first.focus();
+
+            return false;
+        }
+
+        return true;
     }
 
 
@@ -683,6 +834,21 @@ function initializeFrontDeskScanner() {
             "—"
         );
 
+        [
+            "resultRelationship",
+            "resultPdlNumber",
+            "resultPdlStatus",
+            "resultScheduleTime",
+            "resultScheduleBuilding",
+            "resultScheduleClassification",
+            "resultVisitStatus",
+        ].forEach((id) =>
+            setText(
+                document.getElementById(id),
+                "—"
+            )
+        );
+
 
         setText(
             registeredIdType,
@@ -787,12 +953,17 @@ function initializeFrontDeskScanner() {
 
         window.frontDeskCheckinIdMatchStatus = null;
         window.frontDeskCheckinNewIdSaved = false;
+        window.frontDeskCheckinDetails = null;
 
         registeredIds =
             [];
 
         newIdSaved =
             false;
+
+        [newIdType, newIdNumber, newIdReason, newIdOtherReason, newIdVerified].forEach(clearFieldError);
+
+        clearNewIdPhoto();
 
 
         updateProgress(1);
@@ -890,23 +1061,58 @@ function initializeFrontDeskScanner() {
         );
 
 
+        const details =
+            data.details ??
+            {};
+
+        const schedule =
+            data.schedule ??
+            {};
+
+        // Read by the summary checklist (Blade script).
+        window.frontDeskCheckinDetails =
+            data.details ??
+            null;
+
+
         setText(
             resultVisitor,
-            visitor.name
+            details.visitor_id ??
+            visitor.visitor_id
         );
 
 
         setText(
             resultPdl,
-            `${visitor.pdl ?? "—"} (${visitor.pdl_number ?? "—"})`
+            visitor.pdl
         );
 
 
         setText(
             resultSchedule,
-            data.schedule?.display ??
-            "Today's confirmed visit"
+            schedule.date ??
+            "Today"
         );
+
+
+        const setById = (id, value) =>
+            setText(
+                document.getElementById(id),
+                value
+            );
+
+        setById("resultRelationship", details.relationship);
+        setById("resultPdlNumber", visitor.pdl_number);
+        setById("resultPdlStatus", details.pdl_status);
+        setById(
+            "resultScheduleTime",
+            schedule.start
+                ? `${schedule.start} – ${schedule.end} (${schedule.session}${schedule.is_reentry ? ", re-entry" : ""})`
+                : null
+        );
+        setById("resultScheduleBuilding", details.building);
+        setById("resultScheduleClassification", details.classification);
+        setById("resultVisitStatus", details.visit_status);
 
 
         displayRegisteredIds(
@@ -2002,6 +2208,59 @@ function initializeFrontDeskScanner() {
 
 
         /*
+         * Visit details (relationship, PDL status, schedule) on both
+         * checkout panels.
+         */
+
+        const details =
+            data.details ||
+            {};
+
+        const schedule =
+            data.schedule ||
+            {};
+
+        const registeredId =
+            (data.registered_ids || [])[0] ||
+            {};
+
+        const detailFields = {
+            VisitorDetails: `Visiting ${pdlNameValue} (${pdlNumberValue})`,
+            Relationship: details.relationship,
+            PdlStatus: details.pdl_status,
+            ScheduleDate: schedule.date,
+            ScheduleTime: schedule.start
+                ? `${schedule.start} – ${schedule.end} (${schedule.session})`
+                : null,
+            ScheduleBuilding: details.building,
+            ScheduleClassification: details.classification,
+            VisitStatus: details.visit_status,
+        };
+
+        Object.entries(detailFields).forEach(([suffix, value]) => {
+            setText(document.getElementById(`qrCheckout${suffix}`), value);
+            setText(document.getElementById(`checkoutInfo${suffix}`), value);
+        });
+
+        setText(
+            document.getElementById("checkoutInfoRegisteredIdType"),
+            registeredId.type_label || registeredId.type
+        );
+
+        setText(
+            document.getElementById("checkoutInfoRegisteredIdNumber"),
+            registeredId.number
+        );
+
+        setText(
+            document.getElementById("checkoutInfoRegisteredIdStatus"),
+            registeredId.status
+                ? registeredId.status.charAt(0).toUpperCase() + registeredId.status.slice(1)
+                : null
+        );
+
+
+        /*
          * Reset ID return checkbox.
          */
 
@@ -2495,6 +2754,9 @@ function initializeFrontDeskScanner() {
             );
 
 
+            clearNewIdPhoto();
+
+
             // A matching ID is already registered and verified.
             // Do NOT ask the officer to select the ID type again.
             matchedIdSection?.classList.add(
@@ -2732,6 +2994,34 @@ function initializeFrontDeskScanner() {
     |--------------------------------------------------------------------------
     */
 
+    /** Checks the "Different ID Presented" form; marks every problem. */
+    function validateNewIdFields() {
+
+        if (newIdNumber) {
+            newIdNumber.value = cleanIdNumber(newIdNumber.value);
+        }
+
+        const otherReason =
+            newIdOtherReason?.value.trim() ?? "";
+
+        return checkFields([
+            [newIdType, newIdType?.value ? null : "Select the type of the new ID."],
+            [newIdNumber, idNumberProblem(newIdNumber?.value)],
+            [newIdReason, newIdReason?.value ? null : "Select the reason for the new ID."],
+            [
+                newIdOtherReason,
+                newIdReason?.value === "other" && otherReason.length < 3
+                    ? "Describe the reason in a few words."
+                    : null,
+            ],
+            [
+                newIdVerified,
+                newIdVerified?.checked ? null : "Confirm that you physically checked the new ID.",
+            ],
+        ]);
+    }
+
+
     saveNewIdBtn?.addEventListener(
         "click",
         () => {
@@ -2752,74 +3042,7 @@ function initializeFrontDeskScanner() {
             }
 
 
-            if (
-                !newIdType?.value
-            ) {
-
-                showError(
-                    "Please select the new ID type."
-                );
-
-                newIdType?.focus();
-
-                return;
-            }
-
-
-            if (
-                !newIdNumber?.value.trim()
-            ) {
-
-                showError(
-                    "Please enter the new ID number."
-                );
-
-                newIdNumber?.focus();
-
-                return;
-            }
-
-
-            if (
-                !newIdReason?.value
-            ) {
-
-                showError(
-                    "Please select the reason for the new ID."
-                );
-
-                newIdReason?.focus();
-
-                return;
-            }
-
-
-            if (
-                newIdReason.value ===
-                    "other" &&
-                !newIdOtherReason?.value.trim()
-            ) {
-
-                showError(
-                    "Please explain the reason for the new ID."
-                );
-
-                newIdOtherReason?.focus();
-
-                return;
-            }
-
-
-            if (
-                !newIdVerified?.checked
-            ) {
-
-                showError(
-                    "Please confirm that you physically verified the new ID."
-                );
-
-                newIdVerified?.focus();
-
+            if (!validateNewIdFields()) {
                 return;
             }
 
@@ -2843,6 +3066,301 @@ function initializeFrontDeskScanner() {
             setScannerStatus(
                 "New ID verified. Review the information and confirm check-in."
             );
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | LIVE FIELD CLEAN-UP
+    |--------------------------------------------------------------------------
+    */
+
+    [newIdNumber, manualIdNumber].forEach((input) => {
+
+        input?.addEventListener("blur", () => {
+            input.value = cleanIdNumber(input.value);
+        });
+    });
+
+    [
+        newIdType,
+        newIdNumber,
+        newIdReason,
+        newIdOtherReason,
+        newIdVerified,
+        manualIdType,
+        manualIdNumber,
+        overrideReason,
+        document.getElementById("manualIdVerified"),
+    ].forEach((input) => {
+
+        input?.addEventListener("input", () => clearFieldError(input));
+        input?.addEventListener("change", () => clearFieldError(input));
+    });
+
+    const overrideReasonCount =
+        document.getElementById("overrideReasonCount");
+
+    overrideReason?.addEventListener("input", () => {
+
+        if (overrideReasonCount) {
+            overrideReasonCount.textContent = String(overrideReason.value.length);
+        }
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | NEW ID PHOTO (optional)
+    |--------------------------------------------------------------------------
+    | Webcam capture or file upload of the replacement ID. Sent with the
+    | check-in as a JPEG data URL so the Records Officer can review it.
+    */
+
+    const NEW_ID_PHOTO_MAX_WIDTH =
+        1280;
+
+    const photoEl = (id) =>
+        document.getElementById(id);
+
+
+    function stopNewIdCamera() {
+
+        newIdPhotoStream?.getTracks().forEach((track) => track.stop());
+
+        newIdPhotoStream =
+            null;
+
+        const video = photoEl("newIdPhotoVideo");
+
+        if (video) {
+            video.srcObject = null;
+        }
+
+        photoEl("newIdPhotoCamera")?.classList.add("hidden");
+        photoEl("newIdPhotoCaptureBtn")?.classList.add("hidden");
+        photoEl("newIdPhotoCancelBtn")?.classList.add("hidden");
+        photoEl("newIdPhotoStartBtn")?.classList.remove("hidden");
+        photoEl("newIdPhotoUploadLabel")?.classList.remove("hidden");
+    }
+
+
+    function showNewIdPhoto(dataUrl) {
+
+        newIdPhoto =
+            dataUrl;
+
+        const image = photoEl("newIdPhotoImage");
+
+        if (image) {
+            image.src = dataUrl;
+        }
+
+        photoEl("newIdPhotoPreview")?.classList.remove("hidden");
+        photoEl("newIdPhotoRemoveBtn")?.classList.remove("hidden");
+
+        const startBtn = photoEl("newIdPhotoStartBtn");
+
+        if (startBtn) {
+            startBtn.textContent = "Retake Photo";
+        }
+    }
+
+
+    function clearNewIdPhoto() {
+
+        stopNewIdCamera();
+
+        newIdPhoto =
+            null;
+
+        const image = photoEl("newIdPhotoImage");
+
+        if (image) {
+            image.removeAttribute("src");
+        }
+
+        const fileInput = photoEl("newIdPhotoFile");
+
+        if (fileInput) {
+            fileInput.value = "";
+        }
+
+        photoEl("newIdPhotoPreview")?.classList.add("hidden");
+        photoEl("newIdPhotoRemoveBtn")?.classList.add("hidden");
+
+        const startBtn = photoEl("newIdPhotoStartBtn");
+
+        if (startBtn) {
+            startBtn.textContent = "Take Photo";
+        }
+    }
+
+
+    /** Draws a video frame or image onto a canvas, scaled down to a JPEG. */
+    function toJpegDataUrl(source, width, height) {
+
+        const scale =
+            Math.min(1, NEW_ID_PHOTO_MAX_WIDTH / width);
+
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+
+        canvas
+            .getContext("2d")
+            .drawImage(source, 0, 0, canvas.width, canvas.height);
+
+        return canvas.toDataURL("image/jpeg", 0.85);
+    }
+
+
+    photoEl("newIdPhotoStartBtn")?.addEventListener(
+        "click",
+        async () => {
+
+            hideError();
+
+            if (!navigator.mediaDevices?.getUserMedia) {
+
+                showError(
+                    "This browser cannot open the camera here. Use Upload Photo instead."
+                );
+
+                return;
+            }
+
+            try {
+
+                // The QR scanner holds the camera; release it first.
+                await stopAnyActiveScanner();
+
+                newIdPhotoStream =
+                    await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                        },
+                        audio: false,
+                    });
+
+                const video = photoEl("newIdPhotoVideo");
+
+                video.srcObject = newIdPhotoStream;
+
+                photoEl("newIdPhotoCamera")?.classList.remove("hidden");
+                photoEl("newIdPhotoCaptureBtn")?.classList.remove("hidden");
+                photoEl("newIdPhotoCancelBtn")?.classList.remove("hidden");
+                photoEl("newIdPhotoStartBtn")?.classList.add("hidden");
+                photoEl("newIdPhotoUploadLabel")?.classList.add("hidden");
+
+            } catch (error) {
+
+                console.error(
+                    "ID photo camera failed:",
+                    error
+                );
+
+                stopNewIdCamera();
+
+                showError(
+                    "Could not open the camera. Allow camera access in the browser, or use Upload Photo instead. You can also continue without a photo."
+                );
+            }
+        }
+    );
+
+
+    photoEl("newIdPhotoCaptureBtn")?.addEventListener(
+        "click",
+        () => {
+
+            const video = photoEl("newIdPhotoVideo");
+
+            if (!video?.videoWidth) {
+
+                showError(
+                    "The camera is still starting. Try Capture again in a moment."
+                );
+
+                return;
+            }
+
+            const dataUrl =
+                toJpegDataUrl(video, video.videoWidth, video.videoHeight);
+
+            stopNewIdCamera();
+
+            showNewIdPhoto(dataUrl);
+        }
+    );
+
+
+    photoEl("newIdPhotoCancelBtn")?.addEventListener(
+        "click",
+        stopNewIdCamera
+    );
+
+
+    photoEl("newIdPhotoRemoveBtn")?.addEventListener(
+        "click",
+        clearNewIdPhoto
+    );
+
+
+    photoEl("newIdPhotoFile")?.addEventListener(
+        "change",
+        (event) => {
+
+            hideError();
+
+            const file =
+                event.target.files?.[0];
+
+            if (!file) {
+                return;
+            }
+
+            if (!["image/jpeg", "image/png"].includes(file.type)) {
+
+                showError(
+                    "Please choose a JPG or PNG image."
+                );
+
+                event.target.value = "";
+
+                return;
+            }
+
+            const url =
+                URL.createObjectURL(file);
+
+            const image =
+                new Image();
+
+            image.onload = () => {
+
+                showNewIdPhoto(
+                    toJpegDataUrl(image, image.naturalWidth, image.naturalHeight)
+                );
+
+                URL.revokeObjectURL(url);
+            };
+
+            image.onerror = () => {
+
+                showError(
+                    "That image could not be opened. Try another photo."
+                );
+
+                URL.revokeObjectURL(url);
+            };
+
+            image.src = url;
         }
     );
 
@@ -2887,70 +3405,7 @@ function initializeFrontDeskScanner() {
                 "replaced"
             ) {
 
-                if (!newIdType?.value) {
-
-                    showError(
-                        "Please select the new ID type."
-                    );
-
-                    newIdType?.focus();
-
-                    return;
-                }
-
-
-                if (
-                    !newIdNumber?.value.trim()
-                ) {
-
-                    showError(
-                        "Please enter the new ID number."
-                    );
-
-                    newIdNumber?.focus();
-
-                    return;
-                }
-
-
-                if (!newIdReason?.value) {
-
-                    showError(
-                        "Please select the reason for the new ID."
-                    );
-
-                    newIdReason?.focus();
-
-                    return;
-                }
-
-
-                if (
-                    newIdReason.value ===
-                        "other" &&
-                    !newIdOtherReason?.value.trim()
-                ) {
-
-                    showError(
-                        "Please explain the reason for the new ID."
-                    );
-
-                    newIdOtherReason?.focus();
-
-                    return;
-                }
-
-
-                if (
-                    !newIdVerified?.checked
-                ) {
-
-                    showError(
-                        "Please physically verify the new ID before completing check-in."
-                    );
-
-                    newIdVerified?.focus();
-
+                if (!validateNewIdFields()) {
                     return;
                 }
 
@@ -3064,6 +3519,12 @@ function initializeFrontDeskScanner() {
                                         "replaced"
                                             ? finalNewIdReason
                                             : null,
+
+                                    new_id_photo:
+                                        idMatchStatus ===
+                                        "replaced"
+                                            ? newIdPhoto
+                                            : null,
                                 }),
                         }
                     );
@@ -3077,6 +3538,17 @@ function initializeFrontDeskScanner() {
                     !response.ok ||
                     !data.success
                 ) {
+
+                    // Server validation: mark the fields it rejected.
+                    const fieldFor = {
+                        new_id_type: newIdType,
+                        new_id_number: newIdNumber,
+                        new_id_reason: newIdReason,
+                    };
+
+                    Object.entries(data.errors ?? {}).forEach(([key, messages]) => {
+                        setFieldError(fieldFor[key], [].concat(messages)[0]);
+                    });
 
                     throw new Error(
                         data.message ||
@@ -3640,6 +4112,31 @@ function initializeFrontDeskScanner() {
         }
 
 
+        const manualIdVerified =
+            document.getElementById("manualIdVerified");
+
+        if (manualIdVerified) {
+            manualIdVerified.checked = false;
+        }
+
+        [
+            "manualRegisteredIdType",
+            "manualRegisteredIdNumber",
+            "manualRegisteredIdStatus",
+        ].forEach((id) => setText(document.getElementById(id), "—"));
+
+        [manualIdType, manualIdNumber, overrideReason, manualIdVerified].forEach(clearFieldError);
+
+        const reasonCount =
+            document.getElementById("overrideReasonCount");
+
+        if (reasonCount) {
+            reasonCount.textContent = "0";
+        }
+
+        hideError();
+
+
         if (manualCheckInBtn) {
 
             manualCheckInBtn.disabled =
@@ -3665,17 +4162,23 @@ function initializeFrontDeskScanner() {
         );
 
 
-        if (selectedVisitorDetails) {
+        setText(
+            document.getElementById("selectedVisitorId"),
+            visitor.visitorId
+                ? `Visitor ID: ${visitor.visitorId}`
+                : "Visitor ID: Not available"
+        );
 
-            const visitorIdText =
-                visitor.visitorId
-                    ? `Visitor ID: ${visitor.visitorId}`
-                    : "Visitor ID: Not available";
+
+        setText(
+            selectedVisitorDetails,
+            `Visiting ${visitor.pdlName} (${visitor.pdlNumber})`
+        );
 
 
-            selectedVisitorDetails.textContent =
-                `${visitorIdText} · Visiting ${visitor.pdlName} (${visitor.pdlNumber})`;
-        }
+        setText(document.getElementById("manualRegisteredIdType"), visitor.registeredIdType);
+        setText(document.getElementById("manualRegisteredIdNumber"), visitor.registeredIdNumber);
+        setText(document.getElementById("manualRegisteredIdStatus"), visitor.registeredIdStatus);
 
 
         if (selectedVisitorSchedule) {
@@ -3993,50 +4496,41 @@ function initializeFrontDeskScanner() {
             }
 
 
+            if (manualIdNumber) {
+                manualIdNumber.value = cleanIdNumber(manualIdNumber.value);
+            }
+
             const idType =
                 manualIdType?.value;
 
-
-            if (!idType) {
-
-                showError(
-                    "Please select the visitor's ID type."
-                );
-
-                manualIdType?.focus();
-
-                return;
-            }
-
-
             const idNumber =
-                manualIdNumber?.value.trim();
-
-
-            if (!idNumber) {
-
-                showError(
-                    "Please enter the visitor's ID number."
-                );
-
-                manualIdNumber?.focus();
-
-                return;
-            }
-
+                manualIdNumber?.value ?? "";
 
             const reason =
-                overrideReason?.value.trim();
+                (overrideReason?.value ?? "").replace(/\s+/g, " ").trim();
 
+            const manualIdVerified =
+                document.getElementById("manualIdVerified");
 
-            if (!reason) {
+            const fieldsOk =
+                checkFields([
+                    [manualIdType, idType ? null : "Select the type of ID the visitor surrendered."],
+                    [manualIdNumber, idNumberProblem(idNumber)],
+                    [
+                        overrideReason,
+                        reason.length < 10
+                            ? "Describe the reason for the manual check-in in at least 10 characters."
+                            : null,
+                    ],
+                    [
+                        manualIdVerified,
+                        manualIdVerified && !manualIdVerified.checked
+                            ? "Confirm that you physically verified the visitor's ID."
+                            : null,
+                    ],
+                ]);
 
-                showError(
-                    "Please provide a reason for the manual override."
-                );
-
-                overrideReason?.focus();
-
+            if (!fieldsOk) {
                 return;
             }
 
@@ -4149,7 +4643,7 @@ function initializeFrontDeskScanner() {
 
 
                 idNumberInput.name =
-                    "new_id_number";
+                    "id_number";
 
 
                 idNumberInput.value =

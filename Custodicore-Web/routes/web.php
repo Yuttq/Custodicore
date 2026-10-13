@@ -679,6 +679,16 @@ Route::prefix('front-desk')
             [VisitorLookupController::class, 'index']
         )->name('visitor-lookup');
 
+        Route::get(
+            '/visitor-lookup/{visitor}',
+            [VisitorLookupController::class, 'show']
+        )->name('visitor-lookup.show');
+
+        Route::get(
+            '/visitor-lookup/{visitor}/ids/{idDocument}/photo',
+            [VisitorLookupController::class, 'idPhoto']
+        )->name('visitor-lookup.id-photo');
+
 
         /*
         |--------------------------------------------------------------------------
