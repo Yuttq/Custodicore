@@ -57,6 +57,8 @@ class UserController extends Controller
             'search' => $search,
             'totalAccounts' => count($all),
             'suffixes' => Sanitizer::SUFFIXES,
+            // False while MAIL_MAILER=log: the confirmation step then warns that nothing will really be emailed.
+            'mailConnected' => ! StaffInvitationService::mailIsLogOnly(),
         ]);
     }
 
@@ -86,6 +88,7 @@ class UserController extends Controller
                 'suffix' => $data['suffix'] ?? null,
                 'position' => $data['role_name'],
                 'contact_number' => $data['contact_number'],
+                'personal_email' => $data['personal_email'],
                 'assigned_facility' => 'BJMP Facility — Main',
             ]);
 
@@ -119,7 +122,8 @@ class UserController extends Controller
                 ->withErrors(['role_name' => 'You cannot change your own role. Ask another administrator.']);
         }
 
-        $emailChanged = $data['email'] !== mb_strtolower($account->email);
+        // A pending officer's link goes to the personal email, so a change to it (or to the sign-in email when there is no personal one) means the old link went astray.
+        $oldRecipient = mb_strtolower($this->invitations->recipientFor($account));
 
         DB::transaction(function () use ($account, $data) {
             $role = Role::where('role_name', $data['role_name'])->firstOrFail();
@@ -133,6 +137,8 @@ class UserController extends Controller
                 'suffix' => $data['suffix'] ?? null,
                 'position' => $data['role_name'],
                 'contact_number' => $data['contact_number'],
+                // Left blank: keep whatever the account already has.
+                'personal_email' => $data['personal_email'] ?? $account->staffProfile?->personal_email,
             ];
 
             if ($account->staffProfile) {
@@ -151,7 +157,9 @@ class UserController extends Controller
 
         // The officer has not set up yet and their address changed: the old
         // link went to the wrong place, so send a fresh one to the new address.
-        if ($account->invitationState() !== null && $emailChanged) {
+        $recipientChanged = mb_strtolower($this->invitations->recipientFor($account)) !== $oldRecipient;
+
+        if ($account->invitationState() !== null && $recipientChanged) {
             $note = ' ' . $this->deliverInvitation($account);
         }
 
@@ -219,19 +227,24 @@ class UserController extends Controller
     }
 
     /**
-     * Sends the setup link (email/SMS) and also flashes it once to the Warden's
-     * next page so it can be copied and handed over in person. The flash is
-     * removed after that single request; the link is never stored in plain text.
+     * Sends the setup link (email/SMS). If the email could not really be delivered,
+     * the link is flashed once to the Warden's next page as a fallback. The flash
+     * is removed after that single request; the link is never stored in plain text.
      */
     private function deliverInvitation(Account $account): string
     {
         $result = $this->invitations->send($account);
 
-        session()->flash('setup_link', [
-            'name' => $account->displayName(),
-            'url' => $result['url'],
-            'hours' => $this->invitations->expireHours(),
-        ]);
+        // When the email really went out, the Warden never needs to see the link.
+        // Only when it did not (mail not connected, or the send failed) is it
+        // shown once so it can be handed over in person.
+        if (empty($result['email_delivered'])) {
+            session()->flash('setup_link', [
+                'name' => $account->displayName(),
+                'url' => $result['url'],
+                'hours' => $this->invitations->expireHours(),
+            ]);
+        }
 
         return StaffInvitationService::describe($result);
     }
@@ -253,7 +266,8 @@ class UserController extends Controller
                                 ->orWhere('middle_name', 'like', $like)
                                 ->orWhere('full_name', 'like', $like)
                                 ->orWhere('employee_number', 'like', $like)
-                                ->orWhere('contact_number', 'like', $like);
+                                ->orWhere('contact_number', 'like', $like)
+                                ->orWhere('personal_email', 'like', $like);
                         });
                 });
             })
@@ -287,6 +301,7 @@ class UserController extends Controller
                     'last_name' => $parts['last'],
                     'suffix' => $profile?->suffix,
                     'contact_number' => $profile?->contact_number,
+                    'personal_email' => $profile?->personal_email,
                     'role_name' => $account->role?->role_name ?? '—',
                     'email' => $account->email,
                     'status' => $account->status,

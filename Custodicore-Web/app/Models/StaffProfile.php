@@ -19,6 +19,7 @@ class StaffProfile extends Model
         'suffix',
         'position',
         'contact_number',
+        'personal_email',
         'assigned_facility',
     ];
 

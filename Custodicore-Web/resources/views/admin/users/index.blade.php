@@ -93,7 +93,12 @@
                                 </div>
                             </td>
                             <td class="py-sm pr-md">{{ $account['role_name'] }}</td>
-                            <td class="py-sm pr-md text-text-secondary">{{ $account['email'] }}</td>
+                            <td class="py-sm pr-md text-text-secondary">
+                                {{ $account['email'] }}
+                                @if ($account['personal_email'])
+                                    <span class="block text-metadata">Link to: {{ $account['personal_email'] }}</span>
+                                @endif
+                            </td>
                             <td class="py-sm pr-md text-text-secondary">{{ $account['contact_number'] ?? '—' }}</td>
                             <td class="py-sm pr-md text-text-secondary">{{ $account['last_login_at'] }}</td>
                             <td class="py-sm pr-md">@include('admin.partials.status-chip', ['status' => $account['display_status']])</td>
@@ -194,7 +199,7 @@
                 </div>
                 <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                     <div>
-                        <label class="cc-label" for="new-email">Email</label>
+                        <label class="cc-label" for="new-email">Official Email <span class="normal-case">(sign-in)</span></label>
                         <input id="new-email" type="email" name="email" value="{{ $isNew ? old('email') : '' }}" required maxlength="100" class="cc-input" placeholder="name@bjmp.gov.ph" />
                     </div>
                     <div>
@@ -202,18 +207,80 @@
                         <input id="new-contact" type="tel" inputmode="tel" name="contact_number" value="{{ $isNew ? old('contact_number') : '' }}" required maxlength="20" class="cc-input" placeholder="0917 123 4567" />
                     </div>
                 </div>
+                <div>
+                    <label class="cc-label" for="new-personal-email">Personal Email <span class="normal-case">(setup link is sent here)</span></label>
+                    <input id="new-personal-email" type="email" name="personal_email" value="{{ $isNew ? old('personal_email') : '' }}" required maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
+                    <p class="mt-xs text-metadata text-text-secondary">The officer's own inbox that they check. The official email above stays their sign-in.</p>
+                </div>
 
                 <p class="rounded-sm bg-background p-sm text-metadata text-text-secondary">
                     No password is set here. After you create the account, a one-time setup link is sent to the officer's
-                    email and mobile number so they choose their own password. The link expires in {{ config('auth.staff_invitation.expire_hours', 72) }} hours.
+                    personal email and mobile number so they choose their own password. The link expires in {{ config('auth.staff_invitation.expire_hours', 72) }} hours.
                 </p>
             </div>
 
-            <div class="mt-lg flex justify-end gap-sm">
+            {{-- Step 1: review. Step 2: the Warden confirms, and only then is the account created and the email sent. --}}
+            <div id="register-actions" class="mt-lg flex justify-end gap-sm">
                 <button type="button" class="cc-btn-secondary" onclick="document.getElementById('new-account-modal').close()">Cancel</button>
-                <button type="submit" class="cc-btn-primary">Create Account &amp; Send Setup Link</button>
+                <button type="button" id="register-review" class="cc-btn-primary">Create Account &amp; Send Setup Link</button>
+            </div>
+
+            <div id="register-confirm" class="mt-lg rounded-sm border border-border bg-background p-md" style="display:none;">
+                <p class="text-card-title">Send the setup link now?</p>
+                <p class="mt-xs text-body">
+                    The account for <strong id="register-confirm-name"></strong> will be created and the one-time setup link will be
+                    emailed to <strong id="register-confirm-email"></strong> right away. They will sign in later with <strong id="register-confirm-login"></strong>. You do not need to send anything yourself.
+                </p>
+                <p class="mt-xs text-metadata text-text-secondary">Check that the personal email is correct and belongs to the officer.</p>
+                @unless ($mailConnected)
+                    <p class="mt-sm rounded-sm border-l-4 border-l-warning bg-warning/5 p-sm text-metadata">
+                        Email sending is not connected yet (mail is in log mode), so nothing will actually be delivered.
+                        After you confirm, you will get the link on screen to copy and give to the officer.
+                    </p>
+                @endunless
+                <div class="mt-md flex justify-end gap-sm">
+                    <button type="button" id="register-back" class="cc-btn-secondary">Back</button>
+                    <button type="submit" class="cc-btn-primary">Yes, create account and send</button>
+                </div>
             </div>
         </form>
+
+        <script>
+            (function () {
+                var dialog = document.getElementById('new-account-modal');
+                var form = dialog.querySelector('form');
+                var actions = document.getElementById('register-actions');
+                var confirmBox = document.getElementById('register-confirm');
+
+                function showConfirm(on) {
+                    actions.style.display = on ? 'none' : '';
+                    confirmBox.style.display = on ? '' : 'none';
+                }
+
+                function review() {
+                    if (!form.reportValidity()) return; // shows the usual "fill this in" hints
+                    var v = function (n) { return (form.elements[n] ? form.elements[n].value : '').trim(); };
+                    var name = [v('first_name'), v('middle_name'), v('last_name'), v('suffix')].filter(Boolean).join(' ');
+                    document.getElementById('register-confirm-name').textContent = name;
+                    document.getElementById('register-confirm-email').textContent = v('personal_email').toLowerCase();
+                    document.getElementById('register-confirm-login').textContent = v('email').toLowerCase();
+                    showConfirm(true);
+                }
+
+                document.getElementById('register-review').addEventListener('click', review);
+                document.getElementById('register-back').addEventListener('click', function () { showConfirm(false); });
+
+                // Pressing Enter in a field must not skip the confirmation step.
+                form.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') {
+                        e.preventDefault();
+                        if (confirmBox.style.display === 'none') review();
+                    }
+                });
+
+                dialog.addEventListener('close', function () { showConfirm(false); });
+            })();
+        </script>
     </dialog>
 
     {{-- "Edit" — the admin's only way to change existing data, when the
@@ -282,7 +349,7 @@
                     </div>
                     <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                         <div>
-                            <label class="cc-label">Email</label>
+                            <label class="cc-label">Official Email <span class="normal-case">(sign-in)</span></label>
                             <input type="email" name="email" value="{{ $mine ? old('email') : $account['email'] }}" required maxlength="100" class="cc-input" />
                         </div>
                         <div>
@@ -290,8 +357,12 @@
                             <input type="tel" inputmode="tel" name="contact_number" value="{{ $mine ? old('contact_number') : $account['contact_number'] }}" required maxlength="20" class="cc-input" placeholder="0917 123 4567" />
                         </div>
                     </div>
+                    <div>
+                        <label class="cc-label">Personal Email <span class="normal-case">(setup link is sent here)</span></label>
+                        <input type="email" name="personal_email" value="{{ $mine ? old('personal_email') : $account['personal_email'] }}" maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
+                    </div>
                     @if ($account['invite'] !== null)
-                        <p class="text-metadata text-text-secondary">This officer has not set up their account yet. If you change the email, a new setup link is sent to the new address.</p>
+                        <p class="text-metadata text-text-secondary">This officer has not set up their account yet. If you change the personal email, a new setup link is sent to the new address.</p>
                     @endif
                 </div>
 

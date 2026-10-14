@@ -197,6 +197,14 @@ Route::prefix('admin')
         Route::get('/pdls', [PdlController::class, 'index'])
             ->name('pdls.index');
 
+        // Read-only profile / legal records / disciplinary records of one PDL.
+        Route::get('/pdls/{pdl}', [PdlController::class, 'show'])
+            ->name('pdls.show');
+
+        // The PDL's photo is private storage, so the Warden gets their own route to it.
+        Route::get('/pdls/{pdl}/photo', [PdlController::class, 'photo'])
+            ->name('pdls.photo');
+
 
         /*
         |--------------------------------------------------------------------------
@@ -206,6 +214,10 @@ Route::prefix('admin')
 
         Route::get('/visitors', [VisitorController::class, 'index'])
             ->name('visitors.index');
+
+        // Read-only profile / PDL relationships / visit history / flags of one visitor.
+        Route::get('/visitors/{visitor}', [VisitorController::class, 'show'])
+            ->name('visitors.show');
 
 
         /*

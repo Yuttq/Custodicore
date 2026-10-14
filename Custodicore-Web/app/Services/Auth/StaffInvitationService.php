@@ -51,7 +51,9 @@ class StaffInvitationService
     /**
      * Issues a fresh link (replacing any older one) and delivers it.
      *
-     * @return array{email: bool, sms: string, url: string} sms is SmsSender::SENT|LOGGED|FAILED or 'none' (no number on file)
+     * @return array{email: bool, email_delivered: bool, email_problem: ?string, email_to: string, sms: string, url: string}
+     *         `email` = the mailer accepted it; `email_delivered` = it really left for the officer's inbox
+     *         (false in log mode, where nothing is sent). `sms` is SmsSender::SENT|LOGGED|FAILED or 'none'.
      */
     public function send(Account $account): array
     {
@@ -68,14 +70,25 @@ class StaffInvitationService
         $url = route('staff-setup.show', ['token' => $token]);
         $hours = $this->expireHours();
 
+        // The officer's own inbox when one was recorded; older accounts fall back to the sign-in email.
+        $sendTo = $this->recipientFor($account);
+
         $emailSent = true;
+        $emailProblem = null;
         try {
-            Mail::to($account->email)->send(new StaffAccountInvitation($account, $url, $hours));
+            Mail::to($sendTo)->send(new StaffAccountInvitation($account, $url, $hours));
         } catch (\Throwable $e) {
-            // Exception class only — the message may contain the link.
-            Log::warning('Staff setup email could not be sent for account #' . $account->account_id . ' (' . $e::class . ')');
             $emailSent = false;
+            $emailProblem = self::explainMailFailure($e);
+
+            // Logged without any link, so a log file never holds a usable setup link for a failed send.
+            $detail = preg_replace('#https?://\S+#i', '[url]', Str::limit($e->getMessage(), 300));
+            Log::warning('Staff setup email could not be sent for account #' . $account->account_id
+                . ' (' . $e::class . '): ' . $detail);
         }
+
+        // 'log' / 'array' mailers accept the message but never deliver it.
+        $reallySent = $emailSent && ! self::mailIsLogOnly();
 
         $smsResult = 'none';
         $contact = $account->staffProfile?->contact_number;
@@ -87,16 +100,61 @@ class StaffInvitationService
             );
         }
 
-        return ['email' => $emailSent, 'sms' => $smsResult, 'url' => $url];
+        return [
+            'email' => $emailSent,
+            'email_delivered' => $reallySent,
+            'email_problem' => $emailProblem,
+            'email_to' => $sendTo,
+            'sms' => $smsResult,
+            'url' => $url,
+        ];
+    }
+
+    /** Where the setup link is emailed: the personal email if recorded, otherwise the sign-in email. */
+    public function recipientFor(Account $account): string
+    {
+        $account->loadMissing('staffProfile');
+
+        return $account->staffProfile?->personal_email ?: $account->email;
+    }
+
+    /** True while MAIL_MAILER is log/array: no email account is connected, nothing leaves the server. */
+    public static function mailIsLogOnly(): bool
+    {
+        return in_array(config('mail.default'), ['log', 'array'], true);
+    }
+
+    /** A plain-English reason for a failed send. Never repeats the raw exception text. */
+    private static function explainMailFailure(\Throwable $e): string
+    {
+        $m = strtolower($e->getMessage());
+
+        return match (true) {
+            str_contains($m, '535') || str_contains($m, 'authenticat') || str_contains($m, 'username and password')
+                => 'the mail server rejected the login. Check MAIL_USERNAME and MAIL_PASSWORD (for Gmail, use an App Password)',
+            str_contains($m, 'could not be established') || str_contains($m, 'timed out') || str_contains($m, 'getaddrinfo')
+                || str_contains($m, 'connection refused') || str_contains($m, 'name or service')
+                => 'the mail server could not be reached. Check MAIL_HOST, MAIL_PORT and the internet connection',
+            str_contains($m, '550') || str_contains($m, '553') || str_contains($m, '554') || str_contains($m, 'recipient')
+                => 'the mail server refused the recipient address',
+            default => 'an unexpected mail error happened. Details are in storage/logs/laravel.log',
+        };
     }
 
     /** Plain-English delivery summary for the Warden's confirmation message. */
     public static function describe(array $result): string
     {
-        $email = $result['email'] ? 'emailed' : 'email FAILED';
+        $to = $result['email_to'] ?? 'the officer';
+
+        $email = match (true) {
+            ! empty($result['email_delivered']) => "emailed to {$to}",
+            ! empty($result['email']) => 'NOT emailed: no email account is connected yet (mail is in log mode), so copy the link below and give it to the officer',
+            default => 'email FAILED: ' . ($result['email_problem'] ?? 'unknown problem') . '. Copy the link below and give it to the officer',
+        };
+
         $sms = match ($result['sms']) {
             SmsSender::SENT => 'texted',
-            SmsSender::LOGGED => 'SMS written to the log only (no SMS provider configured)',
+            SmsSender::LOGGED => 'SMS not sent (no SMS provider configured)',
             SmsSender::FAILED => 'SMS FAILED',
             default => 'no mobile number on file',
         };
