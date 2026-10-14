@@ -54,15 +54,11 @@
           <option value="other" {{ old('gender') === 'other' ? 'selected' : '' }}>Other</option>
         </select>
       </div>
-      <div class="field-m">
-        {{-- Drives the visiting-day rule (drug_related -> Thu/Sat, non_drug_related -> Fri/Sun) --}}
-        <label>Classification</label>
-        <select name="classification" required>
-          <option value="drug_related" {{ old('classification') === 'drug_related' ? 'selected' : '' }}>Drug-related</option>
-          <option value="non_drug_related" {{ old('classification') === 'non_drug_related' ? 'selected' : '' }}>Non-drug-related</option>
-        </select>
-      </div>
     </div>
+
+    {{-- The case decides the classification (drug_related -> Thu/Sat visits, non_drug_related -> Fri/Sun). --}}
+    <p class="section-title" style="margin-top:26px;"><span class="icon">⚖️</span> Case Details</p>
+    @include('pdl.partials.case-fields', ['showClassification' => true])
 
     <p class="section-title" style="margin-top:26px;"><span class="icon">🏢</span> Custody Details</p>
     <div class="row cols-2">

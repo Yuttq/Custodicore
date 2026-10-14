@@ -44,6 +44,8 @@ class RecordOfficerValidationTest extends TestCase
             'admission_date' => now()->subMonth()->toDateString(),
             'cell_block' => 'Dorm 1',
             'photo' => $this->fakePhoto(),
+            'case_number' => 'CR-2026-0001',
+            'offense_code' => 'theft',
         ], $overrides);
     }
 
@@ -190,9 +192,9 @@ class RecordOfficerValidationTest extends TestCase
     public function test_legal_record_case_number_is_unique_per_pdl(): void
     {
         $url = "/pdls/{$this->pdl->pdl_id}/legal-records";
-        $this->post($url, ['case_number' => 'CR-2024-001', 'offense' => 'Theft'])->assertSessionHasNoErrors();
-        $this->post($url, ['case_number' => 'CR-2024-001', 'offense' => 'Theft'])->assertSessionHasErrors('case_number');
-        $this->post($url, ['case_number' => 'CR#2024', 'offense' => 'Theft'])->assertSessionHasErrors('case_number');
+        $this->post($url, ['case_number' => 'CR-2024-001', 'offense_code' => 'theft'])->assertSessionHasNoErrors();
+        $this->post($url, ['case_number' => 'CR-2024-001', 'offense_code' => 'theft'])->assertSessionHasErrors('case_number');
+        $this->post($url, ['case_number' => 'CR#2024', 'offense_code' => 'theft'])->assertSessionHasErrors('case_number');
     }
 
     public function test_disciplinary_incident_must_be_during_custody(): void
@@ -263,7 +265,7 @@ class RecordOfficerValidationTest extends TestCase
         // created_at on these tables used to come back as a plain string and
         // crash ->format() in the views.
         $this->post("/visitors/{$this->visitor->visitor_id}/flags", ['flag_type' => 'rule_violation', 'description' => 'Brought a phone into the visiting area.']);
-        $this->post("/pdls/{$this->pdl->pdl_id}/legal-records", ['case_number' => 'CR-2024-001', 'offense' => 'Theft']);
+        $this->post("/pdls/{$this->pdl->pdl_id}/legal-records", ['case_number' => 'CR-2024-001', 'offense_code' => 'theft']);
 
         $this->get("/visitors/{$this->visitor->visitor_id}")->assertOk()->assertSee(now()->format('M d, Y'));
         $this->get("/pdls/{$this->pdl->pdl_id}")->assertOk()->assertSee('CR-2024-001');

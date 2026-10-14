@@ -10,6 +10,7 @@ use App\Models\PdlRestriction;
 use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Support\Offenses;
 use App\Support\Sanitizer;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -78,6 +79,7 @@ class PdlController extends Controller
         $query = Sanitizer::text((string) $request->input('q', '')) ?? '';
         $status = trim((string) $request->input('status', ''));
         $cellBlock = trim((string) $request->input('cell', ''));
+        $offense = in_array($request->input('offense'), Offenses::codes(), true) ? $request->input('offense') : '';
 
         $pdls = Pdl::query()
             ->when($query !== '', function ($q) use ($query) {
@@ -93,28 +95,80 @@ class PdlController extends Controller
             })
             ->when($status !== '', fn ($q) => $q->where('custody_status', $status))
             ->when($cellBlock !== '', fn ($q) => $q->where('cell_block', $cellBlock))
+            ->when($offense !== '', fn ($q) => $q->whereHas('legalRecords', fn ($r) => $r->where('offense_code', $offense)))
+            ->with('legalRecords')
             ->orderBy('admission_date', 'desc')
             ->paginate(25)
             ->withQueryString();
 
         $cellBlocks = CellBlock::orderBy('name')->pluck('name');
 
+        // Population = PDLs currently in custody. Released, transferred and
+        // deceased PDLs drop out of it (they keep their own counts below).
         $stats = [
-            'total_population' => Pdl::count(),
-            'currently_active' => Pdl::where('custody_status', 'active')->count(),
+            'total_population' => Pdl::where('custody_status', 'active')->count(),
+            'transferred' => Pdl::where('custody_status', 'transferred')->count(),
             'deceased' => Pdl::where('custody_status', 'deceased')->count(),
             'released_ytd' => Pdl::where('custody_status', 'released')
                 ->whereYear('updated_at', now()->year)
                 ->count(),
         ];
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats'));
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense'));
     }
 
     // -----------------------------------------------------------------
     // INPUT CLEANING (shared by register and edit; the duplicate-person
     // check lives in validateProfile())
     // -----------------------------------------------------------------
+
+    private const CASE_MESSAGES = [
+        'case_number.required' => 'Enter the case number.',
+        'case_number.regex' => 'Case number may only contain letters, numbers, spaces, dots, slashes and dashes.',
+        'case_number.unique' => 'This case number is already on file for this PDL.',
+        'offense_code.required' => 'Choose the offense from the list (or Other).',
+        'offense_code.in' => 'Choose the offense from the list (or Other).',
+        'offense_other.required_if' => 'Type the offense when "Other" is chosen.',
+    ];
+
+    /** Case number + offense (picked from App\Support\Offenses, or Other with own wording) + court. */
+    private function caseRules(?Pdl $pdl = null): array
+    {
+        $caseNumber = ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\/\-]*$/'];
+        if ($pdl) {
+            // The same case can't be filed twice on one PDL.
+            $caseNumber[] = Rule::unique('pdl_legal_records', 'case_number')->where('pdl_id', $pdl->pdl_id);
+        }
+
+        return [
+            'case_number' => $caseNumber,
+            'offense_code' => ['required', Rule::in(Offenses::codes())],
+            'offense_other' => ['nullable', 'required_if:offense_code,' . Offenses::OTHER, 'string', 'min:3', 'max:255'],
+            'court' => ['nullable', 'string', 'max:150'],
+        ];
+    }
+
+    private function cleanCaseInput(Request $request): void
+    {
+        $request->merge([
+            'case_number' => mb_strtoupper((string) Sanitizer::text($request->input('case_number'))) ?: null,
+            'offense_other' => Sanitizer::text($request->input('offense_other')),
+            'court' => Sanitizer::text($request->input('court')),
+        ]);
+    }
+
+    /** Validated case input → pdl_legal_records columns. */
+    private function caseAttributes(array $validated): array
+    {
+        $code = $validated['offense_code'];
+
+        return [
+            'case_number' => $validated['case_number'],
+            'offense_code' => $code,
+            'offense' => $code === Offenses::OTHER ? $validated['offense_other'] : Offenses::label($code),
+            'court' => $validated['court'] ?? null,
+        ];
+    }
 
     /** Cleans names/alias/cell before validation so "JUAN  dela cruz " is stored as "Juan Dela Cruz". */
     private function cleanPdlInput(Request $request): void
@@ -142,22 +196,39 @@ class PdlController extends Controller
     {
         $this->cleanPdlInput($request);
 
+        $this->cleanCaseInput($request);
+
         $validated = $this->validateProfile($request, [
             'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($request->input('gender'))],
             'photo' => ['required', ...self::PHOTO_RULES],
+            // The case they're detained for; it becomes their first legal record.
+            ...$this->caseRules(),
         ]);
-        unset($validated['photo']);
+        $case = $this->caseAttributes($validated);
+        $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court']));
 
         $photoPath = $request->file('photo')->store('pdl-photos', 'local');
 
         try {
-            $pdl = Pdl::create([
-                ...$validated,
-                'photo_path' => $photoPath,
-                'pdl_number' => 'PDL-' . now()->format('Y') . '-' . str_pad((string) (Pdl::max('pdl_id') + 1), 5, '0', STR_PAD_LEFT),
-                'custody_status' => 'active',
-                'registered_by' => $this->currentStaffId(),
-            ]);
+            $pdl = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $photoPath, $case) {
+                $pdl = Pdl::create([
+                    ...$validated,
+                    // Visiting-day group follows the offense (RA 9165 = drug-related).
+                    'classification' => Offenses::isDrug($case['offense_code']) ? 'drug_related' : 'non_drug_related',
+                    'photo_path' => $photoPath,
+                    'pdl_number' => 'PDL-' . now()->format('Y') . '-' . str_pad((string) (Pdl::max('pdl_id') + 1), 5, '0', STR_PAD_LEFT),
+                    'custody_status' => 'active',
+                    'registered_by' => $this->currentStaffId(),
+                ]);
+
+                PdlLegalRecord::create([
+                    ...$case,
+                    'pdl_id' => $pdl->pdl_id,
+                    'recorded_by' => $this->currentStaffId(),
+                ]);
+
+                return $pdl;
+            });
         } catch (\Throwable $e) {
             Storage::disk('local')->delete($photoPath); // don't leave an orphaned file behind
             Log::error('PDL registration failed: ' . $e->getMessage());
@@ -324,35 +395,29 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function storeLegalRecord(Request $request, Pdl $pdl)
     {
+        $this->cleanCaseInput($request);
         $request->merge([
-            'case_number' => mb_strtoupper((string) Sanitizer::text($request->input('case_number'))),
-            'offense' => Sanitizer::text($request->input('offense')),
-            'court' => Sanitizer::text($request->input('court')),
             'case_status' => Sanitizer::text($request->input('case_status')),
             'remarks' => Sanitizer::paragraph($request->input('remarks')),
         ]);
 
         $validated = $request->validate([
-            'case_number' => [
-                'required', 'string', 'max:50', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\/\-]*$/',
-                // The same case can't be filed twice on one PDL.
-                Rule::unique('pdl_legal_records', 'case_number')->where('pdl_id', $pdl->pdl_id),
-            ],
-            'offense' => ['required', 'string', 'min:3', 'max:255'],
-            'court' => ['nullable', 'string', 'max:150'],
+            ...$this->caseRules($pdl),
             'case_status' => ['nullable', 'string', 'max:100'],
             'remarks' => ['nullable', 'string', 'max:2000'],
-        ], [
-            'case_number.regex' => 'Case number may only contain letters, numbers, spaces, dots, slashes and dashes.',
-            'case_number.unique' => 'This case number is already on file for this PDL.',
-        ]);
+        ], self::CASE_MESSAGES);
+
+        $previousClassification = $pdl->classification;
 
         try {
             $record = PdlLegalRecord::create([
-                ...$validated,
+                ...$this->caseAttributes($validated),
+                'case_status' => $validated['case_status'] ?? null,
+                'remarks' => $validated['remarks'] ?? null,
                 'pdl_id' => $pdl->pdl_id,
                 'recorded_by' => $this->currentStaffId(),
             ]);
+            $classificationChanged = $pdl->refreshClassification();
         } catch (\Throwable $e) {
             Log::error('Legal record creation failed: ' . $e->getMessage());
             return redirect()
@@ -363,6 +428,15 @@ class PdlController extends Controller
 
         $this->logAudit('create', 'pdl_legal_records', $record->legal_record_id,
             "Added legal record {$record->case_number} ({$record->offense}) for {$pdl->full_name}");
+
+        if ($classificationChanged) {
+            $this->logAudit('update', 'pdl_profiles', $pdl->pdl_id,
+                "Classification of {$pdl->full_name} changed from " . str_replace('_', '-', $previousClassification)
+                . ' to ' . str_replace('_', '-', $pdl->classification) . " because of case {$record->case_number}");
+
+            return redirect()->route('pdl.show', $pdl->pdl_id)->with('success',
+                "Legal record added. {$pdl->full_name} is now classified as {$pdl->classificationLabel()}, so their visiting days have changed.");
+        }
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Legal record added.');
     }
@@ -513,10 +587,10 @@ class PdlController extends Controller
             'alias' => ['nullable', 'string', 'max:150'],
             'date_of_birth' => ['required', 'date', 'before:today', 'after:1900-01-01'],
             'gender' => ['required', 'in:male,female,other'],
-            'classification' => ['required', 'in:drug_related,non_drug_related'],
             'admission_date' => ['required', 'date', 'before_or_equal:today', 'after:date_of_birth'],
             ...$extra,
         ], [
+            ...self::CASE_MESSAGES,
             'first_name.regex' => 'First name may only contain letters, spaces, dots, apostrophes and dashes.',
             'middle_name.regex' => 'Middle name may only contain letters, spaces, dots, apostrophes and dashes.',
             'last_name.regex' => 'Last name may only contain letters, spaces, dots, apostrophes and dashes.',

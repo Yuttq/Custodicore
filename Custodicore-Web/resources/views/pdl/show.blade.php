@@ -10,9 +10,9 @@
 
   // Open the edit form again after a failed save (wrong password, invalid
   // field), and the matching "Add …" form after its own validation error.
-  $profileFields = ['first_name', 'middle_name', 'last_name', 'alias', 'gender', 'date_of_birth', 'classification', 'admission_date', 'cell_block', 'custody_status', 'photo', 'current_password'];
+  $profileFields = ['first_name', 'middle_name', 'last_name', 'alias', 'gender', 'date_of_birth', 'admission_date', 'cell_block', 'custody_status', 'photo', 'current_password'];
   $editing = $errors->hasAny($profileFields);
-  $openLegal = $errors->hasAny(['case_number', 'offense', 'court', 'case_status', 'remarks']);
+  $openLegal = $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'remarks']);
   $openDisciplinary = $errors->hasAny(['incident_date', 'description', 'action_taken']);
   $openRestriction = $errors->hasAny(['restriction_type', 'start_date', 'end_date', 'reason']);
 @endphp
@@ -50,6 +50,7 @@
 
   <dl class="pdl-facts">
     <div><dt>Cell/Block</dt><dd>{{ $pdl->cell_block ?? 'Not assigned' }}</dd></div>
+    <div><dt>Offense</dt><dd>{{ $pdl->primaryOffense() ?? 'No case on file' }}@if ($pdl->legalRecords->count() > 1) <span class="muted-cell">+{{ $pdl->legalRecords->count() - 1 }} more</span>@endif</dd></div>
     <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }}</dd></div>
     <div><dt>Visiting Days</dt><dd>{{ $visitingDays ?: 'No schedule set' }}</dd></div>
     <div>
@@ -84,7 +85,7 @@
     <div><dt>Alias</dt><dd>{{ $pdl->alias ?: '—' }}</dd></div>
     <div><dt>Gender</dt><dd>{{ ucfirst($pdl->gender ?? '—') }}</dd></div>
     <div><dt>Date of Birth</dt><dd>{{ $pdl->date_of_birth?->format('M j, Y') ?? '—' }}</dd></div>
-    <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }}</dd></div>
+    <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }} <span class="muted-cell">(from offense)</span></dd></div>
     <div><dt>Admission Date</dt><dd>{{ $pdl->admission_date?->format('M j, Y') ?? '—' }}</dd></div>
     <div><dt>Cell/Block</dt><dd>{{ $pdl->cell_block ?? 'Not assigned' }}</dd></div>
     <div><dt>Custody Status</dt><dd>{{ $statusLabels[$pdl->custody_status] ?? ucfirst($pdl->custody_status) }}</dd></div>
@@ -130,13 +131,11 @@
     <p class="section-title"><span class="icon">🏢</span> Custody Details</p>
     <div class="row cols-3">
       <div class="field-m">
+        {{-- Drives the visiting-day rule (drug_related -> Thu/Sat, non_drug_related -> Fri/Sun).
+             Set from the PDL's cases (Pdl::refreshClassification), not edited here. --}}
         <label>Classification</label>
-        {{-- Not free text — it drives the visiting-day rule
-             (drug_related -> Thu/Sat, non_drug_related -> Fri/Sun). --}}
-        <select name="classification">
-          <option value="drug_related" {{ old('classification', $pdl->classification) === 'drug_related' ? 'selected' : '' }}>Drug-related</option>
-          <option value="non_drug_related" {{ old('classification', $pdl->classification) === 'non_drug_related' ? 'selected' : '' }}>Non-drug-related</option>
-        </select>
+        <div class="readonly-field">{{ $classificationLabels[$pdl->classification] ?? '—' }}</div>
+        <p class="field-hint">Set automatically from the offense. Add a case under Legal Records to change it.</p>
       </div>
       <div class="field-m"><label>Admission Date</label><input type="date" name="admission_date" value="{{ old('admission_date', optional($pdl->admission_date)->format('Y-m-d')) }}" required max="{{ now()->toDateString() }}"></div>
       <div class="field-m">
@@ -242,7 +241,7 @@
         @foreach ($pdl->legalRecords as $record)
         <tr>
           <td><strong>{{ $record->case_number }}</strong></td>
-          <td>{{ $record->offense }}</td>
+          <td>{{ $record->offense }}@if ($record->isDrugRelated()) <span class="pill drug-pill">RA 9165</span>@endif</td>
           <td class="muted-cell">{{ $record->court ?? '—' }}</td>
           <td class="muted-cell">{{ $record->case_status ?? '—' }}</td>
           <td class="muted-cell">{{ $record->remarks ?? '—' }}</td>
@@ -258,11 +257,7 @@
     <form method="POST" action="{{ route('pdl.legal-records.store', $pdl->pdl_id) }}" style="margin-top:14px;"
           data-confirm="Add this legal record to {{ $pdl->full_name }}'s file?" data-confirm-title="Add legal record" data-confirm-ok="Add">
       @csrf
-      <div class="row cols-3">
-        <div class="field-m"><label>Case Number</label><input type="text" name="case_number" value="{{ old('case_number') }}" required maxlength="50" pattern="[A-Za-z0-9][A-Za-z0-9 .\/\-]*" title="Letters, numbers, spaces, dots, slashes and dashes only"></div>
-        <div class="field-m"><label>Offense</label><input type="text" name="offense" value="{{ old('offense') }}" required minlength="3" maxlength="255"></div>
-        <div class="field-m"><label>Court</label><input type="text" name="court" value="{{ old('court') }}" maxlength="150"></div>
-      </div>
+      @include('pdl.partials.case-fields')
       <div class="row cols-2">
         <div class="field-m"><label>Case Status</label><input type="text" name="case_status" value="{{ old('case_status') }}" maxlength="100" placeholder="e.g. Pending, Dismissed, Convicted"></div>
         <div class="field-m"><label>Remarks</label><input type="text" name="remarks" value="{{ old('remarks') }}" maxlength="2000"></div>

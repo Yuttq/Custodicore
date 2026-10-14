@@ -38,7 +38,7 @@
       <option value="" {{ $status === '' ? 'selected' : '' }}>All Statuses</option>
       <option value="pending" {{ $status === 'pending' ? 'selected' : '' }}>Pending</option>
       <option value="verified" {{ $status === 'verified' ? 'selected' : '' }}>Verified</option>
-      <option value="rejected" {{ $status === 'rejected' ? 'selected' : '' }}>Rejected</option>
+      <option value="rejected" {{ $status === 'rejected' ? 'selected' : '' }}>Returned</option>
     </select>
   </div>
   <div class="field">
@@ -66,7 +66,7 @@
           <td class="muted-cell">{{ $visitor->contact_number }}</td>
           <td>
             <span class="badge {{ $visitor->verification_status === 'verified' ? 'active' : ($visitor->verification_status === 'rejected' ? 'released' : 'transferred') }}">
-              <span class="dot"></span>{{ strtoupper($visitor->verification_status) }}
+              <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$visitor->verification_status] ?? strtoupper($visitor->verification_status) }}
             </span>
           </td>
           <td class="muted-cell">{{ $visitor->id_documents_count }}</td>

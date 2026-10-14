@@ -39,6 +39,8 @@ class CellBlockAssignmentTest extends TestCase
             'classification' => 'drug_related',
             'admission_date' => '2026-10-01',
             'photo' => $this->fakePhoto(),
+            'case_number' => 'CR-2026-0001',
+            'offense_code' => 'theft',
         ], $overrides);
     }
 

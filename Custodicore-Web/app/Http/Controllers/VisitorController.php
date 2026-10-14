@@ -105,7 +105,7 @@ class VisitorController extends Controller
         // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
         $relatablePdls = Pdl::whereNotIn('pdl_id', $visitor->relationships->pluck('pdl_id'))
             ->orderBy('full_name')
-            ->get(['pdl_id', 'pdl_number', 'full_name', 'custody_status']);
+            ->get(['pdl_id', 'pdl_number', 'full_name', 'alias', 'custody_status', 'photo_path']);
 
         $pendingVisitRequests = $this->pendingVisitRequests()
             ->where('visit_requests.visitor_id', $visitor->visitor_id)
@@ -189,13 +189,13 @@ class VisitorController extends Controller
         $data = $request->validate([
             'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
         ], [
-            'rejection_reason.required' => 'Tell the visitor why their account was not approved.',
+            'rejection_reason.required' => 'Tell the visitor what to fix before their account can be approved.',
             'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
         ]);
         $reason = trim((string) $data['rejection_reason']);
 
         if ($visitor->verification_status === 'rejected') {
-            return back()->with('error', 'This visitor is already rejected.');
+            return back()->with('error', 'This account has already been returned to the visitor.');
         }
 
         try {
@@ -207,15 +207,15 @@ class VisitorController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Visitor rejection failed: ' . $e->getMessage());
-            return back()->with('error', 'Could not reject this visitor. ' . $e->getMessage());
+            return back()->with('error', 'Could not return this account. ' . $e->getMessage());
         }
 
         Notification::notify(
             $visitor->account_id,
             'account_rejected',
-            'Account Not Approved',
+            'Account Returned for Correction',
             \Illuminate\Support\Str::limit(
-                'Your submitted information and documents were not approved.' . ($reason ? " Reason: {$reason}" : ' Please contact facility staff for details.'),
+                'Your account was returned so you can correct your information or documents.' . ($reason ? " What to fix: {$reason}" : ' Please contact facility staff for details.'),
                 500
             ),
             'visitor_profiles',
@@ -223,9 +223,9 @@ class VisitorController extends Controller
         );
 
         $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id,
-            "Rejected visitor account: {$visitor->full_name}");
+            "Returned visitor account to {$visitor->full_name} for correction: {$reason}");
 
-        return back()->with('success', 'Visitor rejected. The visitor has been notified.');
+        return back()->with('success', 'Account returned. The visitor has been notified of what to fix.');
     }
 
     /** The signed-in staff member's profile, else the existing stand-in. */
@@ -299,6 +299,45 @@ class VisitorController extends Controller
     // -----------------------------------------------------------------
     // RELATIONSHIP VERIFICATION — verify or reject a visitor↔PDL relationship
     // -----------------------------------------------------------------
+    // Search box on the "Add PDL Relationship" form: PDLs this visitor isn't
+    // related to yet, matched by name, alias, PDL number or ID.
+    public function searchRelatablePdls(Request $request, VisitorProfile $visitor)
+    {
+        $q = \App\Support\Sanitizer::text((string) $request->query('q', '')) ?? '';
+        if (mb_strlen($q) < 1) {
+            return response()->json(['results' => []]);
+        }
+
+        $like = \App\Support\Sanitizer::like($q);
+        $pdls = Pdl::whereNotIn('pdl_id', $visitor->relationships()->pluck('pdl_id'))
+            ->where(function ($w) use ($q, $like) {
+                $w->where('full_name', 'like', $like)
+                    ->orWhere('alias', 'like', $like)
+                    ->orWhere('pdl_number', 'like', $like);
+                if (ctype_digit($q)) {
+                    $w->orWhere('pdl_id', (int) $q);
+                }
+            })
+            // Exact number/ID matches first, then PDLs in custody, then by name.
+            ->orderByRaw('CASE WHEN pdl_number = ? OR pdl_id = ? THEN 0 ELSE 1 END', [$q, ctype_digit($q) ? (int) $q : 0])
+            ->orderByRaw("CASE WHEN custody_status = 'active' THEN 0 ELSE 1 END")
+            ->orderBy('full_name')
+            ->limit(8)
+            ->get(['pdl_id', 'pdl_number', 'full_name', 'alias', 'custody_status', 'photo_path']);
+
+        return response()->json([
+            'results' => $pdls->map(fn (Pdl $p) => [
+                'id' => $p->pdl_id,
+                'number' => $p->pdl_number,
+                'name' => $p->full_name,
+                'alias' => $p->alias,
+                'status' => $p->custody_status,
+                'photo' => $p->photoUrl(),
+                'initials' => $p->initials(),
+            ])->values(),
+        ]);
+    }
+
     // Staff register the relationship as pending; verifying it is a separate
     // step (verifyRelationship below).
     public function storeRelationship(Request $request, VisitorProfile $visitor)

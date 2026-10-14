@@ -469,3 +469,19 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .log-dot.is-bad{background:var(--red);}
 .log-sub{font-size:12px;color:var(--muted);margin-top:2px;padding-left:17px;}
 @media (max-width: 900px){ .log-filters{grid-template-columns:1fr 1fr;} .log-row{grid-template-columns:1fr;gap:4px;} }
+
+/* ===================== PDL SEARCH (Add PDL Relationship) ===================== */
+.pdl-search-box{position:relative;}
+.pdl-search-results{position:absolute;z-index:20;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.12);max-height:320px;overflow-y:auto;}
+.pdl-search-results li[role="option"]{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer;}
+.pdl-search-results li[role="option"] > div:nth-child(2){flex:1;min-width:0;}
+.pdl-search-results li.is-active{background:var(--teal-bg);}
+.pdl-search-name{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pdl-search-empty{padding:10px;font-size:12.5px;color:var(--muted);}
+
+/* ===================== OFFENSE / CLASSIFICATION ===================== */
+.classification-preview{margin:-4px 0 16px;padding:10px 14px;border-radius:10px;background:var(--blue-bg);color:var(--text);font-size:13px;}
+.classification-preview.is-drug{background:var(--amber-bg);}
+.readonly-field{padding:10px 12px;border:1px dashed var(--border);border-radius:12px;background:#fafbfc;font-size:13px;font-weight:600;}
+.pill.drug-pill{margin-left:6px;background:var(--amber-bg);color:var(--amber-text);}
+.filters:has(#offense){grid-template-columns:2fr 1.1fr 1.1fr 1.3fr auto auto;}

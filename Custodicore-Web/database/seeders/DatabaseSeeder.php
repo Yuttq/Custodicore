@@ -9,6 +9,7 @@ use App\Models\EligibilityAssessment;
 use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Pdl;
+use App\Models\PdlLegalRecord;
 use App\Models\PdlRestriction;
 use App\Models\QrCode;
 use App\Models\Role;
@@ -22,6 +23,7 @@ use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
+use App\Support\Offenses;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -326,6 +328,28 @@ class DatabaseSeeder extends Seeder
                     'admission_date' => $admitted,
                     'custody_status' => $status,
                     'registered_by' => $registrar->staff_id,
+                ]
+            );
+        }
+
+        // Each PDL's case; the offense decides the classification above
+        // (RA 9165 = drug-related).
+        $cases = [
+            'PDL-0032' => ['CR-2024-0110', 'theft'],
+            'PDL-0014' => ['CR-2023-0871', 'ra9165_possession'],
+            'PDL-0055' => ['CR-2024-0342', 'ra9165_sale'],
+            'PDL-0091' => ['CR-2022-0456', 'estafa'],
+            'PDL-0102' => ['CR-2024-0518', 'physical_injuries'],
+        ];
+        foreach ($cases as $number => [$caseNumber, $code]) {
+            PdlLegalRecord::firstOrCreate(
+                ['pdl_id' => $pdls[$number]->pdl_id, 'case_number' => $caseNumber],
+                [
+                    'offense_code' => $code,
+                    'offense' => Offenses::label($code),
+                    'court' => 'RTC Branch 12',
+                    'case_status' => 'Pending trial',
+                    'recorded_by' => $registrar->staff_id,
                 ]
             );
         }

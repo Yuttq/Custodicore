@@ -34,7 +34,7 @@
     <div>
       <div class="stat-label">Review Status</div>
       <span class="badge {{ $visitor->verification_status === 'verified' ? 'active' : ($visitor->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
-        <span class="dot"></span>{{ $visitor->verification_status === 'verified' ? 'APPROVED' : strtoupper($visitor->verification_status) }}
+        <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$visitor->verification_status] ?? strtoupper($visitor->verification_status) }}
       </span>
     </div>
     <div>
@@ -48,7 +48,7 @@
   </div>
   @if ($visitor->verification_status === 'rejected' && $visitor->rejection_reason)
     <div class="row" style="margin-top:16px;margin-bottom:0;">
-      <div><div class="stat-label">Reason shown to the visitor</div><div>{{ $visitor->rejection_reason }}</div></div>
+      <div><div class="stat-label">What the visitor was asked to fix</div><div>{{ $visitor->rejection_reason }}</div></div>
     </div>
   @endif
 
@@ -68,18 +68,18 @@
     @endif
     @if ($visitor->verification_status !== 'rejected')
       <details>
-        <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject Visitor</summary>
+        <summary class="row-action" style="cursor:pointer;color:var(--red);">Return</summary>
         <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" style="margin-top:12px;"
-              data-confirm="Reject {{ $visitor->full_name }}'s account? They will be notified with the reason you entered."
-              data-confirm-title="Reject visitor" data-confirm-ok="Reject" data-confirm-danger>
+              data-confirm="Return {{ $visitor->full_name }}'s account for correction? They will be notified of what to fix and can resubmit."
+              data-confirm-title="Return account" data-confirm-ok="Return" data-confirm-danger>
           @csrf
           <div class="row">
             <div class="field-m">
-              <label>Reason (shown to the visitor)</label>
+              <label>What to fix (shown to the visitor)</label>
               <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The uploaded ID photo is unreadable. Please upload a clearer copy."></textarea>
             </div>
           </div>
-          <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);">Confirm Rejection</button>
+          <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);">Confirm Return</button>
         </form>
       </details>
     @endif
@@ -219,16 +219,21 @@
             data-confirm-title="Add relationship" data-confirm-ok="Add">
         @csrf
         <div class="row cols-3">
-          <div class="field-m">
-            <label>PDL</label>
-            <select name="pdl_id" required>
-              <option value="">— Select PDL —</option>
-              @foreach ($relatablePdls as $pdl)
-                <option value="{{ $pdl->pdl_id }}" {{ (string) old('pdl_id') === (string) $pdl->pdl_id && ! old('schedule_id') ? 'selected' : '' }}>
-                  {{ $pdl->full_name }} ({{ $pdl->pdl_number }}){{ $pdl->custody_status !== 'active' ? ' — ' . ucfirst($pdl->custody_status) : '' }}
-                </option>
-              @endforeach
-            </select>
+          @php
+            // Re-select the PDL after a failed submit (not the assign-visit form's pdl_id).
+            $preselected = ! old('schedule_id') && old('pdl_id') ? $relatablePdls->firstWhere('pdl_id', (int) old('pdl_id')) : null;
+          @endphp
+          <div class="field-m pdl-search" data-pdl-search data-url="{{ route('visitor.relatable-pdls', $visitor->visitor_id) }}">
+            <label for="pdlSearchInput">PDL</label>
+            <input type="hidden" name="pdl_id" value="{{ $preselected?->pdl_id }}" data-pdl-id>
+            <div class="pdl-search-box">
+              <input type="text" id="pdlSearchInput" name="pdl_search" autocomplete="off" data-label="PDL"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pdlSearchResults"
+                     placeholder="Search name, alias, PDL number or ID"
+                     value="{{ $preselected ? $preselected->full_name . ' (' . $preselected->pdl_number . ')' : '' }}">
+              <ul class="pdl-search-results" id="pdlSearchResults" role="listbox" hidden></ul>
+            </div>
+            <p class="field-hint" data-pdl-hint>Type at least 1 character, then pick the PDL from the list.</p>
           </div>
           <div class="field-m">
             <label>Relationship Type</label>
@@ -258,6 +263,129 @@
     @endif
   </details>
 </div>
+
+<script>
+  // PDL search box for "Add PDL Relationship" (replaces the long dropdown).
+  (function () {
+    var box = document.querySelector('[data-pdl-search]');
+    if (!box) return;
+    var input = box.querySelector('input[type="text"]');
+    var hidden = box.querySelector('[data-pdl-id]');
+    var list = box.querySelector('[role="listbox"]');
+    var hint = box.querySelector('[data-pdl-hint]');
+    var statusLabels = { active: 'Active', released: 'Released', transferred: 'Transferred', deceased: 'Deceased' };
+    var items = [], active = -1, timer = null, lastQuery = null, request = 0;
+
+    function requireChoice() {
+      input.setCustomValidity(hidden.value ? '' : 'Choose a PDL from the search results.');
+    }
+
+    function close() {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      active = -1;
+    }
+
+    function highlight(i) {
+      var rows = list.querySelectorAll('[role="option"]');
+      rows.forEach(function (r, n) { r.classList.toggle('is-active', n === i); r.setAttribute('aria-selected', n === i ? 'true' : 'false'); });
+      active = i;
+      if (rows[i]) rows[i].scrollIntoView({ block: 'nearest' });
+    }
+
+    function choose(pdl) {
+      hidden.value = pdl.id;
+      input.value = pdl.name + ' (' + pdl.number + ')';
+      hint.textContent = 'Selected: ' + pdl.name + ' · ' + pdl.number + ' · ' + (statusLabels[pdl.status] || pdl.status);
+      requireChoice();
+      close();
+    }
+
+    function render(results, q) {
+      list.innerHTML = '';
+      items = results;
+      if (!results.length) {
+        var none = document.createElement('li');
+        none.className = 'pdl-search-empty';
+        none.textContent = 'No PDL found for "' + q + '". PDLs already linked to this visitor are not shown.';
+        list.appendChild(none);
+      }
+      results.forEach(function (pdl, i) {
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.id = 'pdl-opt-' + pdl.id;
+
+        var avatar;
+        if (pdl.photo) {
+          avatar = document.createElement('img');
+          avatar.src = pdl.photo;
+          avatar.alt = '';
+          avatar.className = 'thumb pdl-photo-img';
+        } else {
+          avatar = document.createElement('div');
+          avatar.className = 'thumb';
+          avatar.textContent = pdl.initials;
+        }
+
+        var text = document.createElement('div');
+        var name = document.createElement('div');
+        name.className = 'pdl-search-name';
+        name.textContent = pdl.name + (pdl.alias ? ' "' + pdl.alias + '"' : '');
+        var meta = document.createElement('div');
+        meta.className = 'muted-cell';
+        meta.textContent = pdl.number + ' · ID ' + pdl.id;
+        text.appendChild(name);
+        text.appendChild(meta);
+
+        var badge = document.createElement('span');
+        badge.className = 'badge ' + pdl.status;
+        badge.textContent = statusLabels[pdl.status] || pdl.status;
+
+        li.appendChild(avatar);
+        li.appendChild(text);
+        li.appendChild(badge);
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(pdl); });
+        li.addEventListener('mousemove', function () { if (active !== i) highlight(i); });
+        list.appendChild(li);
+      });
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      if (results.length) highlight(0);
+    }
+
+    function search() {
+      var q = input.value.trim();
+      if (q === lastQuery && !list.hidden) return;
+      lastQuery = q;
+      if (!q) { close(); return; }
+      var mine = ++request;
+      fetch(box.dataset.url + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+        .then(function (data) { if (mine === request) render(data.results || [], q); })
+        .catch(function () { if (mine === request) render([], q); });
+    }
+
+    input.addEventListener('input', function () {
+      // Typing again means the earlier choice no longer applies.
+      hidden.value = '';
+      hint.textContent = 'Type at least 1 character, then pick the PDL from the list.';
+      requireChoice();
+      clearTimeout(timer);
+      timer = setTimeout(search, 200);
+    });
+    input.addEventListener('focus', function () { if (input.value.trim() && !hidden.value) search(); });
+    input.addEventListener('blur', function () { setTimeout(close, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (list.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(active + 1, items.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(active - 1, 0)); }
+      else if (e.key === 'Enter') { if (items[active]) { e.preventDefault(); choose(items[active]); } }
+      else if (e.key === 'Escape') { close(); }
+    });
+
+    requireChoice();
+  })();
+</script>
 
 {{-- ================= VISIT REQUESTS AWAITING REVIEW ================= --}}
 @if ($pendingVisitRequests->isNotEmpty())

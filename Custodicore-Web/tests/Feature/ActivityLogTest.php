@@ -29,7 +29,7 @@ class ActivityLogTest extends TestCase
     public function test_previously_unlogged_actions_are_recorded(): void
     {
         $this->post("/visitors/{$this->visitor->visitor_id}/flags", ['flag_type' => 'rule_violation', 'description' => 'Brought a phone into the visiting area.']);
-        $this->post("/pdls/{$this->pdl->pdl_id}/legal-records", ['case_number' => 'CR-1', 'offense' => 'Theft']);
+        $this->post("/pdls/{$this->pdl->pdl_id}/legal-records", ['case_number' => 'CR-1', 'offense_code' => 'theft']);
         $this->post("/pdls/{$this->pdl->pdl_id}/restrictions", ['restriction_type' => 'quarantine', 'start_date' => now()->toDateString(), 'reason' => 'Medical quarantine']);
 
         foreach (['visitor_flags', 'pdl_legal_records', 'pdl_restrictions'] as $type) {

@@ -90,6 +90,47 @@ class Pdl extends Model
             ->orderBy('created_at', 'desc');
     }
 
+    /**
+     * Classification follows the PDL's cases: drug-related if any case is a
+     * drug offense (RA 9165), otherwise non-drug-related. A PDL with no case
+     * on file keeps whatever it had. Returns true if it changed.
+     */
+    public function refreshClassification(): bool
+    {
+        $records = $this->legalRecords()->get();
+        if ($records->isEmpty()) {
+            return false;
+        }
+
+        $classification = $records->contains(fn (PdlLegalRecord $r) => $r->isDrugRelated()) ? 'drug_related' : 'non_drug_related';
+        if ($classification === $this->classification) {
+            return false;
+        }
+
+        $this->update(['classification' => $classification]);
+
+        return true;
+    }
+
+    /** Offense of the first case on file (the one recorded at registration), for lists and headers. */
+    public function primaryOffense(): ?string
+    {
+        $first = $this->relationLoaded('legalRecords')
+            ? $this->legalRecords->sortBy('legal_record_id')->first()
+            : $this->legalRecords()->reorder('legal_record_id')->first();
+
+        return $first?->offense;
+    }
+
+    public function classificationLabel(): string
+    {
+        return match ($this->classification) {
+            'drug_related' => 'Drug-related',
+            'non_drug_related' => 'Non-drug-related',
+            default => '—',
+        };
+    }
+
     public function disciplinaryRecords()
     {
         return $this->hasMany(PdlDisciplinaryRecord::class, 'pdl_id', 'pdl_id')

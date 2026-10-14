@@ -95,7 +95,7 @@ class ActivityLog
         $text = mb_strtolower($log->description);
 
         return match (true) {
-            str_contains($text, 'reject') || str_contains($text, 'flagged') || str_contains($text, 'restriction for') && ! str_contains($text, 'lifted') => 'bad',
+            str_contains($text, 'reject') || str_contains($text, 'returned') || str_contains($text, 'flagged') || str_contains($text, 'restriction for') && ! str_contains($text, 'lifted') => 'bad',
             str_contains($text, 'approv') || str_contains($text, 'verified') || str_contains($text, 'confirmed') || str_contains($text, 'lifted') || str_contains($text, 'resolved') => 'ok',
             default => 'info',
         };

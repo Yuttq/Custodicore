@@ -13,7 +13,8 @@ use Illuminate\Http\Request;
  *   pending  — waiting for approval, oldest first
  *   recheck  — approved before IDs were required to be verified; an officer
  *              should look at their ID again
- *   rejected — rejected accounts (the visitor may have uploaded a new ID)
+ *   rejected — accounts returned to the visitor for correction (shown as
+ *              "Returned"; the stored status stays 'rejected' for the mobile app)
  */
 class AccountReviewController extends Controller
 {

@@ -438,6 +438,12 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'rejectId']
     )->name('visitor.ids.reject');
 
+    // PDL search for the "Add PDL Relationship" form (JSON).
+    Route::get(
+        '/visitors/{visitor}/relatable-pdls',
+        [\App\Http\Controllers\VisitorController::class, 'searchRelatablePdls']
+    )->name('visitor.relatable-pdls');
+
     // Registers a visitor↔PDL relationship as pending; verify it below.
     Route::post(
         '/visitors/{visitor}/relationships',

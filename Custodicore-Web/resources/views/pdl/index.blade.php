@@ -40,10 +40,25 @@
   </div>
 
   <div class="field">
+    <label for="offense">Offense</label>
+    <select id="offense" name="offense">
+      <option value="">All Offenses</option>
+      @foreach (\App\Support\Offenses::GROUPS as $group => $offenses)
+        <optgroup label="{{ $group }}">
+          @foreach ($offenses as $code => [$label])
+            <option value="{{ $code }}" {{ $offense === $code ? 'selected' : '' }}>{{ $label }}</option>
+          @endforeach
+        </optgroup>
+      @endforeach
+      <option value="{{ \App\Support\Offenses::OTHER }}" {{ $offense === \App\Support\Offenses::OTHER ? 'selected' : '' }}>Other offenses</option>
+    </select>
+  </div>
+
+  <div class="field">
     <button class="btn btn-blue" type="submit" style="width:100%;justify-content:center;">Apply Filters</button>
   </div>
 
-  @if ($query || $status || $cellBlock)
+  @if ($query || $status || $cellBlock || $offense)
     <div class="field">
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}" style="width:100%;justify-content:center;">Clear</a>
     </div>
@@ -55,7 +70,7 @@
   <table>
     <thead>
       <tr>
-        <th>PDL Number</th><th>Full Name</th><th>Gender</th><th>Classification</th>
+        <th>PDL Number</th><th>Full Name</th><th>Gender</th><th>Offense / Classification</th>
         <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th>
       </tr>
     </thead>
@@ -77,7 +92,10 @@
           </div>
         </td>
         <td class="muted-cell">{{ $pdl->gender }}</td>
-        <td class="muted-cell">{{ $pdl->classification ?? '—' }}</td>
+        <td>
+          <div>{{ $pdl->primaryOffense() ?? '—' }}</div>
+          <div class="muted-cell">{{ $pdl->classificationLabel() }}</div>
+        </td>
         <td>
           <span class="badge {{ strtolower($pdl->custody_status) }}">
             <span class="dot"></span>{{ strtoupper($pdl->custody_status) }}
@@ -106,8 +124,8 @@
 </div>
 
 <div class="stat-strip">
-  <div class="stat-card accent-blue"><div class="stat-icon">👥</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div></div></div>
-  <div class="stat-card accent-navy"><div class="stat-icon">🔒</div><div><div class="stat-label">Currently Active</div><div class="stat-value">{{ $stats['currently_active'] }}</div></div></div>
+  <div class="stat-card accent-blue"><div class="stat-icon">👥</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></div>
+  <div class="stat-card accent-navy"><div class="stat-icon">⇄</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></div>
   <div class="stat-card accent-amber"><div class="stat-icon">⚠</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></div>
   <div class="stat-card accent-gray"><div class="stat-icon">📋</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></div>
 </div>

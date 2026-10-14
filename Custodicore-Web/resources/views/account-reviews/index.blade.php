@@ -5,7 +5,7 @@
   $tabs = [
     'pending' => ['Waiting for approval', ''],
     'recheck' => ['Approved without verified ID', 'is-warn'],
-    'rejected' => ['Rejected', ''],
+    'rejected' => ['Returned', ''],
   ];
   $idBadge = ['verified' => ['active', 'Verified'], 'pending' => ['transferred', 'Not checked yet'], 'rejected' => ['rejected', 'Rejected']];
 @endphp
@@ -41,7 +41,7 @@
     <div class="elig-empty-icon">✓</div>
     <div class="empty-title">
       @if ($tab === 'recheck') Every approved visitor has a verified ID.
-      @elseif ($tab === 'rejected') No rejected accounts.
+      @elseif ($tab === 'rejected') No accounts are waiting on the visitor.
       @else No accounts are waiting for approval.
       @endif
     </div>
@@ -143,7 +143,7 @@
       </div>
 
       @if ($tab === 'rejected' && $visitor->rejection_reason)
-        <div class="elig-note is-bad">Rejected: {{ $visitor->rejection_reason }}</div>
+        <div class="elig-note is-warn">Returned. What to fix: {{ $visitor->rejection_reason }}</div>
       @endif
 
       {{-- What has happened to this account so far --}}
@@ -169,14 +169,14 @@
           </div>
           <div class="elig-buttons">
             <details class="acct-reject">
-              <summary class="btn btn-outline-neutral elig-reject">Reject account</summary>
+              <summary class="btn btn-outline-neutral elig-reject">Return</summary>
               <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" class="acct-reject-form"
-                    data-confirm="Reject {{ $visitor->full_name }}'s account? They will be notified with your reason."
-                    data-confirm-title="Reject account" data-confirm-ok="Reject" data-confirm-danger>
+                    data-confirm="Return {{ $visitor->full_name }}'s account for correction? They will be notified of what to fix and can resubmit."
+                    data-confirm-title="Return account" data-confirm-ok="Return" data-confirm-danger>
                 @csrf
-                <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="Reason (shown to the visitor)"
+                <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="What to fix (shown to the visitor)"
                           placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
-                <button type="submit" class="btn btn-outline-neutral elig-reject">Confirm rejection</button>
+                <button type="submit" class="btn btn-outline-neutral elig-reject">Confirm return</button>
               </form>
             </details>
             <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}"

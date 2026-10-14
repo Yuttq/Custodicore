@@ -21,9 +21,11 @@ class DashboardController extends Controller
     {
         $stats = [
             [
-                'label' => 'Registered PDLs',
-                'value' => (string) Pdl::count(),
-                'hint' => Pdl::where('custody_status', 'active')->count() . ' active in custody',
+                // In custody now; released/transferred/deceased are subtracted.
+                'label' => 'PDLs in Custody',
+                'value' => (string) Pdl::where('custody_status', 'active')->count(),
+                'hint' => Pdl::where('custody_status', 'released')->count() . ' released · '
+                    . Pdl::where('custody_status', 'transferred')->count() . ' transferred',
                 'accent' => 'info', 'icon' => 'identification',
             ],
             [

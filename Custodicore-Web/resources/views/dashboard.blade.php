@@ -17,16 +17,17 @@
     <div class="stat-top"><div class="icon-badge">👥</div></div>
     <div class="stat-label">Total PDLs</div>
     <div class="stat-value">{{ $stats['total_pdls'] }}</div>
-  </div>
-  <div class="stat-card accent-blue">
-    <div class="stat-top"><div class="icon-badge">🔒</div></div>
-    <div class="stat-label">Active Custody</div>
-    <div class="stat-value">{{ $stats['active_custody'] }}</div>
+    <div class="muted-cell">in custody now</div>
   </div>
   <div class="stat-card">
     <div class="stat-top"><div class="icon-badge">⇄</div></div>
-    <div class="stat-label">Released/Transferred</div>
-    <div class="stat-value">{{ $stats['released_transferred'] }}</div>
+    <div class="stat-label">Transferred</div>
+    <div class="stat-value">{{ $stats['transferred'] }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top"><div class="icon-badge">🔓</div></div>
+    <div class="stat-label">Released</div>
+    <div class="stat-value">{{ $stats['released'] }}</div>
   </div>
   <div class="stat-card accent-amber">
     <div class="stat-top"><div class="icon-badge">🚫</div>@if($stats['no_visit_record'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>

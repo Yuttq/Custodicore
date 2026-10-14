@@ -9,11 +9,12 @@ class DashboardController extends Controller
     public function index()
     {
         $stats = [
-            'total_pdls' => Pdl::count(),
-            // CONFIRMED from the actual migration:
+            // Total = PDLs currently in custody; released, transferred and
+            // deceased PDLs are subtracted from it.
             // enum('active','released','transferred','deceased'), default 'active'.
-            'active_custody' => Pdl::where('custody_status', 'active')->count(),
-            'released_transferred' => Pdl::whereIn('custody_status', ['released', 'transferred'])->count(),
+            'total_pdls' => Pdl::where('custody_status', 'active')->count(),
+            'released' => Pdl::where('custody_status', 'released')->count(),
+            'transferred' => Pdl::where('custody_status', 'transferred')->count(),
             'no_visit_record' => Pdl::where('custody_status', 'active')
                 ->whereDoesntHave('visitRequests')
                 ->count(),
