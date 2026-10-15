@@ -147,3 +147,28 @@ test('visitor-submitted cancelled request ends with Request Rejected', () => {
   ]);
   assert.equal(steps[2].label, 'Request Rejected');
 });
+
+test('visitor-submitted request that expired unreviewed ends with Request Expired, not Rejected', () => {
+  const closing = {
+    id: 'request_expired',
+    title: 'Request Expired',
+    description:
+      'Your visit request expired because the visit date passed before facility staff reviewed it. Please submit a new request for an upcoming date.',
+    occurredAt: '2026-10-10T00:05:00+08:00',
+    officerNote: null,
+    stepState: 'completed',
+  };
+  const steps = buildCompactVisitStepsFromTimeline(
+    requestTimeline('schedule_assigned', [closing]),
+    'cancelled',
+  );
+  assert.deepEqual(summary(steps), [
+    'visitor_eligible:completed',
+    'request_submitted:completed',
+    'request_expired:completed',
+  ]);
+  assert.equal(steps[2].label, 'Request Expired');
+  assert.match(steps[2].description, /visit date passed before facility staff reviewed it/);
+  assert.ok(!steps.some((s) => s.id === 'request_rejected' || /rejected/i.test(s.label)));
+  assert.ok(!steps.some((s) => s.id === 'awaiting_review'), 'No longer shown as awaiting review.');
+});

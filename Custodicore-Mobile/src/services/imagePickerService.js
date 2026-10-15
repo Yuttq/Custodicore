@@ -13,7 +13,8 @@ const PICKER_OPTIONS = {
 };
 
 /**
- * @typedef {{ uri: string; fileName: string } | null} PickedPhoto
+ * `mimeType` and `fileSize` (bytes) are null when the picker does not report them.
+ * @typedef {{ uri: string; fileName: string; mimeType: string | null; fileSize: number | null } | null} PickedPhoto
  */
 
 /**
@@ -42,6 +43,8 @@ export async function pickPhotoFromCamera(options = {}) {
   return {
     uri: asset.uri,
     fileName: asset.fileName ?? 'photo.jpg',
+    mimeType: asset.mimeType ?? null,
+    fileSize: asset.fileSize ?? null,
   };
 }
 
@@ -70,5 +73,7 @@ export async function pickPhotoFromGallery(options = {}) {
   return {
     uri: asset.uri,
     fileName: asset.fileName ?? 'document.jpg',
+    mimeType: asset.mimeType ?? null,
+    fileSize: asset.fileSize ?? null,
   };
 }

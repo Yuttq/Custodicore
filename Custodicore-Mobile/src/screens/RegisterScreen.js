@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,7 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { pickPhotoFromGallery } from '../services/imagePickerService';
+import { pickPhotoFromCamera, pickPhotoFromGallery } from '../services/imagePickerService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   BirthdateField,
@@ -25,20 +26,40 @@ import {
   spacing,
   typography,
 } from '../designSystem';
+import { toDocumentImageUpload, validateDocumentImage } from '../utils/documentImageRules';
 import { formatBirthdateDisplay } from '../utils/formatDate';
 import { useAuth } from '../hooks/useAuth';
 import { getLegal } from '../services/api';
 import {
   ACCEPTED_ID_TYPES,
+  ADULT_AGE,
   GENDER_OPTIONS,
-  RELATIONSHIPS,
+  GUARDIAN_INFO_NOTICE,
+  REGISTRATION_RELATIONSHIPS,
+  RELATIONSHIP_DOCUMENTS_NOTICE,
+  asksChildrenTogether,
   getRelationshipLabel,
   getRequiredDocuments,
+  isRegistrationRelationship,
 } from '../utils/registrationRequirements';
+import {
+  EMAIL_TAKEN_ALERT,
+  EMAIL_TAKEN_FIELD_MESSAGE,
+  UNCONFIRMED_REGISTRATION_ALERT,
+  isEmailTakenError,
+  isUnconfirmedRegistrationError,
+} from '../utils/registrationErrors';
+import {
+  INTENDED_PDL_NAME_LIMITS,
+  INTENDED_PDL_NAME_PLACEHOLDER,
+  filterIntendedPdlName,
+  getIntendedPdlNameError,
+} from '../utils/intendedPdlName';
 import { validateRequired } from '../utils';
 import {
   REGISTRATION_LIMITS,
   ageFromBirthdate,
+  getGuardianErrors,
   inputFilters,
   normalizeAddress,
   normalizeEmail,
@@ -52,6 +73,7 @@ import {
   validateMobileNumber,
   validatePasswordConfirmation,
   validateRegistrationEmail,
+  toGuardianRequestFields,
   validateRegistrationPassword,
 } from '../utils/registrationValidation';
 
@@ -60,7 +82,7 @@ const TOTAL_STEPS = 4;
 const STEP_TITLES = {
   1: 'Account Information',
   2: 'Relationship To PDL',
-  3: 'Visitor Verification Documents',
+  3: 'Verification Details',
   4: 'Review & Submit',
 };
 
@@ -208,10 +230,32 @@ const SERVER_FIELD_ERRORS = {
   // The government ID is sent with the registration (step 3 fields).
   governmentId: 'government_id',
   governmentIdType: 'government_id_type',
+  // The relationship chosen in step 2 (decides the step-3 documents).
+  relationshipType: 'relationship',
+  relationshipDocuments: 'relationship_documents',
+  // Guardian Information (step 3, Legal Guardian).
+  guardianFullName: 'guardian_fullName',
+  guardianRelationship: 'guardian_relationship',
+  guardianContactNumber: 'guardian_contactNumber',
+  // The optional name of the PDL to visit (step 2).
+  intendedPdlName: 'intendedPdlName',
 };
 
 /** Step-3 (documents) form fields among SERVER_FIELD_ERRORS targets. */
-const DOCUMENT_STEP_FIELDS = new Set(['government_id', 'government_id_type']);
+const DOCUMENT_STEP_FIELDS = new Set([
+  'government_id',
+  'government_id_type',
+  'relationship_documents',
+  'guardian_fullName',
+  'guardian_relationship',
+  'guardian_contactNumber',
+]);
+
+/** Step-2 (relationship) form fields among SERVER_FIELD_ERRORS targets. */
+const RELATIONSHIP_STEP_FIELDS = new Set(['intendedPdlName', 'relationship']);
+
+/** Step-3 error key for a Guardian Information field. */
+const guardianErrorKey = (field) => `guardian_${field}`;
 
 /**
  * Best-effort prefill of First/Last Name from the Google display name (the
@@ -290,11 +334,19 @@ export default function RegisterScreen({ navigation, route }) {
   const [showPassword, setShowPassword] = useState(false);
 
   const [relationship, setRelationship] = useState(null);
+  // Optional: the name of the PDL the visitor wants to visit. Saved as a
+  // hint for facility staff, who link the PDL themselves — no lookup here.
+  const [intendedPdlName, setIntendedPdlName] = useState('');
   const [documents, setDocuments] = useState({});
+  // Live-in partners only: decides whether a child's birth certificate or a
+  // witness statement is asked for (null = not answered yet).
+  const [hasChildrenTogether, setHasChildrenTogether] = useState(null);
   const [certified, setCertified] = useState(false);
 
   const [genderModalVisible, setGenderModalVisible] = useState(false);
   const [idTypeModal, setIdTypeModal] = useState({ visible: false, docKey: null });
+  // Document card whose Take Photo / Gallery choice is open (one at a time).
+  const [sourceChooserKey, setSourceChooserKey] = useState(null);
 
   // Consent comes BEFORE any details are collected: the wizard below is not
   // shown until the visitor accepts both the Terms & Conditions and the
@@ -341,10 +393,17 @@ export default function RegisterScreen({ navigation, route }) {
     loadLegal();
   }, [loadLegal]);
 
+  // Minors upload their own birth certificate instead of a Government ID.
+  const visitorAge = ageFromBirthdate(birthdate.trim());
+  const isMinor = visitorAge !== null && visitorAge < ADULT_AGE;
   const requiredDocs = useMemo(
-    () => (relationship ? getRequiredDocuments(relationship) : []),
-    [relationship],
+    () =>
+      relationship ? getRequiredDocuments(relationship, { isMinor, hasChildrenTogether }) : [],
+    [relationship, isMinor, hasChildrenTogether],
   );
+  // Files sent with the registration vs. text kept only on this device.
+  const submittedDocs = useMemo(() => requiredDocs.filter((doc) => !doc.isText), [requiredDocs]);
+  const infoDocs = useMemo(() => requiredDocs.filter((doc) => doc.isText), [requiredDocs]);
 
   // Google mode: leaving this screen in any way (back, hardware back, failure)
   // ends the Google flow. No-op after a successful registration, which
@@ -453,21 +512,31 @@ export default function RegisterScreen({ navigation, route }) {
     return Object.keys(next).length === 0;
   }, [getStep1Errors]);
 
+  const getIntendedPdlFieldErrors = useCallback(() => {
+    const nameError = getIntendedPdlNameError(intendedPdlName);
+    return nameError ? { intendedPdlName: nameError } : {};
+  }, [intendedPdlName]);
+
   const validateStep2 = useCallback(() => {
-    if (!relationship) {
+    if (!isRegistrationRelationship(relationship)) {
       setErrors({ relationship: 'Select your relationship to the PDL' });
       return false;
     }
-    setErrors({});
-    return true;
-  }, [relationship]);
+    const nameErrors = getIntendedPdlFieldErrors();
+    setErrors(nameErrors);
+    return Object.keys(nameErrors).length === 0;
+  }, [relationship, getIntendedPdlFieldErrors]);
 
   const validateStep3 = useCallback(() => {
     const next = {};
+    if (asksChildrenTogether(relationship) && typeof hasChildrenTogether !== 'boolean') {
+      next.children_together = 'Tell us whether you and the PDL have children together';
+    }
     for (const doc of requiredDocs) {
       if (doc.isText) {
-        const text = String(documents[doc.key]?.text ?? '').trim();
-        if (!text) next[doc.key] = `${doc.label} is required`;
+        Object.entries(getGuardianErrors(documents[doc.key])).forEach(([field, message]) => {
+          next[guardianErrorKey(field)] = message;
+        });
         continue;
       }
       const entry = documents[doc.key];
@@ -478,7 +547,7 @@ export default function RegisterScreen({ navigation, route }) {
     }
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [requiredDocs, documents]);
+  }, [requiredDocs, documents, relationship, hasChildrenTogether]);
 
   const validateStep4 = useCallback(() => {
     if (!certified) {
@@ -495,37 +564,64 @@ export default function RegisterScreen({ navigation, route }) {
     else if (step === 3 && validateStep3()) setStep(4);
   }, [step, validateStep1, validateStep2, validateStep3]);
 
-  const pickDocument = useCallback(async (docKey) => {
-    const picked = await pickPhotoFromGallery();
-    if (picked?.uri) {
-      setDocuments((prev) => ({
-        ...prev,
-        [docKey]: {
-          ...prev[docKey],
-          uri: picked.uri,
-          fileName: picked.fileName ?? 'document.jpg',
-        },
+  /**
+   * Camera or gallery pick for a document card. Cancelling, a denied
+   * permission or an invalid image keeps the current (valid) selection.
+   */
+  const pickDocument = useCallback(async (docKey, useCamera) => {
+    setSourceChooserKey(null);
+    let picked;
+    try {
+      picked = useCamera
+        ? await pickPhotoFromCamera({ forUpload: true })
+        : await pickPhotoFromGallery({ forUpload: true });
+    } catch {
+      setErrors((e) => ({
+        ...e,
+        [docKey]: useCamera
+          ? 'Could not open the camera. Please try again.'
+          : 'Could not open your photos. Please try again.',
       }));
-      setErrors((e) => {
-        const next = { ...e };
-        delete next[docKey];
-        return next;
-      });
+      return;
     }
-  }, []);
+    if (!picked?.uri) return;
 
-  const setGuardianText = useCallback((value) => {
-    const text = inputFilters.guardianInfo(value);
+    const invalid = validateDocumentImage(picked);
+    if (invalid) {
+      setErrors((e) => ({ ...e, [docKey]: invalid }));
+      return;
+    }
+    // File name aligned with the reported MIME type, so later uploads that
+    // only see the name (e.g. after Google registration) agree with it.
+    const fileName = toDocumentImageUpload(picked)?.name ?? picked.fileName ?? 'document.jpg';
     setDocuments((prev) => ({
       ...prev,
-      guardian_information: { ...prev.guardian_information, text },
+      [docKey]: {
+        ...prev[docKey],
+        uri: picked.uri,
+        fileName,
+        mimeType: picked.mimeType ?? null,
+        fileSize: picked.fileSize ?? null,
+      },
     }));
     setErrors((e) => {
       const next = { ...e };
-      delete next.guardian_information;
+      delete next[docKey];
       return next;
     });
   }, []);
+
+  /** onChangeText for a Guardian Information field (fullName | relationship | contactNumber). */
+  const editGuardianField = useCallback(
+    (field, filter) => (value) => {
+      setDocuments((prev) => ({
+        ...prev,
+        guardian_information: { ...prev.guardian_information, [field]: filter(value) },
+      }));
+      clearError(guardianErrorKey(field));
+    },
+    [clearError],
+  );
 
   /**
    * 422 field errors from the backend (e.g. email already taken) → shown
@@ -554,15 +650,21 @@ export default function RegisterScreen({ navigation, route }) {
       return;
     }
     const fieldErrors = {};
+    const documentCardKeys = new Set();
     Object.entries(e.errors).forEach(([field, messages]) => {
-      const key = SERVER_FIELD_ERRORS[field];
+      // relationshipDocuments.marriage_certificate → that document's card.
+      const fileKey = field.startsWith('relationshipDocuments.') ? field.split('.')[1] : null;
+      if (fileKey) documentCardKeys.add(fileKey);
+      const key = fileKey ?? SERVER_FIELD_ERRORS[field];
       const text = Array.isArray(messages) ? messages[0] : messages;
       if (key && typeof text === 'string') fieldErrors[key] = text;
     });
     const keys = Object.keys(fieldErrors);
     if (keys.length) {
       setErrors(fieldErrors);
-      setStep(keys.every((key) => DOCUMENT_STEP_FIELDS.has(key)) ? 3 : 1);
+      if (keys.every((key) => DOCUMENT_STEP_FIELDS.has(key) || documentCardKeys.has(key))) setStep(3);
+      else if (keys.every((key) => RELATIONSHIP_STEP_FIELDS.has(key))) setStep(2);
+      else setStep(1);
     }
   }, [loadLegal]);
 
@@ -608,22 +710,65 @@ export default function RegisterScreen({ navigation, route }) {
       setStep(1);
       return;
     }
+    if (!isRegistrationRelationship(relationship)) {
+      setErrors({ relationship: 'Select your relationship to the PDL' });
+      setStep(2);
+      return;
+    }
+    const nameErrors = getIntendedPdlFieldErrors();
+    if (Object.keys(nameErrors).length) {
+      setErrors(nameErrors);
+      setStep(2);
+      return;
+    }
+    // The documents depend on the birthdate (minor) too, which can change
+    // after step 3 was completed.
+    if (!validateStep3()) {
+      setStep(3);
+      return;
+    }
+    const isLegalGuardian = relationship === 'legal_guardian';
+    const guardianInfo = documents.guardian_information;
+    if (isLegalGuardian) {
+      const guardianErrors = getGuardianErrors(guardianInfo);
+      if (Object.keys(guardianErrors).length) {
+        const next = {};
+        Object.entries(guardianErrors).forEach(([field, message]) => {
+          next[guardianErrorKey(field)] = message;
+        });
+        setErrors(next);
+        setStep(3);
+        return;
+      }
+    }
+    const guardianFields = isLegalGuardian ? toGuardianRequestFields(guardianInfo) : {};
 
     submittingRef.current = true;
     setSubmitting(true);
     try {
+      // `kind: 'info'` marks typed details (Guardian Information), not an
+      // uploaded document; `submitted` = sent with the registration (older
+      // summaries without it were kept on the device only).
       const documentsSummary = requiredDocs.map((doc) => {
         const entry = documents[doc.key];
         if (doc.isText) {
           return {
             label: doc.label,
-            detail: entry?.text?.trim() || 'Submitted',
+            detail: [
+              guardianFields.guardianFullName,
+              guardianFields.guardianRelationship,
+              guardianFields.guardianContactNumber,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            kind: 'info',
+            submitted: true,
           };
         }
         const detail = entry?.idType
           ? `${entry.idType}${entry.fileName ? ` · ${entry.fileName}` : ''}`
           : entry?.fileName || 'Uploaded';
-        return { label: doc.label, detail };
+        return { label: doc.label, detail, submitted: true };
       });
 
       // The backend stores one full name; age is checked against the
@@ -640,7 +785,13 @@ export default function RegisterScreen({ navigation, route }) {
         password_confirmation: passwordConfirmation,
         relationship,
         relationshipLabel: getRelationshipLabel(relationship),
+        intendedPdlName: normalizeName(intendedPdlName),
+        ...guardianFields,
         documents,
+        // Sent as relationshipDocuments[key]; only this relationship's documents.
+        relationshipDocumentKeys: requiredDocs
+          .filter((doc) => doc.requirementKey)
+          .map((doc) => doc.requirementKey),
         documentsSummary,
         certified,
         acceptedTerms: acceptTerms,
@@ -666,6 +817,21 @@ export default function RegisterScreen({ navigation, route }) {
     } catch (e) {
       if (isGoogle) {
         handleGoogleRegistrationError(e);
+        return;
+      }
+      if (isEmailTakenError(e)) {
+        // Keep any other field errors the backend returned with it.
+        showServerFieldErrors(e);
+        setErrors((prev) => ({ ...prev, email: EMAIL_TAKEN_FIELD_MESSAGE }));
+        Alert.alert(EMAIL_TAKEN_ALERT.title, EMAIL_TAKEN_ALERT.message, [
+          { text: 'Use Another Email', style: 'cancel' },
+          { text: 'Forgot Password', onPress: () => navigation.navigate('ForgotPassword') },
+          { text: 'Sign In', onPress: () => navigation.navigate('Login') },
+        ]);
+        return;
+      }
+      if (isUnconfirmedRegistrationError(e)) {
+        Alert.alert(UNCONFIRMED_REGISTRATION_ALERT.title, UNCONFIRMED_REGISTRATION_ALERT.message);
         return;
       }
       const message =
@@ -696,6 +862,9 @@ export default function RegisterScreen({ navigation, route }) {
     password,
     passwordConfirmation,
     relationship,
+    intendedPdlName,
+    getIntendedPdlFieldErrors,
+    validateStep3,
     documents,
     certified,
     requiredDocs,
@@ -891,14 +1060,17 @@ export default function RegisterScreen({ navigation, route }) {
       {errors.relationship ? (
         <Text style={styles.stepError}>{errors.relationship}</Text>
       ) : null}
-      {RELATIONSHIPS.map((item) => {
+      {REGISTRATION_RELATIONSHIPS.map((item) => {
         const selected = relationship === item.id;
         return (
           <Pressable
             key={item.id}
             onPress={() => {
               // Only a different relationship changes the required documents.
-              if (item.id !== relationship) setDocuments({});
+              if (item.id !== relationship) {
+                setDocuments({});
+                setHasChildrenTogether(null);
+              }
               setRelationship(item.id);
               setErrors((e) => {
                 const next = { ...e };
@@ -919,14 +1091,32 @@ export default function RegisterScreen({ navigation, route }) {
           </Pressable>
         );
       })}
+      <Text style={[styles.reviewSectionTitle, { marginTop: 16 }]}>PDL You Want To Visit (optional)</Text>
+      <WizardField
+        label="PDL Name"
+        value={intendedPdlName}
+        onChangeText={(v) => {
+          setIntendedPdlName(filterIntendedPdlName(v));
+          clearError('intendedPdlName');
+        }}
+        placeholder={INTENDED_PDL_NAME_PLACEHOLDER}
+        error={errors.intendedPdlName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={INTENDED_PDL_NAME_LIMITS.max}
+      />
+      <Text style={fieldStyles.hint}>
+        Facility staff use this name to find the PDL in their records and link them to your account.
+        This does not give visit access by itself.
+      </Text>
     </Card>
   );
 
   const renderDocumentCard = (doc) => {
     const entry = documents[doc.key];
-    const uploaded = doc.isText
-      ? Boolean(String(entry?.text ?? '').trim())
-      : Boolean(entry?.uri);
+    const uploaded = !doc.isText && Boolean(entry?.uri);
+    const action = uploaded ? 'Replace' : 'Upload';
+    const chooserOpen = sourceChooserKey === doc.key;
 
     return (
       <View key={doc.key} style={styles.docCard}>
@@ -934,15 +1124,42 @@ export default function RegisterScreen({ navigation, route }) {
           <Text style={styles.docTitle}>{doc.label}</Text>
           {!doc.isText ? (
             <Pressable
-              onPress={() => pickDocument(doc.key)}
+              onPress={() => setSourceChooserKey(chooserOpen ? null : doc.key)}
               style={styles.uploadBtn}
               accessibilityRole="button"
-              accessibilityLabel={`Upload ${doc.label}`}
+              accessibilityLabel={`${action} ${doc.label}`}
+              accessibilityState={{ expanded: chooserOpen }}
             >
-              <Text style={styles.uploadBtnText}>Upload</Text>
+              <Text style={styles.uploadBtnText}>{action}</Text>
             </Pressable>
           ) : null}
         </View>
+
+        {!doc.isText && chooserOpen ? (
+          <View style={styles.sourceRow}>
+            <Pressable
+              onPress={() => pickDocument(doc.key, true)}
+              style={styles.sourceBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Take a photo of your ${doc.label}`}
+            >
+              <Ionicons name="camera-outline" size={18} color={colors.primaryTeal} />
+              <Text style={styles.sourceBtnText}>Take Photo</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => pickDocument(doc.key, false)}
+              style={styles.sourceBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose your ${doc.label} from the gallery`}
+            >
+              <Ionicons name="images-outline" size={18} color={colors.primaryTeal} />
+              <Text style={styles.sourceBtnText}>Gallery</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {!doc.isText ? (
+          <Text style={fieldStyles.hint}>JPG, PNG, or WEBP image, up to 10 MB.</Text>
+        ) : null}
 
         {doc.requiresIdType ? (
           <Pressable
@@ -965,22 +1182,48 @@ export default function RegisterScreen({ navigation, route }) {
         ) : null}
 
         {doc.isText ? (
-          <TextInput
-            value={entry?.text ?? ''}
-            onChangeText={setGuardianText}
-            placeholder="Guardian full name, relationship, contact number"
-            placeholderTextColor={colors.textSecondary}
-            multiline
-            maxLength={REGISTRATION_LIMITS.guardianInfoMax}
-            style={[
-              fieldStyles.input,
-              fieldStyles.inputMultiline,
-              errors[doc.key] && fieldStyles.inputError,
-            ]}
-          />
+          <>
+            <WizardField
+              label="Guardian Full Name"
+              value={entry?.fullName ?? ''}
+              onChangeText={editGuardianField('fullName', inputFilters.guardianName)}
+              placeholder="Enter guardian's full name"
+              error={errors[guardianErrorKey('fullName')]}
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={REGISTRATION_LIMITS.guardianNameMax}
+              textContentType="name"
+            />
+            <WizardField
+              label="Relationship to Visitor"
+              value={entry?.relationship ?? ''}
+              onChangeText={editGuardianField('relationship', inputFilters.guardianRelationship)}
+              placeholder="e.g. Mother, Aunt"
+              error={errors[guardianErrorKey('relationship')]}
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={REGISTRATION_LIMITS.guardianRelationshipMax}
+            />
+            <WizardField
+              label="Contact Number"
+              value={entry?.contactNumber ?? ''}
+              onChangeText={editGuardianField('contactNumber', inputFilters.mobile)}
+              placeholder="09XX XXX XXXX"
+              keyboardType="phone-pad"
+              error={errors[guardianErrorKey('contactNumber')]}
+              maxLength={REGISTRATION_LIMITS.mobileInputMax}
+              textContentType="telephoneNumber"
+            />
+            <Text style={fieldStyles.hint}>{GUARDIAN_INFO_NOTICE}</Text>
+          </>
         ) : uploaded ? (
           <View style={styles.uploadedRow}>
-            <Ionicons name="document-attach-outline" size={18} color={colors.success} />
+            <Image
+              source={{ uri: entry.uri }}
+              style={styles.uploadedThumb}
+              resizeMode="cover"
+              accessibilityLabel={`Preview of ${doc.label}`}
+            />
             <Text style={styles.uploadedName} numberOfLines={1}>
               {entry?.fileName ?? 'Document attached'}
             </Text>
@@ -992,14 +1235,66 @@ export default function RegisterScreen({ navigation, route }) {
     );
   };
 
+  const renderRelationshipDocumentsNotice = () => (
+    <View style={styles.noticeBox}>
+      <Ionicons name="information-circle-outline" size={18} color={colors.primaryNavy} />
+      <Text style={styles.noticeText}>{RELATIONSHIP_DOCUMENTS_NOTICE}</Text>
+    </View>
+  );
+
+  const renderChildrenTogetherQuestion = () => (
+    <Card style={[styles.card, styles.cardStacked]}>
+      <Text style={styles.docTitle}>Do you and the PDL have children together?</Text>
+      <Text style={fieldStyles.hint}>
+        With children, upload a child&apos;s PSA birth certificate. Without, upload a witness
+        statement.
+      </Text>
+      {errors.children_together ? (
+        <Text style={styles.stepError}>{errors.children_together}</Text>
+      ) : null}
+      {[
+        { value: true, label: 'Yes, we have children together' },
+        { value: false, label: 'No children together' },
+      ].map((option) => {
+        const selected = hasChildrenTogether === option.value;
+        return (
+          <Pressable
+            key={String(option.value)}
+            onPress={() => {
+              setHasChildrenTogether(option.value);
+              clearError('children_together');
+            }}
+            style={[styles.optionRow, selected && styles.optionRowSelected]}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+          >
+            <View style={[styles.radio, selected && styles.radioSelected]}>
+              {selected ? <View style={styles.radioDot} /> : null}
+            </View>
+            <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </Card>
+  );
+
   const renderStep3 = () => (
     <>
-      <Text style={styles.acceptedIds}>
-        Accepted IDs: {ACCEPTED_ID_TYPES.join(' · ')}
-      </Text>
+      {requiredDocs.some((doc) => doc.requiresIdType) ? (
+        <Text style={styles.acceptedIds}>
+          Accepted IDs: {ACCEPTED_ID_TYPES.join(' · ')}
+        </Text>
+      ) : null}
+      {asksChildrenTogether(relationship) ? renderChildrenTogetherQuestion() : null}
+      {errors.relationship_documents ? (
+        <Text style={styles.stepError}>{errors.relationship_documents}</Text>
+      ) : null}
       <Card style={styles.card}>
         {requiredDocs.map(renderDocumentCard)}
       </Card>
+      {renderRelationshipDocumentsNotice()}
     </>
   );
 
@@ -1030,22 +1325,49 @@ export default function RegisterScreen({ navigation, route }) {
       <Card style={[styles.card, styles.cardSpaced]}>
         <Text style={styles.reviewSectionTitle}>Relationship</Text>
         {renderReviewRow('Relationship To PDL', getRelationshipLabel(relationship))}
+        {normalizeName(intendedPdlName)
+          ? renderReviewRow('PDL You Want To Visit', normalizeName(intendedPdlName))
+          : null}
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>
-        <Text style={styles.reviewSectionTitle}>Uploaded Documents</Text>
-        {requiredDocs.map((doc) => {
-          const entry = documents[doc.key];
-          let value = '—';
-          if (doc.isText) value = entry?.text?.trim() || '—';
-          else if (entry?.uri) {
-            value = entry.idType
-              ? `${doc.label} (${entry.idType}) — ${entry.fileName ?? 'attached'}`
-              : entry.fileName ?? 'Attached';
-          }
-          return renderReviewRow(doc.label, value);
-        })}
+        <Text style={styles.reviewSectionTitle}>Documents Submitted With Registration</Text>
+        {submittedDocs.length ? (
+          submittedDocs.map((doc) => {
+            const entry = documents[doc.key];
+            let value = '—';
+            if (entry?.uri) {
+              value = entry.idType
+                ? `${doc.label} (${entry.idType}) — ${entry.fileName ?? 'attached'}`
+                : entry.fileName ?? 'Attached';
+            }
+            return renderReviewRow(doc.label, value);
+          })
+        ) : (
+          <Text style={styles.reviewValue}>No documents are submitted with this registration.</Text>
+        )}
       </Card>
+
+      {infoDocs.length ? (
+        <Card style={[styles.card, styles.cardSpaced]}>
+          <Text style={styles.reviewSectionTitle}>Guardian Information</Text>
+          {renderReviewRow(
+            'Guardian Full Name',
+            normalizeName(documents.guardian_information?.fullName),
+          )}
+          {renderReviewRow(
+            'Relationship to Visitor',
+            normalizeName(documents.guardian_information?.relationship),
+          )}
+          {renderReviewRow(
+            'Contact Number',
+            normalizeMobile(documents.guardian_information?.contactNumber),
+          )}
+          <Text style={fieldStyles.hint}>{GUARDIAN_INFO_NOTICE}</Text>
+        </Card>
+      ) : null}
+
+      {renderRelationshipDocumentsNotice()}
 
       <Pressable
         onPress={() => {
@@ -1059,6 +1381,7 @@ export default function RegisterScreen({ navigation, route }) {
         style={styles.certifyRow}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: certified }}
+        accessibilityLabel="I certify all information is true and correct"
       >
         <View style={[styles.checkbox, certified && styles.checkboxChecked]}>
           {certified ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
@@ -1067,7 +1390,11 @@ export default function RegisterScreen({ navigation, route }) {
           I certify all information is true and correct.
         </Text>
       </Pressable>
-      {errors.certified ? <Text style={styles.stepError}>{errors.certified}</Text> : null}
+      {errors.certified ? (
+        <Text style={styles.stepError}>{errors.certified}</Text>
+      ) : !certified ? (
+        <Text style={fieldStyles.hint}>Check the box above to submit your registration.</Text>
+      ) : null}
     </>
   );
 
@@ -1266,8 +1593,12 @@ export default function RegisterScreen({ navigation, route }) {
                 title="Submit Registration"
                 onPress={onSubmit}
                 loading={submitting}
-                disabled={submitting}
-                accessibilityLabel="Submit registration"
+                disabled={!certified || submitting}
+                accessibilityLabel={
+                  certified
+                    ? 'Submit registration'
+                    : 'Submit registration, disabled until you certify your information'
+                }
               />
             )}
           </View>
@@ -1554,6 +1885,7 @@ const styles = StyleSheet.create({
     borderRadius: layout.cardRadius,
   },
   cardSpaced: { marginTop: layout.cardGap },
+  cardStacked: { marginBottom: layout.cardGap },
   stepError: {
     ...typography.metadata,
     color: colors.danger,
@@ -1652,11 +1984,59 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
+  uploadedThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
   uploadedName: {
     ...typography.metadata,
     color: colors.success,
     fontWeight: '600',
     flex: 1,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  sourceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: layout.iconButtonSize,
+    paddingHorizontal: spacing.sm,
+    borderRadius: layout.buttonRadius,
+    borderWidth: 1,
+    borderColor: colors.primaryTeal,
+    backgroundColor: colors.white,
+  },
+  sourceBtnText: {
+    ...typography.statusLabel,
+    color: colors.primaryTeal,
+    fontWeight: '600',
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginTop: layout.cardGap,
+    padding: spacing.sm,
+    borderRadius: layout.buttonRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  noticeText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    flex: 1,
+    lineHeight: 18,
   },
   reviewSectionTitle: {
     ...typography.cardTitle,

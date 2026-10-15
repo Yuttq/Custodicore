@@ -100,6 +100,14 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               </Text>
             ) : null}
 
+            {verification.awaitingRelationshipLink ? (
+              <Text style={styles.noneSubmitted}>
+                Facility staff review the relationship documents you sent with your registration
+                after they link your account to the PDL you are visiting. You only need to upload
+                a document again if staff reject it or ask for another one.
+              </Text>
+            ) : null}
+
             <Text style={styles.sectionEyebrow}>Required Documents</Text>
             <View style={styles.docList}>
               {documents.map((doc, index) => (

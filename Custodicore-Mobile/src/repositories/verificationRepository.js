@@ -1,14 +1,23 @@
 import * as api from '../services/api';
+import {
+  DOCUMENT_IMAGE_ERRORS,
+  toDocumentImageUpload,
+  validateDocumentImage,
+} from '../utils/documentImageRules';
 import { RELATIONSHIPS, getRelationshipLabel } from '../utils/registrationRequirements';
 import {
-  GOVERNMENT_ID_KEY,
-  getRequiredVerificationDocuments,
-} from '../utils/visitorVerificationDocuments';
+  buildRegistrationDocuments,
+  buildRelationshipRequirementDocuments,
+  hasAnyRelationshipUpload,
+  isAwaitingRelationshipLink,
+} from '../utils/relationshipRequirementDocuments';
+import { GOVERNMENT_ID_KEY } from '../utils/visitorVerificationDocuments';
 
 /**
  * Visitor verification data access (Phase 4): government IDs and supporting
  * documents from GET /api/documents, uploads to POST /api/documents and
- * POST /api/relationships/{id}/supporting-document.
+ * POST /api/relationships/{id}/requirements/{key} (one file per checklist
+ * requirement, which is what the Record Officer reviews).
  *
  * The backend is the source of truth for every status (pending / verified /
  * rejected). This module only maps those values onto the existing UI shapes —
@@ -62,32 +71,23 @@ export function resolveRelationshipKey(hint, fallback) {
   return 'other';
 }
 
-const ALLOWED_EXTENSIONS = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  pdf: 'application/pdf',
-};
+/**
+ * @typedef {{ uri: string; fileName?: string | null; mimeType?: string | null; fileSize?: number | null }} DocumentFile
+ */
 
 /**
- * Builds the multipart file part. Rejects formats the backend will not accept.
- * @param {{ uri: string; fileName?: string | null }} file
+ * Builds the multipart file part. The mobile flows only upload photos, so
+ * only JPG, PNG and WEBP images up to 10 MB are accepted here (the backend
+ * validates every upload again, and also accepts PDF from other clients).
+ * @param {DocumentFile} file
  */
 function toFilePart(file) {
   if (!file?.uri) throw new Error('Please add a photo before submitting.');
-  let name = String(file.fileName || '').trim();
-  let ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  if (!ext) {
-    const fromUri = String(file.uri).split('?')[0].split('.').pop()?.toLowerCase() ?? '';
-    ext = ALLOWED_EXTENSIONS[fromUri] ? fromUri : 'jpg';
-    name = `${name || 'document'}.${ext}`;
-  }
-  const type = ALLOWED_EXTENSIONS[ext];
-  if (!type) {
-    throw new Error('Unsupported file type. Upload a JPG, PNG, WEBP, or PDF file.');
-  }
-  return { uri: file.uri, name, type };
+  const invalid = validateDocumentImage(file);
+  if (invalid) throw new Error(invalid);
+  const part = toDocumentImageUpload(file);
+  if (!part) throw new Error(DOCUMENT_IMAGE_ERRORS.unsupportedType);
+  return { uri: file.uri, name: part.name, type: part.type };
 }
 
 /**
@@ -124,7 +124,8 @@ function toOverallStatus(profileStatus, anyUploaded) {
  * @property {boolean} canUpload
  * @property {string | null} unavailableReason
  * @property {string | null} detail — e.g. ID type or PDL name
- * @property {string | null} relationshipRecordId — target for supporting uploads
+ * @property {string | null} relationshipRecordId — target for relationship uploads
+ * @property {string | null} requirementKey — backend checklist key (relationship documents only)
  */
 
 /**
@@ -135,75 +136,46 @@ export function normalizeVerification(data, relationshipKey) {
   const o = data && typeof data === 'object' ? /** @type {Record<string, any>} */ (data) : {};
   const governmentIds = Array.isArray(o.governmentIds) ? o.governmentIds : [];
   const relationships = Array.isArray(o.relationships) ? o.relationships : [];
+  const registrationDocuments = buildRegistrationDocuments(o.registrationDocuments);
 
   // Prefer a verified ID; otherwise the most recent upload (API is newest-first).
   const currentId =
     governmentIds.find((d) => d?.status === 'verified') ?? governmentIds[0] ?? null;
-  // Supporting documents attach to the visitor's staff-created relationship record.
-  const relationshipRecord =
-    relationships.find((r) => r?.status !== 'rejected') ?? relationships[0] ?? null;
 
   /** @type {VerificationDocument[]} */
-  const documents = getRequiredVerificationDocuments(relationshipKey).map((doc) => {
-    if (doc.key === GOVERNMENT_ID_KEY) {
-      return {
-        key: doc.key,
-        label: doc.label,
-        uploadStatus: toUploadStatus(currentId?.status, Boolean(currentId)),
-        uploadedAt: currentId?.uploadedAt ?? null,
-        verifiedAt: currentId?.verifiedAt ?? null,
-        rejectionReason: null,
-        reviewNote: null,
-        canUpload: currentId?.status !== 'verified',
-        unavailableReason: null,
-        detail: getGovernmentIdTypeLabel(currentId?.documentType) ?? null,
-        relationshipRecordId: null,
-      };
-    }
-
-    if (!relationshipRecord) {
-      return {
-        key: doc.key,
-        label: doc.label,
-        uploadStatus: 'pending',
-        uploadedAt: null,
-        verifiedAt: null,
-        rejectionReason: null,
-        reviewNote: null,
-        canUpload: false,
-        unavailableReason:
-          'You can upload this once facility staff link your account to the PDL you are visiting.',
-        detail: null,
-        relationshipRecordId: null,
-      };
-    }
-
-    return {
-      key: doc.key,
-      label: doc.label,
-      uploadStatus: toUploadStatus(
-        relationshipRecord.status,
-        Boolean(relationshipRecord.hasSupportingDocument),
-      ),
-      uploadedAt: null, // the backend does not record when a supporting document was uploaded
-      verifiedAt: relationshipRecord.verifiedAt ?? null,
+  const documents = [
+    // Relationship documents come from each linked relationship's backend
+    // checklist; files sent with the registration are listed read-only
+    // until staff link the PDL and they join that checklist.
+    ...buildRelationshipRequirementDocuments(relationships),
+    ...registrationDocuments,
+    {
+      key: GOVERNMENT_ID_KEY,
+      label: 'Government ID',
+      uploadStatus: toUploadStatus(currentId?.status, Boolean(currentId)),
+      uploadedAt: currentId?.uploadedAt ?? null,
+      verifiedAt: currentId?.verifiedAt ?? null,
       rejectionReason: null,
       reviewNote: null,
-      canUpload: relationshipRecord.status !== 'verified',
+      canUpload: currentId?.status !== 'verified',
       unavailableReason: null,
-      detail: relationshipRecord.pdlName ? `For ${relationshipRecord.pdlName}` : null,
-      relationshipRecordId: String(relationshipRecord.id),
-    };
-  });
+      detail: getGovernmentIdTypeLabel(currentId?.documentType) ?? null,
+      relationshipRecordId: null,
+      requirementKey: null,
+    },
+  ];
 
   const anyUploaded =
-    governmentIds.length > 0 || relationships.some((r) => r?.hasSupportingDocument);
+    governmentIds.length > 0 ||
+    registrationDocuments.length > 0 ||
+    hasAnyRelationshipUpload(relationships);
 
   return {
     backendStatus: typeof o.verificationStatus === 'string' ? o.verificationStatus : null,
     verificationStatus: toOverallStatus(o.verificationStatus, anyUploaded),
     relationshipId: relationshipKey,
     relationshipLabel: getRelationshipLabel(relationshipKey),
+    awaitingRelationshipLink: isAwaitingRelationshipLink(relationships),
     documents,
   };
 }
@@ -223,14 +195,15 @@ export async function fetchVerification(options = {}) {
 
 /**
  * Uploads a government ID (always reviewed by staff; starts as pending).
- * @param {{ uri: string; fileName?: string | null; documentType: string | null | undefined }} input
+ * @param {DocumentFile & { documentType: string | null | undefined }} input
  */
-export async function uploadGovernmentId({ uri, fileName, documentType }) {
+export async function uploadGovernmentId({ uri, fileName, mimeType, fileSize, documentType }) {
   const typeKey = toGovernmentIdTypeKey(documentType);
   if (!typeKey) throw new Error('Select which government ID you are uploading.');
+  const filePart = toFilePart({ uri, fileName, mimeType, fileSize });
   const form = new FormData();
   form.append('documentType', typeKey);
-  form.append('file', /** @type {any} */ (toFilePart({ uri, fileName })));
+  form.append('file', /** @type {any} */ (filePart));
   return api.uploadDocument(form);
 }
 
@@ -239,24 +212,49 @@ export async function uploadGovernmentId({ uri, fileName, documentType }) {
  * /auth/register multipart body (a new visitor has no token to upload it with
  * afterwards — they must verify their email before logging in).
  * @param {FormData} form
- * @param {{ uri: string; fileName?: string | null; idType?: string | null }} governmentId
+ * @param {DocumentFile & { idType?: string | null }} governmentId
  */
 export function appendRegistrationGovernmentId(form, governmentId) {
   const typeKey = toGovernmentIdTypeKey(governmentId?.idType);
   if (!typeKey) throw new Error('Select which government ID you are uploading.');
+  const filePart = toFilePart(governmentId);
   form.append('governmentIdType', typeKey);
-  form.append('governmentId', /** @type {any} */ (toFilePart(governmentId)));
+  form.append('governmentId', /** @type {any} */ (filePart));
 }
 
 /**
- * Uploads the supporting document for the visitor's own relationship record.
- * @param {{ relationshipRecordId: string; uri: string; fileName?: string | null }} input
+ * Adds the relationship documents picked during registration to a
+ * registration multipart body as relationshipDocuments[requirementKey]. The
+ * backend keeps them on the visitor and attaches them to the relationship's
+ * checklist when staff link the PDL.
+ * @param {FormData} form
+ * @param {[string, DocumentFile][]} files — getRegistrationRelationshipFiles()
  */
-export async function uploadSupportingDocument({ relationshipRecordId, uri, fileName }) {
-  if (!relationshipRecordId) {
+export function appendRegistrationRelationshipDocuments(form, files) {
+  files.forEach(([requirementKey, file]) => {
+    form.append(`relationshipDocuments[${requirementKey}]`, /** @type {any} */ (toFilePart(file)));
+  });
+}
+
+/**
+ * Uploads the file for one checklist requirement of the visitor's own
+ * relationship. The backend rejects keys the relationship's checklist does
+ * not ask for, and keys that are already verified.
+ * @param {DocumentFile & { relationshipRecordId: string | null; requirementKey: string | null }} input
+ */
+export async function uploadRelationshipRequirementDocument({
+  relationshipRecordId,
+  requirementKey,
+  uri,
+  fileName,
+  mimeType,
+  fileSize,
+}) {
+  if (!relationshipRecordId || !requirementKey) {
     throw new Error('This document can be uploaded once staff link your account to a PDL.');
   }
+  const filePart = toFilePart({ uri, fileName, mimeType, fileSize });
   const form = new FormData();
-  form.append('file', /** @type {any} */ (toFilePart({ uri, fileName })));
-  return api.uploadSupportingDocument(relationshipRecordId, form);
+  form.append('file', /** @type {any} */ (filePart));
+  return api.uploadRelationshipRequirementDocument(relationshipRecordId, requirementKey, form);
 }

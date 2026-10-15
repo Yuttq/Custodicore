@@ -13,6 +13,32 @@ import {
   typography,
 } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
+import {
+  RELATIONSHIP_DOCUMENTS_SUBMITTED_NOTICE,
+  getInfoNotice,
+} from '../utils/registrationRequirements';
+
+/**
+ * Registration summaries saved by older app versions listed these even though
+ * registration never uploaded them, and had no `kind` on Guardian Information.
+ * Current summaries mark every uploaded document `submitted: true`, so a
+ * Marriage Certificate sent with the registration is still listed.
+ */
+const LEGACY_NOT_SUBMITTED_LABELS = new Set([
+  'Marriage Certificate',
+  'Birth Certificate',
+  'CENOMAR',
+]);
+const LEGACY_INFO_LABELS = new Set(['Guardian Information']);
+
+/**
+ * Typed details (Guardian Information), not uploaded documents. Sent with the
+ * registration when `submitted`; older summaries kept them on the device only.
+ * @param {{ label: string; kind?: string }} item
+ */
+function isLocalInfo(item) {
+  return item.kind === 'info' || LEGACY_INFO_LABELS.has(item.label);
+}
 
 /**
  * Restricted home for a signed-in visitor whose email is verified but whose
@@ -24,7 +50,11 @@ export default function VerificationReviewScreen({ navigation }) {
   const { user, registrationSummary, refreshUser, logout } = useAuth();
   const [checking, setChecking] = useState(false);
   const isRejected = user?.verificationStatus === 'rejected';
-  const documents = registrationSummary?.documents ?? [];
+  const summaryItems = (registrationSummary?.documents ?? []).filter(
+    (item) => item.submitted === true || !LEGACY_NOT_SUBMITTED_LABELS.has(item.label),
+  );
+  const documents = summaryItems.filter((item) => !isLocalInfo(item));
+  const localInfo = summaryItems.filter(isLocalInfo);
 
   // Pick up a decision made while the app was in the background.
   useFocusEffect(
@@ -133,7 +163,7 @@ export default function VerificationReviewScreen({ navigation }) {
 
         {documents.length > 0 ? (
           <>
-            <Text style={styles.sectionHeading}>Documents Submitted</Text>
+            <Text style={styles.sectionHeading}>Documents Submitted With Registration</Text>
             <Card style={styles.documentsCard}>
               {documents.map((item) => (
                 <View key={item.label} style={styles.docRow}>
@@ -149,6 +179,34 @@ export default function VerificationReviewScreen({ navigation }) {
             </Card>
           </>
         ) : null}
+
+        {localInfo.length > 0 ? (
+          <>
+            <Text style={styles.sectionHeading}>Information Provided</Text>
+            <Card style={styles.documentsCard}>
+              {localInfo.map((item) => (
+                <View key={item.label} style={styles.docRow}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                  <View style={styles.docText}>
+                    <Text style={styles.docLabel}>{item.label}</Text>
+                    {item.detail ? (
+                      <Text style={styles.docDetail}>{item.detail}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+              <Text style={styles.docDetail}>{getInfoNotice(localInfo)}</Text>
+            </Card>
+          </>
+        ) : null}
+
+        <Card style={styles.documentsCard}>
+          <Text style={styles.docDetail}>{RELATIONSHIP_DOCUMENTS_SUBMITTED_NOTICE}</Text>
+        </Card>
 
         <View style={styles.buttonWrap}>
           <Button

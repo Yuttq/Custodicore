@@ -13,8 +13,18 @@ export const VISIT_PROGRESS_SNAPSHOT_DEFS = [
   { label: 'Visit Completed', stepId: 'visit_completed' },
 ];
 
-/** Closing events the backend appends for visits that ended without completing. */
-const TERMINAL_STEP_IDS = ['visit_declined', 'visit_cancelled', 'visit_no_show', 'request_rejected'];
+/**
+ * Closing events the backend appends for visits that ended without completing.
+ * `request_rejected`: staff rejected a visitor request; `request_expired`: its
+ * visit date passed before staff reviewed it (both have status `cancelled`).
+ */
+const TERMINAL_STEP_IDS = [
+  'visit_declined',
+  'visit_cancelled',
+  'visit_no_show',
+  'request_rejected',
+  'request_expired',
+];
 
 /**
  * @typedef {object} CompactVisitStep

@@ -30,8 +30,9 @@ import useVisitorVerification from '../hooks/useVisitorVerification';
 import {
   GOVERNMENT_ID_TYPES,
   uploadGovernmentId,
-  uploadSupportingDocument,
+  uploadRelationshipRequirementDocument,
 } from '../repositories/verificationRepository';
+import { validateDocumentImage } from '../utils/documentImageRules';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 import { goBackOr } from '../utils/safeNavigation';
 import { GOVERNMENT_ID_KEY, isDocumentUploaded } from '../utils/visitorVerificationDocuments';
@@ -375,10 +376,18 @@ export default function UploadIDScreen({ navigation, route }) {
         ? await pickPhotoFromCamera({ forUpload: true })
         : await pickPhotoFromGallery({ forUpload: true });
       if (picked?.uri) {
+        // An invalid replacement keeps the previously selected (valid) photo.
+        const invalid = validateDocumentImage(picked);
+        if (invalid) {
+          setError(invalid);
+          return;
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setEntry({
           uri: picked.uri,
           fileName: picked.fileName ?? null,
+          mimeType: picked.mimeType ?? null,
+          fileSize: picked.fileSize ?? null,
           status: 'uploaded',
         });
         setError('');
@@ -403,12 +412,21 @@ export default function UploadIDScreen({ navigation, route }) {
     setError('');
     try {
       if (isGovernmentId) {
-        await uploadGovernmentId({ uri: entry.uri, fileName: entry.fileName, documentType: idType });
-      } else {
-        await uploadSupportingDocument({
-          relationshipRecordId: activeDoc.relationshipRecordId,
+        await uploadGovernmentId({
           uri: entry.uri,
           fileName: entry.fileName,
+          mimeType: entry.mimeType,
+          fileSize: entry.fileSize,
+          documentType: idType,
+        });
+      } else {
+        await uploadRelationshipRequirementDocument({
+          relationshipRecordId: activeDoc.relationshipRecordId,
+          requirementKey: activeDoc.requirementKey,
+          uri: entry.uri,
+          fileName: entry.fileName,
+          mimeType: entry.mimeType,
+          fileSize: entry.fileSize,
         });
       }
       reload();

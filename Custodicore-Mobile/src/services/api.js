@@ -69,7 +69,7 @@ function formatLaravelErrors(body) {
 /**
  * Normalizes axios failures into a plain `Error` for alerts and logging.
  * @param {unknown} error
- * @returns {Error & { status?: number; code?: string; errors?: Record<string, string[]> }}
+ * @returns {Error & { status?: number; code?: string; errors?: Record<string, string[]>; timedOut?: boolean }}
  */
 function toRequestError(error) {
   if (isAxiosError(error)) {
@@ -96,6 +96,10 @@ function toRequestError(error) {
 
     const err = new Error(String(message).trim());
     err.status = status;
+    // Timed out waiting for a response: the server may still have processed it.
+    if (!error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
+      err.timedOut = true;
+    }
     // Machine-readable backend code (e.g. Google auth `link_required`).
     if (typeof body?.code === 'string' && body.code) {
       err.code = body.code;
@@ -182,7 +186,15 @@ export async function linkGoogleAccount({ idToken, password }) {
  */
 export async function registerWithGoogle(payload) {
   try {
-    const { data } = await client.post('/auth/google/register', payload);
+    // FormData (multipart) when relationship documents are attached.
+    const isMultipart = typeof FormData !== 'undefined' && payload instanceof FormData;
+    const { data } = await client.post(
+      '/auth/google/register',
+      payload,
+      isMultipart
+        ? { headers: { 'Content-Type': 'multipart/form-data' }, timeout: UPLOAD_TIMEOUT_MS }
+        : undefined,
+    );
     return data;
   } catch (error) {
     throw toRequestError(error);
@@ -325,15 +337,19 @@ export async function getDocuments() {
 }
 
 /**
- * Uploads the supporting document for one of the visitor's own relationships —
- * POST /api/relationships/{relationshipId}/supporting-document (multipart: file)
+ * Uploads the file for one checklist requirement of the visitor's own
+ * relationship — POST /api/relationships/{relationshipId}/requirements/{requirementKey}
+ * (multipart: file). Recorded in relationship_documents, which is what the
+ * Record Officer's checklist reviews. (The older single-file
+ * /supporting-document endpoint is kept on the backend for old app builds.)
  * @param {string} relationshipId
+ * @param {string} requirementKey — backend checklist key, e.g. marriage_certificate
  * @param {FormData} formData
  */
-export async function uploadSupportingDocument(relationshipId, formData) {
+export async function uploadRelationshipRequirementDocument(relationshipId, requirementKey, formData) {
   try {
     const { data } = await client.post(
-      `/relationships/${encodeURIComponent(relationshipId)}/supporting-document`,
+      `/relationships/${encodeURIComponent(relationshipId)}/requirements/${encodeURIComponent(requirementKey)}`,
       formData,
       {
         headers: { 'Content-Type': 'multipart/form-data' },

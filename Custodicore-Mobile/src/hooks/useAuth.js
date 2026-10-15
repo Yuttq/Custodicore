@@ -22,8 +22,10 @@ import client, {
   TOKEN_KEY,
   updateMe as apiUpdateMe,
 } from '../services/api';
+import { buildRegisterBody, getRegistrationRelationshipFiles } from '../utils/registrationRequest';
 import {
   appendRegistrationGovernmentId,
+  appendRegistrationRelationshipDocuments,
   uploadGovernmentId,
 } from '../repositories/verificationRepository';
 import {
@@ -72,55 +74,6 @@ const UNRECOVERABLE_GOOGLE_REGISTRATION_CODES = new Set([
 ]);
 
 /**
- * Map registration gender UI labels (Male / Female) onto the Laravel
- * contract (male / female — the only values the backend accepts).
- * @param {string} gender
- */
-function mapGenderForApi(gender) {
-  const g = String(gender || '').trim().toLowerCase();
-  return g || undefined;
-}
-
-/**
- * Build POST /api/auth/register body from RegisterScreen payload.
- * Does NOT send PDL IDs or create visitor-PDL relationships.
- * @param {Record<string, unknown>} payload
- */
-function buildRegisterBody(payload) {
-  const body = {
-    fullName: String(payload.fullName || '').trim(),
-    // Phase 1 First/Last Name, stored separately as well as in fullName.
-    firstName: payload.firstName ? String(payload.firstName).trim() : undefined,
-    lastName: payload.lastName ? String(payload.lastName).trim() : undefined,
-    email: String(payload.email || '').trim(),
-    password: payload.password,
-    password_confirmation: payload.password_confirmation || payload.password,
-    dateOfBirth: payload.dateOfBirth || payload.birthdate,
-    gender: mapGenderForApi(payload.gender),
-    address: payload.address ? String(payload.address).trim() : undefined,
-    contactNumber: payload.contactNumber
-      ? String(payload.contactNumber).trim()
-      : undefined,
-    relationshipHint:
-      payload.relationshipHint ||
-      payload.relationshipLabel ||
-      payload.relationship ||
-      undefined,
-    // Consent given on the first registration screen (Terms & Conditions +
-    // Privacy Policy). The backend rejects registration without both.
-    acceptedTerms: payload.acceptedTerms === true ? true : undefined,
-    acceptedPrivacy: payload.acceptedPrivacy === true ? true : undefined,
-    consentVersion: payload.consentVersion,
-  };
-
-  Object.keys(body).forEach((key) => {
-    if (body[key] === undefined || body[key] === '') delete body[key];
-  });
-
-  return body;
-}
-
-/**
  * Build POST /api/auth/google/register body: the same registration fields as
  * buildRegisterBody() minus email (the backend reads it from the verified
  * Google ID token), plus the fresh ID token.
@@ -130,25 +83,41 @@ function buildRegisterBody(payload) {
 function buildGoogleRegisterBody(payload, idToken) {
   const body = buildRegisterBody(payload);
   delete body.email;
-  return { ...body, idToken };
+  const relationshipFiles = getRegistrationRelationshipFiles(payload);
+  if (!relationshipFiles.length) return { ...body, idToken };
+
+  // Relationship documents go with the registration itself (multipart). The
+  // government ID is still uploaded right after, with the new session.
+  const form = toFormData({ ...body, idToken });
+  appendRegistrationRelationshipDocuments(form, relationshipFiles);
+  return form;
+}
+
+/** @param {Record<string, unknown>} body */
+function toFormData(body) {
+  const form = new FormData();
+  Object.entries(body).forEach(([key, value]) => {
+    form.append(key, String(value));
+  });
+  return form;
 }
 
 /**
- * POST /api/auth/register body. With a government ID picked during
- * registration this is multipart (the visitor gets no token until they
- * verify their email, so it cannot be uploaded afterwards); otherwise JSON.
+ * POST /api/auth/register body. With documents picked during registration
+ * (government ID, relationship documents) this is multipart — the visitor
+ * gets no token until they verify their email, so they cannot be uploaded
+ * afterwards; otherwise JSON.
  * @param {Record<string, unknown>} payload
  */
 function buildRegisterRequest(payload) {
   const body = buildRegisterBody(payload);
   const governmentId = payload?.documents?.government_id;
-  if (!governmentId?.uri) return body;
+  const relationshipFiles = getRegistrationRelationshipFiles(payload);
+  if (!governmentId?.uri && !relationshipFiles.length) return body;
 
-  const form = new FormData();
-  Object.entries(body).forEach(([key, value]) => {
-    form.append(key, String(value));
-  });
-  appendRegistrationGovernmentId(form, governmentId);
+  const form = toFormData(body);
+  if (governmentId?.uri) appendRegistrationGovernmentId(form, governmentId);
+  appendRegistrationRelationshipDocuments(form, relationshipFiles);
   return form;
 }
 
@@ -475,9 +444,8 @@ export function AuthProvider({ children }) {
    * government ID picked during registration
    * (POST /api/documents, stored as pending), store the summary, then apply
    * the session so the navigator switches to the app. Relationship documents
-   * can't be uploaded yet: staff must first link the visitor to a PDL. A
-   * failed upload does not undo registration; the visitor can retry from
-   * Verification Documents.
+   * were already sent with /auth/google/register. A failed ID upload does
+   * not undo registration; the visitor can retry from Verification Documents.
    */
   const completeRegistration = useCallback(
     async (sessionToken, sessionUser, payload, summary) => {
