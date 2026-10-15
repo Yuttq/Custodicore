@@ -45,6 +45,7 @@ import {
   readHandoffParams,
 } from '../utils/scheduleHandoff';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
+import { NO_UPCOMING_VISIT_TITLE, NO_UPCOMING_VISIT_UNVERIFIED } from '../utils/visitGuidance';
 
 const TABS = [
   { key: 'upcoming', label: 'Upcoming' },
@@ -60,7 +61,7 @@ function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
     return (
       <EmptyState
         title="No Upcoming Visits"
-        message="You currently have no assigned visits."
+        message={`${NO_UPCOMING_VISIT_TITLE} ${NO_UPCOMING_VISIT_UNVERIFIED}`}
         iconName="calendar-outline"
         iconColor={colors.primaryTeal}
         style={styles.emptyWrap}

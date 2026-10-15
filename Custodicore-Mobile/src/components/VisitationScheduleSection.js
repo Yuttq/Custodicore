@@ -14,6 +14,7 @@ import {
   visitingWindows,
   WHOLE_DAY_PERIOD,
 } from '../utils/scheduleAvailability';
+import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 
 /** What booking the whole day means at the gate. */
 function wholeDayNote(slots) {
@@ -56,7 +57,6 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     loading,
     error,
     reload,
-    message,
     today,
     from,
     to,
@@ -162,8 +162,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
       <View style={styles.scheduleNotice}>
         <Ionicons name="information-circle-outline" size={20} color={colors.primaryNavy} />
         <Text style={styles.scheduleNoticeText}>
-          {message ??
-            'A verified PDL relationship is required to view visit availability.'}
+          {RELATIONSHIP_NOT_VERIFIED_SCHEDULE}
         </Text>
       </View>
     );

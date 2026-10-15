@@ -25,6 +25,10 @@ import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
+import {
+  RELATIONSHIP_NOT_VERIFIED_SCHEDULE,
+  getNoUpcomingVisitState,
+} from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
@@ -159,7 +163,6 @@ function HomeVisitCalendar({ schedule, markedDates, onSelectDate }) {
     loading,
     error,
     reload,
-    message,
     today,
     from,
     to,
@@ -184,11 +187,9 @@ function HomeVisitCalendar({ schedule, markedDates, onSelectDate }) {
       </>
     );
   } else if (!relationship) {
-    content = (
-      <Text style={styles.noVisit}>
-        {message ?? 'A verified PDL relationship is required to view visit availability.'}
-      </Text>
-    );
+    // The API's top-level `message` only covers this case (no verified
+    // relationship); the app's wording keeps Home and Schedule consistent.
+    content = <Text style={styles.noVisit}>{RELATIONSHIP_NOT_VERIFIED_SCHEDULE}</Text>;
   } else {
     content = (
       <>
@@ -384,6 +385,10 @@ export default function DashboardScreen({ navigation }) {
   const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
 
   const { relationship, relationships, today: availabilityToday } = schedule;
+  // Visits can be requested only for a staff-verified relationship, which
+  // is exactly what availability returns.
+  const hasVerifiedRelationship = isApprovedVisitor && Boolean(relationship);
+  const noVisitState = getNoUpcomingVisitState({ canRequestVisit: hasVerifiedRelationship });
   const markedDates = useMemo(
     () =>
       relationship && availabilityToday
@@ -476,18 +481,18 @@ export default function DashboardScreen({ navigation }) {
           </Card>
         ) : (
           <Card style={styles.visitCard}>
-            <Text style={styles.noVisit}>
-              You have no upcoming visits. Request a visit by choosing an available visitation
-              slot; facility staff will review your request.
-            </Text>
-            <View style={styles.noVisitAction}>
-              <Button
-                title="Request a Visit"
-                variant="secondary"
-                onPress={onOpenSchedule}
-                accessibilityLabel="Request a visit from the visitation schedule"
-              />
-            </View>
+            <Text style={styles.visitPdl}>{noVisitState.title}</Text>
+            <Text style={styles.noVisit}>{noVisitState.message}</Text>
+            {noVisitState.showRequestAction ? (
+              <View style={styles.noVisitAction}>
+                <Button
+                  title="Request a Visit"
+                  variant="secondary"
+                  onPress={onOpenSchedule}
+                  accessibilityLabel="Request a visit from the visitation schedule"
+                />
+              </View>
+            ) : null}
           </Card>
         )}
 
@@ -498,13 +503,16 @@ export default function DashboardScreen({ navigation }) {
               markedDates={markedDates}
               onSelectDate={onSelectCalendarDate}
             />
-            <View style={styles.scheduleLink}>
-              <TextLink
-                label="View Visitation Schedule"
-                onPress={onOpenSchedule}
-                accessibilityLabel="View visitation schedule in My Visits"
-              />
-            </View>
+            {/* The Schedule tab only repeats the "not verified" notice until then. */}
+            {hasVerifiedRelationship ? (
+              <View style={styles.scheduleLink}>
+                <TextLink
+                  label="View Visitation Schedule"
+                  onPress={onOpenSchedule}
+                  accessibilityLabel="View visitation schedule in My Visits"
+                />
+              </View>
+            ) : null}
           </>
         ) : null}
 
