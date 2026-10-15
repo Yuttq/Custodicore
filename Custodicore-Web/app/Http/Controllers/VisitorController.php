@@ -21,22 +21,7 @@ use Illuminate\Validation\Rule;
 
 class VisitorController extends Controller
 {
-    /**
-     * Same temporary stand-in as PdlController::currentStaffId(). See that
-     * method's doc comment — auth isn't wired to staff_profiles yet.
-     */
-    private function currentStaffId(): int
-    {
-        $staff = \App\Models\StaffProfile::first();
-
-        if (!$staff) {
-            throw new \RuntimeException(
-                'No staff_profiles row exists yet. Create one via Tinker first.'
-            );
-        }
-
-        return $staff->staff_id;
-    }
+    use Concerns\ResolvesActingStaff;
 
     private function logAudit(string $actionType, string $recordType, int $recordId, string $description): void
     {
@@ -89,6 +74,7 @@ class VisitorController extends Controller
             'idDocuments',
             'relationships.pdl',
             'relationships.documents',
+            'registrationDocuments',
             'flags' => fn ($q) => $q->orderBy('created_at', 'desc'),
             'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule', 'sessionSchedules'])->orderByDesc('assigned_at')->limit(10),
         ]);
@@ -121,7 +107,7 @@ class VisitorController extends Controller
     {
         return VisitRequest::query()
             ->select('visit_requests.*')
-            ->where('visit_requests.status', 'assigned')
+            ->awaitingReview()
             ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
             ->with(['visitor', 'pdl', 'relationship', 'schedule', 'sessionSchedules', 'eligibilityAssessment'])
             ->orderBy('visit_schedules.schedule_date')
@@ -146,10 +132,15 @@ class VisitorController extends Controller
                 . ($visitor->idDocuments()->exists() ? 'Open the ID, check it matches the visitor, then click Verify.' : 'They haven\'t uploaded an ID yet.'));
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $visitor->update([
                 'verification_status' => 'verified',
-                'verified_by' => $this->reviewingStaffId($request),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
                 'rejection_reason' => null,
             ]);
@@ -198,10 +189,15 @@ class VisitorController extends Controller
             return back()->with('error', 'This account has already been returned to the visitor.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $visitor->update([
                 'verification_status' => 'rejected',
-                'verified_by' => $this->reviewingStaffId($request),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
                 'rejection_reason' => $reason,
             ]);
@@ -228,12 +224,6 @@ class VisitorController extends Controller
         return back()->with('success', 'Account returned. The visitor has been notified of what to fix.');
     }
 
-    /** The signed-in staff member's profile, else the existing stand-in. */
-    private function reviewingStaffId(Request $request): int
-    {
-        return $request->user()?->staffProfile?->staff_id ?? $this->currentStaffId();
-    }
-
     // -----------------------------------------------------------------
     // IDENTITY VERIFICATION — verify or reject an uploaded ID document
     // -----------------------------------------------------------------
@@ -245,10 +235,15 @@ class VisitorController extends Controller
             return back()->with('error', 'This ID document is already verified.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $idDocument->update([
                 'verification_status' => 'verified',
-                'verified_by' => $this->currentStaffId(),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
             ]);
         } catch (\Throwable $e) {
@@ -279,10 +274,15 @@ class VisitorController extends Controller
             return back()->with('error', 'This ID document is already rejected.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $idDocument->update([
                 'verification_status' => 'rejected',
-                'verified_by' => $this->currentStaffId(),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
             ]);
         } catch (\Throwable $e) {
@@ -397,10 +397,15 @@ class VisitorController extends Controller
                 . implode(', ', RelationshipRequirements::unmetLabels($requirements)) . '.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $relationship->update([
                 'verification_status' => 'verified',
-                'verified_by' => $this->currentStaffId(),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
             ]);
         } catch (\Throwable $e) {
@@ -422,10 +427,15 @@ class VisitorController extends Controller
             return back()->with('error', 'This relationship is already rejected.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $relationship->update([
                 'verification_status' => 'rejected',
-                'verified_by' => $this->currentStaffId(),
+                'verified_by' => $staffId,
                 'verified_at' => now(),
             ]);
         } catch (\Throwable $e) {
@@ -456,11 +466,16 @@ class VisitorController extends Controller
             return back()->withInput()->withErrors(['flag_type' => 'This visitor already has an active flag of this type.']);
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $flag = VisitorFlag::create([
                 ...$validated,
                 'visitor_id' => $visitor->visitor_id,
-                'flagged_by' => $this->currentStaffId(),
+                'flagged_by' => $staffId,
                 'status' => 'active',
             ]);
         } catch (\Throwable $e) {
@@ -482,10 +497,15 @@ class VisitorController extends Controller
             return back()->with('error', 'This flag has already been resolved.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $flag->update([
                 'status' => 'resolved',
-                'resolved_by' => $this->currentStaffId(),
+                'resolved_by' => $staffId,
                 'resolved_at' => now(),
             ]);
         } catch (\Throwable $e) {

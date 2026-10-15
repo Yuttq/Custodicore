@@ -9,6 +9,7 @@ use App\Models\Module;
 use App\Models\Role;
 use App\Models\VisitorId;
 use App\Models\VisitorProfile;
+use App\Services\RelationshipRequirements;
 use App\Services\Auth\EmailVerificationService;
 use App\Services\Auth\GoogleAuthDecision;
 use App\Services\Auth\GoogleAuthService;
@@ -16,6 +17,7 @@ use App\Services\Auth\GoogleIdTokenVerifier;
 use App\Services\Auth\GoogleSignInUnavailableException;
 use App\Services\Auth\InvalidGoogleIdTokenException;
 use App\Services\Auth\VerifiedGoogleIdentity;
+use App\Support\Sanitizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -244,6 +246,13 @@ class AuthController extends Controller
      * Accepts camelCase and snake_case for mobile compatibility. Collects
      * relationshipHint as a free-text initial indication only — does NOT
      * create a visitor_pdl_relationships row (PDL may be unknown at signup).
+     * Optional Guardian Information (guardianFullName, guardianRelationship,
+     * guardianContactNumber — all three or none) is stored on the profile
+     * for staff review.
+     *
+     * Optional intendedPdlName: the name of the PDL the visitor wants to
+     * visit, as typed. Stored on the profile as an unverified hint for the
+     * Record Officer; it never links a PDL or creates a relationship.
      *
      * Gender is required and must be male or female. (visitor_profiles.gender
      * is still a nullable male|female|other enum so existing rows stay valid.)
@@ -288,7 +297,7 @@ class AuthController extends Controller
             'governmentIdNumber' => ['nullable', 'string', 'max:50'],
             // Overrides the shared (optional) gender rule: required here.
             'gender' => ['required', 'string', Rule::in(self::GENDERS)],
-        ] + $this->profileRegistrationRules(), $this->registrationMessages() + [
+        ] + $this->profileRegistrationRules() + $this->relationshipDocumentRules($request), $this->registrationMessages() + [
             'governmentId.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
             'governmentId.max' => 'The file is too large. Maximum size is 10 MB.',
             'governmentIdType.in' => 'Choose one of the accepted government ID types.',
@@ -354,7 +363,7 @@ class AuthController extends Controller
             'idToken' => ['required', 'string'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
             'password_confirmation' => ['required', 'string'],
-        ] + $this->profileRegistrationRules(), $this->registrationMessages());
+        ] + $this->profileRegistrationRules() + $this->relationshipDocumentRules($request), $this->registrationMessages());
 
         $identity = $this->verifyGoogleIdToken($verifier, $request->input('idToken'));
         if ($identity instanceof JsonResponse) {
@@ -405,7 +414,54 @@ class AuthController extends Controller
             'gender' => $request->input('gender'),
             'address' => $request->input('address'),
             'relationshipHint' => $request->input('relationshipHint', $request->input('relationship_hint')),
+            // Guardian Information (Legal Guardian visitors); optional for everyone else.
+            'guardianFullName' => $request->input('guardianFullName', $request->input('guardian_full_name')),
+            'guardianRelationship' => $request->input('guardianRelationship', $request->input('guardian_relationship')),
+            'guardianContactNumber' => $request->input('guardianContactNumber', $request->input('guardian_contact_number')),
+            // Name of the PDL the visitor wants to visit (optional), cleaned before validation.
+            'intendedPdlName' => $this->cleanedName($request->input('intendedPdlName', $request->input('intended_pdl_name'))),
+            // Relationship the visitor claims (a RelationshipRequirements type
+            // key); decides which relationshipDocuments may be sent.
+            'relationshipType' => $request->input('relationshipType', $request->input('relationship_type')),
         ]);
+    }
+
+    /**
+     * Relationship documents sent with the registration, one file per
+     * requirement: relationshipDocuments[marriage_certificate], ... Only the
+     * keys the claimed relationshipType asks for are accepted (see
+     * RelationshipRequirements::registrationDocumentKeys). Optional, so older
+     * app builds that send none still register.
+     */
+    private function relationshipDocumentRules(Request $request): array
+    {
+        $fileRules = array_values(array_diff(VisitorApiController::DOCUMENT_FILE_RULES, ['required']));
+
+        return [
+            'relationshipType' => ['nullable', 'required_with:relationshipDocuments', 'string', Rule::in(RelationshipRequirements::registrationTypes())],
+            'relationshipDocuments' => ['nullable', 'array', function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+                $allowed = RelationshipRequirements::registrationDocumentKeys(
+                    (string) $request->input('relationshipType'),
+                    $this->isMinorBirthdate($request->input('dateOfBirth'))
+                );
+                foreach (array_keys((array) $value) as $key) {
+                    if (! in_array($key, $allowed, true)) {
+                        $fail('One of the uploaded documents is not required for the selected relationship.');
+                        return;
+                    }
+                }
+            }],
+            'relationshipDocuments.*' => $fileRules,
+        ];
+    }
+
+    private function isMinorBirthdate(mixed $dateOfBirth): bool
+    {
+        try {
+            return $dateOfBirth && \Illuminate\Support\Carbon::parse($dateOfBirth)->age < RelationshipRequirements::ADULT_AGE;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /** Profile + consent rules shared by register() and registerWithGoogle(). */
@@ -422,10 +478,15 @@ class AuthController extends Controller
             'gender' => ['nullable', 'string', Rule::in(self::GENDERS)],
             'address' => ['nullable', 'string', 'max:255'],
             'relationshipHint' => ['nullable', 'string', 'max:100'],
+            // Optional (older clients never send them), but all three or none.
+            'guardianFullName' => ['nullable', 'required_with:guardianRelationship,guardianContactNumber', 'string', 'max:150'],
+            'guardianRelationship' => ['nullable', 'required_with:guardianFullName,guardianContactNumber', 'string', 'max:100'],
+            'guardianContactNumber' => ['nullable', 'required_with:guardianFullName,guardianRelationship', 'string', 'max:20', 'regex:/^\+?[0-9][0-9 \-]{5,18}[0-9]$/'],
             'acceptedTerms' => ['accepted'],
             'acceptedPrivacy' => ['accepted'],
             // If the app says which version it showed, it must be the current one.
             'consentVersion' => ['nullable', 'string', Rule::in([(string) config('legal.version')])],
+            'intendedPdlName' => ['nullable', 'string', 'min:2', 'max:150', 'regex:' . Sanitizer::NAME_REGEX],
         ];
     }
 
@@ -435,6 +496,17 @@ class AuthController extends Controller
             'acceptedTerms.accepted' => 'You must accept the Terms and Conditions to register.',
             'acceptedPrivacy.accepted' => 'You must accept the Privacy Policy to register.',
             'consentVersion.in' => 'The Terms and Privacy Policy were updated. Please review and accept the latest version.',
+            'guardianFullName.required_with' => 'Enter the guardian\'s full name.',
+            'guardianRelationship.required_with' => 'Enter the guardian\'s relationship to you.',
+            'guardianContactNumber.required_with' => 'Enter the guardian\'s contact number.',
+            'guardianContactNumber.regex' => 'Enter a valid contact number for the guardian.',
+            'intendedPdlName.min' => 'Enter the full name of the PDL you want to visit.',
+            'intendedPdlName.max' => 'The PDL name is too long (150 characters at most).',
+            'intendedPdlName.regex' => 'The PDL name can only contain letters, spaces, periods, apostrophes and hyphens.',
+            'relationshipType.in' => 'Select your relationship to the PDL.',
+            'relationshipType.required_with' => 'Select your relationship to the PDL.',
+            'relationshipDocuments.*.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'relationshipDocuments.*.max' => 'The file is too large. Maximum size is 10 MB.',
         ];
     }
 
@@ -460,8 +532,9 @@ class AuthController extends Controller
         ]);
 
         // Intentionally does NOT create visitor_pdl_relationships —
-        // relationshipHint is only an initial indication for staff later.
-        VisitorProfile::create([
+        // relationshipHint and intendedPdlName are only what the visitor
+        // says; a Record Officer links the PDL later, by hand.
+        $profile = VisitorProfile::create([
             'account_id' => $account->account_id,
             'full_name' => $request->input('fullName'),
             'first_name' => $request->filled('firstName') ? trim($request->input('firstName')) : null,
@@ -470,9 +543,20 @@ class AuthController extends Controller
             'gender' => $this->normalizeGender($request->input('gender')),
             'address' => $request->input('address'),
             'relationship_hint' => $request->input('relationshipHint'),
+            // Unverified search hint for staff; never matched automatically.
+            'intended_pdl_name' => $request->input('intendedPdlName') ?: null,
+            'guardian_full_name' => $this->trimmedOrNull($request->input('guardianFullName')),
+            'guardian_relationship' => $this->trimmedOrNull($request->input('guardianRelationship')),
+            'guardian_contact_number' => $this->trimmedOrNull($request->input('guardianContactNumber')),
             'contact_number' => $request->input('contactNumber') ?: 'N/A',
             'verification_status' => 'pending',
         ]);
+
+        // Relationship documents wait on the visitor until staff link the
+        // PDL; then they join that relationship's checklist as pending.
+        foreach ((array) $request->file('relationshipDocuments', []) as $key => $file) {
+            VisitorApiController::storeRegistrationDocument($profile, $key, $file);
+        }
 
         return $account;
     }
@@ -610,6 +694,20 @@ class AuthController extends Controller
             'emergencyContactNumber' => $profile?->emergency_contact_number,
             'relationshipHint' => $profile?->relationship_hint,
         ];
+    }
+
+    /** A typed person's name, cleaned like other names (Sanitizer::name); null if not a string. */
+    private function cleanedName(mixed $value): ?string
+    {
+        return is_string($value) ? Sanitizer::name($value) : null;
+    }
+
+    /** Optional free-text field: trimmed, or null when empty. */
+    private function trimmedOrNull(mixed $value): ?string
+    {
+        $value = is_string($value) ? trim($value) : null;
+
+        return $value === '' ? null : $value;
     }
 
     /**

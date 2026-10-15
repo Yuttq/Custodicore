@@ -25,6 +25,19 @@
     <div><div class="stat-label">Relationship Hint (from registration)</div><div>{{ $visitor->relationship_hint }}</div></div>
   </div>
   @endif
+  @if ($visitor->intended_pdl_name)
+  {{-- Typed by the visitor; a search hint only. Link the PDL with "Add PDL Relationship" below. --}}
+  <div class="row" style="margin-top:16px;margin-bottom:0;">
+    <div><div class="stat-label">PDL Name Given at Registration (unverified)</div><div>{{ $visitor->intended_pdl_name }}</div></div>
+  </div>
+  @endif
+  @if ($visitor->hasGuardianDetails())
+  <div class="row cols-3" style="margin-top:16px;margin-bottom:0;">
+    <div><div class="stat-label">Guardian Full Name (from registration)</div><div>{{ $visitor->guardian_full_name ?: '—' }}</div></div>
+    <div><div class="stat-label">Guardian's Relationship to Visitor</div><div>{{ $visitor->guardian_relationship ?: '—' }}</div></div>
+    <div><div class="stat-label">Guardian Contact Number</div><div>{{ $visitor->guardian_contact_number ?: '—' }}</div></div>
+  </div>
+  @endif
 </div>
 
 {{-- ================= ACCOUNT REVIEW ================= --}}
@@ -208,6 +221,8 @@
       </tbody>
     </table>
   @endif
+
+  @include('partials.registration-documents', ['visitor' => $visitor])
 
   <details style="margin-top:14px;" {{ $errors->hasAny(['pdl_id', 'relationship_type', 'has_children_together']) && ! old('schedule_id') ? 'open' : '' }}>
     <summary class="row-action" style="cursor:pointer;">Add PDL Relationship</summary>

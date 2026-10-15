@@ -79,6 +79,7 @@
         <div><dt>Gender</dt><dd>{{ ucfirst($visitor->gender ?? '—') }}</dd></div>
         <div><dt>Email Confirmed</dt><dd>{{ $visitor->account?->email_verified_at ? 'Yes' : 'Not yet' }}</dd></div>
         <div><dt>Says They're The PDL's</dt><dd>{{ $visitor->relationship_hint ?: '—' }}</dd></div>
+        <div><dt>PDL Name Given (unverified)</dt><dd>{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
         <div>
           <dt>Linked PDLs</dt>
           <dd>
@@ -141,6 +142,8 @@
           @endforeach
         @endif
       </div>
+
+      @include('partials.registration-documents', ['visitor' => $visitor])
 
       @if ($tab === 'rejected' && $visitor->rejection_reason)
         <div class="elig-note is-warn">Returned. What to fix: {{ $visitor->rejection_reason }}</div>

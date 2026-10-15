@@ -24,6 +24,7 @@
         .icon.err { background: var(--red); }
         .icon.info { background: var(--navy); }
         .btn { display: inline-block; border: 0; cursor: pointer; background: var(--teal); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 10px; }
+        .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
     </style>
 </head>
 <body>
@@ -44,7 +45,13 @@
                 <h1>{{ $state === 'verified' ? 'Your email has been verified' : 'Your email is already verified' }}</h1>
                 <p>You can now log in to the CustodiCore app.</p>
                 <p class="muted">After you log in, our staff will review the information and documents you submitted. You will be notified once your account has been approved.</p>
-                <p><a class="btn" href="custodicore://login?emailVerified=1">Open the CustodiCore app</a></p>
+                {{-- emailVerified=1 only lets the app's Login show a confirmation:
+                     no token, email or password. --}}
+                @include('partials.open-app-link', [
+                    'href' => 'custodicore://login?emailVerified=1',
+                    'fallback' => 'If the app does not open, open CustodiCore on your phone yourself and sign in.',
+                    'notOpened' => 'The CustodiCore app did not open. Open CustodiCore on your phone yourself and sign in.',
+                ])
             @elseif ($state === 'expired')
                 <div class="icon warn">!</div>
                 <h1>This link has expired</h1>

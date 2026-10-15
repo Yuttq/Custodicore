@@ -10,16 +10,15 @@ use Illuminate\Support\Facades\Log;
 
 class EligibilityController extends Controller
 {
-    /** Same temporary stand-in as the other controllers — see PdlController::currentStaffId(). */
-    private function currentStaffId(): int
+    /**
+     * The staff_profiles row of the signed-in officer (the routes already
+     * require 'auth' + 'role:Record Officer'). Null when the account has no
+     * staff profile — the review is refused then, never attributed to
+     * someone else.
+     */
+    private function reviewingStaffId(Request $request): ?int
     {
-        $staff = \App\Models\StaffProfile::first();
-
-        if (!$staff) {
-            throw new \RuntimeException('No staff_profiles row exists yet. Create one via Tinker first.');
-        }
-
-        return $staff->staff_id;
+        return $request->user()?->staffProfile?->staff_id;
     }
 
     // -----------------------------------------------------------------
@@ -102,6 +101,11 @@ class EligibilityController extends Controller
             return back()->with('error', 'This assessment has already been reviewed.');
         }
 
+        $reviewerId = $this->reviewingStaffId($request);
+        if ($reviewerId === null) {
+            return back()->with('error', 'Your account has no staff profile, so this review cannot be recorded. Ask an administrator to complete your staff profile.');
+        }
+
         if ($validated['decision'] === 'eligible') {
             $relationship = $assessment->visitRequest?->relationship;
             if (! $relationship) {
@@ -115,17 +119,29 @@ class EligibilityController extends Controller
             }
         }
 
+        // Conditional single-statement update: the "still unreviewed" check
+        // runs in the database, not on this (possibly stale) model copy, so
+        // when two officers submit at once only the first write matches and
+        // the second changes nothing instead of overwriting the review.
         try {
-            $assessment->update([
-                'overall_result' => $validated['decision'],
-                'reviewed_by' => $this->currentStaffId(),
-                'reviewed_at' => now(),
-            ]);
+            $changed = EligibilityAssessment::whereKey($assessment->assessment_id)
+                ->where('overall_result', 'flagged_for_review')
+                ->whereNull('reviewed_at')
+                ->update([
+                    'overall_result' => $validated['decision'],
+                    'reviewed_by' => $reviewerId,
+                    'reviewed_at' => now(),
+                ]);
         } catch (\Throwable $e) {
             Log::error('Eligibility review failed: ' . $e->getMessage());
             return back()->with('error', 'Could not save this review. ' . $e->getMessage());
         }
 
+        if ($changed === 0) {
+            return back()->with('error', 'This assessment has already been reviewed.');
+        }
+
+        $assessment->refresh();
         $assessment->loadMissing(['visitRequest.visitor', 'visitRequest.pdl']);
         $this->logAudit('update', $assessment->assessment_id,
             ($validated['decision'] === 'eligible' ? 'Approved' : 'Rejected')

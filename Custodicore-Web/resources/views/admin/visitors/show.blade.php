@@ -46,7 +46,11 @@
                     : '—',
                 'Relationship Stated at Sign-up' => $visitor->relationship_hint ?: '—',
                 'Verified On' => $visitor->verified_at?->format('M j, Y') ?? '—',
-            ] as $label => $value)
+            ] + ($visitor->hasGuardianDetails() ? [
+                'Guardian Full Name' => $visitor->guardian_full_name ?: '—',
+                'Guardian\'s Relationship to Visitor' => $visitor->guardian_relationship ?: '—',
+                'Guardian Contact Number' => $visitor->guardian_contact_number ?: '—',
+            ] : []) as $label => $value)
                 <div>
                     <dt class="text-section-label uppercase text-text-secondary">{{ $label }}</dt>
                     <dd class="mt-xs text-body font-semibold">{{ $value }}</dd>

@@ -74,6 +74,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 
 /* Stat cards (dashboard) */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px;}
+.stats.stats-5{grid-template-columns:repeat(5,1fr);}
 .stat-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 6px 0 rgba(17,24,39,.06);padding:16px 18px;position:relative;}
 .stat-card.accent-blue{border-left:3px solid var(--blue);}
 .stat-card.accent-teal{border-left:3px solid var(--teal);}
@@ -239,7 +240,7 @@ tbody tr:last-child td{border-bottom:none;}
 @media (max-width:1000px){
   .app{grid-template-columns:1fr;}
   .sidebar{display:none;}
-  .stats{grid-template-columns:repeat(2,1fr);}
+  .stats,.stats.stats-5{grid-template-columns:repeat(2,1fr);}
   .content{grid-template-columns:1fr;}
   .filters{grid-template-columns:1fr;}
   table{font-size:12px;}

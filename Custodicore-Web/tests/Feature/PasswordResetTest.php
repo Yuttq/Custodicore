@@ -244,6 +244,23 @@ class PasswordResetTest extends TestCase
             ->assertJsonStructure(['token', 'user']);
     }
 
+    public function test_success_page_links_to_the_app_without_secrets_and_has_a_fallback(): void
+    {
+        [$token] = $this->linkFor($this->visitorAccount);
+
+        $response = $this->submitReset($token)->assertOk();
+
+        // The app's registered scheme, opening Login only.
+        $response->assertSee('href="custodicore://login"', false)
+            ->assertSee('Open the CustodiCore app')
+            ->assertSee('open CustodiCore on your phone yourself and sign in with your new password');
+
+        $html = $response->getContent();
+        $this->assertStringNotContainsString($token, $html);
+        $this->assertStringNotContainsString(self::NEW_PASSWORD, $html);
+        $this->assertStringNotContainsString($this->visitorAccount->email, $html);
+    }
+
     public function test_successful_reset_revokes_existing_sanctum_tokens(): void
     {
         $this->visitorAccount->createToken('mobile');

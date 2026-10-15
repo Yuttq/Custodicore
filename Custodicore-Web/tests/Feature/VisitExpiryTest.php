@@ -273,9 +273,11 @@ class VisitExpiryTest extends TestCase
     public function test_approved_visitor_request_also_becomes_no_show(): void
     {
         $service = app(VisitAssignmentService::class);
-        $visit = $service->approveVisitorRequest($service->submitVisitorRequest(
+        $submitted = $service->submitVisitorRequest(
             $this->visitor, $this->relationship, CarbonImmutable::parse('2026-10-09', 'Asia/Manila'), '09:00'
-        ));
+        );
+        $this->makeEligibleForApproval($submitted);
+        $visit = $service->approveVisitorRequest($submitted);
         $this->at('2026-10-12 08:00:00');
 
         $this->runExpiry(0, 1);
@@ -329,7 +331,8 @@ class VisitExpiryTest extends TestCase
 
     public function test_completed_cancelled_declined_and_other_visits_are_not_marked_no_show(): void
     {
-        $visits = collect(['completed', 'cancelled', 'declined', 'assigned'])
+        // A past-dated `assigned` request is expired instead (VisitReviewExpiryTest).
+        $visits = collect(['completed', 'cancelled', 'declined', 'pending_confirmation'])
             ->mapWithKeys(fn ($status) => [$status => $this->visitWithStatus($status, ['confirmation_deadline' => null])]);
         $this->at('2026-10-12 08:00:00');
 
@@ -339,6 +342,19 @@ class VisitExpiryTest extends TestCase
             $this->assertSame($status, $visit->fresh()->status);
             $this->assertFalse(app(VisitAssignmentService::class)->markNoShow($visit->visit_request_id));
         }
+    }
+
+    public function test_past_dated_assigned_request_is_never_marked_no_show(): void
+    {
+        $visit = $this->visitWithStatus('assigned', ['confirmation_deadline' => null]);
+        $this->at('2026-10-12 08:00:00');
+
+        $this->assertFalse(app(VisitAssignmentService::class)->markNoShow($visit->visit_request_id));
+        $this->assertSame('assigned', $visit->fresh()->status);
+
+        // The command cancels it as an unreviewed request, not as a no-show.
+        $this->runExpiry(0, 0);
+        $this->assertSame('cancelled', $visit->fresh()->status);
     }
 
     public function test_running_no_show_twice_changes_nothing_the_second_time(): void

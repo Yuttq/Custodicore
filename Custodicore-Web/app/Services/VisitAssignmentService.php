@@ -39,6 +39,8 @@ use Illuminate\Validation\ValidationException;
  *
  * Time-based transitions (`php artisan visits:expire`):
  *   pending_confirmation -> cancelled  once confirmation_deadline passes (seats released)
+ *   assigned             -> cancelled  once the visit date is before today, still unreviewed
+ *                                       (seats released)
  *   confirmed            -> no_show    once the visit date is before today, never checked in
  *   confirmed            -> completed  once the visit date is before today, entered and exited
  *                                       but never finally checked out (left at the midday break)
@@ -60,6 +62,14 @@ class VisitAssignmentService
     ];
 
     public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for this calendar week.';
+
+    /**
+     * cancellation_reason of a visitor request that expired unreviewed (shown to the visitor).
+     * Expiry and staff rejection share the 'cancelled' status; this exact text is what
+     * tells them apart (API "request_expired" state, rejection-form validation, tests).
+     * Do not change it without updating that logic and its tests.
+     */
+    public const REVIEW_EXPIRED_REASON = 'The visit date passed before the request was reviewed.';
 
     /**
      * @param  array{visitor_id:int,pdl_id:int,relationship_id:int,schedule_id:int,confirmation_deadline?:string|null}  $input
@@ -262,7 +272,8 @@ class VisitAssignmentService
 
     /**
      * Record Officer approves a visitor-submitted request: assigned -> confirmed.
-     * The seat reserved at submission stays reserved.
+     * The seat reserved at submission stays reserved. Requires an `eligible`
+     * eligibility assessment (see assertEligibilityAllowsApproval).
      */
     public function approveVisitorRequest(VisitRequest $visitRequest): VisitRequest
     {
@@ -278,6 +289,8 @@ class VisitAssignmentService
                     'relationship_id' => 'The visitor\'s relationship to this PDL is no longer verified. Reject the request instead.',
                 ]);
             }
+
+            $this->assertEligibilityAllowsApproval($visitRequest);
 
             if ($visitRequest->schedule->schedule_date->lt(now()->startOfDay())) {
                 throw ValidationException::withMessages([
@@ -579,6 +592,63 @@ class VisitAssignmentService
         });
     }
 
+    /** IDs of visitor requests still awaiting review whose visit date is before today. */
+    public function pastDueAssignedRequestIds(): Collection
+    {
+        return VisitRequest::where('status', 'assigned')
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '<', today()->toDateString()))
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * assigned -> cancelled once the visit date has passed without a staff
+     * decision, releasing the seat of every session (same outcome as a
+     * rejection, which approveVisitorRequest already demands for a past
+     * date). Returns false (no change) when the request was already
+     * reviewed, expired by another run, or its date is today or later.
+     */
+    public function expirePastDueAssignedRequest(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (! $visitRequest || $visitRequest->status !== 'assigned') {
+                return false;
+            }
+
+            $visitRequest->load(['schedule', 'visitor', 'pdl']);
+
+            if (! $visitRequest->schedule?->schedule_date?->lt(today())) {
+                return false;
+            }
+
+            $visitRequest->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => self::REVIEW_EXPIRED_REASON,
+            ]);
+
+            $this->releaseSessionSlots($visitRequest);
+
+            $scheduleLabel = $this->visitLabel($visitRequest);
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                'visits',
+                'Visit Request Expired',
+                "Your request to visit {$visitRequest->pdl->full_name} on {$scheduleLabel} expired because the visit date passed before the facility reviewed it. Please submit a new request for an upcoming date.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System cancelled visit request for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel}): visit date passed before review",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
+    }
+
     /** Visit sessions on this schedule whose visit still holds a seat. */
     public function occupiedSlots(VisitSchedule $schedule): int
     {
@@ -668,6 +738,37 @@ class VisitAssignmentService
             throw ValidationException::withMessages([
                 'relationship_id' => 'This relationship is not allowed under the facility relationship policy.',
             ]);
+        }
+    }
+
+    /**
+     * Approval needs an `eligible` assessment: either all checks passed, or a
+     * flagged assessment that staff marked eligible in Eligibility Review
+     * (EligibilityController::review). `rejected` and an unreviewed
+     * `flagged_for_review` block approval; there is no override. A request
+     * with no assessment is blocked too — every submission creates one, so a
+     * missing row means the check must be run before anyone approves.
+     * The row is locked so a concurrent review or re-run cannot change the
+     * result between this check and the approval.
+     */
+    private function assertEligibilityAllowsApproval(VisitRequest $visitRequest): void
+    {
+        $assessment = EligibilityAssessment::where('visit_request_id', $visitRequest->visit_request_id)
+            ->lockForUpdate()
+            ->first();
+
+        $reason = $assessment?->flagged_reason ? " ({$assessment->flagged_reason})" : '';
+
+        $message = match ($assessment?->overall_result) {
+            'eligible' => null,
+            'rejected' => "The eligibility assessment rejected this request{$reason}. Reject the request instead.",
+            'flagged_for_review' => "The eligibility assessment flagged this request for review{$reason}. Complete the review in Eligibility Review before approving.",
+            null => 'This request has no eligibility assessment. Run the eligibility check before approving.',
+            default => 'The eligibility assessment does not allow this request to be approved.',
+        };
+
+        if ($message !== null) {
+            throw ValidationException::withMessages(['eligibility' => $message]);
         }
     }
 

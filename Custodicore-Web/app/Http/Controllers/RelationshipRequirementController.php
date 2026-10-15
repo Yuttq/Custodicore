@@ -20,16 +20,7 @@ use Illuminate\Validation\Rule;
  */
 class RelationshipRequirementController extends Controller
 {
-    private function currentStaffId(): int
-    {
-        $staffId = auth()->user()?->staffProfile?->staff_id ?? \App\Models\StaffProfile::first()?->staff_id;
-
-        if (!$staffId) {
-            throw new \RuntimeException('No staff_profiles row exists yet. Create one via Tinker first.');
-        }
-
-        return $staffId;
-    }
+    use Concerns\ResolvesActingStaff;
 
     private function logAudit(string $recordType, int $recordId, string $description): void
     {
@@ -41,8 +32,12 @@ class RelationshipRequirementController extends Controller
     }
 
     /** Documents can't change once the relationship itself is verified. */
-    private function abortIfLocked(VisitorPdlRelationship $relationship)
+    private function abortIfLocked(?VisitorPdlRelationship $relationship)
     {
+        // A registration upload is reviewed on the checklist once staff link the PDL.
+        if ($relationship === null) {
+            return back()->with('error', 'Link this visitor to the PDL first. The document is then reviewed on that relationship\'s checklist.');
+        }
         if ($relationship->verification_status === 'verified') {
             return back()->with('error', 'This relationship is already verified, so its requirements are locked.');
         }
@@ -81,10 +76,15 @@ class RelationshipRequirementController extends Controller
             return back()->with('error', 'This document has already been reviewed.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         $document->update([
             'status' => 'verified',
             'rejection_reason' => null,
-            'reviewed_by' => $this->currentStaffId(),
+            'reviewed_by' => $staffId,
             'reviewed_at' => now(),
         ]);
 
@@ -110,10 +110,15 @@ class RelationshipRequirementController extends Controller
             return back()->with('error', 'This document has already been reviewed.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         $document->update([
             'status' => 'rejected',
             'rejection_reason' => $validated['rejection_reason'],
-            'reviewed_by' => $this->currentStaffId(),
+            'reviewed_by' => $staffId,
             'reviewed_at' => now(),
         ]);
 
@@ -141,9 +146,14 @@ class RelationshipRequirementController extends Controller
             return $locked;
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         $confirmations = $relationship->officer_confirmations ?? [];
         $confirmations[$key] = [
-            'by' => $this->currentStaffId(),
+            'by' => $staffId,
             'at' => now()->toIso8601String(),
             'note' => $validated['note'] ?? null,
         ];

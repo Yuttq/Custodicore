@@ -18,6 +18,10 @@ class VisitorProfile extends Model
         'gender',
         'address',
         'relationship_hint',
+        'intended_pdl_name',
+        'guardian_full_name',
+        'guardian_relationship',
+        'guardian_contact_number',
         'contact_number',
         'emergency_contact_name',
         'emergency_contact_number',
@@ -47,6 +51,18 @@ class VisitorProfile extends Model
         return $this->hasMany(VisitorId::class, 'visitor_id', 'visitor_id');
     }
 
+    /**
+     * Relationship documents sent with the registration that are not attached
+     * to a staff-linked relationship yet (newest first).
+     */
+    public function registrationDocuments()
+    {
+        return $this->hasMany(RelationshipDocument::class, 'visitor_id', 'visitor_id')
+            ->whereNull('relationship_id')
+            ->orderByDesc('uploaded_at')
+            ->orderByDesc('document_id');
+    }
+
     public function flags()
     {
         return $this->hasMany(VisitorFlag::class, 'visitor_id', 'visitor_id');
@@ -60,6 +76,14 @@ class VisitorProfile extends Model
     public function visitRequests()
     {
         return $this->hasMany(VisitRequest::class, 'visitor_id', 'visitor_id');
+    }
+
+    /** Guardian Information given at registration (any of the three fields). */
+    public function hasGuardianDetails(): bool
+    {
+        return filled($this->guardian_full_name)
+            || filled($this->guardian_relationship)
+            || filled($this->guardian_contact_number);
     }
 
     public function isVerified(): bool

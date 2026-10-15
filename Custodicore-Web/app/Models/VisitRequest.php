@@ -100,6 +100,16 @@ class VisitRequest extends Model
         return $this->hasOne(VisitCheckin::class, 'visit_request_id', 'visit_request_id')->latestOfMany('checkin_id');
     }
 
+    /**
+     * Visitor-submitted requests (`assigned`) awaiting Record Officer review,
+     * including past-dated ones that still need rejection or expiry.
+     * Column is qualified so the scope also works on joined queries.
+     */
+    public function scopeAwaitingReview($query)
+    {
+        return $query->where('visit_requests.status', 'assigned');
+    }
+
     public function isPending(): bool
     {
         return in_array($this->status, ['assigned', 'pending_confirmation']);

@@ -32,6 +32,7 @@
         input.invalid { border-color: var(--red); }
         .error { font-size: 13px; color: var(--red); margin-top: 6px; }
         .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+        .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
         @media (max-width: 480px) { main { margin: 24px auto; } .card { padding: 24px 20px; } }
     </style>
 </head>
@@ -74,7 +75,12 @@
                 <h1>Your password has been reset</h1>
                 <p>You can now log in to the CustodiCore app with your new password.</p>
                 <p class="muted">For your security, any device that was signed in to your account has been signed out.</p>
-                <p><a class="btn" href="custodicore://login">Open the CustodiCore app</a></p>
+                {{-- Opens Login only: no token, email or password. --}}
+                @include('partials.open-app-link', [
+                    'href' => 'custodicore://login',
+                    'fallback' => 'If the app does not open, open CustodiCore on your phone yourself and sign in with your new password.',
+                    'notOpened' => 'The CustodiCore app did not open. Open CustodiCore on your phone yourself and sign in with your new password.',
+                ])
             @else
                 <div class="icon err">&times;</div>
                 <h1>This link is not valid</h1>

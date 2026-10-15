@@ -1,6 +1,7 @@
 {{--
   Visitor-submitted visit requests (status `assigned`) awaiting Record Officer review.
-  Approve: assigned -> confirmed. Reject: assigned -> cancelled (releases the slot).
+  Approve: assigned -> confirmed (needs an `eligible` assessment, future date).
+  Reject: assigned -> cancelled (releases the slot).
   Expects: $pendingVisitRequests, $showVisitor (bool — include the visitor column).
 --}}
 <div class="panel" id="visit-requests" style="margin-bottom:20px;">
@@ -30,6 +31,11 @@
         @php
           $eligibility = $vr->eligibilityAssessment?->overall_result;
           $eligibilityBadge = $eligibility === 'eligible' ? 'active' : ($eligibility === 'rejected' ? 'rejected' : 'transferred');
+          // The visit date passed while the request was unreviewed. It can no
+          // longer be approved, but still holds its seats until rejected here
+          // or cancelled by `visits:expire`.
+          $isPastDated = $vr->schedule?->schedule_date?->lt(today()) ?? false;
+          $seatCount = max($vr->sessionSchedules->count(), 1);
         @endphp
         <tr>
           @if ($showVisitor)
@@ -55,6 +61,15 @@
                   · {{ $session->capacityLabel() }} taken
                 </div>
               @endforeach
+              @if ($isPastDated)
+                <div style="margin-top:6px;">
+                  <span class="badge rejected"><span class="dot"></span>VISIT DATE PASSED</span>
+                </div>
+                <div style="font-size:12px;color:var(--red-text);margin-top:4px;max-width:260px;">
+                  This request can no longer be approved. It still holds {{ $seatCount }} reserved {{ \Illuminate\Support\Str::plural('seat', $seatCount) }}:
+                  reject it to release {{ $seatCount > 1 ? 'them' : 'it' }} now, or it will expire automatically at the next scheduled expiry run.
+                </div>
+              @endif
             @else
               —
             @endif
@@ -62,17 +77,30 @@
           <td>
             @if ($eligibility)
               <span class="badge {{ $eligibilityBadge }}"><span class="dot"></span>{{ strtoupper(str_replace('_', ' ', $eligibility)) }}</span>
+              @if ($eligibility === 'flagged_for_review')
+                <div style="font-size:12px;margin-top:4px;">
+                  <a href="{{ route('eligibility.index') }}" style="color:var(--teal);font-weight:600;">Complete the review</a> before approving.
+                </div>
+              @elseif ($eligibility === 'rejected')
+                <div class="muted-cell" style="font-size:12px;margin-top:4px;">Cannot be approved. Reject this request.</div>
+              @endif
             @else
-              <span class="muted-cell">—</span>
+              <span class="muted-cell">Not assessed</span>
+              <form method="POST" action="{{ route('eligibility.run', $vr->visit_request_id) }}" style="margin-top:4px;">
+                @csrf
+                <button type="submit" class="row-action">Run eligibility check</button>
+              </form>
             @endif
           </td>
           <td class="muted-cell">{{ optional($vr->assigned_at)->format('M d, Y g:i A') ?? '—' }}</td>
           <td>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-              <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}">
-                @csrf
-                <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-              </form>
+              @unless ($isPastDated)
+                <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}">
+                  @csrf
+                  <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
+                </form>
+              @endunless
               <details>
                 <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
                 <form method="POST" action="{{ route('visitor.visit-requests.reject', [$vr->visitor_id, $vr->visit_request_id]) }}" style="margin-top:10px;min-width:240px;">

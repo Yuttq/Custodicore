@@ -42,32 +42,12 @@ use Illuminate\View\View;
  */
 class CheckinCheckoutController extends Controller
 {
+    // check_in_officer_id / check_out_officer_id: the signed-in officer.
+    use \App\Http\Controllers\Concerns\ResolvesActingStaff;
+
     public function __construct(
         private VisitGateService $gate
     ) {
-    }
-
-    /**
-     * TEMPORARY STAFF IDENTIFICATION
-     *
-     * This currently uses the first staff profile because the real
-     * authentication-to-staff-profile connection is not wired yet.
-     *
-     * Replace later with:
-     *
-     * auth()->user()->staffProfile->staff_id
-     */
-    private function currentStaffId(): int
-    {
-        $staff = \App\Models\StaffProfile::first();
-
-        if (! $staff) {
-            throw new \RuntimeException(
-                'No staff_profiles row exists yet. Run the database seeder first.'
-            );
-        }
-
-        return $staff->staff_id;
     }
 
     /**
@@ -644,6 +624,14 @@ class CheckinCheckoutController extends Controller
         // Cleaned and validated by QrCheckInRequest (a different ID requires its type, number and reason).
         $data = $request->validated();
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return response()->json([
+                'success' => false,
+                'message' => self::NO_STAFF_PROFILE_MESSAGE,
+            ], 403);
+        }
+
         $newIdPhoto = null;
 
         if ($data['id_match_status'] === 'replaced' && ! empty($data['new_id_photo'])) {
@@ -858,7 +846,7 @@ class CheckinCheckoutController extends Controller
                         now(),
 
                     'check_in_officer_id' =>
-                        $this->currentStaffId(),
+                        $staffId,
 
                     'verification_method' =>
                         'qr_scan',
@@ -998,6 +986,11 @@ class CheckinCheckoutController extends Controller
         // Cleaned and validated by ManualCheckInRequest.
         $data = $request->validated();
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
 
             /*
@@ -1134,7 +1127,7 @@ class CheckinCheckoutController extends Controller
                         now(),
 
                     'check_in_officer_id' =>
-                        $this->currentStaffId(),
+                        $staffId,
 
                     'verification_method' =>
                         $data['verification_method']
@@ -1219,6 +1212,11 @@ class CheckinCheckoutController extends Controller
         VisitCheckin $checkin
     ): RedirectResponse {
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
 
             /*
@@ -1246,7 +1244,7 @@ class CheckinCheckoutController extends Controller
                     now(),
 
                 'check_out_officer_id' =>
-                    $this->currentStaffId(),
+                    $staffId,
 
                 /*
                  * Return the surrendered ID.

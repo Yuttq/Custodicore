@@ -568,6 +568,7 @@ class ManageVisitorSlotsTest extends TestCase
 
         // The existing booking is untouched and can still be approved.
         $this->assertSame('assigned', $existing->fresh()->status);
+        $this->makeEligibleForApproval($existing);
         app(VisitAssignmentService::class)->approveVisitorRequest($existing);
         $this->assertSame('confirmed', $existing->fresh()->status);
         $this->assertSame(1, VisitRequest::count());

@@ -60,6 +60,48 @@ class VisitorPdlRelationship extends Model
         'officer_confirmations' => 'array',
     ];
 
+    protected static function booted(): void
+    {
+        // A new link, or new details (type / children together), can make
+        // documents sent with the registration count for this checklist.
+        static::saved(function (VisitorPdlRelationship $relationship) {
+            if ($relationship->wasRecentlyCreated
+                || $relationship->wasChanged(['relationship_type', 'has_children_together'])) {
+                $relationship->attachRegistrationDocuments();
+            }
+        });
+    }
+
+    /**
+     * Moves the visitor's registration uploads (not attached to any
+     * relationship yet) onto this relationship for every requirement its
+     * checklist asks for and has no file of its own. Statuses are left as
+     * they are — staff still verify or reject each file.
+     */
+    public function attachRegistrationDocuments(): void
+    {
+        $keys = \App\Services\RelationshipRequirements::documentKeysForRelationship($this);
+        if ($keys === []) {
+            return;
+        }
+
+        $alreadyOnFile = RelationshipDocument::where('relationship_id', $this->relationship_id)
+            ->pluck('requirement_key')->all();
+        $keys = array_values(array_diff($keys, $alreadyOnFile));
+        if ($keys === []) {
+            return;
+        }
+
+        $attached = RelationshipDocument::whereNull('relationship_id')
+            ->where('visitor_id', $this->visitor_id)
+            ->whereIn('requirement_key', $keys)
+            ->update(['relationship_id' => $this->relationship_id]);
+
+        if ($attached > 0) {
+            $this->unsetRelation('documents');
+        }
+    }
+
     public static function priorityTierFor(string $type): string
     {
         return in_array($type, self::HIGH_PRIORITY_TYPES, true) ? 'high_priority' : 'requires_verification';

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AnnouncementApiController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationApiController;
+use App\Http\Controllers\Api\RegistrationRequirementsController;
 use App\Http\Controllers\Api\ScheduleAvailabilityController;
 use App\Http\Controllers\Api\VisitorApiController;
 use App\Http\Controllers\Auth\EmailVerificationController;
@@ -56,6 +57,10 @@ Route::prefix('auth')->group(function () {
 // Public: the registration screen shows these BEFORE the visitor has an
 // account. Same text as the web /terms and /privacy pages (config/legal.php).
 Route::get('/legal', [LegalController::class, 'api']);
+
+// Public, read-only: relationship types and the documents each one needs
+// (App\Services\RelationshipRequirements). Rules only — no PDL lookup.
+Route::get('/registration/requirements', [RegistrationRequirementsController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me',[AuthController::class, 'me']);

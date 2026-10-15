@@ -12,7 +12,7 @@
   </div>
 </div>
 
-<section class="stats">
+<section class="stats stats-5">
   <div class="stat-card accent-blue">
     <div class="stat-top"><div class="icon-badge">👥</div></div>
     <div class="stat-label">Total PDLs</div>
@@ -34,6 +34,12 @@
     <div class="stat-label">No Visit Record</div>
     <div class="stat-value">{{ $stats['no_visit_record'] }}</div>
   </div>
+  <a class="stat-card accent-teal" href="{{ route('visitor.index') }}#visit-requests" style="text-decoration:none;color:inherit;">
+    <div class="stat-top"><div class="icon-badge">📋</div>@if($stats['pending_visit_requests'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
+    <div class="stat-label">Visit Requests Awaiting Review</div>
+    <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
+    <div class="muted-cell">open Visitor Management to review</div>
+  </a>
 </section>
 
 <section class="content">

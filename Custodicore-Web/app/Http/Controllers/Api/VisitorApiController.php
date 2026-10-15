@@ -312,8 +312,20 @@ class VisitorApiController extends Controller
         // Closing event for visits that ended without completing. Uses the
         // real cancelled_at timestamp; no_show has no dedicated column, so
         // its time is left null rather than guessed.
-        if ($isTerminal && $visitorRequested && $visitRequest->status === 'cancelled') {
-            // Only a staff rejection cancels a visitor's request.
+        if (
+            $isTerminal && $visitorRequested && $visitRequest->status === 'cancelled'
+            && $visitRequest->cancellation_reason === VisitAssignmentService::REVIEW_EXPIRED_REASON
+        ) {
+            // Cancelled by `visits:expire`: the date passed before anyone reviewed it.
+            $steps[] = [
+                'id' => 'request_expired',
+                'title' => 'Request Expired',
+                'description' => 'Your visit request expired because the visit date passed before facility staff reviewed it. Please submit a new request for an upcoming date.',
+                'occurredAt' => $visitRequest->cancelled_at,
+                'terminal' => true,
+            ];
+        } elseif ($isTerminal && $visitorRequested && $visitRequest->status === 'cancelled') {
+            // Otherwise only a staff rejection cancels a visitor's request.
             $steps[] = [
                 'id' => 'request_rejected',
                 'title' => 'Request Rejected',
@@ -418,6 +430,31 @@ class VisitorApiController extends Controller
     }
 
     /**
+     * Stores a relationship document sent with the registration
+     * (AuthController::register / registerWithGoogle). There is no
+     * relationship yet, so it is kept on the visitor as pending until staff
+     * link the PDL (VisitorPdlRelationship::attachRegistrationDocuments).
+     */
+    public static function storeRegistrationDocument(VisitorProfile $visitor, string $requirementKey, UploadedFile $file): RelationshipDocument
+    {
+        // Private disk — requirement documents are never publicly served.
+        $document = RelationshipDocument::create([
+            'relationship_id' => null,
+            'visitor_id' => $visitor->visitor_id,
+            'requirement_key' => $requirementKey,
+            'file_path' => $file->store('relationship-documents', 'local'),
+            'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
+            'status' => 'pending',
+            'uploaded_at' => now(),
+        ]);
+
+        AuditLog::record('create', 'relationship_documents', $document->document_id,
+            "Visitor uploaded {$document->label()} with registration via mobile app", Module::CODE_VISITOR_MANAGEMENT);
+
+        return $document;
+    }
+
+    /**
      * The authenticated visitor's own verification documents: government
      * IDs (visitor_ids) and the supporting-document state of each
      * visitor↔PDL relationship. File paths and ID numbers are not exposed.
@@ -428,6 +465,7 @@ class VisitorApiController extends Controller
         $visitor->load([
             'idDocuments' => fn ($q) => $q->orderByDesc('uploaded_at')->orderByDesc('visitor_id_doc_id'),
             'relationships' => fn ($q) => $q->with(['pdl', 'documents'])->orderByDesc('created_at'),
+            'registrationDocuments',
         ]);
 
         return response()->json([
@@ -436,6 +474,16 @@ class VisitorApiController extends Controller
             'relationshipHint' => $visitor->relationship_hint,
             'governmentIds' => $visitor->idDocuments->map(fn ($d) => $this->governmentIdPayload($d))->values(),
             'relationships' => $visitor->relationships->map(fn ($r) => $this->relationshipPayload($r))->values(),
+            // Sent with the registration, waiting for staff to link the PDL.
+            // Newest file per requirement only.
+            'registrationDocuments' => $visitor->registrationDocuments
+                ->unique('requirement_key')
+                ->map(fn (RelationshipDocument $d) => [
+                    'key' => $d->requirement_key,
+                    'label' => $d->label(),
+                    'status' => $d->status,
+                    'uploadedAt' => $d->uploaded_at?->toIso8601String(),
+                ])->values(),
         ]);
     }
 
@@ -512,6 +560,7 @@ class VisitorApiController extends Controller
         $file = $request->file('file');
         $document = RelationshipDocument::create([
             'relationship_id' => $relationship->relationship_id,
+            'visitor_id' => $relationship->visitor_id,
             'requirement_key' => $requirementKey,
             'file_path' => $file->store('relationship-documents', 'local'),
             'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
@@ -559,6 +608,10 @@ class VisitorApiController extends Controller
                 'canUpload' => $item['canUpload'] && $r->verification_status !== 'verified',
                 'rejectionReason' => $item['kind'] === 'document' && $item['status'] === 'rejected' ? $item['note'] : null,
                 'uploadedAt' => $item['document']?->uploaded_at?->toIso8601String(),
+                'reviewedAt' => $item['document']?->reviewed_at?->toIso8601String(),
+                // confirmed | pending_facility_confirmation (see RelationshipRequirements)
+                'policy' => $item['policy'],
+                'providedBy' => $item['providedBy'],
             ])->values(),
         ];
     }

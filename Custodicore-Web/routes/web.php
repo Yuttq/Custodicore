@@ -493,7 +493,7 @@ Route::middleware([
     Route::get(
         '/visitors/{visitor}/relatable-pdls',
         [\App\Http\Controllers\VisitorController::class, 'searchRelatablePdls']
-    )->name('visitor.relatable-pdls');
+    )->middleware('throttle:60,1,pdl-search')->name('visitor.relatable-pdls');
 
     // Registers a visitor↔PDL relationship as pending; verify it below.
     Route::post(

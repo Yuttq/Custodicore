@@ -3,14 +3,17 @@
 namespace Tests\Support;
 
 use App\Models\Account;
+use App\Models\EligibilityAssessment;
 use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Pdl;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\SystemSetting;
+use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
+use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
 use Illuminate\Support\Facades\Hash;
 
@@ -148,5 +151,31 @@ trait SeedsVisitAssignmentFixtures
             'setting_value' => '48',
             'updated_by' => StaffProfile::first()->staff_id,
         ]);
+    }
+
+    /**
+     * The fixture visitor has no verified ID, so a submitted request is
+     * assessed `flagged_for_review` and cannot be approved. This gives the
+     * request's visitor a verified ID and re-runs the real assessment, which
+     * then passes (`eligible`) when nothing else is flagged.
+     */
+    protected function makeEligibleForApproval(VisitRequest $visitRequest): EligibilityAssessment
+    {
+        if (! VisitorId::where('visitor_id', $visitRequest->visitor_id)->where('verification_status', 'verified')->exists()) {
+            VisitorId::create([
+                'visitor_id' => $visitRequest->visitor_id,
+                'id_type' => 'national_id',
+                'id_number' => 'ID-ELIGIBLE-'.$visitRequest->visitor_id,
+                'file_path' => 'x.png',
+                'verification_status' => 'verified',
+            ]);
+        }
+
+        return EligibilityAssessment::assessFor($visitRequest->fresh([
+            'visitor.idDocuments',
+            'visitor.flags',
+            'pdl.restrictions',
+            'relationship',
+        ]));
     }
 }

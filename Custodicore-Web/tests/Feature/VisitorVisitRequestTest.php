@@ -733,6 +733,7 @@ class VisitorVisitRequestTest extends TestCase
     public function test_record_officer_can_approve_request(): void
     {
         $visit = $this->submittedRequest();
+        $this->makeEligibleForApproval($visit);
 
         $this->actingAs($this->recordOfficerAccount)
             ->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
@@ -929,6 +930,7 @@ class VisitorVisitRequestTest extends TestCase
     public function test_approved_request_timeline_shows_request_approved(): void
     {
         $visit = $this->submittedRequest();
+        $this->makeEligibleForApproval($visit);
         app(VisitAssignmentService::class)->approveVisitorRequest($visit);
 
         $steps = $this->timelineSteps($visit);

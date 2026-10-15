@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pdl;
+use App\Models\VisitRequest;
 
 class DashboardController extends Controller
 {
@@ -18,6 +19,8 @@ class DashboardController extends Controller
             'no_visit_record' => Pdl::where('custody_status', 'active')
                 ->whereDoesntHave('visitRequests')
                 ->count(),
+            // Visitor-submitted requests (`assigned`) awaiting staff review.
+            'pending_visit_requests' => VisitRequest::awaitingReview()->count(),
         ];
 
         // "Recent Records Activity" — there is no confirmed custody-history

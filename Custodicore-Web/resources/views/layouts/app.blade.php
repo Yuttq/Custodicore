@@ -27,8 +27,11 @@
       <a href="{{ route('cell-blocks.index') }}" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
         Cell Blocks
       </a>
-      <a href="{{ route('visitor.index') }}" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
+      {{-- Count only: visitor-submitted visit requests (`assigned`) awaiting review. --}}
+      @php $pendingVisitRequestCount = \App\Models\VisitRequest::awaitingReview()->count(); @endphp
+      <a href="{{ route('visitor.index') }}#visit-requests" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
         Visitor Management
+        @if ($pendingVisitRequestCount)<span class="nav-count" title="{{ $pendingVisitRequestCount }} visit {{ \Illuminate\Support\Str::plural('request', $pendingVisitRequestCount) }} awaiting review">{{ $pendingVisitRequestCount }}</span>@endif
       </a>
       @php $pendingAccounts = \App\Models\VisitorProfile::where('verification_status', 'pending')->count(); @endphp
       <a href="{{ route('account-reviews.index') }}" class="{{ request()->routeIs('account-reviews.*') ? 'active' : '' }}">

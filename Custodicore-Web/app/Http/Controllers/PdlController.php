@@ -21,34 +21,8 @@ class PdlController extends Controller
     // its name), JPG/PNG/WEBP, at most 5 MB.
     private const PHOTO_RULES = ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
 
-    /**
-     * TEMPORARY STAND-IN — not real auth.
-     *
-     * registered_by / recorded_by / imposed_by need a real staff_profiles.staff_id.
-     * Proper fix is wiring auth() to accounts/staff_profiles (someone else's
-     * task, not this module's). Until then, this just grabs the first
-     * staff_profiles row that exists so the rest of this controller is
-     * actually testable end-to-end.
-     *
-     * Swap the body of this method for the real thing once auth exists,
-     * e.g.: return auth()->user()->staffProfile->staff_id;
-     */
-    private function currentStaffId(): int
-    {
-        // The signed-in officer's own profile; the first profile is only a
-        // fallback (e.g. an account with no staff_profiles row yet).
-        $staff = auth()->user()?->staffProfile ?? \App\Models\StaffProfile::first();
-
-        if (!$staff) {
-            throw new \RuntimeException(
-                'No staff_profiles row exists yet. Create at least one via '
-                . 'Tinker before testing PDL registration/edits — see the '
-                . 'testing steps for the exact commands.'
-            );
-        }
-
-        return $staff->staff_id;
-    }
+    // registered_by / recorded_by / imposed_by: the signed-in officer.
+    use Concerns\ResolvesActingStaff;
 
     /**
      * Write an audit log entry without letting a logging failure hide
@@ -207,10 +181,15 @@ class PdlController extends Controller
         $case = $this->caseAttributes($validated);
         $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court']));
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         $photoPath = $request->file('photo')->store('pdl-photos', 'local');
 
         try {
-            $pdl = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $photoPath, $case) {
+            $pdl = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $photoPath, $case, $staffId) {
                 $pdl = Pdl::create([
                     ...$validated,
                     // Visiting-day group follows the offense (RA 9165 = drug-related).
@@ -218,13 +197,13 @@ class PdlController extends Controller
                     'photo_path' => $photoPath,
                     'pdl_number' => 'PDL-' . now()->format('Y') . '-' . str_pad((string) (Pdl::max('pdl_id') + 1), 5, '0', STR_PAD_LEFT),
                     'custody_status' => 'active',
-                    'registered_by' => $this->currentStaffId(),
+                    'registered_by' => $staffId,
                 ]);
 
                 PdlLegalRecord::create([
                     ...$case,
                     'pdl_id' => $pdl->pdl_id,
-                    'recorded_by' => $this->currentStaffId(),
+                    'recorded_by' => $staffId,
                 ]);
 
                 return $pdl;
@@ -409,13 +388,18 @@ class PdlController extends Controller
 
         $previousClassification = $pdl->classification;
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $record = PdlLegalRecord::create([
                 ...$this->caseAttributes($validated),
                 'case_status' => $validated['case_status'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
                 'pdl_id' => $pdl->pdl_id,
-                'recorded_by' => $this->currentStaffId(),
+                'recorded_by' => $staffId,
             ]);
             $classificationChanged = $pdl->refreshClassification();
         } catch (\Throwable $e) {
@@ -465,11 +449,16 @@ class PdlController extends Controller
         ]);
         $validated['triggers_restriction'] = $request->boolean('triggers_restriction');
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $record = PdlDisciplinaryRecord::create([
                 ...$validated,
                 'pdl_id' => $pdl->pdl_id,
-                'recorded_by' => $this->currentStaffId(),
+                'recorded_by' => $staffId,
             ]);
         } catch (\Throwable $e) {
             Log::error('Disciplinary record creation failed: ' . $e->getMessage());
@@ -513,12 +502,17 @@ class PdlController extends Controller
             return back()->withInput()->with('error', 'Restrictions can only be added to PDLs in active custody.');
         }
 
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
         try {
             $restriction = PdlRestriction::create([
                 ...$validated,
                 'pdl_id' => $pdl->pdl_id,
                 'status' => 'active',
-                'imposed_by' => $this->currentStaffId(),
+                'imposed_by' => $staffId,
             ]);
         } catch (\Throwable $e) {
             Log::error('Restriction creation failed: ' . $e->getMessage());
@@ -694,7 +688,7 @@ class PdlController extends Controller
         }
 
         if ($e instanceof \RuntimeException) {
-            return $e->getMessage(); // these are our own deliberate messages (e.g. currentStaffId()), safe to show as-is
+            return $e->getMessage(); // these are our own deliberate messages, safe to show as-is
         }
 
         return 'An unexpected error occurred. Please try again.';

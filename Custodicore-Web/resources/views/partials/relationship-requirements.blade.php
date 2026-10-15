@@ -51,7 +51,7 @@
               @endif
             </div>
           @elseif ($item['kind'] === 'document')
-            <div class="req-meta muted-cell">Not uploaded yet. The visitor uploads this from the CustodiCore app.</div>
+            <div class="req-meta muted-cell">Not uploaded yet. The visitor can upload it from the CustodiCore app.</div>
           @elseif ($item['kind'] === 'valid_id' && $item['status'] !== 'met')
             <div class="req-meta muted-cell">Review it under Identity Documents on the visitor's page.</div>
           @elseif ($item['kind'] === 'confirmation' && $item['status'] === 'met' && $item['note'])
@@ -116,7 +116,7 @@
 
   @if ($relationship->supporting_document_path)
     <p class="req-meta" style="margin:8px 0 0 0;">
-      Earlier upload (before the requirements checklist):
+      Single file from an older app version (not matched to a requirement above, so it does not count toward the checklist):
       <a href="{{ route('visitor.relationships.legacy-file', [$visitorId, $relationship->relationship_id]) }}" target="_blank" rel="noopener">View file</a>
     </p>
   @endif

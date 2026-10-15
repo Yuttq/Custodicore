@@ -336,6 +336,29 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->assertDatabaseCount('email_verification_tokens', 0);
     }
 
+    public function test_success_page_links_to_the_app_without_secrets_and_has_a_fallback(): void
+    {
+        $this->register();
+        $token = $this->sentToken();
+
+        $html = $this->post(route('email-verification.verify'), ['token' => $token])
+            ->assertOk()
+            ->assertSee('Your email has been verified')
+            ->assertSee('href="custodicore://login?emailVerified=1"', false)
+            ->assertSee('Open the CustodiCore app')
+            ->assertSee('If the app does not open, open CustodiCore on your phone yourself and sign in.')
+            ->getContent();
+
+        $this->assertStringNotContainsString($token, $html);
+        $this->assertStringNotContainsString(self::EMAIL, $html);
+        $this->assertStringNotContainsString(self::PASSWORD, $html);
+
+        // Same button and fallback when the email was already verified.
+        $already = view('auth.verify-email', ['state' => 'already_verified'])->render();
+        $this->assertStringContainsString('href="custodicore://login?emailVerified=1"', $already);
+        $this->assertStringContainsString('open CustodiCore on your phone yourself and sign in.', $already);
+    }
+
     public function test_used_link_fails_through_the_confirmation_page(): void
     {
         $this->register();

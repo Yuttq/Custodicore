@@ -6,6 +6,7 @@ use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Services\VisitAssignmentService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -38,10 +39,13 @@ class VisitRequestReviewController extends Controller
         abort_unless((int) $visitRequest->visitor_id === (int) $visitor->visitor_id, 404);
 
         // Shown to the visitor in the app — keep it to what they can act on.
+        // The automatic-expiry reason is reserved: the visitor timeline uses
+        // it to tell an expired request from a staff rejection.
         $data = $request->validate([
-            'cancellation_reason' => ['required', 'string', 'max:255'],
+            'cancellation_reason' => ['required', 'string', 'max:255', Rule::notIn([VisitAssignmentService::REVIEW_EXPIRED_REASON])],
         ], [
             'cancellation_reason.required' => 'Enter a reason for rejecting this visit request.',
+            'cancellation_reason.not_in' => 'Enter your own reason for rejecting this visit request.',
         ]);
 
         try {

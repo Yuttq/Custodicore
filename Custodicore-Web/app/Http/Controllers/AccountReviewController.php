@@ -38,6 +38,7 @@ class AccountReviewController extends Controller
                 'idDocuments' => fn ($q) => $q->orderByDesc('uploaded_at'),
                 'idDocuments.verifiedBy',
                 'relationships.pdl',
+                'registrationDocuments',
             ])
             ->paginate(15)
             ->withQueryString();
