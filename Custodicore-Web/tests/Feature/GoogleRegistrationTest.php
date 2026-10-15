@@ -7,6 +7,7 @@ use App\Models\VisitorProfile;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -366,6 +367,44 @@ class GoogleRegistrationTest extends TestCase
             ->assertJsonValidationErrors($field);
 
         $this->assertNothingCreated($response, $accountsBefore, $profilesBefore);
+    }
+
+    /**
+     * 00:30 in Manila (app.timezone) is still the previous day in UTC. The
+     * Google token's exp/iat use real time(), so the frozen clock doesn't
+     * affect token verification.
+     */
+    private function freezeJustAfterManilaMidnight(): void
+    {
+        $this->travelTo(Carbon::parse('2030-03-10 00:30', 'Asia/Manila'));
+        $this->assertSame('2030-03-10', today()->toDateString());
+        $this->assertSame('2030-03-09', now()->utc()->toDateString());
+    }
+
+    public function test_date_of_birth_of_today_is_rejected_and_nothing_is_created(): void
+    {
+        $this->freezeJustAfterManilaMidnight();
+        $accountsBefore = Account::count();
+        $profilesBefore = VisitorProfile::count();
+
+        $response = $this->postRegister([], ['dateOfBirth' => '2030-03-10'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('dateOfBirth');
+
+        $this->assertNothingCreated($response, $accountsBefore, $profilesBefore);
+    }
+
+    public function test_date_of_birth_of_yesterday_is_accepted_and_returned_unchanged(): void
+    {
+        $this->freezeJustAfterManilaMidnight();
+
+        // UTC's "today" — accepted only because the app compares in Manila time.
+        $this->postRegister([], ['dateOfBirth' => '2030-03-09'])
+            ->assertCreated()
+            ->assertJsonPath('user.dateOfBirth', '2030-03-09');
+
+        $profile = Account::where('google_id', self::GOOGLE_SUB)->firstOrFail()->visitorProfile;
+        $this->assertSame('2030-03-09', $profile->date_of_birth->format('Y-m-d'));
     }
 
     public function test_consent_messages_match_normal_registration(): void

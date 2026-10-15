@@ -13,6 +13,7 @@ use App\Models\VisitorProfile;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -244,6 +245,40 @@ class VisitorEmailVerificationFlowTest extends TestCase
 
         $this->assertNull(Account::where('email', self::EMAIL)->first());
         Mail::assertNothingSent();
+    }
+
+    /**
+     * 00:30 in Manila (app.timezone) is still the previous day in UTC, so
+     * these only pass if `before:today` follows the frozen clock in the app
+     * timezone. The year is far from the real date on purpose.
+     */
+    private function freezeJustAfterManilaMidnight(): void
+    {
+        $this->travelTo(Carbon::parse('2030-03-10 00:30', 'Asia/Manila'));
+        $this->assertSame('2030-03-10', today()->toDateString());
+        $this->assertSame('2030-03-09', now()->utc()->toDateString());
+    }
+
+    public function test_registration_rejects_a_date_of_birth_of_today_or_later(): void
+    {
+        $this->freezeJustAfterManilaMidnight();
+
+        $this->register(['dateOfBirth' => '2030-03-10'])->assertStatus(422)->assertJsonValidationErrors('dateOfBirth');
+        $this->register(['dateOfBirth' => '2030-03-11'])->assertStatus(422)->assertJsonValidationErrors('dateOfBirth');
+
+        $this->assertNull(Account::where('email', self::EMAIL)->first());
+        Mail::assertNothingSent();
+    }
+
+    public function test_registration_stores_yesterday_as_the_same_calendar_date(): void
+    {
+        $this->freezeJustAfterManilaMidnight();
+
+        // UTC's "today" — accepted only because the app compares in Manila time.
+        $this->register(['dateOfBirth' => '2030-03-09'])->assertCreated();
+
+        $profile = Account::where('email', self::EMAIL)->firstOrFail()->visitorProfile;
+        $this->assertSame('2030-03-09', $profile->date_of_birth->format('Y-m-d'));
     }
 
     // ---------------------------------------------------- Email verification

@@ -87,6 +87,20 @@ test('age: range 1–120, whole numbers, must match birthdate', () => {
   assert.equal(validateAge(String(Number(expected) + 1), dob), 'Age does not match your birthdate.');
 });
 
+test('age/DOB: a birthdate of today never passes, leap-day birthdays, non-ISO input', () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  assert.equal(ageFromBirthdate(todayIso), 0);
+  assert.notEqual(validateAge('0', todayIso), null); // below the 1–120 range
+  assert.equal(validateAge('1', todayIso), 'Age does not match your birthdate.');
+  assert.equal(ageFromBirthdate('2004-02-29', new Date(2026, 1, 28)), 21);
+  assert.equal(ageFromBirthdate('2004-02-29', new Date(2026, 2, 1)), 22);
+  assert.equal(ageFromBirthdate('15/06/1995'), null);
+  // No birthdate: only the range is checked (step 1 requires the birthdate separately).
+  assert.equal(validateAge('30', ''), null);
+});
+
 test('email: formats, length limits, Gmail and non-Gmail', () => {
   for (const e of ['juan.cruz@gmail.com', 'juan+tag@gmail.com', 'juan@yahoo.com.ph', 'juan@bjmp.gov.ph', 'a'.repeat(64) + '@x.com']) {
     assert.equal(validateRegistrationEmail(e), null, e);
