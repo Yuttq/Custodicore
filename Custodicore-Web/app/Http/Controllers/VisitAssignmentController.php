@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\VisitorProfile;
 use App\Models\VisitSchedule;
+use App\Services\ScheduleAvailabilityService;
 use App\Services\VisitAssignmentService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -49,11 +50,15 @@ class VisitAssignmentController extends Controller
 
     /**
      * Open schedules suitable for a PDL classification (used by the assign form).
+     * Sessions that have already ended — including earlier today — are left
+     * out, by the same rule assign() enforces (sessionHasEnded).
      *
      * @return \Illuminate\Support\Collection<int, VisitSchedule>
      */
     public static function openSchedulesForClassification(string $classification)
     {
+        $availability = app(ScheduleAvailabilityService::class);
+
         return VisitSchedule::query()
             ->with('rule')
             ->where('status', 'open')
@@ -68,6 +73,8 @@ class VisitAssignmentController extends Controller
             })
             ->orderBy('schedule_date')
             ->orderBy('time_slot_start')
-            ->get();
+            ->get()
+            ->reject(fn (VisitSchedule $s) => $availability->sessionHasEnded($s->schedule_date->toDateString(), $s->time_slot_end))
+            ->values();
     }
 }

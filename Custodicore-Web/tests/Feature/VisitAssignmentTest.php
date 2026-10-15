@@ -250,4 +250,217 @@ class VisitAssignmentTest extends TestCase
             'schedule_id' => $this->schedule->schedule_id,
         ]);
     }
+
+    // ------------------------------------------- Session end time (today)
+
+    /** Pins "now" to $time (H:i:s, Asia/Manila) on the fixture schedule's own date (09:00–11:30). */
+    private function onScheduleDayAt(string $time): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse(
+            $this->schedule->schedule_date->toDateString().' '.$time,
+            config('visitation.timezone')
+        ));
+    }
+
+    private function assignViaForm(): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($this->recordOfficerAccount)
+            ->from(route('visitor.show', $this->visitor->visitor_id))
+            ->post(route('visitor.visits.assign', $this->visitor->visitor_id), [
+                'pdl_id' => $this->pdl->pdl_id,
+                'relationship_id' => $this->relationship->relationship_id,
+                'schedule_id' => $this->schedule->schedule_id,
+            ]);
+    }
+
+    /** The same end-of-session answer from staff assignment, Manage Visitor Slots and the visitor calendar. */
+    private function assertSameEndedRuleEverywhere(bool $ended): void
+    {
+        $this->assertSame(! $ended, app(\App\Services\VisitSlotService::class)->isEditable($this->schedule->fresh()));
+
+        \Laravel\Sanctum\Sanctum::actingAs($this->visitorAccount);
+        $date = $this->schedule->schedule_date->toDateString();
+        $slot = collect($this->getJson("/api/schedules/availability?from={$date}&to={$date}")
+            ->assertOk()
+            ->json('relationships.0.days.0.slots'))->firstWhere('startTime', '09:00');
+        $this->assertSame($ended ? 'ended' : null, $slot['reason']);
+    }
+
+    public function test_assignment_to_todays_session_is_allowed_before_it_ends(): void
+    {
+        $this->onScheduleDayAt('11:29:59');
+        $this->assertSameEndedRuleEverywhere(false);
+
+        $this->assignViaForm()->assertSessionHasNoErrors()->assertSessionHas('success');
+
+        $visit = VisitRequest::sole();
+        $this->assertSame('pending_confirmation', $visit->status);
+        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)
+            ->where('title', 'Visit Assigned — Confirmation Required')->exists());
+    }
+
+    public function test_assignment_is_refused_exactly_at_the_session_end_time(): void
+    {
+        $this->onScheduleDayAt('11:30:00');
+        $this->assertSameEndedRuleEverywhere(true);
+
+        $this->assignViaForm()->assertSessionHasErrors([
+            'schedule_id' => 'This session has already ended. Choose a later session.',
+        ]);
+
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertSame(0, Notification::count());
+    }
+
+    public function test_assignment_is_refused_after_the_session_end_time(): void
+    {
+        $this->onScheduleDayAt('11:31:00');
+        $this->assertSameEndedRuleEverywhere(true);
+
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('This session has already ended. Choose a later session.');
+        try {
+            app(VisitAssignmentService::class)->assign([
+                'visitor_id' => $this->visitor->visitor_id,
+                'pdl_id' => $this->pdl->pdl_id,
+                'relationship_id' => $this->relationship->relationship_id,
+                'schedule_id' => $this->schedule->schedule_id,
+            ]);
+        } finally {
+            $this->assertSame(0, VisitRequest::count());
+            $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
+        }
+    }
+
+    // ------------------------------------- Assign form: session options
+
+    /**
+     * The fixture day's afternoon session (13:00–16:30) and the next week's
+     * morning session, alongside the fixture morning session (09:00–11:30).
+     *
+     * @return array{0: \App\Models\VisitSchedule, 1: \App\Models\VisitSchedule}
+     */
+    private function addAfternoonAndNextWeekSessions(): array
+    {
+        $afternoonRule = \App\Models\FacilityVisitationRule::create([
+            'pdl_classification' => 'non_drug_related',
+            'day_of_week' => 'fri',
+            'time_slot_start' => '13:00:00',
+            'time_slot_end' => '16:30:00',
+            'max_capacity' => 30,
+            'effective_from' => '2024-01-01',
+        ]);
+        $day = $this->schedule->schedule_date->toDateString();
+
+        $afternoon = \App\Models\VisitSchedule::create([
+            'rule_id' => $afternoonRule->rule_id, 'schedule_date' => $day,
+            'time_slot_start' => '13:00:00', 'time_slot_end' => '16:30:00',
+            'max_capacity' => 30, 'slots_taken' => 0, 'status' => 'open',
+        ]);
+        $nextWeek = \App\Models\VisitSchedule::create([
+            'rule_id' => $this->rule->rule_id, 'schedule_date' => $this->schedule->schedule_date->copy()->addWeek()->toDateString(),
+            'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00',
+            'max_capacity' => 2, 'slots_taken' => 0, 'status' => 'open',
+        ]);
+
+        return [$afternoon, $nextWeek];
+    }
+
+    /** Schedule ids the Record Officer's assign form offers for the fixture PDL's classification. */
+    private function assignFormScheduleIds(): array
+    {
+        $html = $this->actingAs($this->recordOfficerAccount)
+            ->get(route('visitor.show', $this->visitor->visitor_id))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame(1, preg_match('#<script type="application/json" id="schedulesByClassification">(.*?)</script>#s', $html, $m));
+        $options = json_decode(html_entity_decode($m[1]), true);
+
+        return array_column($options['non_drug_related'] ?? [], 'id');
+    }
+
+    public function test_assign_form_offers_todays_session_until_it_ends(): void
+    {
+        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+
+        $this->onScheduleDayAt('11:29:59');
+
+        $this->assertSame(
+            [$this->schedule->schedule_id, $afternoon->schedule_id, $nextWeek->schedule_id],
+            $this->assignFormScheduleIds()
+        );
+    }
+
+    public function test_assign_form_hides_a_session_exactly_at_its_end_time(): void
+    {
+        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+
+        $this->onScheduleDayAt('11:30:00');
+
+        $this->assertSame([$afternoon->schedule_id, $nextWeek->schedule_id], $this->assignFormScheduleIds());
+    }
+
+    public function test_assign_form_hides_a_session_that_ended_earlier_today_but_keeps_later_ones(): void
+    {
+        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+
+        // Midday break: the morning ended earlier today, the afternoon is still ahead.
+        $this->onScheduleDayAt('12:15:00');
+        $this->assertSame([$afternoon->schedule_id, $nextWeek->schedule_id], $this->assignFormScheduleIds());
+
+        // Evening: both of today's sessions are over; the next week's remains.
+        $this->onScheduleDayAt('16:30:00');
+        $this->assertSame([$nextWeek->schedule_id], $this->assignFormScheduleIds());
+    }
+
+    public function test_assign_form_shows_the_empty_state_when_every_session_has_ended(): void
+    {
+        $this->onScheduleDayAt('11:30:00');
+
+        $this->assertSame([], $this->assignFormScheduleIds());
+        $this->actingAs($this->recordOfficerAccount)
+            ->get(route('visitor.show', $this->visitor->visitor_id))
+            ->assertSee('No open schedules for this PDL classification');
+
+        // The server still refuses the hidden session if it is posted anyway.
+        $this->assignViaForm()->assertSessionHasErrors([
+            'schedule_id' => 'This session has already ended. Choose a later session.',
+        ]);
+        $this->assertSame(0, VisitRequest::count());
+    }
+
+    public function test_assign_form_still_hides_full_closed_and_past_sessions(): void
+    {
+        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+        $this->onScheduleDayAt('10:00:00');
+        $afternoon->update(['status' => 'closed']);
+        $nextWeek->update(['status' => 'full']);
+        \App\Models\VisitSchedule::create([
+            'rule_id' => $this->rule->rule_id,
+            'schedule_date' => $this->schedule->schedule_date->copy()->subWeek()->toDateString(),
+            'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00',
+            'max_capacity' => 2, 'slots_taken' => 0, 'status' => 'open',
+        ]);
+
+        $this->assertSame([$this->schedule->schedule_id], $this->assignFormScheduleIds());
+    }
+
+    public function test_end_time_is_judged_in_the_facility_timezone(): void
+    {
+        // The 11:30 end is Manila time (UTC+8), i.e. 03:30 UTC — not 11:30 UTC.
+        $date = $this->schedule->schedule_date->toDateString();
+
+        $this->travelTo(\Carbon\CarbonImmutable::parse("{$date} 03:29:59", 'UTC'));
+        $this->assertSameEndedRuleEverywhere(false);
+
+        $this->travelTo(\Carbon\CarbonImmutable::parse("{$date} 03:30:00", 'UTC'));
+        $this->assertSameEndedRuleEverywhere(true);
+        $this->assignViaForm()->assertSessionHasErrors([
+            'schedule_id' => 'This session has already ended. Choose a later session.',
+        ]);
+        $this->assertSame(0, VisitRequest::count());
+    }
 }

@@ -397,6 +397,45 @@ Route::middleware([
 
     /*
     |--------------------------------------------------------------------------
+    | Manage Visitor Slots (capacity of each visiting session)
+    |--------------------------------------------------------------------------
+    | Dated sessions are visit_schedules rows; the weekly defaults are
+    | facility_visitation_rules. Rules live in App\Services\VisitSlotService.
+    */
+
+    Route::get(
+        '/visitor-slots',
+        [\App\Http\Controllers\VisitSlotController::class, 'index']
+    )->name('visitor-slots.index');
+
+    Route::post(
+        '/visitor-slots',
+        [\App\Http\Controllers\VisitSlotController::class, 'store']
+    )->name('visitor-slots.store');
+
+    Route::put(
+        '/visitor-slots/rules/{rule}',
+        [\App\Http\Controllers\VisitSlotController::class, 'updateRule']
+    )->whereNumber('rule')->name('visitor-slots.rules.update');
+
+    Route::get(
+        '/visitor-slots/{visitSchedule}',
+        [\App\Http\Controllers\VisitSlotController::class, 'show']
+    )->whereNumber('visitSchedule')->name('visitor-slots.show');
+
+    Route::put(
+        '/visitor-slots/{visitSchedule}',
+        [\App\Http\Controllers\VisitSlotController::class, 'update']
+    )->whereNumber('visitSchedule')->name('visitor-slots.update');
+
+    Route::patch(
+        '/visitor-slots/{visitSchedule}/status',
+        [\App\Http\Controllers\VisitSlotController::class, 'updateStatus']
+    )->whereNumber('visitSchedule')->name('visitor-slots.status');
+
+
+    /*
+    |--------------------------------------------------------------------------
     | Visitor Management
     |--------------------------------------------------------------------------
     */

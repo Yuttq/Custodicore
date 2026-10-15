@@ -391,14 +391,24 @@ class ScheduleAvailabilityService
             return self::REASON_PAST;
         }
 
-        if ($dateString === $today) {
-            $end = CarbonImmutable::parse($dateString.' '.$this->hm($rule->time_slot_end), $this->timezone());
-            if ($now->gte($end)) {
-                return self::REASON_ENDED;
-            }
+        if ($dateString === $today && $this->sessionHasEnded($dateString, $rule->time_slot_end, $now)) {
+            return self::REASON_ENDED;
         }
 
         return null;
+    }
+
+    /**
+     * Whether a session on $date (Y-m-d) ending at $endTime has ended: from
+     * its end time on, in the facility timezone. The one end-of-session
+     * rule — the calendar's `ended`, Manage Visitor Slots edits and staff
+     * assignment all use it.
+     */
+    public function sessionHasEnded(string $date, $endTime, ?CarbonImmutable $now = null): bool
+    {
+        $end = CarbonImmutable::parse($date.' '.$this->hm($endTime), $this->timezone());
+
+        return ($now ?? $this->now())->gte($end);
     }
 
     private function ruleInEffect(FacilityVisitationRule $rule, CarbonImmutable $date): bool
@@ -427,8 +437,13 @@ class ScheduleAvailabilityService
             ));
     }
 
-    /** @return array<int, int> schedule_id => visit sessions that still hold a seat */
-    private function occupiedBySchedule(Collection $schedules): array
+    /**
+     * Also used by VisitSlotService (Manage Visitor Slots) for the booked count.
+     *
+     * @param  Collection<int, VisitSchedule>  $schedules
+     * @return array<int, int> schedule_id => visit sessions that still hold a seat
+     */
+    public function occupiedBySchedule(Collection $schedules): array
     {
         if ($schedules->isEmpty()) {
             return [];

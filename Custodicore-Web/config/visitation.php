@@ -29,6 +29,10 @@ return [
     // Largest from..to range a single availability request may ask for.
     'max_range_days' => 62,
 
+    // How far ahead a Record Officer may create a dated visiting session in
+    // Manage Visitor Slots (guards against mistyped years). Not a quota.
+    'slot_management_horizon_days' => 365,
+
     'announcements' => [
         [
             'id' => 'visiting-days',

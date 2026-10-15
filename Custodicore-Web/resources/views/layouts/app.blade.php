@@ -35,6 +35,9 @@
         Account Reviews
         @if ($pendingAccounts)<span class="nav-count" title="{{ $pendingAccounts }} waiting">{{ $pendingAccounts }}</span>@endif
       </a>
+      <a href="{{ route('visitor-slots.index') }}" class="{{ request()->routeIs('visitor-slots.*') ? 'active' : '' }}">
+        Manage Visitor Slots
+      </a>
       <a href="{{ route('eligibility.index') }}" class="{{ request()->routeIs('eligibility.*') ? 'active' : '' }}">
         Eligibility Review
       </a>

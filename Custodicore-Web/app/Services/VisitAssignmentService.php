@@ -75,11 +75,13 @@ class VisitAssignmentService
         $this->assertPdlAssignable($pdl);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
         $this->assertScheduleAssignable($schedule, $pdl);
-        $this->assertNoDuplicate($visitor, $pdl, $schedule);
+        $this->assertSessionNotEnded($schedule);
 
         $deadline = $this->resolveDeadline($input['confirmation_deadline'] ?? null);
 
         return DB::transaction(function () use ($visitor, $pdl, $relationship, $schedule, $deadline) {
+            // Lock order: visitor, then schedule (see lockVisitor()).
+            $this->lockVisitor($visitor);
             $schedule = VisitSchedule::whereKey($schedule->schedule_id)->lockForUpdate()->first();
 
             if (! $schedule->hasOpenSlots() || $this->occupiedSlots($schedule) >= $schedule->max_capacity) {
@@ -88,6 +90,7 @@ class VisitAssignmentService
                 ]);
             }
 
+            $this->assertNoDuplicate($visitor, $pdl, $schedule);
             $this->assertWeeklyVisitLimit($visitor, $schedule);
 
             $visitRequest = VisitRequest::create([
@@ -181,8 +184,11 @@ class VisitAssignmentService
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
         return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots) {
-            // Locked in start-time order, so two requests for the same day
-            // always take the schedule locks in the same order.
+            // Lock order: visitor, then schedules (see lockVisitor()). The
+            // schedules are locked in start-time order, so two requests for
+            // the same day always take the schedule locks in the same order.
+            $this->lockVisitor($visitor);
+
             $schedules = [];
             foreach ($slots as $slot) {
                 $scheduleId = $slot['scheduleId']
@@ -717,9 +723,25 @@ class VisitAssignmentService
     }
 
     /**
+     * A staff assignment needs a session that has not ended yet, including
+     * later the same day (assertScheduleAssignable only refuses earlier
+     * dates). Same rule as the visitor calendar's `ended` and Manage Visitor
+     * Slots: ScheduleAvailabilityService::sessionHasEnded.
+     */
+    private function assertSessionNotEnded(VisitSchedule $schedule): void
+    {
+        if ($this->availability->sessionHasEnded($schedule->schedule_date->toDateString(), $schedule->time_slot_end)) {
+            throw ValidationException::withMessages([
+                'schedule_id' => 'This session has already ended. Choose a later session.',
+            ]);
+        }
+    }
+
+    /**
      * One active visit per visitor, PDL and day: a second session that day is
      * part of the same visit, chosen when the visit is requested, never a
      * separate visit (which would count twice toward the weekly limit).
+     * Called inside the creating transaction, after lockVisitor().
      */
     private function assertNoDuplicate(
         VisitorProfile $visitor,
@@ -746,9 +768,9 @@ class VisitAssignmentService
      * The counting rules live in ScheduleAvailabilityService, which also
      * reports `weekly_limit` slots; this is the authoritative re-check.
      *
-     * Runs inside the creating transaction, but the lock held there is on
-     * the target schedule row only, so two concurrent requests by the same
-     * visitor for different schedules in the same week can both pass.
+     * Runs inside the creating transaction after lockVisitor(), so two
+     * concurrent requests by the same visitor (even for different
+     * schedules) are counted one after the other.
      */
     private function assertWeeklyVisitLimit(VisitorProfile $visitor, VisitSchedule $schedule): void
     {
@@ -760,6 +782,26 @@ class VisitAssignmentService
                 'schedule_id' => self::WEEKLY_LIMIT_MESSAGE,
             ]);
         }
+    }
+
+    /**
+     * Serializes visit creation per visitor: the weekly limit and the
+     * one-visit-per-PDL-per-day rule span several schedule rows, so the
+     * schedule locks alone cannot stop two requests by the same visitor for
+     * different sessions from both passing those checks.
+     *
+     * Must be the FIRST statement of the creating transaction. Lock order
+     * is visitor_profiles -> visit_schedules; no other path locks a visitor
+     * row (releases lock visit_requests -> visit_schedules, staff capacity
+     * changes lock visit_schedules only), so this adds no lock cycle. Being
+     * first also means that under InnoDB REPEATABLE READ the transaction's
+     * read snapshot is taken after this lock is granted, so the duplicate
+     * and weekly-limit counts see every visit committed by the request that
+     * held the lock before.
+     */
+    private function lockVisitor(VisitorProfile $visitor): void
+    {
+        VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
     }
 
     /** Locks a visit request that is still awaiting staff review (`assigned`). */
