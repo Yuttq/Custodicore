@@ -19,10 +19,13 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const MIN_BIRTHDATE = new Date(1920, 0, 1);
-const DEFAULT_BIRTHDATE = new Date(2000, 0, 26);
 
-function getPickerDate(isoValue) {
-  return parseIsoDateString(isoValue) ?? DEFAULT_BIRTHDATE;
+/**
+ * Only dates before today (local calendar) can be saved. An empty field opens
+ * the picker on today, so confirming that untouched date saves nothing.
+ */
+function isBeforeToday(date, today) {
+  return toIsoDateString(date) < toIsoDateString(today);
 }
 
 /**
@@ -42,21 +45,27 @@ export function BirthdateField({
   placeholder = 'Select birthdate',
 }) {
   const [iosVisible, setIosVisible] = useState(false);
-  const [iosDraft, setIosDraft] = useState(() => getPickerDate(value));
+  // iOS: "today" as of when the picker opened (start date + maximum date).
+  const [iosToday, setIosToday] = useState(() => new Date());
+  const [iosDraft, setIosDraft] = useState(iosToday);
+  const iosCanConfirm = isBeforeToday(iosDraft, iosToday);
 
   const displayText = useMemo(() => formatBirthdateDisplay(value), [value]);
-  const maximumDate = useMemo(() => new Date(), []);
 
   const openPicker = useCallback(() => {
+    const today = new Date();
+    const startDate = parseIsoDateString(value) ?? today;
+
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
-        value: getPickerDate(value),
+        value: startDate,
         mode: 'date',
         display: 'default',
-        maximumDate,
+        maximumDate: today,
         minimumDate: MIN_BIRTHDATE,
         onChange: (event, selectedDate) => {
-          if (event.type === 'set' && selectedDate) {
+          // Cancel/dismiss, or OK on today: keep the current value.
+          if (event.type === 'set' && selectedDate && isBeforeToday(selectedDate, today)) {
             onChange(toIsoDateString(selectedDate));
           }
         },
@@ -64,14 +73,16 @@ export function BirthdateField({
       return;
     }
 
-    setIosDraft(getPickerDate(value));
+    setIosToday(today);
+    setIosDraft(startDate);
     setIosVisible(true);
-  }, [maximumDate, onChange, value]);
+  }, [onChange, value]);
 
   const confirmIos = useCallback(() => {
+    if (!iosCanConfirm) return;
     onChange(toIsoDateString(iosDraft));
     setIosVisible(false);
-  }, [iosDraft, onChange]);
+  }, [iosCanConfirm, iosDraft, onChange]);
 
   const cancelIos = useCallback(() => {
     setIosVisible(false);
@@ -107,15 +118,26 @@ export function BirthdateField({
                   <Text style={styles.modalActionMuted}>Cancel</Text>
                 </Pressable>
                 <Text style={styles.modalTitle}>Birthdate</Text>
-                <Pressable onPress={confirmIos} hitSlop={8}>
-                  <Text style={styles.modalAction}>Done</Text>
+                <Pressable
+                  onPress={confirmIos}
+                  disabled={!iosCanConfirm}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !iosCanConfirm }}
+                  hitSlop={8}
+                >
+                  <Text style={iosCanConfirm ? styles.modalAction : styles.modalActionMuted}>
+                    Done
+                  </Text>
                 </Pressable>
               </View>
+              {!iosCanConfirm ? (
+                <Text style={styles.modalHint}>Select your birthdate.</Text>
+              ) : null}
               <DateTimePicker
                 value={iosDraft}
                 mode="date"
                 display="spinner"
-                maximumDate={maximumDate}
+                maximumDate={iosToday}
                 minimumDate={MIN_BIRTHDATE}
                 onChange={(_, selectedDate) => {
                   if (selectedDate) setIosDraft(selectedDate);
@@ -200,6 +222,12 @@ const styles = StyleSheet.create({
   modalActionMuted: {
     ...typography.body,
     color: colors.textSecondary,
+  },
+  modalHint: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingTop: spacing.sm,
   },
   iosPicker: {
     height: 216,
