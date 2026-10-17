@@ -32,9 +32,9 @@ function latestBirthdate(today) {
 }
 
 /**
- * An empty field opens the picker 18 years back rather than on today, so
- * Done/OK is usable on the first tap. The separate Age field must match the
- * chosen birthdate, which catches an untouched default being submitted.
+ * An empty field opens the picker 18 years back rather than on today. That
+ * date is only a starting point: confirming it untouched shows a hint instead
+ * of saving, and only a second confirm of the same date saves it.
  */
 function defaultPickerDate(today) {
   return new Date(
@@ -64,13 +64,33 @@ export function BirthdateField({
   // iOS: "today" as of when the picker opened (start date + maximum date).
   const [iosToday, setIosToday] = useState(() => new Date());
   const [iosDraft, setIosDraft] = useState(iosToday);
+  const [iosDefaultIso, setIosDefaultIso] = useState(null);
   const iosCanConfirm = isBeforeToday(iosDraft, iosToday);
+  // Set when the untouched default date was confirmed once; the hint asks the
+  // visitor to pick their birthdate, and confirming the same date again saves.
+  const [untouchedDefaultIso, setUntouchedDefaultIso] = useState(null);
 
   const displayText = useMemo(() => formatBirthdateDisplay(value), [value]);
+
+  /** Saves `date` unless it is the untouched default confirmed for the first time. */
+  const confirmDate = useCallback(
+    (date, defaultIso) => {
+      const iso = toIsoDateString(date);
+      if (!value && iso === defaultIso && untouchedDefaultIso !== iso) {
+        setUntouchedDefaultIso(iso);
+        return false;
+      }
+      setUntouchedDefaultIso(null);
+      onChange(iso);
+      return true;
+    },
+    [onChange, untouchedDefaultIso, value],
+  );
 
   const openPicker = useCallback(() => {
     const today = new Date();
     const startDate = parseIsoDateString(value) ?? defaultPickerDate(today);
+    const defaultIso = value ? null : toIsoDateString(startDate);
 
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
@@ -82,7 +102,7 @@ export function BirthdateField({
         onChange: (event, selectedDate) => {
           // Cancel/dismiss: keep the current value.
           if (event.type === 'set' && selectedDate && isBeforeToday(selectedDate, today)) {
-            onChange(toIsoDateString(selectedDate));
+            confirmDate(selectedDate, defaultIso);
           }
         },
       });
@@ -91,14 +111,18 @@ export function BirthdateField({
 
     setIosToday(today);
     setIosDraft(startDate);
+    setIosDefaultIso(defaultIso);
     setIosVisible(true);
-  }, [onChange, value]);
+  }, [confirmDate, value]);
 
   const confirmIos = useCallback(() => {
     if (!iosCanConfirm) return;
-    onChange(toIsoDateString(iosDraft));
-    setIosVisible(false);
-  }, [iosCanConfirm, iosDraft, onChange]);
+    if (confirmDate(iosDraft, iosDefaultIso)) setIosVisible(false);
+  }, [confirmDate, iosCanConfirm, iosDefaultIso, iosDraft]);
+
+  const untouchedHint = untouchedDefaultIso
+    ? `Please choose your own birthdate. Tap the year to change it, or select ${formatBirthdateDisplay(untouchedDefaultIso)} again if it is correct.`
+    : null;
 
   const cancelIos = useCallback(() => {
     setIosVisible(false);
@@ -124,6 +148,7 @@ export function BirthdateField({
         <Ionicons name="calendar-outline" size={22} color={colors.primaryTeal} />
       </Pressable>
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {!error && untouchedHint ? <Text style={styles.hint}>{untouchedHint}</Text> : null}
 
       {Platform.OS === 'ios' ? (
         <Modal visible={iosVisible} transparent animationType="slide">
@@ -146,8 +171,8 @@ export function BirthdateField({
                   </Text>
                 </Pressable>
               </View>
-              {!iosCanConfirm ? (
-                <Text style={styles.modalHint}>Select your birthdate.</Text>
+              {!iosCanConfirm || untouchedHint ? (
+                <Text style={styles.modalHint}>{untouchedHint ?? 'Select your birthdate.'}</Text>
               ) : null}
               <DateTimePicker
                 value={iosDraft}
@@ -204,6 +229,11 @@ const styles = StyleSheet.create({
   error: {
     ...typography.metadata,
     color: colors.danger,
+    marginTop: spacing.sm,
+  },
+  hint: {
+    ...typography.metadata,
+    color: colors.textSecondary,
     marginTop: spacing.sm,
   },
   modalOverlay: {

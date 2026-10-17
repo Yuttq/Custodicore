@@ -902,12 +902,10 @@ export default function RegisterScreen({ navigation, route }) {
         label="Birthdate"
         value={birthdate}
         onChange={(iso) => {
+          // The visitor types their age themselves; validateAge checks it
+          // against this birthdate.
           setBirthdate(iso);
-          // Age follows the birthdate; the visitor can still review it.
-          const derived = ageFromBirthdate(iso);
-          if (derived !== null) setAge(String(derived));
           clearError('birthdate');
-          clearError('age');
         }}
         error={errors.birthdate}
         placeholder="Select birthdate"
