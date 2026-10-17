@@ -19,13 +19,29 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const MIN_BIRTHDATE = new Date(1920, 0, 1);
+const DEFAULT_PICKER_AGE_YEARS = 18;
 
-/**
- * Only dates before today (local calendar) can be saved. An empty field opens
- * the picker on today, so confirming that untouched date saves nothing.
- */
+/** Only dates before today (local calendar) can be saved. */
 function isBeforeToday(date, today) {
   return toIsoDateString(date) < toIsoDateString(today);
+}
+
+/** Latest selectable birthdate: yesterday, so the picker never offers today. */
+function latestBirthdate(today) {
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+}
+
+/**
+ * An empty field opens the picker 18 years back rather than on today, so
+ * Done/OK is usable on the first tap. The separate Age field must match the
+ * chosen birthdate, which catches an untouched default being submitted.
+ */
+function defaultPickerDate(today) {
+  return new Date(
+    today.getFullYear() - DEFAULT_PICKER_AGE_YEARS,
+    today.getMonth(),
+    today.getDate(),
+  );
 }
 
 /**
@@ -54,17 +70,17 @@ export function BirthdateField({
 
   const openPicker = useCallback(() => {
     const today = new Date();
-    const startDate = parseIsoDateString(value) ?? today;
+    const startDate = parseIsoDateString(value) ?? defaultPickerDate(today);
 
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         value: startDate,
         mode: 'date',
         display: 'default',
-        maximumDate: today,
+        maximumDate: latestBirthdate(today),
         minimumDate: MIN_BIRTHDATE,
         onChange: (event, selectedDate) => {
-          // Cancel/dismiss, or OK on today: keep the current value.
+          // Cancel/dismiss: keep the current value.
           if (event.type === 'set' && selectedDate && isBeforeToday(selectedDate, today)) {
             onChange(toIsoDateString(selectedDate));
           }
@@ -137,7 +153,7 @@ export function BirthdateField({
                 value={iosDraft}
                 mode="date"
                 display="spinner"
-                maximumDate={iosToday}
+                maximumDate={latestBirthdate(iosToday)}
                 minimumDate={MIN_BIRTHDATE}
                 onChange={(_, selectedDate) => {
                   if (selectedDate) setIosDraft(selectedDate);
