@@ -14,12 +14,14 @@ Custodicore/
 
 `Custodicore-Web/` and `Custodicore-Mobile/` are two separate projects that talk to each other over HTTP — you need both running to use the mobile app, but the web dashboards work with just `Custodicore-Web/`. Each folder has its own README with more detail.
 
+Setting everything up on a MacBook (for example for a demo)? Follow [SETUP-MAC.md](SETUP-MAC.md) instead — it covers the files that are not in git and must be copied from a working machine.
+
 ## Prerequisites
 
 - **PHP 8.2+** and **Composer**
 - **MySQL** — XAMPP is the easiest way to get this locally (Apache isn't needed, just the MySQL service)
 - **Node.js** (for both `Custodicore-Web/`'s frontend assets and the mobile app) and **npm**
-- **Expo Go** app on your phone, or an Android/iOS emulator, if you want to test the mobile app
+- **Android Studio** with an Android emulator (or a real Android phone with USB debugging) for the mobile app. The app is a development build because it uses native Google Sign-In, so **Expo Go does not work** — see Mobile app setup step 3.
 
 ## Backend setup (one-time)
 
@@ -51,7 +53,7 @@ php artisan db:seed
 ```
 This builds every table and seeds the test accounts listed below. Both commands are safe to re-run on an existing database. Check what's applied with `php artisan migrate:status`. Do **not** use `migrate:fresh` on a database whose data you want to keep — it drops every table.
 
-Visit schedules are created by the seeder, dated relative to the day you seed (there is no staff page for creating schedules yet). If every seeded schedule date has passed, re-run `php artisan db:seed` to add the next week's slots.
+The seeder adds visit schedules dated relative to the day you seed. After that, Record Officers create and adjust dated visiting sessions on **Manage Visitor Slots** (`/visitor-slots`).
 
 **5. Link storage** (so uploaded visitor ID photos are servable):
 ```bash
@@ -97,19 +99,28 @@ cd Custodicore-Mobile
 npm install
 ```
 
-**2. Point it at your backend.** Find your computer's LAN IP (`ipconfig` on Windows, `ipconfig getifaddr en0` on Mac) — not `localhost`, since the phone needs to reach your computer over Wi-Fi. Copy `Custodicore-Mobile/.env.example` to `Custodicore-Mobile/.env` and set:
-```
-EXPO_PUBLIC_API_URL=http://YOUR-LAN-IP:8000/api
-```
-Keep the trailing `/api`. Phone and computer must be on the same Wi-Fi network, and your firewall needs to allow the backend's port 8000 (Windows will usually prompt for this the first time `php artisan serve` runs).
+**2. Point it at your backend.** Copy `Custodicore-Mobile/.env.example` to `Custodicore-Mobile/.env` and set `EXPO_PUBLIC_API_URL` (keep the trailing `/api`, never `localhost`):
 
-**3. Start Expo:**
+| Running the app on | Use |
+|---|---|
+| Android emulator on the same computer as Laravel | `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api` |
+| A real phone | `EXPO_PUBLIC_API_URL=http://YOUR-LAN-IP:8000/api` — find the IP with `ipconfig` (Windows) or `ipconfig getifaddr en0` (Mac). Phone and computer must be on the same Wi-Fi, Laravel must run with `--host=0.0.0.0`, and the firewall must allow port 8000. |
+
+Also set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` for Google Sign-In (ask the team for the value; email/password works without it).
+
+**3. Build and install the app (first time, ~10–20 min):** with the emulator running,
+```bash
+npx expo run:android
+```
+This creates the `android/` folder (git-ignored) and installs the app. Google Sign-In only works when `android/app/debug.keystore` is the team's shared key, so copy it in from a working machine after the first build and run the command again.
+
+**4. Start Expo (every other time):**
 ```bash
 npx expo start
 ```
-Restart this after any `.env` change — environment variables are only read at startup.
+then press **a** to open the app on the emulator. Restart this after any `.env` change — environment variables are only read at startup. If the app crashes on launch with *"App react context shouldn't be created before"*, close the app completely on the emulator and press **a** again.
 
-**4. Test it.** Log in with a seeded visitor account (see table above). Every visitor screen now uses the real API (all `USE_MOCK_*` flags in `src/mock/devFlags.js` are `false`). `maria.santos@example.com` has a completed visit on record, so History and Timeline show real data.
+**5. Test it.** Log in with a seeded visitor account (see table above). Every visitor screen now uses the real API (all `USE_MOCK_*` flags in `src/mock/devFlags.js` are `false`). `maria.santos@example.com` has a completed visit on record, so History and Timeline show real data.
 
 ## Local end-to-end test
 
@@ -148,12 +159,10 @@ The web dashboards use a small shared set of Tailwind tokens (`Custodicore-Web/t
 
 ## Known gaps (don't assume these are covered)
 
-- **A visitor's overall verification status never changes.** Staff can verify/reject individual IDs and relationships, but nothing sets `visitor_profiles.verification_status`, so a newly registered visitor shows "Under Review" indefinitely.
-- **Supporting documents** (marriage certificate, etc.) can only be uploaded after staff link the visitor to a PDL; staff pages don't display uploaded files yet, and staff verify/reject actions don't notify the visitor.
-- **No staff page creates visit schedules** — they come from the seeder (see Backend setup step 4).
-- `/auth/google` (mobile Google Sign-In) intentionally returns HTTP 501 — no OAuth credentials are set up yet.
+- **Google Sign-In needs setup per machine.** The backend accepts it only when `GOOGLE_CLIENT_IDS` is set in `Custodicore-Web/.env`, and the app only when it is built with the shared `debug.keystore` (Mobile app setup step 3).
 - **Forgot Password is visitor-only.** Staff still ask their Warden administrator to reset a password (as the web login page says).
-- The mobile app has only been tested in the Expo web build and against the API — test on a real Android device (especially camera/gallery ID upload) before relying on it.
+- **No iOS build.** The mobile app has been built and tested on Android only; there is no `ios/` setup or iOS Google client ID.
+- **Everything runs locally.** Nothing is hosted online, so a phone can only use the app while it can reach the computer running Laravel (same Wi-Fi, or the emulator on that computer).
 
 ## Where to look for more detail
 
