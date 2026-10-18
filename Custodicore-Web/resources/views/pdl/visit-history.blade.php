@@ -1,16 +1,16 @@
 @extends('layouts.app')
-@section('title', 'Visit History — ' . $pdl->full_name)
+@section('title', 'Visit History — CustodiCore')
 
 @section('content')
 <div class="topbar">
-  <h1>Visit History — {{ $pdl->full_name }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h1>
+  <h1>Visit History</h1>
   <div class="right">
     <a class="btn btn-outline-neutral" href="{{ route('visitation-tracking.index') }}">Back to Visitation Tracking</a>
   </div>
 </div>
 
 <div class="panel" style="margin-bottom:20px;">
-  <div class="panel-header"><h2>Visitors Linked to This PDL</h2></div>
+  <div class="panel-header"><h2>Visitors Linked to {{ $pdl->full_name }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h2></div>
 
   {{--
     Identity/relationship verification status lives on the visitor's own

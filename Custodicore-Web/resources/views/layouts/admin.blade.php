@@ -46,7 +46,7 @@
                     @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-8 w-8', 'color' => 'bg-primary-navy', 'photo' => auth()->user()->staffProfile?->photoUrl()])
                     <div class="min-w-0">
                         <p class="truncate text-body font-semibold leading-tight">{{ auth()->user()->displayName() }}</p>
-                        <p class="text-[11px] text-text-secondary">{{ auth()->user()->role?->role_name }}</p>
+                        <p class="text-[11px] text-text-secondary">{{ \App\Models\Role::label(auth()->user()->role?->role_name) }}</p>
                     </div>
                 </a>
                 <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">

@@ -12,6 +12,16 @@ class Role extends Model
 
     const CREATED_AT = 'created_at';
 
+    /**
+     * Name shown on screen. The stored value 'System Administrator/Warden' is
+     * still what the role: middleware, seeders and the mobile app match on, so
+     * only the label changes here.
+     */
+    public static function label(?string $roleName): string
+    {
+        return $roleName === 'System Administrator/Warden' ? 'Admin' : (string) $roleName;
+    }
+
     protected $fillable = ['role_name', 'description'];
 
     public function accounts()

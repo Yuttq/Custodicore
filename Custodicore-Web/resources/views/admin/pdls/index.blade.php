@@ -17,7 +17,7 @@
                     @if ($search)
                         {{ count($pdls) }} of {{ $totalPdls }} records match "{{ $search }}"
                     @else
-                        {{ count($pdls) }} records · read-only
+                        {{ count($pdls) }} records
                     @endif
                 </p>
             </div>

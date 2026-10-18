@@ -43,9 +43,9 @@
         <ul class="mt-md space-y-sm">
             @foreach ($roles as $role)
                 <li class="flex items-start gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
-                    @include('admin.partials.avatar', ['name' => $role['role_name'], 'size' => 'h-9 w-9'])
+                    @include('admin.partials.avatar', ['name' => \App\Models\Role::label($role['role_name']), 'size' => 'h-9 w-9'])
                     <div>
-                        <p class="text-body font-semibold">{{ $role['role_name'] }}</p>
+                        <p class="text-body font-semibold">{{ \App\Models\Role::label($role['role_name']) }}</p>
                         <p class="text-metadata text-text-secondary">{{ $role['access'] }}</p>
                     </div>
                 </li>

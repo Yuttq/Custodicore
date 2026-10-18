@@ -15,7 +15,7 @@
 @layer components {
     /* Mirrors src/components/Card.js: white card, 1px border, subtle shadow */
     .cc-card {
-        @apply bg-card border border-border/70 p-md;
+        @apply bg-card border border-border p-md;
         border-radius: 20px;
         box-shadow: 0 4px 16px rgba(15, 61, 122, 0.07);
     }

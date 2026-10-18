@@ -11,7 +11,7 @@
 
     <div class="cc-card">
         <p class="text-card-title">Upcoming Slots</p>
-        <p class="text-metadata text-text-secondary">Generated from facility_visitation_rules · read-only</p>
+        <p class="text-metadata text-text-secondary">Generated from facility_visitation_rules</p>
 
         <div class="mt-md overflow-x-auto">
             <table class="w-full text-left text-body">

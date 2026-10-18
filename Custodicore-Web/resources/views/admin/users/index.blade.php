@@ -92,7 +92,7 @@
                                     <span class="font-semibold">{{ $account['list_name'] }}</span>
                                 </div>
                             </td>
-                            <td class="py-sm pr-md">{{ $account['role_name'] }}</td>
+                            <td class="py-sm pr-md">{{ \App\Models\Role::label($account['role_name']) }}</td>
                             <td class="py-sm pr-md text-text-secondary">
                                 {{ $account['email'] }}
                                 @if ($account['personal_email'])
@@ -192,7 +192,7 @@
                     <label class="cc-label" for="new-role">Role</label>
                     <select id="new-role" name="role_name" required class="cc-input">
                         <option value="" @selected(! ($isNew && old('role_name'))) disabled>Select a role…</option>
-                        <option value="System Administrator/Warden" @selected($isNew && old('role_name') === 'System Administrator/Warden')>System Administrator/Warden</option>
+                        <option value="System Administrator/Warden" @selected($isNew && old('role_name') === 'System Administrator/Warden')>Admin</option>
                         <option value="Record Officer" @selected($isNew && old('role_name') === 'Record Officer')>Record Officer</option>
                         <option value="Front Desk Officer" @selected($isNew && old('role_name') === 'Front Desk Officer')>Front Desk Officer</option>
                     </select>
@@ -342,7 +342,7 @@
                         <label class="cc-label">Role</label>
                         @php $currentRole = $mine ? old('role_name') : $account['role_name']; @endphp
                         <select name="role_name" required class="cc-input" @if ($account['is_self']) title="You cannot change your own role" @endif>
-                            <option value="System Administrator/Warden" @selected($currentRole === 'System Administrator/Warden')>System Administrator/Warden</option>
+                            <option value="System Administrator/Warden" @selected($currentRole === 'System Administrator/Warden')>Admin</option>
                             <option value="Record Officer" @selected($currentRole === 'Record Officer')>Record Officer</option>
                             <option value="Front Desk Officer" @selected($currentRole === 'Front Desk Officer')>Front Desk Officer</option>
                         </select>

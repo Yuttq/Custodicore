@@ -38,11 +38,11 @@
         <div class="card">
             @if ($state === 'form')
                 <h1>Set up your staff account</h1>
-                <p class="muted">Choose your own password. Nobody else, including the Warden, will ever see it. This link works once and is valid for {{ $hours }} hours from when it was sent.</p>
+                <p class="muted">Choose your own password. Nobody else, including the Admin, will ever see it. This link works once and is valid for {{ $hours }} hours from when it was sent.</p>
 
                 <div class="who">
                     <b>{{ $account->displayName() }}</b>
-                    <span class="muted">{{ $account->role?->role_name }} · {{ $account->email }}</span>
+                    <span class="muted">{{ \App\Models\Role::label($account->role?->role_name) }} · {{ $account->email }}</span>
                 </div>
 
                 @if ($errors->any())
@@ -76,13 +76,13 @@
                 <div class="center">
                     <div class="badge warn">!</div>
                     <h1>This link has expired</h1>
-                    <p>For your security, setup links expire. Ask the Warden to send you a new one.</p>
+                    <p>For your security, setup links expire. Ask the Admin to send you a new one.</p>
                 </div>
             @else
                 <div class="center">
                     <div class="badge err">&times;</div>
                     <h1>This link is not valid</h1>
-                    <p>It may already have been used, or replaced by a newer link. If you have not finished setting up, ask the Warden to send you a new one. If you already did, <a href="{{ route('login') }}">sign in here</a>.</p>
+                    <p>It may already have been used, or replaced by a newer link. If you have not finished setting up, ask the Admin to send you a new one. If you already did, <a href="{{ route('login') }}">sign in here</a>.</p>
                 </div>
             @endif
         </div>

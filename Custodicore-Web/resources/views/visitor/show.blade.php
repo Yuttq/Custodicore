@@ -1,9 +1,9 @@
 @extends('layouts.app')
-@section('title', $visitor->full_name . ' — CustodiCore')
+@section('title', 'Visitor Profile — CustodiCore')
 
 @section('content')
 <div class="topbar">
-  <h1>{{ $visitor->full_name }}</h1>
+  <h1>Visitor Profile</h1>
   <div class="right">
     <a class="btn btn-outline-neutral" href="{{ route('visitor.index') }}">Back to Visitor Management</a>
   </div>

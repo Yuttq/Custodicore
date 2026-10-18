@@ -5,7 +5,7 @@
 @section('content')
     <div class="cc-card">
         <p class="text-card-title">Gate Settings</p>
-        <p class="text-metadata text-text-secondary">Read-only — set by the Warden on the admin dashboard</p>
+        <p class="text-metadata text-text-secondary">Set by the Admin on the admin dashboard</p>
 
         <div class="mt-md overflow-x-auto">
             <table class="w-full text-left text-body">

@@ -1,6 +1,7 @@
 @extends('layouts.admin')
 
-@section('title', $visitor->full_name)
+@section('title', 'Visitor Profile')
+@section('heading', '')
 
 @php
     $status = $visitor->verification_status;
@@ -30,7 +31,7 @@
 
 @section('content')
     <div>
-        <a href="{{ route('admin.visitors.index') }}" class="cc-btn-secondary">Back to Visitor Management</a>
+        <a href="{{ route('admin.visitors.index') }}" class="cc-btn-secondary">Back</a>
     </div>
 
     {{-- One profile card: banner on top, quick facts left, details/history in the middle, summary right. --}}
@@ -39,7 +40,6 @@
             <p class="text-page-title text-white">{{ $visitor->full_name }}</p>
             <p class="text-metadata text-white/70">
                 {{ $visitor->account?->email ?? 'No email on file' }}
-                · Read-only view, verification is done by the Record Officer
             </p>
         </div>
 
@@ -51,7 +51,7 @@
                     @include('admin.partials.person-silhouette')
                 </div>
 
-                <div class="rounded-sm bg-background p-md text-center text-metadata italic text-text-secondary">
+                <div class="rounded-sm border border-primary-navy/10 bg-primary-navy/[0.07] p-md text-center text-metadata italic text-text-secondary">
                     @if ($visitor->relationship_hint)
                         Said at sign-up: "{{ $visitor->relationship_hint }}"
                     @else
@@ -207,7 +207,7 @@
             </div>
 
             {{-- ===== RIGHT: at-a-glance panel ===== --}}
-            <div class="space-y-lg rounded-sm bg-primary-navy/5 p-md">
+            <div class="space-y-lg rounded-sm border border-primary-navy/10 bg-primary-navy/[0.08] p-md">
                 @include('admin.partials.bar-list', ['title' => 'Visits by Status', 'rows' => $visitsByStatus, 'empty' => 'No visits yet.'])
                 @include('admin.partials.bar-list', ['title' => 'PDL Links by Status', 'rows' => $linkStatuses, 'empty' => 'No linked PDLs yet.'])
                 @include('admin.partials.bar-list', ['title' => 'Flags', 'rows' => $flagBars, 'empty' => 'No flags. Clean record.'])

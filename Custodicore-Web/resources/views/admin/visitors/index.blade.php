@@ -17,7 +17,7 @@
                     @if ($search)
                         {{ count($visitors) }} of {{ $totalVisitors }} visitors match "{{ $search }}"
                     @else
-                        {{ count($visitors) }} visitors · read-only
+                        {{ count($visitors) }} visitors
                     @endif
                 </p>
             </div>

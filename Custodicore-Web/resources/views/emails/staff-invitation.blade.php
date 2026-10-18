@@ -18,8 +18,8 @@
                     <p style="margin:0 0 24px;">
                         <a href="{{ $setupUrl }}" style="display:inline-block;background:#16A34A;color:#FFFFFF;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;">Set up my account</a>
                     </p>
-                    <p style="margin:0 0 12px;font-size:13px;color:#6B7280;">This link can be used once and expires in {{ $expiresInHours }} {{ $expiresInHours === 1 ? 'hour' : 'hours' }}. If it has expired, ask the Warden to send you a new one.</p>
-                    <p style="margin:0;font-size:13px;color:#6B7280;">If you were not expecting this, ignore this email and tell the Warden. Never share this link with anyone.</p>
+                    <p style="margin:0 0 12px;font-size:13px;color:#6B7280;">This link can be used once and expires in {{ $expiresInHours }} {{ $expiresInHours === 1 ? 'hour' : 'hours' }}. If it has expired, ask the Admin to send you a new one.</p>
+                    <p style="margin:0;font-size:13px;color:#6B7280;">If you were not expecting this, ignore this email and tell the Admin. Never share this link with anyone.</p>
                 </td></tr>
             </table>
         </td></tr>

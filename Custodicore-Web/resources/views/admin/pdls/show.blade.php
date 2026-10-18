@@ -1,6 +1,7 @@
 @extends('layouts.admin')
 
-@section('title', $pdl->full_name)
+@section('title', 'PDL Profile')
+@section('heading', '')
 
 @php
     $classification = [
@@ -27,7 +28,7 @@
 
 @section('content')
     <div>
-        <a href="{{ route('admin.pdls.index') }}" class="cc-btn-secondary">Back to PDL Management</a>
+        <a href="{{ route('admin.pdls.index') }}" class="cc-btn-secondary">Back</a>
     </div>
 
     {{-- One profile card: banner on top, quick facts left, records in the middle, summary right. --}}
@@ -36,7 +37,6 @@
             <p class="text-page-title text-white">{{ $pdl->full_name }}</p>
             <p class="text-metadata text-white/70">
                 {{ $pdl->pdl_number }}@if ($pdl->alias) · alias "{{ $pdl->alias }}"@endif
-                · Read-only view, records are managed by the Record Officer
             </p>
         </div>
 
@@ -52,7 +52,7 @@
                     @endif
                 </div>
 
-                <div class="rounded-sm bg-background p-md text-center text-metadata italic text-text-secondary">
+                <div class="rounded-sm border border-primary-navy/10 bg-primary-navy/[0.07] p-md text-center text-metadata italic text-text-secondary">
                     {{ $pdl->alias ? '"' . $pdl->alias . '"' : 'No alias on record' }}
                 </div>
 
@@ -150,7 +150,7 @@
             </div>
 
             {{-- ===== RIGHT: at-a-glance panel ===== --}}
-            <div class="space-y-lg rounded-sm bg-primary-navy/5 p-md">
+            <div class="space-y-lg rounded-sm border border-primary-navy/10 bg-primary-navy/[0.08] p-md">
                 <div>
                     <p class="text-card-title text-primary-navy">In Custody</p>
                     @if ($daysInCustody !== null)

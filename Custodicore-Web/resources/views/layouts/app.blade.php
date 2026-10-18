@@ -68,7 +68,7 @@
         @endif
         <div class="who">
           <div class="name">{{ auth()->user()?->displayName() ?? 'Officer' }}</div>
-          <div class="role">{{ auth()->user()?->role?->role_name ?? 'Records Officer' }}</div>
+          <div class="role">{{ \App\Models\Role::label(auth()->user()?->role?->role_name) ?: 'Records Officer' }}</div>
         </div>
       </a>
       <form method="POST" action="{{ route('logout') }}" style="margin:0;">

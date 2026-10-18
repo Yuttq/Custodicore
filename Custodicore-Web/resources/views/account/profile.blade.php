@@ -35,7 +35,7 @@
 
         @if (! $profile)
             <div class="cc-card">
-                <p class="text-body">This account has no staff profile, so a picture can't be added. Ask the Warden to check your account.</p>
+                <p class="text-body">This account has no staff profile, so a picture can't be added. Ask an Admin to check your account.</p>
             </div>
         @else
             <div class="cc-card">
@@ -80,11 +80,11 @@
 
             <div class="cc-card">
                 <p class="text-card-title">My Details</p>
-                <p class="mt-xs text-metadata text-text-secondary">Read-only. To change these, ask the Warden.</p>
+                <p class="mt-xs text-metadata text-text-secondary">To change these, ask an Admin.</p>
                 <dl class="mt-md grid grid-cols-1 gap-md sm:grid-cols-2">
                     @foreach ([
                         'Name' => $name,
-                        'Role' => $account->role?->role_name ?? '—',
+                        'Role' => \App\Models\Role::label($account->role?->role_name) ?: '—',
                         'Employee #' => $profile->employee_number ?? '—',
                         'Mobile' => $profile->contact_number ?: '—',
                         'Sign-in Email' => $account->email,

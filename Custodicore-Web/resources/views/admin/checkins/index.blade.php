@@ -13,7 +13,7 @@
         <div class="mb-md flex flex-col gap-sm lg:flex-row lg:items-center lg:justify-between">
             <div>
                 <p class="text-card-title">Visitors Who Entered Today</p>
-                <p class="text-metadata text-text-secondary">Checked in and out via QR code at the gate · read-only</p>
+                <p class="text-metadata text-text-secondary">Checked in and out via QR code at the gate</p>
             </div>
             @include('admin.partials.search-box', ['placeholder' => 'Search by reference or visitor…'])
         </div>

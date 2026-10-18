@@ -13,7 +13,7 @@
                  (or if it fails to load) the "CC" badge below is shown instead, so the page never breaks. --}}
             <div class="mb-lg flex flex-col items-center text-center">
                 <img src="{{ asset('images/bjmp-logo.png') }}" alt="Bureau of Jail Management and Penology logo"
-                     class="mb-sm h-28 w-28 object-contain"
+                     class="mb-sm h-24 w-24 object-contain"
                      onerror="this.style.display='none'; document.getElementById('login-badge').style.display='flex';">
                 <div id="login-badge" style="display:none;" class="mb-sm h-14 w-14 items-center justify-center rounded-card bg-white/10 text-card-title font-bold text-white">CC</div>
                 <p class="text-page-title text-white">CustodiCore</p>
@@ -56,7 +56,7 @@
                 </form>
 
                 <p class="mt-lg text-center text-metadata text-text-secondary">
-                    Lost access to your account? Contact your Warden administrator to reset it.
+                    Lost access to your account? Contact your Admin to reset it.
                 </p>
             </div>
         </div>

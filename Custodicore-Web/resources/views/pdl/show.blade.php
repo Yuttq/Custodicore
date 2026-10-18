@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', $pdl->full_name . ' — CustodiCore')
+@section('title', 'PDL Profile — CustodiCore')
 
 @php
   $statusLabels = ['active' => 'Active', 'released' => 'Released', 'transferred' => 'Transferred', 'deceased' => 'Deceased'];
