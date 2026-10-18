@@ -20,6 +20,7 @@ class StaffProfile extends Model
         'position',
         'contact_number',
         'personal_email',
+        'photo_path',
         'assigned_facility',
     ];
 
@@ -59,6 +60,17 @@ class StaffProfile extends Model
         $name = $this->last_name !== null && $this->last_name !== '' ? $this->last_name . ($given !== '' ? ', ' . $given : '') : $given;
 
         return $this->suffix ? $name . ' ' . $this->suffix : $name;
+    }
+
+    /** URL of the officer's profile picture, or null when none (show initials). */
+    public function photoUrl(): ?string
+    {
+        if (! $this->photo_path) {
+            return null;
+        }
+
+        // ?v= changes with the file, so a replaced picture isn't served from cache.
+        return route('account.photo.show', $this->staff_id) . '?v=' . substr(md5($this->photo_path), 0, 8);
     }
 
     public function account()

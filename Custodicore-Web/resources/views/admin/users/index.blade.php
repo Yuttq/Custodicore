@@ -88,7 +88,7 @@
                             <td class="py-sm pr-md text-text-secondary">{{ $account['employee_number'] }}</td>
                             <td class="py-sm pr-md">
                                 <div class="flex items-center gap-sm">
-                                    @include('admin.partials.avatar', ['name' => $account['full_name'], 'size' => 'h-8 w-8'])
+                                    @include('admin.partials.avatar', ['name' => $account['full_name'], 'size' => 'h-8 w-8', 'photo' => $account['photo'] ?? null])
                                     <span class="font-semibold">{{ $account['list_name'] }}</span>
                                 </div>
                             </td>

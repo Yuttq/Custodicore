@@ -17,7 +17,9 @@
         {{-- Sidebar: white, text-only buttons, teal when active (same as the Record Officer sidebar) --}}
         <aside class="hidden w-[220px] shrink-0 flex-col border-r border-border bg-white px-[14px] py-5 lg:flex">
             <div class="flex items-center gap-[10px] px-2 pb-[22px] pt-[6px]">
-                <div class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-button bg-primary-navy text-body font-bold text-white">CC</div>
+                <img src="{{ asset('images/bjmp-logo.png') }}" alt="BJMP logo" class="h-[38px] w-[38px] shrink-0 object-contain"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div style="display:none;" class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-button bg-primary-navy text-body font-bold text-white">CC</div>
                 <div>
                     <p class="text-card-title leading-tight text-primary-navy">CustodiCore</p>
                     <p class="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-secondary">BJMP Front Desk</p>
@@ -47,13 +49,13 @@
                    class="cc-nav-link {{ request()->routeIs('frontdesk.settings.index') ? 'cc-nav-link-active' : '' }}">
                     Settings
                 </a>
-                <div class="flex items-center gap-[10px] border-t border-border pt-[14px]">
-                    @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-8 w-8', 'color' => 'bg-primary-navy'])
+                <a href="{{ route('account.profile') }}" title="My profile and picture" class="flex items-center gap-[10px] border-t border-border pt-[14px] transition hover:opacity-80">
+                    @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-8 w-8', 'color' => 'bg-primary-navy', 'photo' => auth()->user()->staffProfile?->photoUrl()])
                     <div class="min-w-0">
                         <p class="truncate text-body font-semibold leading-tight">{{ auth()->user()->displayName() }}</p>
                         <p class="text-[11px] text-text-secondary">Gate Operations</p>
                     </div>
-                </div>
+                </a>
                 <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">
                     @csrf
                     <button type="submit" class="w-full px-[10px] text-left text-body font-medium text-[#4b5568]">Sign out</button>

@@ -11,7 +11,9 @@
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-icon">CC</div>
+      <img src="{{ asset('images/bjmp-logo.png') }}" alt="BJMP logo" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <div class="brand-icon" style="display:none;">CC</div>
       <div class="brand-text">
         <div class="title">CustodiCore</div>
         <div class="subtitle">INSTITUTIONAL GUARDIAN</div>
@@ -57,13 +59,18 @@
     </nav>
     <div class="sidebar-bottom">
       <a href="#" class="support-link">Support</a>
-      <div class="sidebar-footer">
-        <div class="avatar">{{ strtoupper(mb_substr(trim(auth()->user()?->displayName() ?? 'O'), 0, 1)) }}</div>
+      <a href="{{ route('account.profile') }}" class="sidebar-footer" title="My profile and picture" style="text-decoration:none;color:inherit;">
+        @php $myPhoto = auth()->user()?->staffProfile?->photoUrl(); @endphp
+        @if ($myPhoto)
+          <img src="{{ $myPhoto }}" alt="" class="avatar" style="object-fit:cover;">
+        @else
+          <div class="avatar">{{ strtoupper(mb_substr(trim(auth()->user()?->displayName() ?? 'O'), 0, 1)) }}</div>
+        @endif
         <div class="who">
           <div class="name">{{ auth()->user()?->displayName() ?? 'Officer' }}</div>
           <div class="role">{{ auth()->user()?->role?->role_name ?? 'Records Officer' }}</div>
         </div>
-      </div>
+      </a>
       <form method="POST" action="{{ route('logout') }}" style="margin:0;">
         @csrf
         <button type="submit" class="support-link" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font:inherit;color:inherit;">

@@ -301,6 +301,7 @@ class UserController extends Controller
                     'last_name' => $parts['last'],
                     'suffix' => $profile?->suffix,
                     'contact_number' => $profile?->contact_number,
+                    'photo' => $profile?->photoUrl(),
                     'personal_email' => $profile?->personal_email,
                     'role_name' => $account->role?->role_name ?? '—',
                     'email' => $account->email,

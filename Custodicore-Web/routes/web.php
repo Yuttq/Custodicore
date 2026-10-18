@@ -15,6 +15,7 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\StaffSetupController;
 
 use App\Http\Controllers\LegalController;
+use App\Http\Controllers\MyProfileController;
 use App\Http\Controllers\CustodyHistoryController;
 use App\Http\Controllers\VisitationTrackingController;
 use App\Http\Controllers\EligibilityController;
@@ -108,6 +109,24 @@ Route::get('/staff/setup/{token}', [StaffSetupController::class, 'show'])
 Route::post('/staff/setup', [StaffSetupController::class, 'submit'])
     ->middleware('throttle:10,1,staff-setup-submit')
     ->name('staff-setup.submit');
+
+/*
+|--------------------------------------------------------------------------
+| My Profile (profile picture)
+|--------------------------------------------------------------------------
+| Any signed-in staff member (Warden, Record Officer, Front Desk Officer)
+| manages their OWN picture here. See MyProfileController.
+*/
+
+Route::prefix('account')
+    ->name('account.')
+    ->middleware(['auth', 'role:System Administrator/Warden,Record Officer,Front Desk Officer'])
+    ->group(function () {
+        Route::get('/profile', [MyProfileController::class, 'show'])->name('profile');
+        Route::post('/profile/photo', [MyProfileController::class, 'update'])->name('photo.update');
+        Route::delete('/profile/photo', [MyProfileController::class, 'destroy'])->name('photo.destroy');
+        Route::get('/photo/{staff}', [MyProfileController::class, 'photo'])->name('photo.show');
+    });
 
 /*
 |--------------------------------------------------------------------------
