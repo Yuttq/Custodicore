@@ -39,7 +39,7 @@ export default {
                 warning: '#F59E0B',
                 danger: '#EF4444',
                 info: '#2563EB',
-                background: '#F8FAFC',
+                background: '#F4F7FB',
                 card: '#FFFFFF',
                 border: '#E5E7EB',
                 'text-primary': '#111827',

@@ -15,7 +15,9 @@
 @layer components {
     /* Mirrors src/components/Card.js: white card, 1px border, subtle shadow */
     .cc-card {
-        @apply bg-card border border-border rounded-card shadow-card p-md;
+        @apply bg-card border border-border/70 p-md;
+        border-radius: 20px;
+        box-shadow: 0 4px 16px rgba(15, 61, 122, 0.07);
     }
 
     /* Mirrors src/designSystem/components/Button.js primary variant.
@@ -78,9 +80,72 @@
     /* Sidebar navigation: identical on Admin and Front Desk, and the same
        look as the Record Officer sidebar (white, text only, teal when active). */
     .cc-nav-link {
-        @apply flex items-center rounded-button p-[10px] text-[13.5px] font-medium text-[#4b5563] transition hover:bg-background;
+        @apply flex items-center gap-[10px] rounded-button p-[10px] text-[13.5px] font-medium text-[#4b5563] transition hover:bg-background;
+    }
+    /* Small dot before each menu item; teal when it is the current page. */
+    .cc-nav-link::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        flex-shrink: 0;
+        border-radius: 9999px;
+        background-color: #cbd5e1;
     }
     .cc-nav-link-active {
-        @apply bg-primary-teal/10 font-bold text-primary-teal hover:bg-primary-teal/10;
+        @apply font-bold text-primary-teal hover:bg-primary-teal/10;
+        background-image: linear-gradient(90deg, #e6f6f3, #f1fbf9);
+    }
+    .cc-nav-link-active::before {
+        background-color: #0da58a;
+    }
+
+    /* Gradient page banner (navy to teal) with two soft circles, shared by Admin
+       and Front Desk. The page content below slides up over its bottom edge. */
+    .cc-hero {
+        @apply relative overflow-hidden px-8 pb-[64px] pt-7 text-white;
+        background-image: linear-gradient(120deg, #0f3d7a 0%, #1558a8 45%, #0da58a 100%);
+    }
+    .cc-hero::before {
+        content: '';
+        position: absolute;
+        right: -60px;
+        top: -80px;
+        width: 340px;
+        height: 340px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .cc-hero::after {
+        content: '';
+        position: absolute;
+        right: 160px;
+        top: 90px;
+        width: 200px;
+        height: 200px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.07);
+    }
+    .cc-hero > * {
+        position: relative;
+        z-index: 1;
+    }
+    .cc-hero-home {
+        @apply pb-[104px];
+    }
+
+    /* Card titles: navy, with a small teal-to-blue accent bar in front.
+       :where() keeps the colour weaker than any text-* class set on a title. */
+    :where(.cc-card, .cc-modal) .text-card-title {
+        @apply text-primary-navy;
+    }
+    .cc-card p.text-card-title::before {
+        content: '';
+        display: inline-block;
+        width: 6px;
+        height: 16px;
+        margin-right: 8px;
+        border-radius: 3px;
+        vertical-align: -3px;
+        background-image: linear-gradient(#0da58a, #2563eb);
     }
 }

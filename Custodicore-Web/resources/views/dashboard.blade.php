@@ -2,15 +2,29 @@
 @section('title', 'Dashboard — CustodiCore')
 
 @section('content')
-<div class="topbar">
-  <h1>Dashboard</h1>
-  <form class="search" action="{{ route('pdl.index') }}" method="GET" style="flex:1;">
+@php
+  $me = auth()->user();
+  $firstName = $me?->staffProfile?->first_name ?: (preg_split('/\s+/', trim($me?->displayName() ?? 'Officer'))[0] ?? 'Officer');
+@endphp
+<div class="topbar topbar-home">
+  <div>
+    <span class="hero-date">{{ now()->format('l, j F Y') }}</span>
+    <h1 id="greeting">Welcome back, {{ $firstName }}</h1>
+    <p class="hero-sub">Here is what is happening with the PDL records today.</p>
+  </div>
+  <form class="search" action="{{ route('pdl.index') }}" method="GET" style="flex:1;max-width:380px;margin-left:auto;">
     <input type="text" name="q" placeholder="Search PDL Records...">
   </form>
-  <div class="right">
-    <span>{{ now()->format('l, j F Y') }}</span>
-  </div>
 </div>
+<script>
+  // Greeting by the visitor's own clock (the server may be in another timezone).
+  (function () {
+    var h = new Date().getHours();
+    var g = h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+    var el = document.getElementById('greeting');
+    if (el) { el.textContent = g + ', ' + @json($firstName); }
+  })();
+</script>
 
 <section class="stats stats-5">
   <div class="stat-card accent-blue">

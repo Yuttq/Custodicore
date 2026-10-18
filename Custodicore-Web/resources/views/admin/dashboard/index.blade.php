@@ -68,7 +68,7 @@
                                     </p>
                                 </div>
                             </div>
-                            <span class="flex items-center gap-xs text-body font-semibold {{ $pdl['visits_this_month'] === 0 ? 'text-warning' : 'text-primary-navy' }}">
+                            <span class="flex items-center gap-xs text-body font-semibold {{ $pdl['visits_this_month'] === 0 ? 'rounded-chip bg-[#FEF3C7] px-[10px] py-[3px] text-[#B45309]' : 'text-primary-navy' }}">
                                 {{ $pdl['visits_this_month'] }}
                             </span>
                         </li>
@@ -99,11 +99,11 @@
                         fill: true,
                         backgroundColor: 'rgba(13, 165, 138, 0.15)',
                         borderColor: '#0DA58A',
-                        borderWidth: 2,
+                        borderWidth: 3,
                         tension: 0.35,
-                        pointBackgroundColor: '#0DA58A',
-                        pointBorderColor: '#FFFFFF',
-                        pointBorderWidth: 2,
+                        pointBackgroundColor: '#FFFFFF',
+                        pointBorderColor: '#0DA58A',
+                        pointBorderWidth: 2.5,
                         pointRadius: 4,
                         pointHoverRadius: 6,
                     }],
@@ -123,21 +123,16 @@
         const peakHoursCtx = document.getElementById('peakHoursChart');
         if (peakHoursCtx && window.Chart) {
             new Chart(peakHoursCtx, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: {!! json_encode(array_column($peakHours, 'label')) !!},
                     datasets: [{
                         label: 'Capacity used',
                         data: {!! json_encode(array_column($peakHours, 'value')) !!},
-                        fill: false,
-                        borderColor: '#0F3D7A',
-                        borderWidth: 2,
-                        tension: 0.35,
-                        pointBackgroundColor: '#0F3D7A',
-                        pointBorderColor: '#FFFFFF',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
+                        // Navy to teal, one colour per slot (repeats if there are more slots).
+                        backgroundColor: ['#0F3D7A', '#1558A8', '#2F7BC4', '#0DA58A', '#7FD6C6'],
+                        borderRadius: 8,
+                        maxBarThickness: 56,
                     }],
                 },
                 options: {

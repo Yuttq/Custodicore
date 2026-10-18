@@ -57,3 +57,6 @@ yarn-error.*
 
 # Composer local executable
 **/composer.phar
+Claude outputs/option-C-dark-mode.png
+Claude outputs/option-A-navy-sidebar.png
+Claude outputs/option-B-gradient-hero.png

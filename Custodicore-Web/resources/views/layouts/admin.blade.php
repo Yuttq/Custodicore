@@ -42,10 +42,6 @@
             </nav>
 
             <div class="mt-auto flex flex-col gap-[14px]">
-                <a href="{{ route('admin.settings.index') }}"
-                   class="cc-nav-link {{ request()->routeIs('admin.settings.index') ? 'cc-nav-link-active' : '' }}">
-                    Settings
-                </a>
                 <a href="{{ route('account.profile') }}" title="My profile and picture" class="flex items-center gap-[10px] border-t border-border pt-[14px] transition hover:opacity-80">
                     @include('admin.partials.avatar', ['name' => auth()->user()->displayName(), 'size' => 'h-8 w-8', 'color' => 'bg-primary-navy', 'photo' => auth()->user()->staffProfile?->photoUrl()])
                     <div class="min-w-0">
@@ -62,13 +58,23 @@
 
         {{-- Main column --}}
         <div class="flex min-h-screen min-w-0 flex-1 flex-col">
-            {{-- Topbar: title on the left, date on the right (same as the Record Officer dashboard) --}}
-            <header class="flex flex-wrap items-center gap-5 px-7 pt-[22px]">
-                <h1 class="whitespace-nowrap text-page-title">@yield('title', 'Dashboard')</h1>
-                <p class="ml-auto whitespace-nowrap text-body">{{ now()->format('l, j F Y') }}</p>
+            @php
+                $isHome = request()->routeIs('admin.dashboard');
+                $me = auth()->user();
+                $firstName = $me->staffProfile?->first_name ?: (preg_split('/\s+/', trim($me->displayName()))[0] ?? 'there');
+            @endphp
+            {{-- Gradient hero: date + page title (the dashboard home gets a greeting instead). --}}
+            <header class="cc-hero {{ $isHome ? 'cc-hero-home' : '' }}">
+                <p class="text-metadata text-white/85">{{ now()->format('l, j F Y') }}</p>
+                @if ($isHome)
+                    <h1 id="greeting" class="mt-xs text-[28px] font-bold leading-tight">Welcome back, {{ $firstName }}</h1>
+                    <p class="mt-xs text-body text-white/90">Here is what is happening at the facility today.</p>
+                @else
+                    <h1 class="mt-xs text-[28px] font-bold leading-tight">@yield('title', 'Dashboard')</h1>
+                @endif
             </header>
 
-            <main class="flex-1 space-y-lg px-7 py-[22px]">
+            <main class="relative flex-1 space-y-lg px-8 pb-[22px] {{ $isHome ? '-mt-[72px]' : '-mt-11' }}">
                 @if (session('status'))
                     <div class="cc-card border-l-4 border-l-info">
                         {{ session('status') }}
@@ -79,6 +85,18 @@
             </main>
         </div>
     </div>
+
+    @if ($isHome ?? false)
+        <script>
+            // Greeting by the visitor's own clock (the server may be in another timezone).
+            (function () {
+                var h = new Date().getHours();
+                var g = h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+                var el = document.getElementById('greeting');
+                if (el) { el.textContent = g + ', ' + @json($firstName); }
+            })();
+        </script>
+    @endif
 
     {{-- Chart.js is bundled via resources/js/app.js (see @vite above), which
          exposes it as window.Chart. That app.js module tag is deferred, so
