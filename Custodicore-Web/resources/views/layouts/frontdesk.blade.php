@@ -33,6 +33,7 @@
                         ['route' => 'frontdesk.checkin-checkout', 'label' => 'Check-In / Check-Out'],
                         ['route' => 'frontdesk.schedule', 'label' => "Today's Schedule"],
                         ['route' => 'frontdesk.visitor-lookup', 'label' => 'Visitor Lookup'],
+                        ['route' => 'frontdesk.attendance-log', 'label' => 'Attendance Log'],
                     ];
                 @endphp
 
