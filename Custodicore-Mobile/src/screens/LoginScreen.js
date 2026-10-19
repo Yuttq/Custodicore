@@ -142,6 +142,7 @@ export default function LoginScreen({ navigation, route }) {
   const onGoogleSignIn = useCallback(async () => {
     if (submitting || googleSubmitting) return;
 
+    setFormError('');
     setGoogleSubmitting(true);
     try {
       const result = await loginWithGoogle();
@@ -162,7 +163,11 @@ export default function LoginScreen({ navigation, route }) {
       }
     } catch (e) {
       if (e instanceof GoogleSignInCancelledError) return;
-      Alert.alert('Google Sign-In', googleErrorMessage(e));
+      if (Platform.OS === 'web') {
+        setFormError(googleErrorMessage(e));
+      } else {
+        Alert.alert('Google Sign-In', googleErrorMessage(e));
+      }
     } finally {
       setGoogleSubmitting(false);
     }
