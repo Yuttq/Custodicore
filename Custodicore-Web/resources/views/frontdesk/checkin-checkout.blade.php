@@ -150,17 +150,6 @@
                         </button>
 
 
-                        {{-- TEMPORARY DEMO BUTTON: remove when real QR test data is available. --}}
-                        <button
-                            type="button"
-                            id="demoScanBtn"
-                            class="cc-btn-secondary">
-
-                            Demo Scan
-
-                        </button>
-
-
                         <button
                             type="button"
                             id="stopScannerBtn"
@@ -173,11 +162,6 @@
                     </div>
 
                 </div>
-
-                <p class="mt-sm text-metadata text-text-secondary">
-                    <span class="font-semibold">Demo Scan</span> is temporary and only for testing the check-in flow until you have a real visitor QR code.
-                </p>
-
 
                 {{-- SCANNER --}}
                 <div
@@ -1261,18 +1245,6 @@
                         </button>
                         <button
                             type="button"
-                            id="checkoutDemoScanBtn"
-                            class="cc-btn-secondary">
-
-                            Demo Scan
-
-                        </button>
-
-
-
-
-                        <button
-                            type="button"
                             id="checkoutScannerStopButton"
                             class="cc-btn-secondary hidden">
 
@@ -1284,10 +1256,6 @@
 
                 </div>
 
-
-                <p class="mt-sm text-metadata text-text-secondary">
-                    <span class="font-semibold">Demo Scan</span> is temporary and only for testing the check-out flow until real visitor QR test data is available.
-                </p>
 
                 {{-- CHECKOUT SCANNER --}}
                 <div
@@ -3024,21 +2992,6 @@ function showCheckinStep(step) {
             window.dispatchEvent(
                 new CustomEvent(
                     'custodicore:stop-checkin-scanner'
-                )
-            );
-
-        }
-    );
-
-
-    /* TEMPORARY DEMO SCAN — used only while testing without a real QR code. */
-    document.getElementById('demoScanBtn')?.addEventListener(
-        'click',
-        function () {
-
-            window.dispatchEvent(
-                new CustomEvent(
-                    'custodicore:demo-checkin-scan'
                 )
             );
 
