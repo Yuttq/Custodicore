@@ -8,8 +8,12 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { NotificationBadgeProvider } from './src/context/NotificationBadgeContext';
 import { VisitsProvider } from './src/context/VisitsContext';
 import { AuthProvider } from './src/hooks/useAuth';
+import { installWebAlert } from './src/utils/webAlert';
 
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Browser preview: make Alert.alert confirmations (e.g. Log out) work.
+installWebAlert();
 
 if (__DEV__) {
   console.log('APP STARTED');
