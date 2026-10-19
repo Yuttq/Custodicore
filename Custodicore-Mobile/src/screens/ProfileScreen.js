@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -213,6 +214,13 @@ export default function ProfileScreen({ navigation }) {
   }, [profile.photoUri, pickProfilePhoto, removeProfilePhoto]);
 
   const onLogout = useCallback(() => {
+    // react-native-web's Alert.alert is a no-op, so the confirmation would never appear.
+    if (Platform.OS === 'web') {
+      if (window.confirm('Log out?\n\nYou will need to sign in again to access your visits.')) {
+        logout();
+      }
+      return;
+    }
     Alert.alert('Log out', 'You will need to sign in again to access your visits.', [
       { text: 'Cancel', style: 'cancel' },
       {

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
@@ -49,6 +49,8 @@ function isLocalInfo(item) {
 export default function VerificationReviewScreen({ navigation }) {
   const { user, registrationSummary, refreshUser, logout } = useAuth();
   const [checking, setChecking] = useState(false);
+  // Web only: react-native-web's Alert.alert is a no-op, so Check Status results are shown inline.
+  const [webNotice, setWebNotice] = useState(null);
   const isRejected = user?.verificationStatus === 'rejected';
   const summaryItems = (registrationSummary?.documents ?? []).filter(
     (item) => item.submitted === true || !LEGACY_NOT_SUBMITTED_LABELS.has(item.label),
@@ -66,21 +68,31 @@ export default function VerificationReviewScreen({ navigation }) {
   const onCheckStatus = useCallback(async () => {
     if (checking) return;
     setChecking(true);
+    setWebNotice(null);
+    const notify = (title, message, isError) => {
+      if (Platform.OS === 'web') {
+        setWebNotice({ title, message, isError });
+      } else {
+        Alert.alert(title, message);
+      }
+    };
     try {
       const fresh = await refreshUser();
       // `verified` switches the navigator to the full app on its own.
       if (fresh?.verificationStatus === 'pending') {
-        Alert.alert(
+        notify(
           'Still under review',
           'Our staff is still reviewing your documents and information. You will be notified once your account has been approved.',
+          false,
         );
       }
     } catch (e) {
-      Alert.alert(
+      notify(
         'Could not check status',
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
           : 'Please check your connection and try again.',
+        true,
       );
     } finally {
       setChecking(false);
@@ -209,6 +221,15 @@ export default function VerificationReviewScreen({ navigation }) {
         </Card>
 
         <View style={styles.buttonWrap}>
+          {webNotice ? (
+            <Text
+              style={[styles.webNotice, webNotice.isError ? styles.webNoticeError : null]}
+              accessibilityRole="alert"
+            >
+              <Text style={styles.webNoticeTitle}>{webNotice.title}. </Text>
+              {webNotice.message}
+            </Text>
+          ) : null}
           <Button
             title="Check Status"
             onPress={onCheckStatus}
@@ -349,6 +370,17 @@ const styles = StyleSheet.create({
   },
   buttonWrap: {
     marginTop: 'auto',
+  },
+  webNotice: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  webNoticeError: {
+    color: colors.danger,
+  },
+  webNoticeTitle: {
+    fontWeight: '600',
   },
   secondaryWrap: {
     marginTop: spacing.sm,

@@ -73,7 +73,7 @@ export default function SplashScreen({ navigation }) {
           <View style={styles.divider} accessibilityElementsHidden />
 
           <Image
-            source={require('../../assets/custodicore-logo.png')}
+            source={require('../../assets/custodicore-bjmp-logo.png')}
             style={[
               styles.custodiLogo,
               {

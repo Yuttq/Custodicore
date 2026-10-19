@@ -69,6 +69,8 @@ export default function LoginScreen({ navigation, route }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  // Web only: react-native-web's Alert.alert is a no-op, so failures are shown inline.
+  const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
@@ -113,6 +115,7 @@ export default function LoginScreen({ navigation, route }) {
     setErrors(next);
     if (Object.keys(next).length) return;
 
+    setFormError('');
     setSubmitting(true);
     try {
       await login(trimmedEmail, password);
@@ -126,7 +129,11 @@ export default function LoginScreen({ navigation, route }) {
         typeof e?.message === 'string' && e.message.trim()
           ? e.message
           : 'Check your details and try again.';
-      Alert.alert('Login failed', message);
+      if (Platform.OS === 'web') {
+        setFormError(message);
+      } else {
+        Alert.alert('Login failed', message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -189,7 +196,7 @@ export default function LoginScreen({ navigation, route }) {
 
             <View style={styles.brandingSection}>
               <ExpoImage
-                source={require('../../assets/custodicore-logo.png')}
+                source={require('../../assets/custodicore-bjmp-logo.png')}
                 style={[styles.logo, logoSize]}
                 contentFit="contain"
                 accessibilityLabel="CustodiCore"
@@ -219,6 +226,7 @@ export default function LoginScreen({ navigation, route }) {
                   onChangeText={(value) => {
                     setEmail(value);
                     clearEmailError();
+                    setFormError('');
                   }}
                   placeholder="Enter your email"
                   placeholderTextColor={colors.textSecondary}
@@ -253,6 +261,7 @@ export default function LoginScreen({ navigation, route }) {
                     onChangeText={(value) => {
                       setPassword(value);
                       clearPasswordError();
+                      setFormError('');
                     }}
                     placeholder="Enter your password"
                     placeholderTextColor={colors.textSecondary}
@@ -291,6 +300,12 @@ export default function LoginScreen({ navigation, route }) {
                   <Text style={styles.forgot}>Forgot Password?</Text>
                 </Pressable>
               </View>
+
+              {formError ? (
+                <Text style={[formStyles.error, styles.formError]} accessibilityRole="alert">
+                  {formError}
+                </Text>
+              ) : null}
 
               <Button
                 title="Sign In"
@@ -393,6 +408,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   passwordBlock: {
+    marginBottom: spacing.md,
+  },
+  formError: {
     marginBottom: spacing.md,
   },
   passwordRow: {

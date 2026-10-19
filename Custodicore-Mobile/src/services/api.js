@@ -1,15 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { isAxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 /**
  * Visitor API base URL.
  * Set `EXPO_PUBLIC_API_URL` in `.env` to `http://YOUR-PC-LAN-IP:8000/api` (no trailing slash).
+ * The web build uses `EXPO_PUBLIC_WEB_API_URL` when set; otherwise `EXPO_PUBLIC_API_URL`
+ * with the Android-emulator-only host `10.0.2.2` swapped for `127.0.0.1`, which a
+ * browser on the same computer can reach.
  * Paths below are relative to that base (e.g. `/auth/login` → `…/api/auth/login`).
  */
-const BASE_URL = (
+const NATIVE_API_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL) ||
-    'https://api.custodicore.placeholder'
-).replace(/\/$/, '');
+  'https://api.custodicore.placeholder';
+
+const WEB_API_URL =
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_WEB_API_URL) ||
+  NATIVE_API_URL.replace('://10.0.2.2', '://127.0.0.1');
+
+const BASE_URL = (Platform.OS === 'web' ? WEB_API_URL : NATIVE_API_URL).replace(/\/$/, '');
 
 export const TOKEN_KEY = '@custodicore/auth_token';
 

@@ -65,7 +65,7 @@ function AuthNavigator() {
     <AuthStack.Navigator
       screenOptions={{
         header: (props) => <AuthStackHeader {...props} />,
-        cardStyle: { backgroundColor: dsColors.white },
+        cardStyle: { flex: 1, backgroundColor: dsColors.white },
         headerShadowVisible: false,
       }}
     >
@@ -171,7 +171,7 @@ function ReviewStack() {
     <ReviewStackNav.Navigator
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: dsColors.background },
+        cardStyle: { flex: 1, backgroundColor: dsColors.background },
       }}
     >
       <ReviewStackNav.Screen name="VerificationReview" component={VerificationReviewScreen} />
@@ -196,7 +196,7 @@ function AuthenticatedStack() {
       initialRouteName="MainTabs"
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: dsColors.background },
+        cardStyle: { flex: 1, backgroundColor: dsColors.background },
       }}
     >
       <AppStack.Screen name="MainTabs" component={MainTabs} />
@@ -241,7 +241,7 @@ export default function AppNavigator() {
     <RootStack.Navigator
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: dsColors.background },
+        cardStyle: { flex: 1, backgroundColor: dsColors.background },
       }}
     >
       {/* Backend truth (/me verificationStatus) decides full vs. restricted access. */}

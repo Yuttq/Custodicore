@@ -99,12 +99,13 @@ cd Custodicore-Mobile
 npm install
 ```
 
-**2. Point it at your backend.** Copy `Custodicore-Mobile/.env.example` to `Custodicore-Mobile/.env` and set `EXPO_PUBLIC_API_URL` (keep the trailing `/api`, never `localhost`):
+**2. Point it at your backend.** Copy `Custodicore-Mobile/.env.example` to `Custodicore-Mobile/.env` and set `EXPO_PUBLIC_API_URL` (keep the trailing `/api`; never `localhost` on a phone or emulator):
 
 | Running the app on | Use |
 |---|---|
 | Android emulator on the same computer as Laravel | `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api` |
 | A real phone | `EXPO_PUBLIC_API_URL=http://YOUR-LAN-IP:8000/api` — find the IP with `ipconfig` (Windows) or `ipconfig getifaddr en0` (Mac). Phone and computer must be on the same Wi-Fi, Laravel must run with `--host=0.0.0.0`, and the firewall must allow port 8000. |
+| Chrome (`npx expo start --web`) on the same computer as Laravel | Nothing extra: web swaps `10.0.2.2` for `127.0.0.1`. Set `EXPO_PUBLIC_WEB_API_URL` only if Laravel is elsewhere. |
 
 Also set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` for Google Sign-In (ask the team for the value; email/password works without it).
 
