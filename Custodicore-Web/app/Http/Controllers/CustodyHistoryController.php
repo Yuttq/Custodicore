@@ -16,7 +16,7 @@ class CustodyHistoryController extends Controller
         $entries = AuditLog::where('record_type', 'pdl_custody_status')
             ->with('account') // the officer who made the change
             ->orderBy('created_at', 'desc')
-            ->paginate(25);
+            ->paginate(10);
 
         // Pull the related PDL for each entry. record_id is a generic
         // polymorphic pointer (audit_logs has no real foreign key to

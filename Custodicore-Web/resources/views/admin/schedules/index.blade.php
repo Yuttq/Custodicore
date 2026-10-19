@@ -40,6 +40,6 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($schedules), 'label' => 'slots'])
+        @include('admin.partials.pagination-footer', ['paginator' => $schedules, 'label' => 'slots'])
     </div>
 @endsection

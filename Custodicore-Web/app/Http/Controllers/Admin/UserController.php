@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Support\Pages;
 use Illuminate\View\View;
 
 /**
@@ -50,6 +51,8 @@ class UserController extends Controller
             ['label' => 'Awaiting Setup', 'value' => (string) count(array_filter($all, fn ($a) => $a['invite'] !== null)), 'icon' => 'clock', 'accent' => 'warning'],
             ['label' => 'Inactive', 'value' => (string) count(array_filter($all, fn ($a) => $a['status'] !== 'active' && $a['invite'] === null)), 'icon' => 'warning', 'accent' => 'danger'],
         ];
+
+        $accounts = Pages::of($accounts);
 
         return view('admin.users.index', [
             'accounts' => $accounts,

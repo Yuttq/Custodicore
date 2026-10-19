@@ -15,9 +15,9 @@
                 <p class="text-card-title">Registered Visitors</p>
                 <p class="text-metadata text-text-secondary">
                     @if ($search)
-                        {{ count($visitors) }} of {{ $totalVisitors }} visitors match "{{ $search }}"
+                        {{ $visitors->total() }} of {{ $totalVisitors }} visitors match "{{ $search }}"
                     @else
-                        {{ count($visitors) }} visitors
+                        {{ $visitors->total() }} visitors
                     @endif
                 </p>
             </div>
@@ -80,6 +80,6 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($visitors), 'label' => 'visitors'])
+        @include('admin.partials.pagination-footer', ['paginator' => $visitors, 'label' => 'visitors'])
     </div>
 @endsection

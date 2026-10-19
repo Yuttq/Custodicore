@@ -21,7 +21,7 @@ class VisitationTrackingController extends Controller
             ->where('custody_status', 'active') // only currently-detained PDLs are relevant here
             ->withCount('visitRequests')
             ->orderBy('admission_date', 'desc')
-            ->paginate(25);
+            ->paginate(10);
 
         // Compute a simple flag per row for the view: no visits ever, no
         // recent confirmed visit, or fine. This is intentionally simple —

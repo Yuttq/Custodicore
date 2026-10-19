@@ -15,9 +15,9 @@
                 <p class="text-card-title">Persons Deprived of Liberty</p>
                 <p class="text-metadata text-text-secondary">
                     @if ($search)
-                        {{ count($pdls) }} of {{ $totalPdls }} records match "{{ $search }}"
+                        {{ $pdls->total() }} of {{ $totalPdls }} records match "{{ $search }}"
                     @else
-                        {{ count($pdls) }} records
+                        {{ $pdls->total() }} records
                     @endif
                 </p>
             </div>
@@ -79,6 +79,6 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($pdls), 'label' => 'records'])
+        @include('admin.partials.pagination-footer', ['paginator' => $pdls, 'label' => 'records'])
     </div>
 @endsection

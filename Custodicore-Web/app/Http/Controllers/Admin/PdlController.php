@@ -7,6 +7,7 @@ use App\Models\Pdl;
 use App\Support\Sanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Support\Pages;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -61,6 +62,8 @@ class PdlController extends Controller
             ['label' => 'Active in Custody', 'value' => (string) $activeCustody, 'icon' => 'check-circle', 'accent' => 'success'],
             ['label' => 'With Restrictions', 'value' => (string) $withRestrictions, 'icon' => 'warning', 'accent' => 'danger'],
         ];
+
+        $pdls = Pages::of($pdls);
 
         return view('admin.pdls.index', [
             'pdls' => $pdls,

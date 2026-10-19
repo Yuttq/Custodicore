@@ -50,7 +50,7 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($assessments), 'label' => 'assessments'])
+        @include('admin.partials.pagination-footer', ['paginator' => $assessments, 'label' => 'assessments'])
     </div>
 
     <div class="cc-card">

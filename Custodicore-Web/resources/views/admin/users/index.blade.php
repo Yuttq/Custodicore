@@ -45,9 +45,9 @@
                 <p class="text-card-title">Staff Accounts</p>
                 <p class="text-metadata text-text-secondary">
                     @if ($search)
-                        {{ count($accounts) }} of {{ $totalAccounts }} accounts match "{{ $search }}"
+                        {{ $accounts->total() }} of {{ $totalAccounts }} accounts match "{{ $search }}"
                     @else
-                        {{ count($accounts) }} accounts, sorted by last name
+                        {{ $accounts->total() }} accounts, sorted by last name
                     @endif
                 </p>
             </div>
@@ -139,7 +139,7 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($accounts), 'label' => 'accounts'])
+        @include('admin.partials.pagination-footer', ['paginator' => $accounts, 'label' => 'accounts'])
     </div>
 
     {{-- "Register Officer" — the admin's only way to create data on this dashboard. --}}

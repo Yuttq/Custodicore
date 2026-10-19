@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\VisitSchedule;
+use App\Support\Pages;
 use Illuminate\View\View;
 
 /**
@@ -32,6 +33,8 @@ class ScheduleController extends Controller
         $summary = [
             ['label' => 'Upcoming Slots', 'value' => (string) count($schedules), 'icon' => 'calendar', 'accent' => 'info'],
         ];
+
+        $schedules = Pages::of($schedules);
 
         return view('admin.schedules.index', compact('schedules', 'summary'));
     }

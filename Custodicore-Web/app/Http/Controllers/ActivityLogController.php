@@ -38,7 +38,7 @@ class ActivityLogController extends Controller
             ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('created_at', '<=', $to))
             ->orderByDesc('created_at')
             ->orderByDesc('audit_log_id')
-            ->paginate(40)
+            ->paginate(10)
             ->withQueryString();
 
         $links = ActivityLog::links($logs->getCollection());

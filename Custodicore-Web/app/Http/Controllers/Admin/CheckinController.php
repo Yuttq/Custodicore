@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\VisitCheckin;
+use App\Support\Pages;
 use Illuminate\View\View;
 
 /**
@@ -43,6 +44,8 @@ class CheckinController extends Controller
         // page lets you pick a name anymore — harmless if the view no
         // longer uses it.
         $suggestedVisitors = VisitorController::verifiedNames();
+
+        $checkins = Pages::of($checkins);
 
         return view('admin.checkins.index', compact('checkins', 'summary', 'suggestedVisitors'));
     }

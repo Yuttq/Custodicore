@@ -72,7 +72,7 @@ class PdlController extends Controller
             ->when($offense !== '', fn ($q) => $q->whereHas('legalRecords', fn ($r) => $r->where('offense_code', $offense)))
             ->with('legalRecords')
             ->orderBy('admission_date', 'desc')
-            ->paginate(25)
+            ->paginate(10)
             ->withQueryString();
 
         $cellBlocks = CellBlock::orderBy('name')->pluck('name');

@@ -42,13 +42,15 @@ class VisitorController extends Controller
 
         $visitors = VisitorProfile::query()
             ->when($query !== '', function ($q) use ($query) {
-                $q->where('full_name', 'like', "%{$query}%")
-                    ->orWhere('contact_number', 'like', "%{$query}%");
+                $q->where(function ($w) use ($query) {
+                    $w->where('full_name', 'like', "%{$query}%")
+                        ->orWhere('contact_number', 'like', "%{$query}%");
+                });
             })
             ->when($status !== '', fn ($q) => $q->where('verification_status', $status))
             ->withCount(['idDocuments', 'activeFlags'])
             ->orderBy('created_at', 'desc')
-            ->paginate(25)
+            ->paginate(10)
             ->withQueryString();
 
         // Visitor-submitted visit requests awaiting review, soonest visit first.

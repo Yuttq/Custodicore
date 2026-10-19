@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\VisitorProfile;
 use App\Support\Sanitizer;
 use Illuminate\Http\Request;
+use App\Support\Pages;
 use Illuminate\View\View;
 
 /**
@@ -33,6 +34,8 @@ class VisitorController extends Controller
             ['label' => 'Verified', 'value' => (string) $verified, 'icon' => 'check-circle', 'accent' => 'success'],
             ['label' => 'Pending Verification', 'value' => (string) $pending, 'icon' => 'clock', 'accent' => 'warning'],
         ];
+
+        $visitors = Pages::of($visitors);
 
         return view('admin.visitors.index', [
             'visitors' => $visitors,
@@ -72,16 +75,32 @@ class VisitorController extends Controller
     {
         $like = $search !== null ? Sanitizer::like($search) : null;
 
+        // Also match a contact number typed without the spaces / dashes it was saved with.
+        $digits = $search !== null ? preg_replace('/\D+/', '', $search) : '';
+        $likeDigits = $digits !== '' ? '%' . $digits . '%' : null;
+
         return VisitorProfile::query()
             ->with(['relationships' => fn ($q) => $q->orderByDesc('priority_tier')->with('pdl')])
-            ->when($like, function ($query) use ($like) {
-                $query->where(function ($q) use ($like) {
+            ->when($like, function ($query) use ($like, $likeDigits) {
+                $query->where(function ($q) use ($like, $likeDigits) {
                     $q->where('full_name', 'like', $like)
                         ->orWhere('first_name', 'like', $like)
                         ->orWhere('last_name', 'like', $like)
                         ->orWhere('contact_number', 'like', $like)
-                        ->orWhereHas('account', fn ($a) => $a->where('email', 'like', $like))
-                        ->orWhereHas('relationships.pdl', fn ($p) => $p->where('full_name', 'like', $like)->orWhere('pdl_number', 'like', $like));
+                        ->orWhereHas('account', function ($a) use ($like) {
+                            $a->where('email', 'like', $like);
+                        })
+                        ->orWhereHas('relationships', function ($r) use ($like) {
+                            $r->whereHas('pdl', function ($p) use ($like) {
+                                $p->where(function ($w) use ($like) {
+                                    $w->where('full_name', 'like', $like)->orWhere('pdl_number', 'like', $like);
+                                });
+                            });
+                        });
+
+                    if ($likeDigits !== null) {
+                        $q->orWhereRaw("REPLACE(REPLACE(REPLACE(contact_number, ' ', ''), '-', ''), '+', '') like ?", [$likeDigits]);
+                    }
                 });
             })
             ->orderBy('full_name')

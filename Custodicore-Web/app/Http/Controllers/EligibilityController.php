@@ -75,7 +75,7 @@ class EligibilityController extends Controller
             default => $queue,
         })->values();
 
-        $perPage = 15;
+        $perPage = 10;
         $page = max(1, (int) $request->query('page', 1));
         $assessments = new \Illuminate\Pagination\LengthAwarePaginator(
             $filtered->forPage($page, $perPage)->values(),

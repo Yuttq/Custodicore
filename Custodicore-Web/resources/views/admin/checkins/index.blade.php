@@ -48,6 +48,6 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($checkins), 'label' => 'visits'])
+        @include('admin.partials.pagination-footer', ['paginator' => $checkins, 'label' => 'visits'])
     </div>
 @endsection

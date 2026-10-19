@@ -11,8 +11,26 @@
 
     <div class="cc-card">
         <div class="mb-md flex flex-col gap-sm lg:flex-row lg:items-center lg:justify-between">
-            <p class="text-card-title">Recent Activity</p>
-            @include('admin.partials.search-box', ['placeholder' => 'Search by account or description…'])
+            <div>
+                <p class="text-card-title">Recent Activity</p>
+                <p class="text-metadata text-text-secondary">
+                    @if ($search)
+                        {{ $auditLogs->total() }} of {{ $totalLogs }} entries match "{{ $search }}"
+                    @else
+                        {{ $totalLogs }} entries, newest first
+                    @endif
+                </p>
+            </div>
+            {{-- Working search: account, action, module or description. --}}
+            <form method="GET" action="{{ route('admin.audit.index') }}" class="flex items-center gap-sm">
+                <input type="search" name="q" value="{{ $search }}" maxlength="100"
+                       placeholder="Search account, action, module or description…"
+                       class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body sm:w-72" />
+                <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
+                @if ($search)
+                    <a href="{{ route('admin.audit.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
+                @endif
+            </form>
         </div>
 
         <div class="overflow-x-auto">
@@ -27,7 +45,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
-                    @foreach ($auditLogs as $log)
+                    @forelse ($auditLogs as $log)
                         <tr class="transition hover:bg-background">
                             <td class="py-sm pr-md text-text-secondary">{{ $log['created_at'] }}</td>
                             <td class="py-sm pr-md">
@@ -46,11 +64,15 @@
                             <td class="py-sm pr-md text-text-secondary">{{ $log['module'] }}</td>
                             <td class="py-sm pr-md">{{ $log['description'] }}</td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr>
+                            <td colspan="5" class="py-lg text-center text-text-secondary">No entries match your search.</td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['total' => count($auditLogs), 'label' => 'entries'])
+        @include('admin.partials.pagination-footer', ['paginator' => $auditLogs, 'label' => 'entries'])
     </div>
 @endsection

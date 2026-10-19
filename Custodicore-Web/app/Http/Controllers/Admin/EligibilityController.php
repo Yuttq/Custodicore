@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\EligibilityAssessment;
 use App\Models\VisitorFlag;
+use App\Support\Pages;
 use Illuminate\View\View;
 
 /** Module 1.6 Visitor Eligibility Assessment — read-only view here (the Records Officer module runs/reviews checks). */
@@ -47,6 +48,8 @@ class EligibilityController extends Controller
             ['label' => 'Eligible', 'value' => (string) $eligible, 'icon' => 'check-circle', 'accent' => 'success'],
             ['label' => 'Flagged for Review', 'value' => (string) $flagged, 'icon' => 'warning', 'accent' => 'danger'],
         ];
+
+        $assessments = Pages::of($assessments);
 
         return view('admin.eligibility.index', compact('assessments', 'visitorFlags', 'summary'));
     }

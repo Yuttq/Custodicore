@@ -40,7 +40,7 @@ class AccountReviewController extends Controller
                 'relationships.pdl',
                 'registrationDocuments',
             ])
-            ->paginate(15)
+            ->paginate(10)
             ->withQueryString();
 
         return view('account-reviews.index', compact('visitors', 'counts', 'tab'));
