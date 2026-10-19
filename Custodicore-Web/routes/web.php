@@ -24,6 +24,7 @@ use App\Http\Controllers\FrontDesk\DashboardController as FrontDeskDashboardCont
 use App\Http\Controllers\FrontDesk\CheckinCheckoutController;
 use App\Http\Controllers\FrontDesk\ScheduleController as FrontDeskScheduleController;
 use App\Http\Controllers\FrontDesk\VisitorLookupController;
+use App\Http\Controllers\FrontDesk\AttendanceLogController;
 use App\Http\Controllers\FrontDesk\SettingsController as FrontDeskSettingsController;
 
 use Illuminate\Support\Facades\Route;
@@ -783,6 +784,21 @@ Route::prefix('front-desk')
             '/visitor-lookup/{visitor}/ids/{idDocument}/photo',
             [VisitorLookupController::class, 'idPhoto']
         )->name('visitor-lookup.id-photo');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Attendance Log
+        |--------------------------------------------------------------------------
+        |
+        | Read-only list of every check-in / check-out for a chosen day.
+        |
+        */
+
+        Route::get(
+            '/attendance-log',
+            [AttendanceLogController::class, 'index']
+        )->name('attendance-log');
 
 
         /*
