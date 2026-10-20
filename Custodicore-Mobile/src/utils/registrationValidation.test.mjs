@@ -9,7 +9,7 @@ import {
   normalizeMobile,
   normalizeName,
   validateAddress,
-  validateAge,
+  validateBirthdateAge,
   validateFirstName,
   validateGender,
   validateLastName,
@@ -74,17 +74,23 @@ test('gender: only Male or Female', () => {
   }
 });
 
-test('age: range 1–120, whole numbers, must match birthdate', () => {
-  for (const a of ['', '0', '121', '999', '30.5']) assert.notEqual(validateAge(a), null, a);
-  for (const a of ['1', '120']) assert.equal(validateAge(a), null, a);
-  assert.equal(inputFilters.age('-5a'), '5');
+test('age is worked out from the birthdate (birthday this year or not)', () => {
   const today = new Date(2026, 9, 7);
   assert.equal(ageFromBirthdate('1996-10-07', today), 30);
   assert.equal(ageFromBirthdate('1996-10-08', today), 29);
-  const dob = `${new Date().getFullYear() - 30}-01-01`;
-  const expected = String(ageFromBirthdate(dob));
-  assert.equal(validateAge(expected, dob), null);
-  assert.equal(validateAge(String(Number(expected) + 1), dob), 'Age does not match your birthdate.');
+  assert.equal(ageFromBirthdate(''), null);
+});
+
+test('birthdate age range: 1–120 years old', () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const yearsAgo = (n) => `${now.getFullYear() - n}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  for (const n of [1, 30, 120]) assert.equal(validateBirthdateAge(yearsAgo(n)), null, String(n));
+  for (const n of [121, 150]) {
+    assert.equal(validateBirthdateAge(yearsAgo(n)), 'Please enter a valid birthdate.', String(n));
+  }
+  // Empty is left to "Birthdate is required."
+  assert.equal(validateBirthdateAge(''), null);
 });
 
 test('age/DOB: a birthdate of today never passes, leap-day birthdays, non-ISO input', () => {
@@ -92,13 +98,13 @@ test('age/DOB: a birthdate of today never passes, leap-day birthdays, non-ISO in
   const pad = (n) => String(n).padStart(2, '0');
   const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   assert.equal(ageFromBirthdate(todayIso), 0);
-  assert.notEqual(validateAge('0', todayIso), null); // below the 1–120 range
-  assert.equal(validateAge('1', todayIso), 'Age does not match your birthdate.');
+  assert.equal(validateBirthdateAge(todayIso), 'Please enter a valid birthdate.'); // below the 1–120 range
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const yesterdayIso = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+  assert.equal(validateBirthdateAge(yesterdayIso), 'Please enter a valid birthdate.'); // age 0
   assert.equal(ageFromBirthdate('2004-02-29', new Date(2026, 1, 28)), 21);
   assert.equal(ageFromBirthdate('2004-02-29', new Date(2026, 2, 1)), 22);
   assert.equal(ageFromBirthdate('15/06/1995'), null);
-  // No birthdate: only the range is checked (step 1 requires the birthdate separately).
-  assert.equal(validateAge('30', ''), null);
 });
 
 test('email: formats, length limits, Gmail and non-Gmail', () => {

@@ -17,7 +17,6 @@ export const REGISTRATION_LIMITS = {
   nameMax: 70,
   ageMin: 1,
   ageMax: 120,
-  ageInputMax: 3,
   emailMax: 100,
   emailLocalMax: 64,
   passwordMin: 6,
@@ -59,7 +58,6 @@ export function stripControlChars(value, { multiline = false } = {}) {
 /** onChangeText filters — restrict what can be typed/pasted per field. */
 export const inputFilters = {
   name: (v) => stripControlChars(v).slice(0, REGISTRATION_LIMITS.nameMax),
-  age: (v) => String(v ?? '').replace(/\D/g, '').slice(0, REGISTRATION_LIMITS.ageInputMax),
   email: (v) => stripControlChars(v).replace(/\s/g, '').slice(0, REGISTRATION_LIMITS.emailMax),
   mobile: (v) => {
     // mobileInputMax caps characters (incl. spaces/dashes); also cap digits so
@@ -142,20 +140,15 @@ export function validateLastName(value) {
 }
 
 /**
- * @param {string} value digits as typed
- * @param {string} [birthdate] ISO date; when set, the age must agree with it
+ * The age worked out from the birthdate must be 1–120. An empty birthdate is
+ * left to the required check.
+ * @param {string} birthdate ISO date YYYY-MM-DD
  */
-export function validateAge(value, birthdate) {
-  const s = String(value ?? '').trim();
-  if (!s) return 'Age is required.';
-  if (!/^\d+$/.test(s)) return 'Age must be a whole number.';
-  const age = Number(s);
+export function validateBirthdateAge(birthdate) {
+  const age = ageFromBirthdate(birthdate);
+  if (age === null) return null;
   if (age < REGISTRATION_LIMITS.ageMin || age > REGISTRATION_LIMITS.ageMax) {
-    return 'Please enter a valid age.';
-  }
-  const expected = ageFromBirthdate(birthdate);
-  if (expected !== null && expected !== age) {
-    return 'Age does not match your birthdate.';
+    return 'Please enter a valid birthdate.';
   }
   return null;
 }

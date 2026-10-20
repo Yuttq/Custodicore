@@ -64,7 +64,7 @@ import {
   normalizeMobile,
   normalizeName,
   validateAddress,
-  validateAge,
+  validateBirthdateAge,
   validateFirstName,
   validateGender,
   validateLastName,
@@ -265,7 +265,7 @@ function getAccountInfoErrors(form, { isGoogle }) {
   put('firstName', validateFirstName(form.firstName));
   put('lastName', validateLastName(form.lastName));
   if (!validateRequired(form.birthdate)) next.birthdate = 'Birthdate is required.';
-  put('age', validateAge(form.age, form.birthdate));
+  else put('birthdate', validateBirthdateAge(form.birthdate));
   put('gender', validateGender(form.gender));
   put('address', validateAddress(form.address));
   put('contactNumber', validateMobileNumber(form.contactNumber));
@@ -311,7 +311,6 @@ export default function RegisterScreen({ navigation, route }) {
     () => splitGoogleName(googleProfile?.fullName).last,
   );
   const [birthdate, setBirthdate] = useState('');
-  const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -380,7 +379,9 @@ export default function RegisterScreen({ navigation, route }) {
     loadLegal();
   }, [loadLegal]);
 
-  // Minors upload their own birth certificate instead of a Government ID.
+  // Age is never typed: it is worked out from the birthdate on every render
+  // (shown in step 1 and the review). Minors upload their own birth
+  // certificate instead of a Government ID.
   const visitorAge = ageFromBirthdate(birthdate.trim());
   const isMinor = visitorAge !== null && visitorAge < ADULT_AGE;
   const requiredDocs = useMemo(
@@ -465,7 +466,6 @@ export default function RegisterScreen({ navigation, route }) {
           firstName,
           lastName,
           birthdate,
-          age,
           gender,
           address,
           contactNumber,
@@ -479,7 +479,6 @@ export default function RegisterScreen({ navigation, route }) {
       firstName,
       lastName,
       birthdate,
-      age,
       gender,
       address,
       contactNumber,
@@ -837,8 +836,7 @@ export default function RegisterScreen({ navigation, route }) {
         label="Birthdate"
         value={birthdate}
         onChange={(iso) => {
-          // The visitor types their age themselves; validateAge checks it
-          // against this birthdate.
+          // The Age field below follows this birthdate automatically.
           setBirthdate(iso);
           clearError('birthdate');
         }}
@@ -847,12 +845,10 @@ export default function RegisterScreen({ navigation, route }) {
       />
       <WizardField
         label="Age"
-        value={age}
-        onChangeText={editField(setAge, inputFilters.age, 'age')}
-        placeholder="Enter age"
-        keyboardType="number-pad"
-        error={errors.age}
-        maxLength={REGISTRATION_LIMITS.ageInputMax}
+        value={visitorAge === null ? '' : String(visitorAge)}
+        onChangeText={() => {}}
+        placeholder="Calculated from birthdate"
+        editable={false}
       />
       <WizardField
         label="Gender"
@@ -1206,7 +1202,7 @@ export default function RegisterScreen({ navigation, route }) {
         {renderReviewRow('First Name', normalizeName(firstName))}
         {renderReviewRow('Last Name', normalizeName(lastName))}
         {renderReviewRow('Birthdate', formatBirthdateDisplay(birthdate) || '—')}
-        {renderReviewRow('Age', age)}
+        {renderReviewRow('Age', visitorAge === null ? '—' : String(visitorAge))}
         {renderReviewRow('Gender', gender)}
         {renderReviewRow('Address', normalizeAddress(address))}
         {renderReviewRow('Mobile Number', normalizeMobile(contactNumber))}
