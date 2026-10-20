@@ -7,7 +7,6 @@
  *   accounts.email                  varchar(100)
  *   visitor_profiles.contact_number varchar(20)
  *   visitor_profiles.address        max:255
- *   visitor_profiles.guardian_*     full name 150, relationship 100, contact 20
  *   password                        min:6 (bcrypt only uses the first 72 bytes)
  *
  * This is a usability layer, NOT a security boundary — the backend must keep
@@ -26,8 +25,6 @@ export const REGISTRATION_LIMITS = {
   addressMax: 255,
   /** Allows "+63 912 345 6789" while typing; stored digits-only. */
   mobileInputMax: 16,
-  guardianNameMax: 150,
-  guardianRelationshipMax: 50,
 };
 
 /**
@@ -83,9 +80,6 @@ export const inputFilters = {
   address: (v) =>
     stripControlChars(v, { multiline: true }).slice(0, REGISTRATION_LIMITS.addressMax),
   password: (v) => stripControlChars(v).slice(0, REGISTRATION_LIMITS.passwordMax),
-  guardianName: (v) => stripControlChars(v).slice(0, REGISTRATION_LIMITS.guardianNameMax),
-  guardianRelationship: (v) =>
-    stripControlChars(v).slice(0, REGISTRATION_LIMITS.guardianRelationshipMax),
 };
 
 /** Trim + collapse internal whitespace runs. Case and punctuation are kept. */
@@ -226,41 +220,4 @@ export function validateAddress(value) {
     return `Address must be ${REGISTRATION_LIMITS.addressMax} characters or fewer.`;
   }
   return null;
-}
-
-/**
- * Guardian Information (Legal Guardian, step 3) — sent with the registration
- * as guardianFullName / guardianRelationship / guardianContactNumber.
- * @typedef {{ fullName?: string, relationship?: string, contactNumber?: string }} GuardianInfo
- */
-
-/** @param {GuardianInfo | null | undefined} info @returns {Record<string, string>} */
-export function getGuardianErrors(info) {
-  const next = {};
-  const put = (key, message) => {
-    if (message) next[key] = message;
-  };
-  put(
-    'fullName',
-    validateName(info?.fullName, 'Guardian full name', REGISTRATION_LIMITS.guardianNameMax),
-  );
-  put(
-    'relationship',
-    validateName(
-      info?.relationship,
-      'Relationship to visitor',
-      REGISTRATION_LIMITS.guardianRelationshipMax,
-    ),
-  );
-  put('contactNumber', validateMobileNumber(info?.contactNumber, 'Contact number'));
-  return next;
-}
-
-/** Request fields for a validated GuardianInfo (backend names). */
-export function toGuardianRequestFields(info) {
-  return {
-    guardianFullName: normalizeName(info?.fullName),
-    guardianRelationship: normalizeName(info?.relationship),
-    guardianContactNumber: normalizeMobile(info?.contactNumber),
-  };
 }

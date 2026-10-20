@@ -3,9 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  REGISTRATION_LIMITS,
   ageFromBirthdate,
-  getGuardianErrors,
   inputFilters,
   normalizeAddress,
   normalizeMobile,
@@ -18,7 +16,6 @@ import {
   validateMobileNumber,
   validatePasswordConfirmation,
   validateRegistrationEmail,
-  toGuardianRequestFields,
   validateRegistrationPassword,
 } from './registrationValidation.js';
 
@@ -148,69 +145,4 @@ test('address: required, 255 max, control chars stripped, lines tidied', () => {
   assert.equal(inputFilters.address('A'.repeat(300)).length, 255);
   assert.equal(inputFilters.address('12\u0000 Rizal\u0007 St‮'), '12 Rizal St');
   assert.equal(normalizeAddress('Blk 1\r\n\n  Lot 2  \nQC'), 'Blk 1\nLot 2\nQC');
-});
-
-test('guardian information requires all three fields', () => {
-  assert.deepEqual(getGuardianErrors(undefined), {
-    fullName: 'Guardian full name is required.',
-    relationship: 'Relationship to visitor is required.',
-    contactNumber: 'Contact number is required.',
-  });
-  assert.deepEqual(
-    getGuardianErrors({ fullName: '  ', relationship: 'Aunt', contactNumber: '09171234567' }),
-    { fullName: 'Guardian full name is required.' },
-  );
-});
-
-test('valid guardian information has no errors', () => {
-  assert.deepEqual(
-    getGuardianErrors({
-      fullName: 'Ma. Clara Santos-Reyes',
-      relationship: 'Aunt',
-      contactNumber: '+63 917 123 4567',
-    }),
-    {},
-  );
-});
-
-test('guardian fields reject invalid names, relationships and numbers', () => {
-  const errors = getGuardianErrors({
-    fullName: 'Maria 123',
-    relationship: 'aunt!!',
-    contactNumber: '12345',
-  });
-  assert.equal(errors.fullName, 'Please enter a valid guardian full name.');
-  assert.equal(errors.relationship, 'Please enter a valid relationship to visitor.');
-  assert.match(errors.contactNumber, /valid mobile number/);
-});
-
-test('guardian field lengths match the backend columns', () => {
-  assert.ok(REGISTRATION_LIMITS.guardianNameMax <= 150);
-  assert.ok(REGISTRATION_LIMITS.guardianRelationshipMax <= 100);
-  assert.equal(inputFilters.guardianName('a'.repeat(200)).length, REGISTRATION_LIMITS.guardianNameMax);
-  assert.equal(
-    inputFilters.guardianRelationship('b'.repeat(80)).length,
-    REGISTRATION_LIMITS.guardianRelationshipMax,
-  );
-  const tooLong = getGuardianErrors({
-    fullName: 'A'.repeat(REGISTRATION_LIMITS.guardianNameMax + 1),
-    relationship: 'Aunt',
-    contactNumber: '09171234567',
-  });
-  assert.match(tooLong.fullName, /150 characters or fewer/);
-});
-
-test('guardian request fields use the backend names and normalized values', () => {
-  assert.deepEqual(
-    toGuardianRequestFields({
-      fullName: '  Maria   Santos ',
-      relationship: ' Aunt ',
-      contactNumber: '+63 917 123 4567',
-    }),
-    {
-      guardianFullName: 'Maria Santos',
-      guardianRelationship: 'Aunt',
-      guardianContactNumber: '09171234567',
-    },
-  );
 });

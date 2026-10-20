@@ -82,10 +82,10 @@ class RegistrationRequirementsEndpointTest extends TestCase
 
     public function test_confirmed_and_pending_policies(): void
     {
-        foreach (['spouse', 'child', 'live_in_partner', 'legal_guardian'] as $key) {
+        foreach (['spouse', 'child', 'live_in_partner'] as $key) {
             $this->assertSame('confirmed', $this->type($key)['documentPolicy'], $key);
         }
-        foreach (['parent', 'sibling', 'legal_counsel', 'extended_relative'] as $key) {
+        foreach (['parent', 'sibling', 'legal_guardian', 'legal_counsel', 'extended_relative'] as $key) {
             $entry = $this->type($key);
             $this->assertSame('pending_facility_confirmation', $entry['documentPolicy'], $key);
             foreach ($entry['documents'] as $document) {
@@ -115,12 +115,15 @@ class RegistrationRequirementsEndpointTest extends TestCase
         $this->assertStringStartsWith("The visitor is the PDL's legal guardian.", $guardian['description']);
         $this->assertSame(['guardianship_authorization'], array_column($guardian['documents'], 'key'));
         $this->assertStringContainsString("visitor is the PDL's legal guardian", $guardian['documents'][0]['description']);
-        $this->assertSame([['key' => 'no_immediate_family', 'providedBy' => 'facility']],
-            array_map(fn ($c) => ['key' => $c['key'], 'providedBy' => $c['providedBy']], $guardian['staffConfirmations']));
+        $this->assertStringContainsString('has not yet confirmed which document', $guardian['documents'][0]['description']);
+        // The guardianship document is unconfirmed; "no immediate family" is from the interview.
+        $this->assertSame('pending_facility_confirmation', $guardian['documents'][0]['policy']);
+        $this->assertSame([['key' => 'no_immediate_family', 'providedBy' => 'facility', 'policy' => 'confirmed']],
+            array_map(fn ($c) => ['key' => $c['key'], 'providedBy' => $c['providedBy'], 'policy' => $c['policy']], $guardian['staffConfirmations']));
 
-        // Whether registration needs a government ID stays an open question;
-        // the app does not ask for one today.
-        $this->assertFalse($guardian['governmentId']['requestedAtRegistration']);
+        // Registration asks adult guardians for a government ID, like other
+        // adults; the facility has not confirmed it for guardians.
+        $this->assertTrue($guardian['governmentId']['requestedAtRegistration']);
         $this->assertSame('pending_facility_confirmation', $guardian['governmentId']['registrationPolicy']);
     }
 
@@ -172,6 +175,11 @@ class RegistrationRequirementsEndpointTest extends TestCase
                 $this->assertSame(
                     array_column($entry['staffConfirmations'], 'key'),
                     $checklist->where('kind', 'confirmation')->pluck('key')->values()->all(),
+                    $entry['key']
+                );
+                $this->assertSame(
+                    array_column($entry['staffConfirmations'], 'policy'),
+                    $checklist->where('kind', 'confirmation')->pluck('policy')->values()->all(),
                     $entry['key']
                 );
                 $this->assertSame([$entry['governmentId']['policy']], $checklist->where('kind', 'valid_id')->pluck('policy')->values()->all());

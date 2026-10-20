@@ -34,7 +34,6 @@ import {
   ACCEPTED_ID_TYPES,
   ADULT_AGE,
   GENDER_OPTIONS,
-  GUARDIAN_INFO_NOTICE,
   REGISTRATION_RELATIONSHIPS,
   RELATIONSHIP_DOCUMENTS_NOTICE,
   asksChildrenTogether,
@@ -59,7 +58,6 @@ import { validateRequired } from '../utils';
 import {
   REGISTRATION_LIMITS,
   ageFromBirthdate,
-  getGuardianErrors,
   inputFilters,
   normalizeAddress,
   normalizeEmail,
@@ -73,7 +71,6 @@ import {
   validateMobileNumber,
   validatePasswordConfirmation,
   validateRegistrationEmail,
-  toGuardianRequestFields,
   validateRegistrationPassword,
 } from '../utils/registrationValidation';
 
@@ -233,10 +230,6 @@ const SERVER_FIELD_ERRORS = {
   // The relationship chosen in step 2 (decides the step-3 documents).
   relationshipType: 'relationship',
   relationshipDocuments: 'relationship_documents',
-  // Guardian Information (step 3, Legal Guardian).
-  guardianFullName: 'guardian_fullName',
-  guardianRelationship: 'guardian_relationship',
-  guardianContactNumber: 'guardian_contactNumber',
   // The optional name of the PDL to visit (step 2).
   intendedPdlName: 'intendedPdlName',
 };
@@ -246,16 +239,10 @@ const DOCUMENT_STEP_FIELDS = new Set([
   'government_id',
   'government_id_type',
   'relationship_documents',
-  'guardian_fullName',
-  'guardian_relationship',
-  'guardian_contactNumber',
 ]);
 
 /** Step-2 (relationship) form fields among SERVER_FIELD_ERRORS targets. */
 const RELATIONSHIP_STEP_FIELDS = new Set(['intendedPdlName', 'relationship']);
-
-/** Step-3 error key for a Guardian Information field. */
-const guardianErrorKey = (field) => `guardian_${field}`;
 
 /**
  * Best-effort prefill of First/Last Name from the Google display name (the
@@ -401,9 +388,6 @@ export default function RegisterScreen({ navigation, route }) {
       relationship ? getRequiredDocuments(relationship, { isMinor, hasChildrenTogether }) : [],
     [relationship, isMinor, hasChildrenTogether],
   );
-  // Files sent with the registration vs. text kept only on this device.
-  const submittedDocs = useMemo(() => requiredDocs.filter((doc) => !doc.isText), [requiredDocs]);
-  const infoDocs = useMemo(() => requiredDocs.filter((doc) => doc.isText), [requiredDocs]);
 
   // Google mode: leaving this screen in any way (back, hardware back, failure)
   // ends the Google flow. No-op after a successful registration, which
@@ -533,12 +517,6 @@ export default function RegisterScreen({ navigation, route }) {
       next.children_together = 'Tell us whether you and the PDL have children together';
     }
     for (const doc of requiredDocs) {
-      if (doc.isText) {
-        Object.entries(getGuardianErrors(documents[doc.key])).forEach(([field, message]) => {
-          next[guardianErrorKey(field)] = message;
-        });
-        continue;
-      }
       const entry = documents[doc.key];
       if (!entry?.uri) next[doc.key] = `Upload ${doc.label}`;
       if (doc.requiresIdType && !entry?.idType) {
@@ -610,18 +588,6 @@ export default function RegisterScreen({ navigation, route }) {
       return next;
     });
   }, []);
-
-  /** onChangeText for a Guardian Information field (fullName | relationship | contactNumber). */
-  const editGuardianField = useCallback(
-    (field, filter) => (value) => {
-      setDocuments((prev) => ({
-        ...prev,
-        guardian_information: { ...prev.guardian_information, [field]: filter(value) },
-      }));
-      clearError(guardianErrorKey(field));
-    },
-    [clearError],
-  );
 
   /**
    * 422 field errors from the backend (e.g. email already taken) → shown
@@ -727,44 +693,14 @@ export default function RegisterScreen({ navigation, route }) {
       setStep(3);
       return;
     }
-    const isLegalGuardian = relationship === 'legal_guardian';
-    const guardianInfo = documents.guardian_information;
-    if (isLegalGuardian) {
-      const guardianErrors = getGuardianErrors(guardianInfo);
-      if (Object.keys(guardianErrors).length) {
-        const next = {};
-        Object.entries(guardianErrors).forEach(([field, message]) => {
-          next[guardianErrorKey(field)] = message;
-        });
-        setErrors(next);
-        setStep(3);
-        return;
-      }
-    }
-    const guardianFields = isLegalGuardian ? toGuardianRequestFields(guardianInfo) : {};
 
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      // `kind: 'info'` marks typed details (Guardian Information), not an
-      // uploaded document; `submitted` = sent with the registration (older
-      // summaries without it were kept on the device only).
+      // `submitted` = sent with the registration (older summaries without it
+      // were kept on the device only).
       const documentsSummary = requiredDocs.map((doc) => {
         const entry = documents[doc.key];
-        if (doc.isText) {
-          return {
-            label: doc.label,
-            detail: [
-              guardianFields.guardianFullName,
-              guardianFields.guardianRelationship,
-              guardianFields.guardianContactNumber,
-            ]
-              .filter(Boolean)
-              .join(' · '),
-            kind: 'info',
-            submitted: true,
-          };
-        }
         const detail = entry?.idType
           ? `${entry.idType}${entry.fileName ? ` · ${entry.fileName}` : ''}`
           : entry?.fileName || 'Uploaded';
@@ -786,7 +722,6 @@ export default function RegisterScreen({ navigation, route }) {
         relationship,
         relationshipLabel: getRelationshipLabel(relationship),
         intendedPdlName: normalizeName(intendedPdlName),
-        ...guardianFields,
         documents,
         // Sent as relationshipDocuments[key]; only this relationship's documents.
         relationshipDocumentKeys: requiredDocs
@@ -1112,7 +1047,7 @@ export default function RegisterScreen({ navigation, route }) {
 
   const renderDocumentCard = (doc) => {
     const entry = documents[doc.key];
-    const uploaded = !doc.isText && Boolean(entry?.uri);
+    const uploaded = Boolean(entry?.uri);
     const action = uploaded ? 'Replace' : 'Upload';
     const chooserOpen = sourceChooserKey === doc.key;
 
@@ -1120,20 +1055,18 @@ export default function RegisterScreen({ navigation, route }) {
       <View key={doc.key} style={styles.docCard}>
         <View style={styles.docHeader}>
           <Text style={styles.docTitle}>{doc.label}</Text>
-          {!doc.isText ? (
-            <Pressable
-              onPress={() => setSourceChooserKey(chooserOpen ? null : doc.key)}
-              style={styles.uploadBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`${action} ${doc.label}`}
-              accessibilityState={{ expanded: chooserOpen }}
-            >
-              <Text style={styles.uploadBtnText}>{action}</Text>
-            </Pressable>
-          ) : null}
+          <Pressable
+            onPress={() => setSourceChooserKey(chooserOpen ? null : doc.key)}
+            style={styles.uploadBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`${action} ${doc.label}`}
+            accessibilityState={{ expanded: chooserOpen }}
+          >
+            <Text style={styles.uploadBtnText}>{action}</Text>
+          </Pressable>
         </View>
 
-        {!doc.isText && chooserOpen ? (
+        {chooserOpen ? (
           <View style={styles.sourceRow}>
             <Pressable
               onPress={() => pickDocument(doc.key, true)}
@@ -1155,9 +1088,7 @@ export default function RegisterScreen({ navigation, route }) {
             </Pressable>
           </View>
         ) : null}
-        {!doc.isText ? (
-          <Text style={fieldStyles.hint}>JPG, PNG, or WEBP image, up to 10 MB.</Text>
-        ) : null}
+        <Text style={fieldStyles.hint}>JPG, PNG, or WEBP image, up to 10 MB.</Text>
 
         {doc.requiresIdType ? (
           <Pressable
@@ -1179,42 +1110,7 @@ export default function RegisterScreen({ navigation, route }) {
           <Text style={fieldStyles.error}>{errors[`${doc.key}_type`]}</Text>
         ) : null}
 
-        {doc.isText ? (
-          <>
-            <WizardField
-              label="Guardian Full Name"
-              value={entry?.fullName ?? ''}
-              onChangeText={editGuardianField('fullName', inputFilters.guardianName)}
-              placeholder="Enter guardian's full name"
-              error={errors[guardianErrorKey('fullName')]}
-              autoCapitalize="words"
-              autoCorrect={false}
-              maxLength={REGISTRATION_LIMITS.guardianNameMax}
-              textContentType="name"
-            />
-            <WizardField
-              label="Relationship to Visitor"
-              value={entry?.relationship ?? ''}
-              onChangeText={editGuardianField('relationship', inputFilters.guardianRelationship)}
-              placeholder="e.g. Mother, Aunt"
-              error={errors[guardianErrorKey('relationship')]}
-              autoCapitalize="words"
-              autoCorrect={false}
-              maxLength={REGISTRATION_LIMITS.guardianRelationshipMax}
-            />
-            <WizardField
-              label="Contact Number"
-              value={entry?.contactNumber ?? ''}
-              onChangeText={editGuardianField('contactNumber', inputFilters.mobile)}
-              placeholder="09XX XXX XXXX"
-              keyboardType="phone-pad"
-              error={errors[guardianErrorKey('contactNumber')]}
-              maxLength={REGISTRATION_LIMITS.mobileInputMax}
-              textContentType="telephoneNumber"
-            />
-            <Text style={fieldStyles.hint}>{GUARDIAN_INFO_NOTICE}</Text>
-          </>
-        ) : uploaded ? (
+        {uploaded ? (
           <View style={styles.uploadedRow}>
             <Image
               source={{ uri: entry.uri }}
@@ -1330,8 +1226,8 @@ export default function RegisterScreen({ navigation, route }) {
 
       <Card style={[styles.card, styles.cardSpaced]}>
         <Text style={styles.reviewSectionTitle}>Documents Submitted With Registration</Text>
-        {submittedDocs.length ? (
-          submittedDocs.map((doc) => {
+        {requiredDocs.length ? (
+          requiredDocs.map((doc) => {
             const entry = documents[doc.key];
             let value = '—';
             if (entry?.uri) {
@@ -1345,25 +1241,6 @@ export default function RegisterScreen({ navigation, route }) {
           <Text style={styles.reviewValue}>No documents are submitted with this registration.</Text>
         )}
       </Card>
-
-      {infoDocs.length ? (
-        <Card style={[styles.card, styles.cardSpaced]}>
-          <Text style={styles.reviewSectionTitle}>Guardian Information</Text>
-          {renderReviewRow(
-            'Guardian Full Name',
-            normalizeName(documents.guardian_information?.fullName),
-          )}
-          {renderReviewRow(
-            'Relationship to Visitor',
-            normalizeName(documents.guardian_information?.relationship),
-          )}
-          {renderReviewRow(
-            'Contact Number',
-            normalizeMobile(documents.guardian_information?.contactNumber),
-          )}
-          <Text style={fieldStyles.hint}>{GUARDIAN_INFO_NOTICE}</Text>
-        </Card>
-      ) : null}
 
       {renderRelationshipDocumentsNotice()}
 

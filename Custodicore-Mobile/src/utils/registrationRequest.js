@@ -43,11 +43,6 @@ export function buildRegisterBody(payload) {
       payload.relationshipLabel ||
       payload.relationship ||
       undefined,
-    // Guardian Information (Legal Guardian only; omitted otherwise). The
-    // backend requires all three together and stores them for staff.
-    guardianFullName: payload.guardianFullName || undefined,
-    guardianRelationship: payload.guardianRelationship || undefined,
-    guardianContactNumber: payload.guardianContactNumber || undefined,
     ...toIntendedPdlNameField(payload.intendedPdlName),
     // The claimed relationship (spouse, live_in_partner, ...). The backend
     // accepts only the relationshipDocuments this relationship asks for.

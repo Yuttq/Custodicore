@@ -88,9 +88,9 @@ export function asksChildrenTogether(relationshipId) {
 }
 
 /**
- * Shown with Guardian Information: POST /auth/register sends it as
- * guardianFullName / guardianRelationship / guardianContactNumber and the
- * backend stores it on the visitor profile for staff.
+ * Shown with Guardian Information in registration summaries saved by app
+ * versions that sent it (guardianFullName / guardianRelationship /
+ * guardianContactNumber). Registration no longer asks for it.
  */
 export const GUARDIAN_INFO_NOTICE =
   'These details are sent to facility staff with your registration.';
@@ -115,19 +115,16 @@ export function getInfoNotice(items) {
 
 /**
  * Registration step-3 items for the selected relationship, all sent with the
- * registration: the Government ID (adults; not asked of Legal Guardians
- * today), the relationship documents (`requirementKey` = backend checklist
- * key) and, for Legal Guardians, the typed Guardian Information (`isText`).
- * Only the documents for this relationship are asked for.
+ * registration: the Government ID (adults) and the relationship documents
+ * (`requirementKey` = backend checklist key). Only the documents for this
+ * relationship are asked for.
  * @param {string} relationshipId
  * @param {{ isMinor?: boolean, hasChildrenTogether?: boolean | null }} [options]
- * @returns {{ key: string, label: string, requiresIdType?: boolean, isText?: boolean, requirementKey?: string }[]}
+ * @returns {{ key: string, label: string, requiresIdType?: boolean, requirementKey?: string }[]}
  */
 export function getRequiredDocuments(relationshipId, { isMinor = false, hasChildrenTogether = null } = {}) {
   const items = [];
-  if (relationshipId === 'legal_guardian') {
-    items.push({ key: 'guardian_information', label: 'Guardian Information', isText: true });
-  } else if (!isMinor) {
+  if (!isMinor) {
     items.push({ key: 'government_id', label: 'Government ID', requiresIdType: true });
   }
 

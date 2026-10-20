@@ -29,26 +29,24 @@ function payload(overrides = {}) {
   };
 }
 
-test('Legal Guardian registration sends the three guardian fields', () => {
+test('Legal Guardian registration sends no guardian fields', () => {
   const body = buildRegisterBody(
     payload({
       relationship: 'legal_guardian',
       relationshipLabel: 'Legal Guardian',
-      documents: { guardian_information: { fullName: 'x', relationship: 'y', contactNumber: 'z' } },
-      guardianFullName: 'Maria Santos',
-      guardianRelationship: 'Aunt',
-      guardianContactNumber: '09171234567',
+      documents: { government_id: { uri: 'file:///id.jpg', idType: 'Passport' } },
     }),
   );
-  assert.equal(body.guardianFullName, 'Maria Santos');
-  assert.equal(body.guardianRelationship, 'Aunt');
-  assert.equal(body.guardianContactNumber, '09171234567');
+  for (const key of ['guardianFullName', 'guardianRelationship', 'guardianContactNumber']) {
+    assert.equal(key in body, false, key);
+  }
   assert.equal(body.relationshipHint, 'Legal Guardian');
+  assert.equal(body.relationshipType, 'legal_guardian');
   // Raw step-3 state never goes on the wire.
   assert.equal('documents' in body, false);
 });
 
-test('other relationships send no guardian fields (same body as before)', () => {
+test('a spouse registration body is unchanged', () => {
   assert.deepEqual(buildRegisterBody(payload()), {
     fullName: 'Ana Reyes',
     firstName: 'Ana',
@@ -72,18 +70,11 @@ test('only fields AuthController::register() knows are sent', () => {
   const known = new Set([
     'fullName', 'firstName', 'lastName', 'email', 'password', 'password_confirmation',
     'dateOfBirth', 'gender', 'address', 'contactNumber', 'relationshipHint',
-    'guardianFullName', 'guardianRelationship', 'guardianContactNumber', 'intendedPdlName',
+    'intendedPdlName',
     'relationshipType',
     'acceptedTerms', 'acceptedPrivacy', 'consentVersion',
   ]);
-  const body = buildRegisterBody(
-    payload({
-      guardianFullName: 'Maria Santos',
-      guardianRelationship: 'Aunt',
-      guardianContactNumber: '09171234567',
-      intendedPdlName: 'Pedro Santos Reyes',
-    }),
-  );
+  const body = buildRegisterBody(payload({ intendedPdlName: 'Pedro Santos Reyes' }));
   for (const key of Object.keys(body)) assert.ok(known.has(key), key);
 });
 

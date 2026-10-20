@@ -24,6 +24,9 @@ use App\Models\VisitorPdlRelationship;
  * POLICY_PENDING in RELATIONSHIP_RULES — still enforced exactly as before,
  * but not facility-confirmed. The same goes for the valid ID of every type
  * except spouse and child (the interview only lists it for those two).
+ * The legal guardian's proof of authorization is pending too: the interview
+ * requires "proper authorization" but does not name the document. Its
+ * "no immediate family" confirmation stays confirmed (confirmation_policy).
  *
  * Every relationship's checklist must be fully met before the Record
  * Officer can verify the relationship or approve the visitor in
@@ -66,6 +69,8 @@ class RelationshipRequirements
      *                        has_children_together answer
      *   confirmations      — officer confirmations required
      *   document_policy    — POLICY_* for the documents/confirmations above
+     *   confirmation_policy — optional POLICY_* for the confirmations when
+     *                        it differs from document_policy
      *   valid_id_policy    — POLICY_* for the adult valid-ID requirement
      *   registration       — offered: whether the app's registration lists
      *                        the type; policy: POLICY_* for that choice
@@ -122,11 +127,12 @@ class RelationshipRequirements
             'description' => 'The visitor is the PDL\'s legal guardian. Allowed only when the PDL has no immediate family available.',
             'documents' => ['guardianship_authorization'],
             'confirmations' => ['no_immediate_family'],
-            'document_policy' => self::POLICY_CONFIRMED,
+            // The interview asks for "proper authorization" without naming the document.
+            'document_policy' => self::POLICY_PENDING,
+            'confirmation_policy' => self::POLICY_CONFIRMED,
             'valid_id_policy' => self::POLICY_PENDING,
             'registration' => ['offered' => true, 'policy' => self::POLICY_CONFIRMED],
-            // The app sends Guardian Information instead of an ID file today.
-            'registration_government_id' => ['requested' => false, 'policy' => self::POLICY_PENDING],
+            'registration_government_id' => ['requested' => true, 'policy' => self::POLICY_PENDING],
         ],
         'extended_relative' => [
             // Interview: "only when officially authorized". The form of that
@@ -164,7 +170,7 @@ class RelationshipRequirements
         'cenomar_pdl' => ["PDL's CENOMAR", 'Certificate of No Marriage (PSA) of the PDL.'],
         'child_birth_certificate' => ["Child's PSA Birth Certificate", 'PSA birth certificate of the child the visitor and the PDL have together.'],
         'witness_statement' => ['Witness Statement', 'Signed statement from a witness (e.g. a parent) confirming the relationship, with the witness\'s valid ID.'],
-        'guardianship_authorization' => ['Proof of Guardianship / Authorization', 'Court order, notarized authorization or other proof that the visitor is the PDL\'s legal guardian.'],
+        'guardianship_authorization' => ['Proof of Guardianship / Authorization', 'Proof that the visitor is the PDL\'s legal guardian (e.g. court order or notarized authorization). The facility has not yet confirmed which document it accepts.'],
         'official_authorization' => ['Official Authorization', 'Written authorization from the facility allowing this extended relative to visit.'],
         'proof_of_counsel' => ['Proof of Legal Representation', 'IBP ID and notice of appearance or authorization as the PDL\'s counsel.'],
     ];
@@ -241,7 +247,7 @@ class RelationshipRequirements
         }
 
         foreach ($rule['confirmations'] ?? [] as $key) {
-            $items[] = self::confirmation($relationship, $key, $rule['document_policy']);
+            $items[] = self::confirmation($relationship, $key, $rule['confirmation_policy'] ?? $rule['document_policy']);
         }
         if ($isMinor) {
             $items[] = self::confirmation($relationship, 'accompanying_guardian', self::POLICY_CONFIRMED);
@@ -392,7 +398,7 @@ class RelationshipRequirements
             ]] : [],
             'documents' => $documents,
             'staffConfirmations' => array_map(
-                fn (string $key) => self::guideConfirmation($key, $policy),
+                fn (string $key) => self::guideConfirmation($key, $rule['confirmation_policy'] ?? $policy),
                 $rule['confirmations'] ?? []
             ),
         ];

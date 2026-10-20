@@ -31,11 +31,11 @@ test('Other and unknown values cannot be submitted from registration', () => {
   }
 });
 
-test('Legal Guardian asks for Guardian Information and proof of guardianship, no birth certificate', () => {
+test('adult Legal Guardian asks for a Government ID and proof of guardianship, no birth certificate', () => {
   const docs = getRequiredDocuments('legal_guardian');
-  assert.deepEqual(docs.map((d) => d.key), ['guardian_information', 'guardianship_authorization']);
-  // Typed details, not an uploaded document.
-  assert.equal(docs[0].isText, true);
+  assert.deepEqual(docs.map((d) => d.key), ['government_id', 'guardianship_authorization']);
+  assert.equal(docs[0].requiresIdType, true);
+  assert.equal(docs.some((d) => d.isText), false);
   assert.equal(docs.some((d) => /birth/i.test(d.label)), false);
 });
 
