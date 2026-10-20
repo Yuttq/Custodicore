@@ -16,7 +16,6 @@ use App\Http\Controllers\Auth\StaffSetupController;
 
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\MyProfileController;
-use App\Http\Controllers\CustodyHistoryController;
 use App\Http\Controllers\VisitationTrackingController;
 use App\Http\Controllers\EligibilityController;
 
@@ -306,27 +305,21 @@ Route::middleware([
 
     /*
     |--------------------------------------------------------------------------
-    | Custody History
+    | Old pages, now merged elsewhere (kept as redirects for bookmarks)
     |--------------------------------------------------------------------------
+    | Custody History      → each PDL profile's "Custody History" panel, and
+    |                        Activity Log filtered to custody changes.
+    | Visitation Tracking  → PDL Management's "Last Visit" column and
+    |                        "Visits" filter.
     */
 
-    Route::get(
-        '/custody-history',
-        [CustodyHistoryController::class, 'index']
-    )->name('custody-history.index');
+    Route::get('/custody-history', fn () => redirect()->route('activity-log.index', ['category' => 'custody']))
+        ->name('custody-history.index');
 
+    Route::get('/visitation-tracking', fn () => redirect()->route('pdl.index', ['visits' => 'stale']))
+        ->name('visitation-tracking.index');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Visitation Tracking
-    |--------------------------------------------------------------------------
-    */
-
-    Route::get(
-        '/visitation-tracking',
-        [VisitationTrackingController::class, 'index']
-    )->name('visitation-tracking.index');
-
+    // One PDL's visit history (linked from the PDL profile and list).
     Route::get(
         '/visitation-tracking/{pdl}',
         [VisitationTrackingController::class, 'show']
@@ -477,6 +470,15 @@ Route::middleware([
         '/activity-log',
         [\App\Http\Controllers\ActivityLogController::class, 'index']
     )->name('activity-log.index');
+
+    // Review Queue: one sidebar entry for both review steps. Opens Step 1
+    // (accounts) when accounts are waiting, otherwise Step 2 (visit requests).
+    Route::get('/review-queue', function () {
+        $accountsWaiting = \App\Models\VisitorProfile::where('verification_status', 'pending')->exists();
+        $visitsWaiting = \App\Models\EligibilityAssessment::where('overall_result', 'flagged_for_review')->whereNull('reviewed_at')->exists();
+
+        return redirect()->route(! $accountsWaiting && $visitsWaiting ? 'eligibility.index' : 'account-reviews.index');
+    })->name('review-queue');
 
     // Queue of visitor accounts waiting for approval (identity check).
     Route::get(

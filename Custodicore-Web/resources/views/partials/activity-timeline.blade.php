@@ -1,9 +1,10 @@
 {{--
   Vertical history of audit log entries (newest first).
     $entries      — AuditLog collection (App\Services\ActivityLog::forVisitor)
-    $registeredAt — optional Carbon; adds a "Registered" entry at the bottom
+    $registeredAt    — optional Carbon; adds a "Registered" entry at the bottom
+    $registeredLabel — optional text for that entry (default: registered in the app)
 --}}
-@php $registeredAt = $registeredAt ?? null; @endphp
+@php $registeredAt = $registeredAt ?? null; $registeredLabel = $registeredLabel ?? 'Registered in the CustodiCore app'; @endphp
 @if ($entries->isEmpty() && ! $registeredAt)
   <p class="empty-note">No activity recorded yet.</p>
 @else
@@ -19,8 +20,8 @@
     @endforeach
     @if ($registeredAt)
       <li class="timeline-item is-info">
-        <div class="timeline-text">Registered in the CustodiCore app</div>
-        <div class="timeline-meta"><time>{{ $registeredAt->format('M j, Y g:i A') }}</time></div>
+        <div class="timeline-text">{{ $registeredLabel }}</div>
+        <div class="timeline-meta"><time>{{ $registeredAt->format(($registeredDateOnly ?? false) ? 'M j, Y' : 'M j, Y g:i A') }}</time></div>
       </li>
     @endif
   </ol>

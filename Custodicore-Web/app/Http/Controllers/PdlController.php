@@ -54,8 +54,18 @@ class PdlController extends Controller
         $status = trim((string) $request->input('status', ''));
         $cellBlock = trim((string) $request->input('cell', ''));
         $offense = in_array($request->input('offense'), Offenses::codes(), true) ? $request->input('offense') : '';
+        // Replaces the old Visitation Tracking page.
+        $visits = in_array($request->input('visits'), ['stale', 'never'], true) ? $request->input('visits') : '';
+
+        // Last actual visit = latest front-desk check-in for this PDL.
+        $checkins = fn () => \Illuminate\Support\Facades\DB::table('visit_checkins as vc')
+            ->join('visit_requests as vr', 'vr.visit_request_id', '=', 'vc.visit_request_id')
+            ->whereColumn('vr.pdl_id', 'pdl_profiles.pdl_id')
+            ->whereNotNull('vc.check_in_time');
 
         $pdls = Pdl::query()
+            ->select('pdl_profiles.*')
+            ->addSelect(['last_visit_at' => $checkins()->selectRaw('MAX(vc.check_in_time)')])
             ->when($query !== '', function ($q) use ($query) {
                 $like = Sanitizer::like($query);
                 $q->where(function ($q2) use ($like) {
@@ -70,6 +80,10 @@ class PdlController extends Controller
             ->when($status !== '', fn ($q) => $q->where('custody_status', $status))
             ->when($cellBlock !== '', fn ($q) => $q->where('cell_block', $cellBlock))
             ->when($offense !== '', fn ($q) => $q->whereHas('legalRecords', fn ($r) => $r->where('offense_code', $offense)))
+            // Visit filters only make sense for PDLs in custody.
+            ->when($visits === 'never', fn ($q) => $q->where('custody_status', 'active')->whereNotExists($checkins()->select(\Illuminate\Support\Facades\DB::raw(1))))
+            ->when($visits === 'stale', fn ($q) => $q->where('custody_status', 'active')
+                ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->with('legalRecords')
             ->orderBy('admission_date', 'desc')
             ->paginate(10)
@@ -88,7 +102,7 @@ class PdlController extends Controller
                 ->count(),
         ];
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense'));
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits'));
     }
 
     // -----------------------------------------------------------------
@@ -256,7 +270,9 @@ class PdlController extends Controller
             ->map(fn ($d) => ucfirst($d))
             ->implode(', ');
 
-        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visitingDays'));
+        $custodyHistory = \App\Services\ActivityLog::forPdl($pdl);
+
+        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visitingDays', 'custodyHistory'));
     }
 
     private function computeEligibilityStatus(Pdl $pdl): array

@@ -55,10 +55,19 @@
   </div>
 
   <div class="field">
+    <label for="visits">Visits</label>
+    <select id="visits" name="visits">
+      <option value="">Any</option>
+      <option value="stale" {{ $visits === 'stale' ? 'selected' : '' }}>No visit in 30 days</option>
+      <option value="never" {{ $visits === 'never' ? 'selected' : '' }}>Never visited</option>
+    </select>
+  </div>
+
+  <div class="field">
     <button class="btn btn-blue" type="submit" style="width:100%;justify-content:center;">Apply Filters</button>
   </div>
 
-  @if ($query || $status || $cellBlock || $offense)
+  @if ($query || $status || $cellBlock || $offense || $visits)
     <div class="field">
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}" style="width:100%;justify-content:center;">Clear</a>
     </div>
@@ -71,7 +80,7 @@
     <thead>
       <tr>
         <th>PDL Number</th><th>Full Name</th><th>Gender</th><th>Offense / Classification</th>
-        <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th>
+        <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th><th>Last Visit</th>
       </tr>
     </thead>
     <tbody>
@@ -103,6 +112,19 @@
         </td>
         <td class="muted-cell">{{ $pdl->cell_block ?? '—' }}</td>
         <td class="muted-cell">{{ $pdl->admission_date?->format('M d, Y') }}</td>
+        <td>
+          @if ($pdl->last_visit_at)
+            @php $lastVisit = \Carbon\Carbon::parse($pdl->last_visit_at); @endphp
+            <a class="muted-cell {{ $pdl->custody_status === 'active' && $lastVisit->lt(now()->subDays(30)) ? 'visit-stale' : '' }}"
+               href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}" title="{{ $lastVisit->format('M j, Y g:i A') }}">
+              {{ $lastVisit->format('M d, Y') }}<br><span style="font-size:11px;">{{ $lastVisit->diffForHumans() }}</span>
+            </a>
+          @elseif ($pdl->custody_status === 'active')
+            <span class="visit-never">Never visited</span>
+          @else
+            <span class="muted-cell">—</span>
+          @endif
+        </td>
       </tr>
       @endforeach
     </tbody>
@@ -110,7 +132,7 @@
 
   <div class="table-footer">
     <span>Showing {{ $pdls->firstItem() }}–{{ $pdls->lastItem() }} of {{ $pdls->total() }} PDL records</span>
-    <div class="pagination">{{ $pdls->links() }}</div>
+    <div class="pagination">{{ $pdls->links('partials.pagination') }}</div>
   </div>
 
   @else

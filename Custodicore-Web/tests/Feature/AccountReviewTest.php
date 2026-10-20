@@ -87,7 +87,7 @@ class AccountReviewTest extends TestCase
             ->assertSee('title="Verify a government ID first"', false);
 
         // Sidebar shows how many are waiting.
-        $this->get('/dashboard')->assertSee('Account Reviews')->assertSee('class="nav-count"', false);
+        $this->get('/dashboard')->assertSee('Review Queue')->assertSee('class="nav-count"', false);
     }
 
     public function test_recheck_tab_lists_approved_visitors_without_a_verified_id(): void

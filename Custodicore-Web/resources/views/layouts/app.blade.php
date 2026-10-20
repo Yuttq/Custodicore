@@ -23,7 +23,7 @@
       <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
         Dashboard
       </a>
-      <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*') ? 'active' : '' }}">
+      <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*', 'visitation-tracking.*') ? 'active' : '' }}">
         PDL Management
       </a>
       <a href="{{ route('cell-blocks.index') }}" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
@@ -35,23 +35,17 @@
         Visitor Management
         @if ($pendingVisitRequestCount)<span class="nav-count" title="{{ $pendingVisitRequestCount }} visit {{ \Illuminate\Support\Str::plural('request', $pendingVisitRequestCount) }} awaiting review">{{ $pendingVisitRequestCount }}</span>@endif
       </a>
-      @php $pendingAccounts = \App\Models\VisitorProfile::where('verification_status', 'pending')->count(); @endphp
-      <a href="{{ route('account-reviews.index') }}" class="{{ request()->routeIs('account-reviews.*') ? 'active' : '' }}">
-        Account Reviews
-        @if ($pendingAccounts)<span class="nav-count" title="{{ $pendingAccounts }} waiting">{{ $pendingAccounts }}</span>@endif
+      @php
+        // Review Queue = accounts waiting for approval + visit requests flagged for review.
+        $reviewQueueCount = \App\Models\VisitorProfile::where('verification_status', 'pending')->count()
+          + \App\Models\EligibilityAssessment::where('overall_result', 'flagged_for_review')->whereNull('reviewed_at')->count();
+      @endphp
+      <a href="{{ route('review-queue') }}" class="{{ request()->routeIs('review-queue', 'account-reviews.*', 'eligibility.*') ? 'active' : '' }}">
+        Review Queue
+        @if ($reviewQueueCount)<span class="nav-count" title="{{ $reviewQueueCount }} waiting for review">{{ $reviewQueueCount }}</span>@endif
       </a>
       <a href="{{ route('visitor-slots.index') }}" class="{{ request()->routeIs('visitor-slots.*') ? 'active' : '' }}">
         Manage Visitor Slots
-      </a>
-      <a href="{{ route('eligibility.index') }}" class="{{ request()->routeIs('eligibility.*') ? 'active' : '' }}">
-        Eligibility Review
-      </a>
-      {{-- Still a placeholder until visitor tables are confirmed --}}
-      <a href="{{ route('custody-history.index') }}" class="{{ request()->routeIs('custody-history.*') ? 'active' : '' }}">
-        Custody History
-      </a>
-      <a href="{{ route('visitation-tracking.index') }}" class="{{ request()->routeIs('visitation-tracking.*') ? 'active' : '' }}">
-        Visitation Tracking
       </a>
       <a href="{{ route('activity-log.index') }}" class="{{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
         Activity Log

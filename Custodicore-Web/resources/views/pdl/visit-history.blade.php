@@ -5,7 +5,7 @@
 <div class="topbar">
   <h1>Visit History</h1>
   <div class="right">
-    <a class="btn btn-outline-neutral" href="{{ route('visitation-tracking.index') }}">Back to Visitation Tracking</a>
+    <a class="btn btn-outline-neutral" href="{{ route('pdl.show', $pdl->pdl_id) }}">Back to PDL Profile</a>
   </div>
 </div>
 

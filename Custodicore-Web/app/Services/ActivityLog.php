@@ -25,13 +25,31 @@ class ActivityLog
         'relationships' => ['label' => 'Relationships & documents', 'types' => ['visitor_pdl_relationships', 'relationship_documents']],
         'visits' => ['label' => 'Visits & eligibility', 'types' => ['visit_requests', 'eligibility_assessments']],
         'flags' => ['label' => 'Visitor flags', 'types' => ['visitor_flags']],
-        'pdls' => ['label' => 'PDL records', 'types' => ['pdl_profiles', 'pdl_custody_status', 'pdl_legal_records', 'pdl_disciplinary_records', 'pdl_restrictions']],
+        'custody' => ['label' => 'Custody changes (status & cell)', 'types' => ['pdl_custody_status']],
+        'pdls' => ['label' => 'PDL records', 'types' => ['pdl_profiles', 'pdl_legal_records', 'pdl_disciplinary_records', 'pdl_restrictions']],
         'cells' => ['label' => 'Cell blocks', 'types' => ['cell_blocks']],
     ];
 
     public static function allTypes(): array
     {
         return collect(self::CATEGORIES)->pluck('types')->flatten()->all();
+    }
+
+    /**
+     * One PDL's custody timeline: registration, custody status and cell
+     * changes, classification changes and photo updates. (This used to be the
+     * separate Custody History page.)
+     */
+    public static function forPdl(\App\Models\Pdl $pdl, int $limit = 50): Collection
+    {
+        return AuditLog::query()
+            ->with('account.role')
+            ->whereIn('record_type', ['pdl_custody_status', 'pdl_profiles'])
+            ->where('record_id', $pdl->pdl_id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('audit_log_id')
+            ->limit($limit)
+            ->get();
     }
 
     public static function categoryOf(string $recordType): ?string

@@ -85,7 +85,7 @@
 
     <div class="table-footer">
       <span>Showing {{ $visitors->firstItem() }}–{{ $visitors->lastItem() }} of {{ $visitors->total() }} visitors</span>
-      <div class="pagination">{{ $visitors->links() }}</div>
+      <div class="pagination">{{ $visitors->links('partials.pagination') }}</div>
     </div>
   @endif
 </div>

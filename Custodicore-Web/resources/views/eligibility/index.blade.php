@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Eligibility Review — CustodiCore')
+@section('title', 'Review Queue: Visit Requests — CustodiCore')
 
 @php
   use App\Services\RelationshipRequirements as Req;
@@ -32,12 +32,8 @@
 @endphp
 
 @section('content')
-<div class="topbar">
-  <div>
-    <h1 style="margin:0;">Eligibility Review</h1>
-    <p class="muted-cell" style="margin:4px 0 0;">Visit requests the system couldn't approve automatically. Check each one, then approve or reject it.</p>
-  </div>
-</div>
+@include('partials.review-queue-header', ['active' => 'visits'])
+<p class="muted-cell queue-help">Visit requests the system couldn't approve automatically. Check each one, then approve or reject it.</p>
 
 {{-- ================= FILTER TABS ================= --}}
 <div class="elig-tabs" role="tablist">
@@ -196,7 +192,7 @@
   @if ($assessments->hasPages())
     <div class="table-footer">
       <span>Showing {{ $assessments->firstItem() }}–{{ $assessments->lastItem() }} of {{ $assessments->total() }}</span>
-      <div class="pagination">{{ $assessments->links() }}</div>
+      <div class="pagination">{{ $assessments->links('partials.pagination') }}</div>
     </div>
   @endif
 @endif

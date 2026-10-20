@@ -158,6 +158,22 @@
   </form>
 </div>
 
+{{-- ================= CUSTODY HISTORY (was its own page) ================= --}}
+<div class="panel" style="margin-bottom:20px;" id="custody-history">
+  <div class="panel-header">
+    <h2>Custody History</h2>
+    <span class="muted-cell">Status and cell changes, newest first</span>
+  </div>
+  <div class="timeline-scroll">
+    @include('partials.activity-timeline', [
+      'entries' => $custodyHistory,
+      'registeredAt' => $pdl->admission_date,
+      'registeredLabel' => 'Admitted to the facility',
+      'registeredDateOnly' => true,
+    ])
+  </div>
+</div>
+
 {{-- ================= RESTRICTIONS ================= --}}
 <div class="panel" style="margin-bottom:20px;" id="restrictions">
   <div class="panel-header">

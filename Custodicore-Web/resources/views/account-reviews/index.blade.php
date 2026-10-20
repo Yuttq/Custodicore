@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Account Reviews — CustodiCore')
+@section('title', 'Review Queue: Accounts — CustodiCore')
 
 @php
   $tabs = [
@@ -11,15 +11,11 @@
 @endphp
 
 @section('content')
-<div class="topbar">
-  <div>
-    <h1 style="margin:0;">Account Reviews</h1>
-    <p class="muted-cell" style="margin:4px 0 0;">
-      Step 1 of visitor approval: confirm who the visitor is. Open each ID, check it matches the visitor, verify it, then approve the account.
-      Relationship documents (marriage certificate, CENOMAR, …) are checked per PDL afterwards.
-    </p>
-  </div>
-</div>
+@include('partials.review-queue-header', ['active' => 'accounts'])
+<p class="muted-cell queue-help">
+  Open each ID, check it matches the visitor, verify it, then approve the account.
+  Relationship documents (marriage certificate, CENOMAR, …) are checked per visit request in Step 2.
+</p>
 
 <div class="elig-tabs" role="tablist">
   @foreach ($tabs as $key => [$label, $chipClass])
@@ -201,7 +197,7 @@
   @if ($visitors->hasPages())
     <div class="table-footer">
       <span>Showing {{ $visitors->firstItem() }}–{{ $visitors->lastItem() }} of {{ $visitors->total() }}</span>
-      <div class="pagination">{{ $visitors->links() }}</div>
+      <div class="pagination">{{ $visitors->links('partials.pagination') }}</div>
     </div>
   @endif
 @endif
