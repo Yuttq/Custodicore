@@ -230,7 +230,7 @@ const SERVER_FIELD_ERRORS = {
   // The relationship chosen in step 2 (decides the step-3 documents).
   relationshipType: 'relationship',
   relationshipDocuments: 'relationship_documents',
-  // The optional name of the PDL to visit (step 2).
+  // The required name of the PDL to visit (step 2).
   intendedPdlName: 'intendedPdlName',
 };
 
@@ -1024,7 +1024,7 @@ export default function RegisterScreen({ navigation, route }) {
           </Pressable>
         );
       })}
-      <Text style={[styles.reviewSectionTitle, { marginTop: 16 }]}>PDL You Want To Visit (optional)</Text>
+      <Text style={[styles.reviewSectionTitle, { marginTop: 16 }]}>PDL You Want To Visit (required)</Text>
       <WizardField
         label="PDL Name"
         value={intendedPdlName}

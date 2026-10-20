@@ -56,6 +56,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
             'gender' => 'male',
             'address' => 'Quezon City',
             'relationshipHint' => 'Spouse',
+            'intendedPdlName' => 'Pedro Santos Reyes',
             'contactNumber' => '09170001111',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,

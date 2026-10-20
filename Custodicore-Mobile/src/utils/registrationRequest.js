@@ -18,7 +18,7 @@ function mapGenderForApi(gender) {
 
 /**
  * Build POST /api/auth/register body from RegisterScreen payload.
- * Does NOT send PDL IDs or create visitor-PDL relationships. The optional
+ * Does NOT send PDL IDs or create visitor-PDL relationships. The required
  * PDL name is sent as intendedPdlName, a hint staff use to link the PDL
  * themselves; without a name the body is exactly as before.
  * @param {Record<string, unknown>} payload

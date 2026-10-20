@@ -78,7 +78,7 @@ test('only fields AuthController::register() knows are sent', () => {
   for (const key of Object.keys(body)) assert.ok(known.has(key), key);
 });
 
-test('the optional PDL name is sent as intendedPdlName only', () => {
+test('the PDL name is sent as intendedPdlName only', () => {
   const body = buildRegisterBody(payload({ intendedPdlName: ' Pedro  Santos Reyes ' }));
   assert.equal(body.intendedPdlName, 'Pedro Santos Reyes');
   assert.equal('intendedPdlReference' in body, false);

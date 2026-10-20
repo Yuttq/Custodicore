@@ -250,7 +250,7 @@ class AuthController extends Controller
      * guardianContactNumber — all three or none) is stored on the profile
      * for staff review.
      *
-     * Optional intendedPdlName: the name of the PDL the visitor wants to
+     * Required intendedPdlName: the name of the PDL the visitor wants to
      * visit, as typed. Stored on the profile as an unverified hint for the
      * Record Officer; it never links a PDL or creates a relationship.
      *
@@ -418,7 +418,7 @@ class AuthController extends Controller
             'guardianFullName' => $request->input('guardianFullName', $request->input('guardian_full_name')),
             'guardianRelationship' => $request->input('guardianRelationship', $request->input('guardian_relationship')),
             'guardianContactNumber' => $request->input('guardianContactNumber', $request->input('guardian_contact_number')),
-            // Name of the PDL the visitor wants to visit (optional), cleaned before validation.
+            // Name of the PDL the visitor wants to visit (required), cleaned before validation.
             'intendedPdlName' => $this->cleanedName($request->input('intendedPdlName', $request->input('intended_pdl_name'))),
             // Relationship the visitor claims (a RelationshipRequirements type
             // key); decides which relationshipDocuments may be sent.
@@ -486,7 +486,7 @@ class AuthController extends Controller
             'acceptedPrivacy' => ['accepted'],
             // If the app says which version it showed, it must be the current one.
             'consentVersion' => ['nullable', 'string', Rule::in([(string) config('legal.version')])],
-            'intendedPdlName' => ['nullable', 'string', 'min:2', 'max:150', 'regex:' . Sanitizer::NAME_REGEX],
+            'intendedPdlName' => ['required', 'string', 'min:2', 'max:150', 'regex:' . Sanitizer::NAME_REGEX],
         ];
     }
 
@@ -500,6 +500,7 @@ class AuthController extends Controller
             'guardianRelationship.required_with' => 'Enter the guardian\'s relationship to you.',
             'guardianContactNumber.required_with' => 'Enter the guardian\'s contact number.',
             'guardianContactNumber.regex' => 'Enter a valid contact number for the guardian.',
+            'intendedPdlName.required' => 'Please enter the name of the PDL you want to visit.',
             'intendedPdlName.min' => 'Enter the full name of the PDL you want to visit.',
             'intendedPdlName.max' => 'The PDL name is too long (150 characters at most).',
             'intendedPdlName.regex' => 'The PDL name can only contain letters, spaces, periods, apostrophes and hyphens.',

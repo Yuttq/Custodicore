@@ -15,7 +15,7 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * The optional "name of the PDL you want to visit" from normal and Google
+ * The required "name of the PDL you want to visit" from normal and Google
  * registration: stored on the visitor profile as an unverified hint, shown
  * to the Record Officer, and never used to link a PDL or create a
  * relationship. Email verification and staff review are unchanged.
@@ -85,14 +85,40 @@ class IntendedPdlNameRegistrationTest extends TestCase
         $this->assertSame('Pedro Santos Reyes', $this->profile()->intended_pdl_name);
     }
 
-    public function test_registration_without_the_name_is_unchanged(): void
+    public static function missingNames(): array
     {
-        $this->postJson('/api/auth/register', $this->form())->assertCreated();
-        $this->assertNull($this->profile()->intended_pdl_name);
+        return [
+            'missing' => [[]],
+            'null' => [['intendedPdlName' => null]],
+            'empty' => [['intendedPdlName' => '']],
+            'spaces only' => [['intendedPdlName' => '   ']],
+        ];
+    }
 
-        $this->postJson('/api/auth/register', $this->form(['email' => 'blank@example.com', 'intendedPdlName' => '   ']))
-            ->assertCreated();
-        $this->assertNull($this->profile('blank@example.com')->intended_pdl_name);
+    #[DataProvider('missingNames')]
+    public function test_registration_without_the_name_is_rejected_and_nothing_is_created(array $overrides): void
+    {
+        $accounts = Account::count();
+
+        $this->postJson('/api/auth/register', $this->form($overrides))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['intendedPdlName' => 'Please enter the name of the PDL you want to visit.']);
+
+        $this->assertSame($accounts, Account::count());
+        Mail::assertNothingSent();
+    }
+
+    #[DataProvider('missingNames')]
+    public function test_google_registration_without_the_name_is_rejected_and_nothing_is_created(array $overrides): void
+    {
+        $accounts = Account::count();
+
+        $this->postJson('/api/auth/google/register', ['idToken' => $this->googleIdToken()]
+            + $this->form(['email' => null] + $overrides))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['intendedPdlName' => 'Please enter the name of the PDL you want to visit.']);
+
+        $this->assertSame($accounts, Account::count());
     }
 
     public static function invalidNames(): array

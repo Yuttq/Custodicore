@@ -1,11 +1,11 @@
 /**
- * The optional "name of the PDL you want to visit" from registration step 2.
+ * The required "name of the PDL you want to visit" from registration step 2.
  * Sent as `intendedPdlName` and stored on the visitor profile as an
  * unverified hint for the Record Officer, who links the PDL by hand. The app
  * never looks up PDLs. Pure (no React Native imports) for node --test.
  *
  * Rules mirror AuthController::profileRegistrationRules (the server still
- * validates): optional, 2–150 characters, letters/spaces/. ' -
+ * validates): required, 2–150 characters, letters/spaces/. ' -
  */
 
 import { normalizeName, stripControlChars } from './registrationValidation.js';
@@ -13,6 +13,8 @@ import { normalizeName, stripControlChars } from './registrationValidation.js';
 export const INTENDED_PDL_NAME_LIMITS = { min: 2, max: 150 };
 
 export const INTENDED_PDL_NAME_PLACEHOLDER = 'Enter the name of the PDL you want to visit.';
+
+export const INTENDED_PDL_NAME_REQUIRED_MESSAGE = 'Please enter the name of the PDL you want to visit.';
 
 const NAME_RE = /^\p{L}[\p{L}\p{M} .'’-]*$/u;
 
@@ -22,12 +24,12 @@ export function filterIntendedPdlName(value) {
 }
 
 /**
- * Error for the field, or null. Empty is fine (the field is optional).
+ * Error for the field, or null. Empty or spaces only is an error (the field is required).
  * @param {string | null | undefined} value
  */
 export function getIntendedPdlNameError(value) {
   const n = normalizeName(value ?? '');
-  if (!n) return null;
+  if (!n) return INTENDED_PDL_NAME_REQUIRED_MESSAGE;
   if (n.length < INTENDED_PDL_NAME_LIMITS.min) return 'Enter the full name of the PDL you want to visit.';
   if (n.length > INTENDED_PDL_NAME_LIMITS.max) {
     return `The PDL name must be ${INTENDED_PDL_NAME_LIMITS.max} characters or fewer.`;

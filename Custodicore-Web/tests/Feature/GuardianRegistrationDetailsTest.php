@@ -54,6 +54,7 @@ class GuardianRegistrationDetailsTest extends TestCase
             'gender' => 'female',
             'address' => 'Quezon City',
             'relationshipHint' => 'Legal Guardian',
+            'intendedPdlName' => 'Pedro Santos Reyes',
             'contactNumber' => '09170001111',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,

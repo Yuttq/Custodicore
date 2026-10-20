@@ -4,15 +4,17 @@ import assert from 'node:assert/strict';
 
 import {
   INTENDED_PDL_NAME_PLACEHOLDER,
+  INTENDED_PDL_NAME_REQUIRED_MESSAGE,
   filterIntendedPdlName,
   getIntendedPdlNameError,
   toIntendedPdlNameField,
 } from './intendedPdlName.js';
 
-test('the field is optional', () => {
-  assert.equal(getIntendedPdlNameError(''), null);
-  assert.equal(getIntendedPdlNameError('   '), null);
-  assert.equal(getIntendedPdlNameError(undefined), null);
+test('the field is required', () => {
+  assert.equal(INTENDED_PDL_NAME_REQUIRED_MESSAGE, 'Please enter the name of the PDL you want to visit.');
+  assert.equal(getIntendedPdlNameError(''), INTENDED_PDL_NAME_REQUIRED_MESSAGE);
+  assert.equal(getIntendedPdlNameError('   '), INTENDED_PDL_NAME_REQUIRED_MESSAGE);
+  assert.equal(getIntendedPdlNameError(undefined), INTENDED_PDL_NAME_REQUIRED_MESSAGE);
   assert.deepEqual(toIntendedPdlNameField('  '), {});
 });
 
