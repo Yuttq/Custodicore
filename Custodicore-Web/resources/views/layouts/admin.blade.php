@@ -27,7 +27,6 @@
                         ['route' => 'admin.users.index', 'label' => 'User Management'],
                         ['route' => 'admin.pdls.index', 'label' => 'PDL Management'],
                         ['route' => 'admin.visitors.index', 'label' => 'Visitor Management'],
-                        ['route' => 'admin.schedules.index', 'label' => 'Visit Scheduling'],
                         ['route' => 'admin.checkins.index', 'label' => 'Check-In / Check-Out'],
                         ['route' => 'admin.audit.index', 'label' => 'Audit Trail'],
                     ];

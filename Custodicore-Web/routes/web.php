@@ -4,7 +4,6 @@ use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\CheckinController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\PdlController;
-use App\Http\Controllers\Admin\ScheduleController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VisitorController;
@@ -237,18 +236,6 @@ Route::prefix('admin')
         // Read-only profile / PDL relationships / visit history / flags of one visitor.
         Route::get('/visitors/{visitor}', [VisitorController::class, 'show'])
             ->name('visitors.show');
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Schedule Management
-        |--------------------------------------------------------------------------
-        */
-
-        Route::get('/schedules', [ScheduleController::class, 'index'])
-            ->name('schedules.index');
-
-
         /*
         |--------------------------------------------------------------------------
         | Check-In / Check-Out
