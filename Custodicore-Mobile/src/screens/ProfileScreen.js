@@ -22,7 +22,6 @@ import {
   typography,
 } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
-import { getMockFacilityContact } from '../mock/assignedVisits.mock';
 import { loadLocalProfile, persistLocalProfile } from '../services/localProfileStorage';
 import { getVerificationBadge } from '../utils/verificationStatusUi';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
@@ -255,19 +254,7 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
       if (key === 'help') {
-        const contact = getMockFacilityContact();
-        Alert.alert(
-          'Help Center',
-          [
-            'For visit scheduling, verification, or facility questions, contact:',
-            '',
-            contact.facilityName,
-            contact.contactNumber,
-            contact.officeAvailability,
-            '',
-            'Bring your valid ID. Present both QR code and ID during check-in.',
-          ].join('\n'),
-        );
+        navigation.navigate('HelpCenter');
         return;
       }
       if (key === 'logout') {

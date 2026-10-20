@@ -14,6 +14,7 @@ import CheckEmailScreen from '../screens/CheckEmailScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ForgotPasswordSuccessScreen from '../screens/ForgotPasswordSuccessScreen';
+import HelpCenterScreen from '../screens/HelpCenterScreen';
 import LinkGoogleAccountScreen from '../screens/LinkGoogleAccountScreen';
 import LoginScreen from '../screens/LoginScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -212,6 +213,7 @@ function AuthenticatedStack() {
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
       <AppStack.Screen name="VisitHistoryDetail" component={VisitHistoryDetailScreen} />
       <AppStack.Screen name="PersonalInformation" component={PersonalInformationScreen} />
+      <AppStack.Screen name="HelpCenter" component={HelpCenterScreen} />
       <AppStack.Screen name="VisitDetails" component={VisitDetailsScreen} />
       <AppStack.Screen name="UnableToAttend" component={UnableToAttendScreen} />
       <AppStack.Screen name="VisitTracking" component={VisitTrackingScreen} />
