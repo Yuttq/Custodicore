@@ -19,6 +19,7 @@ import { layout, spacing } from '../tokens/spacing';
 import { typography } from '../tokens/typography';
 
 const MIN_BIRTHDATE = new Date(1920, 0, 1);
+const MIN_BIRTHDATE_ISO = toIsoDateString(MIN_BIRTHDATE);
 const DEFAULT_PICKER_AGE_YEARS = 18;
 
 /** Only dates before today (local calendar) can be saved. */
@@ -127,6 +128,60 @@ export function BirthdateField({
   const cancelIos = useCallback(() => {
     setIosVisible(false);
   }, []);
+
+  /**
+   * Web: the browser's own date input (the native pickers above do nothing in
+   * a browser). It starts empty, so the visitor picks their own date. A
+   * complete date from 1920-01-01 to yesterday is saved; clearing the field
+   * saves '' (still "Birthdate is required."); anything else keeps the value.
+   */
+  const onWebChange = useCallback(
+    (event) => {
+      const iso = event?.target?.value ?? '';
+      if (!iso) {
+        onChange('');
+        return;
+      }
+      const latestIso = toIsoDateString(latestBirthdate(new Date()));
+      if (parseIsoDateString(iso) && iso >= MIN_BIRTHDATE_ISO && iso <= latestIso) {
+        onChange(iso);
+      }
+    },
+    [onChange],
+  );
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.wrap}>
+        <Text style={styles.label}>{label}</Text>
+        {React.createElement('input', {
+          type: 'date',
+          value: value || '',
+          min: MIN_BIRTHDATE_ISO,
+          max: toIsoDateString(latestBirthdate(new Date())),
+          onChange: onWebChange,
+          'aria-label': label,
+          'aria-invalid': error ? true : undefined,
+          style: {
+            boxSizing: 'border-box',
+            width: '100%',
+            height: layout.buttonHeight,
+            paddingLeft: spacing.sm,
+            paddingRight: spacing.sm,
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: error ? colors.danger : colors.border,
+            borderRadius: layout.buttonRadius,
+            backgroundColor: colors.white,
+            color: value ? colors.textPrimary : colors.textSecondary,
+            fontFamily: 'inherit',
+            fontSize: typography.body.fontSize,
+          },
+        })}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>

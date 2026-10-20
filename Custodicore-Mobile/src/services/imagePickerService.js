@@ -13,6 +13,29 @@ const PICKER_OPTIONS = {
 };
 
 /**
+ * Web only: the browser `File` behind each picked photo, by its `blob:` uri.
+ * A browser FormData cannot upload a React Native `{ uri, name, type }`
+ * part, so uploads look the real file up here (see getPickedWebFile).
+ * Native pickers return no `file`, so this stays empty on Android/iOS.
+ * @type {Map<string, File>}
+ */
+const pickedWebFiles = new Map();
+
+/** @param {{ uri?: string | null; file?: File | null }} asset */
+function rememberWebFile(asset) {
+  if (asset?.file && asset.uri) pickedWebFiles.set(asset.uri, asset.file);
+}
+
+/**
+ * The browser `File` picked under `uri` on web; null on native or when unknown.
+ * @param {string | null | undefined} uri
+ * @returns {File | null}
+ */
+export function getPickedWebFile(uri) {
+  return (uri && pickedWebFiles.get(uri)) || null;
+}
+
+/**
  * `mimeType` and `fileSize` (bytes) are null when the picker does not report them.
  * @typedef {{ uri: string; fileName: string; mimeType: string | null; fileSize: number | null } | null} PickedPhoto
  */
@@ -40,6 +63,7 @@ export async function pickPhotoFromCamera(options = {}) {
   }
 
   const asset = result.assets[0];
+  rememberWebFile(asset);
   return {
     uri: asset.uri,
     fileName: asset.fileName ?? 'photo.jpg',
@@ -70,6 +94,7 @@ export async function pickPhotoFromGallery(options = {}) {
   }
 
   const asset = result.assets[0];
+  rememberWebFile(asset);
   return {
     uri: asset.uri,
     fileName: asset.fileName ?? 'document.jpg',

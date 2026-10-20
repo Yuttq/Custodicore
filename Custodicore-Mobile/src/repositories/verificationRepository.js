@@ -1,4 +1,5 @@
 import * as api from '../services/api';
+import { getPickedWebFile } from '../services/imagePickerService';
 import {
   DOCUMENT_IMAGE_ERRORS,
   toDocumentImageUpload,
@@ -79,6 +80,9 @@ export function resolveRelationshipKey(hint, fallback) {
  * Builds the multipart file part. The mobile flows only upload photos, so
  * only JPG, PNG and WEBP images up to 10 MB are accepted here (the backend
  * validates every upload again, and also accepts PDF from other clients).
+ * On web the part is the picked browser `File` (a browser FormData sends a
+ * `{ uri, name, type }` object as the text "[object Object]"); native
+ * platforms keep the React Native `{ uri, name, type }` part.
  * @param {DocumentFile} file
  */
 function toFilePart(file) {
@@ -87,6 +91,8 @@ function toFilePart(file) {
   if (invalid) throw new Error(invalid);
   const part = toDocumentImageUpload(file);
   if (!part) throw new Error(DOCUMENT_IMAGE_ERRORS.unsupportedType);
+  const webFile = getPickedWebFile(file.uri);
+  if (webFile) return new File([webFile], part.name, { type: part.type });
   return { uri: file.uri, name: part.name, type: part.type };
 }
 
