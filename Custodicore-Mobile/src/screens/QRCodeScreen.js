@@ -69,10 +69,13 @@ function normalizeQrPayload(data) {
     (scheduledAt ? formatTime(scheduledAt) : '—');
   // Whole-day visit: the same pass is used again for the afternoon re-entry.
   const isWholeDay = schedule.isWholeDay === true;
+  // Inside the facility: the same pass is shown again at check-out.
+  const checkedIn = data?.checkedIn === true;
 
   return {
     qrToken,
     expiresAt,
+    checkedIn,
     pdlName,
     dateDisplay,
     timeLabel: visitTimeText({ timeLabel, isWholeDay }),
@@ -91,21 +94,21 @@ function formatCountdown(totalSeconds) {
 
 /**
  * @param {boolean} isExpired
- * @param {string | undefined} visitStatus
+ * @param {boolean} checkedIn
  */
-function getPassStatus(isExpired, visitStatus) {
+function getPassStatus(isExpired, checkedIn) {
+  if (checkedIn) {
+    return {
+      label: 'Inside Facility',
+      hint: 'Inside facility. Show this pass when you leave.',
+      tone: 'active',
+    };
+  }
   if (isExpired) {
     return {
       label: 'Expired',
       hint: 'This pass is no longer valid for entry.',
       tone: 'expired',
-    };
-  }
-  if (visitStatus === 'checked_in') {
-    return {
-      label: 'Active',
-      hint: 'You may present this pass at the facility.',
-      tone: 'active',
     };
   }
   return {
@@ -169,7 +172,6 @@ export default function QRCodeScreen({ route, navigation }) {
     visits,
     loading: visitsLoading,
     error: visitsError,
-    getVisitById,
     refreshVisits,
   } = useVisits();
 
@@ -200,14 +202,8 @@ export default function QRCodeScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [qrPayload, setQrPayload] = useState(null);
-  const [resolvedScheduleId, setResolvedScheduleId] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const hasLoadedOnce = useRef(false);
-
-  const activeVisit = useMemo(
-    () => (resolvedScheduleId ? getVisitById(resolvedScheduleId) : null),
-    [resolvedScheduleId, getVisitById],
-  );
 
   const applyExpiry = useCallback((expiresAt) => {
     if (!expiresAt) {
@@ -229,7 +225,6 @@ export default function QRCodeScreen({ route, navigation }) {
         // Wait for the visits list; the effect reruns once it settles.
         if (autoSelection === 'pending') return;
         if (autoSelection === 'none') {
-          setResolvedScheduleId(null);
           setQrPayload(null);
           setError(NO_ACTIVE_QR_MESSAGE);
           setLoading(false);
@@ -248,7 +243,6 @@ export default function QRCodeScreen({ route, navigation }) {
       }
       try {
         const sid = await resolveScheduleIdForQr(requestedId);
-        setResolvedScheduleId(sid);
         const data = await fetchQrTokenPayload(sid);
         const normalized = normalizeQrPayload(
           data && typeof data === 'object' ? data : {},
@@ -262,6 +256,9 @@ export default function QRCodeScreen({ route, navigation }) {
         hasLoadedOnce.current = true;
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Failed to load QR pass.';
+        // A failed background refresh (e.g. offline) keeps the pass on
+        // screen; only a definite "no pass" answer from the server clears it.
+        if (silent && !isNoActiveQrPassError(message)) return;
         setError(message);
         setQrPayload(null);
       } finally {
@@ -298,10 +295,11 @@ export default function QRCodeScreen({ route, navigation }) {
   }, [qrPayload?.qrToken, loading, load]);
 
   const countdownDisplay = formatCountdown(secondsLeft);
-  const isExpired = secondsLeft <= 0 && Boolean(qrPayload?.expiresAt);
+  const checkedIn = qrPayload?.checkedIn === true;
+  const isExpired = !checkedIn && secondsLeft <= 0 && Boolean(qrPayload?.expiresAt);
   const tabBarInset = useTabBarScrollInset();
   const showNoActivePass = !loading && !qrPayload && isNoActiveQrPassError(error);
-  const passStatus = getPassStatus(isExpired, activeVisit?.status);
+  const passStatus = getPassStatus(isExpired, checkedIn);
 
   const onViewMyVisits = useCallback(() => {
     navigation.navigate('Schedule');
@@ -383,20 +381,22 @@ export default function QRCodeScreen({ route, navigation }) {
             <Card style={styles.passCard}>
               <PassStatusBanner status={passStatus} />
 
-              <View style={styles.expiryRow}>
-                <Ionicons
-                  name="time-outline"
-                  size={16}
-                  color={isExpired ? colors.warning : colors.textSecondary}
-                />
-                <Text style={styles.expiryLabel}>Expires in</Text>
-                <Text
-                  style={[styles.countdown, isExpired && styles.countdownExpired]}
-                  accessibilityLabel={`Expires in ${countdownDisplay}`}
-                >
-                  {isExpired ? '00:00:00' : countdownDisplay}
-                </Text>
-              </View>
+              {checkedIn ? null : (
+                <View style={styles.expiryRow}>
+                  <Ionicons
+                    name="time-outline"
+                    size={16}
+                    color={isExpired ? colors.warning : colors.textSecondary}
+                  />
+                  <Text style={styles.expiryLabel}>Expires in</Text>
+                  <Text
+                    style={[styles.countdown, isExpired && styles.countdownExpired]}
+                    accessibilityLabel={`Expires in ${countdownDisplay}`}
+                  >
+                    {isExpired ? '00:00:00' : countdownDisplay}
+                  </Text>
+                </View>
+              )}
 
               <View
                 style={[styles.qrFrame, isExpired && styles.qrFrameExpired]}

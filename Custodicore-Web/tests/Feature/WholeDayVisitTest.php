@@ -325,10 +325,14 @@ class WholeDayVisitTest extends TestCase
         $this->assertSame((int) $this->schedule->schedule_id, (int) $morning->schedule_id);
         $this->assertSame('active', QrCode::where('qr_token', $token)->value('status'), 'The QR stays valid for the afternoon.');
 
-        // While inside: no second entry, no QR re-issue.
+        // While inside: no second entry, no QR re-issue (the visitor keeps
+        // the same pass to show at check-out).
         $this->scan($token)->assertStatus(422)->assertJsonPath('message', 'This visitor is already checked in.');
         Sanctum::actingAs($this->visitorAccount);
-        $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertStatus(409);
+        $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")
+            ->assertOk()
+            ->assertJsonPath('qrToken', $token)
+            ->assertJsonPath('checkedIn', true);
 
         // Midday exit: the visit continues.
         $this->at('11:30');

@@ -202,16 +202,21 @@ class VisitorApiController extends Controller
 
         $visitRequest->loadMissing(['pdl', 'schedule', 'sessionSchedules', 'qrCode', 'checkins']);
 
-        // Already checked in / QR consumed — do not re-issue a gate pass.
-        // A whole-day visitor out for the midday break keeps the same QR.
-        if ($visitRequest->checkins->contains('status', 'checked_in')) {
+        // Inside the facility: hand back the existing pass unchanged (never a
+        // new token) so the visitor can show it at check-out. The front desk
+        // accepts it there even once used or expired, but never for check-in.
+        $checkedIn = $visitRequest->checkins->contains('status', 'checked_in');
+
+        if ($checkedIn && ! $visitRequest->qrCode) {
             return response()->json([
                 'message' => 'You are already checked in. A new QR pass is not available.',
                 'status' => 'checked_in',
             ], 409);
         }
 
-        if ($visitRequest->qrCode && $visitRequest->qrCode->status === 'used') {
+        // QR consumed — do not re-issue a gate pass.
+        // A whole-day visitor out for the midday break keeps the same QR.
+        if (! $checkedIn && $visitRequest->qrCode && $visitRequest->qrCode->status === 'used') {
             return response()->json([
                 'message' => 'This QR pass has already been used at the gate.',
                 'status' => 'used',
@@ -222,7 +227,7 @@ class VisitorApiController extends Controller
 
         // Reuse an existing active, non-expired token; otherwise generate/refresh.
         $existing = $visitRequest->qrCode;
-        if ($existing && $existing->isValid()) {
+        if ($checkedIn || ($existing && $existing->isValid())) {
             $qr = $existing;
         } else {
             $qr = QrCode::generateFor($visitRequest, $expiryMinutes);
@@ -246,6 +251,7 @@ class VisitorApiController extends Controller
             ],
             'scheduleId' => (string) $visitRequest->visit_request_id,
             'status' => $visitRequest->status,
+            'checkedIn' => $checkedIn,
         ]);
     }
 

@@ -111,6 +111,60 @@ class StaffWorkflowRegressionTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_checked_in_visitor_keeps_the_same_pass_for_check_out_after_it_expires(): void
+    {
+        [$visit, $token] = $this->confirmedVisitWithQr();
+
+        $this->actingAs($this->frontDeskAccount, 'web');
+        $this->postJson('/front-desk/checkin-checkout/confirm', [
+            'qr_token' => $token,
+            'id_surrendered_type' => 'national_id',
+            'id_match_status' => 'matched',
+        ])->assertOk();
+
+        $qr = QrCode::where('visit_request_id', $visit->visit_request_id)->firstOrFail();
+        $this->assertSame('used', $qr->status);
+
+        // Past the 180-minute expiry, still inside: the app gets the same
+        // pass back, and the QR row is left as it was.
+        $this->travel(181)->minutes();
+
+        Sanctum::actingAs($this->visitorAccount);
+        $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")
+            ->assertOk()
+            ->assertJsonPath('qrToken', $token)
+            ->assertJsonPath('checkedIn', true);
+
+        $after = $qr->fresh();
+        $this->assertSame($token, $after->qr_token);
+        $this->assertSame('used', $after->status);
+        $this->assertTrue($qr->expires_at->equalTo($after->expires_at));
+        $this->assertSame(1, QrCode::where('visit_request_id', $visit->visit_request_id)->count());
+
+        // The expired pass still finds the visitor at the exit…
+        $this->actingAs($this->frontDeskAccount, 'web');
+        $checkin = VisitCheckin::where('visit_request_id', $visit->visit_request_id)->firstOrFail();
+        $this->postJson('/front-desk/checkin-checkout/scan', ['qr_token' => $token, 'mode' => 'checkout'])
+            ->assertOk()
+            ->assertJsonPath('checkin_id', $checkin->checkin_id);
+
+        // …but cannot check the visitor in again.
+        $this->postJson('/front-desk/checkin-checkout/scan', ['qr_token' => $token])->assertStatus(422);
+        $this->postJson('/front-desk/checkin-checkout/confirm', [
+            'qr_token' => $token,
+            'id_surrendered_type' => 'national_id',
+            'id_match_status' => 'matched',
+        ])->assertStatus(422);
+        $this->assertSame(1, VisitCheckin::where('visit_request_id', $visit->visit_request_id)->count());
+
+        $this->post("/front-desk/checkin-checkout/{$checkin->checkin_id}/check-out")->assertRedirect();
+        $this->assertSame('completed', $visit->fresh()->status);
+
+        // After the final check-out the pass is gone again.
+        Sanctum::actingAs($this->visitorAccount);
+        $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertStatus(409);
+    }
+
     public function test_expired_qr_cannot_check_in(): void
     {
         [, $token] = $this->confirmedVisitWithQr();
