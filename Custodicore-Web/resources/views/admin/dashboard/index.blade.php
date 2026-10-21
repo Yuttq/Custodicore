@@ -17,19 +17,55 @@
         </div>
     </div>
 
+    {{-- Month for Peak Hours and the two PDL lists. Opens on last month by default. --}}
+    <form method="GET" action="{{ route('admin.dashboard') }}" class="flex flex-wrap items-end gap-sm">
+        <label class="flex flex-col text-metadata text-text-secondary">
+            Analytics month
+            <select name="month" onchange="this.form.submit()"
+                    class="h-[38px] rounded-button border border-border bg-white px-sm text-body text-text-primary">
+                @foreach ($monthOptions as $value => $label)
+                    <option value="{{ $value }}" @selected($value === $selectedMonth)>{{ $label }}@if ($value === $defaultMonth) (previous month)@endif</option>
+                @endforeach
+            </select>
+        </label>
+        <noscript><button type="submit" class="cc-btn-secondary">Show</button></noscript>
+        <p class="pb-[10px] text-metadata text-text-secondary">Applies to Peak Hours, Most Visited and Least Visited PDLs.</p>
+    </form>
+
     <div class="grid grid-cols-1 gap-lg xl:grid-cols-3">
         <div class="cc-card xl:col-span-2">
             <p class="text-card-title">Peak Hours & Crowd Management</p>
-            <p class="text-metadata text-text-secondary">Busiest visiting slots this month</p>
-            <div class="mt-md h-64">
-                <canvas id="peakHoursChart"></canvas>
-            </div>
+            <p class="text-metadata text-text-secondary">Busiest visiting slots in {{ $monthLabel }}</p>
+
+            @if (empty($peakHours))
+                <p class="mt-md text-metadata text-text-secondary">No visiting slots were recorded for {{ $monthLabel }}.</p>
+            @else
+                <div class="mt-md h-72">
+                    <canvas id="peakHoursChart"></canvas>
+                </div>
+
+                {{-- What each bar means: its slot, how many were booked, and the capacity used. --}}
+                <p class="mt-md text-metadata text-text-secondary">
+                    Each bar is one visiting slot. Its height is the share of that slot's capacity that was booked
+                    (visitors booked ÷ maximum capacity). Times are in 24-hour format.
+                </p>
+                @php $barColors = ['#0F3D7A', '#1558A8', '#2F7BC4', '#0DA58A', '#7FD6C6']; @endphp
+                <ul class="mt-sm grid grid-cols-1 gap-xs sm:grid-cols-2">
+                    @foreach ($peakHours as $i => $slot)
+                        <li class="flex items-center gap-sm text-metadata">
+                            <span class="h-3 w-3 shrink-0 rounded-sm" style="background: {{ $barColors[$i % count($barColors)] }}"></span>
+                            <span class="text-text-primary">{{ $slot['date'] }} · {{ $slot['time'] }}</span>
+                            <span class="text-text-secondary">— {{ $slot['taken'] }} of {{ $slot['capacity'] }} booked ({{ $slot['value'] }}%)</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
         </div>
 
         <div class="space-y-lg">
             <div class="cc-card">
                 <p class="text-card-title">Most Visited PDLs</p>
-                <p class="text-metadata text-text-secondary">This month</p>
+                <p class="text-metadata text-text-secondary">Top 5 in {{ $monthLabel }}</p>
 
                 <ul class="mt-md space-y-sm">
                     @forelse ($mostVisitedPdls as $pdl)
@@ -46,16 +82,20 @@
                             </span>
                         </li>
                     @empty
-                        <li class="text-metadata text-text-secondary">No visits recorded this month yet.</li>
+                        <li class="text-metadata text-text-secondary">No visits recorded in {{ $monthLabel }}.</li>
                     @endforelse
                 </ul>
             </div>
 
             <div class="cc-card">
                 <p class="text-card-title">Least Visited PDLs</p>
-                <p class="text-metadata text-text-secondary">PDLs in custody with the fewest visits this month</p>
+                <p class="text-metadata text-text-secondary">
+                    PDLs in custody with the fewest visits in {{ $monthLabel }}
+                    @if (count($leastVisitedPdls) > 5) · scroll to see all {{ count($leastVisitedPdls) }} @endif
+                </p>
 
-                <ul class="mt-md space-y-sm">
+                {{-- Shows about five rows; the rest are reached by scrolling inside the card. --}}
+                <ul class="mt-md max-h-[19.5rem] space-y-sm overflow-y-auto pr-sm">
                     @forelse ($leastVisitedPdls as $pdl)
                         <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
                             <div class="flex items-center gap-sm">
@@ -122,27 +162,54 @@
 
         const peakHoursCtx = document.getElementById('peakHoursChart');
         if (peakHoursCtx && window.Chart) {
+            const peakSlots = {!! json_encode($peakHours) !!};
+
+            // Writes each bar's percentage above it, so nobody has to read it off the axis.
+            const valueLabels = {
+                id: 'valueLabels',
+                afterDatasetsDraw(chart) {
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = '600 12px sans-serif';
+                    ctx.fillStyle = '#0F3D7A';
+                    ctx.textAlign = 'center';
+                    chart.getDatasetMeta(0).data.forEach((bar, i) => {
+                        ctx.fillText(peakSlots[i].value + '%', bar.x, bar.y - 6);
+                    });
+                    ctx.restore();
+                },
+            };
+
             new Chart(peakHoursCtx, {
                 type: 'bar',
                 data: {
-                    labels: {!! json_encode(array_column($peakHours, 'label')) !!},
+                    labels: peakSlots.map((slot) => slot.label),
                     datasets: [{
-                        label: 'Capacity used',
-                        data: {!! json_encode(array_column($peakHours, 'value')) !!},
-                        // Navy to teal, one colour per slot (repeats if there are more slots).
+                        label: 'Capacity booked',
+                        data: peakSlots.map((slot) => slot.value),
+                        // Navy to teal, one colour per slot (matches the key under the chart).
                         backgroundColor: ['#0F3D7A', '#1558A8', '#2F7BC4', '#0DA58A', '#7FD6C6'],
                         borderRadius: 8,
                         maxBarThickness: 56,
                     }],
                 },
+                plugins: [valueLabels],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: (item) => `${item.parsed.y}% of capacity`,
+                                title: (items) => peakSlots[items[0].dataIndex].date + ' · ' + peakSlots[items[0].dataIndex].time,
+                                label: (item) => {
+                                    const slot = peakSlots[item.dataIndex];
+                                    return [
+                                        `Booked: ${slot.taken} of ${slot.capacity} slots`,
+                                        `Capacity used: ${slot.value}%`,
+                                    ];
+                                },
                             },
                         },
                     },
@@ -150,10 +217,15 @@
                         y: {
                             beginAtZero: true,
                             max: 100,
+                            title: { display: true, text: 'Capacity booked (% of slot maximum)', color: '#374151', font: { weight: '600' } },
                             grid: { color: '#E5E7EB' },
                             ticks: { color: '#6B7280', callback: (value) => value + '%' },
                         },
-                        x: { grid: { display: false }, ticks: { color: '#6B7280' } },
+                        x: {
+                            title: { display: true, text: 'Visiting slot (date and time, 24-hour)', color: '#374151', font: { weight: '600' } },
+                            grid: { display: false },
+                            ticks: { color: '#6B7280' },
+                        },
                     },
                 },
             });

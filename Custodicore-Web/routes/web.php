@@ -251,6 +251,10 @@ Route::prefix('admin')
         Route::get('/checkins', [CheckinController::class, 'index'])
             ->name('checkins.index');
 
+        // PDF of the check-in / check-out log (same filters as the page).
+        Route::get('/checkins/export', [CheckinController::class, 'export'])
+            ->name('checkins.export');
+
 
         /*
         |--------------------------------------------------------------------------

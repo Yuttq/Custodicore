@@ -64,7 +64,7 @@ export function pickNextVisit(visits, now = new Date()) {
 
 /**
  * Time line for a visit card. A whole-day visit (morning + afternoon
- * sessions) is one visit: "9:00 AM - 4:30 PM · Whole day".
+ * sessions) is one visit: "09:00 - 16:30 · Whole day".
  * @param {{ timeLabel?: string | null; isWholeDay?: boolean } | null | undefined} visit
  * @returns {string}
  */
@@ -75,7 +75,7 @@ export function visitTimeText(visit) {
 }
 
 /**
- * "Morning 9:00 AM - 11:30 AM · Afternoon 1:00 PM - 4:30 PM", or null for a
+ * "Morning 09:00 - 11:30 · Afternoon 13:00 - 16:30", or null for a
  * single-session visit (its time line already says it all).
  * @param {{ period?: string; timeLabel?: string }[] | null | undefined} sessions
  * @returns {string | null}

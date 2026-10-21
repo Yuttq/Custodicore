@@ -103,7 +103,7 @@ class VisitGateService
         return ((int) substr((string) $session->time_slot_start, 0, 2) < 12 ? 'morning' : 'afternoon').' session';
     }
 
-    /** "01:00 PM - 04:30 PM" */
+    /** "13:00 - 16:30" */
     public function rangeLabel(VisitSchedule $session): string
     {
         return Carbon::parse((string) $session->time_slot_start)->format('H:i')

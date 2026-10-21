@@ -144,7 +144,7 @@ class VisitorLookupController extends Controller
         };
     }
 
-    /** "09:00 AM – 11:30 AM" (or both sessions of a whole-day visit). */
+    /** "09:00 – 11:30" (or both sessions of a whole-day visit). */
     private function sessionsLabel(VisitRequest $visit): string
     {
         $sessions = $visit->sessionSchedules->isNotEmpty()

@@ -43,7 +43,7 @@ export const MOCK_NOTIFICATIONS_RAW = [
   {
     id: 'mock-n-system-maintenance-yesterday',
     title: 'Scheduled System Maintenance',
-    body: 'CustodiCore will undergo brief maintenance tonight from 11:00 PM to 1:00 AM. Visit QR passes remain valid offline.',
+    body: 'CustodiCore will undergo brief maintenance tonight from 23:00 to 01:00. Visit QR passes remain valid offline.',
     category: 'system',
     read: true,
     createdAt: isoDaysAgo(1, 17),

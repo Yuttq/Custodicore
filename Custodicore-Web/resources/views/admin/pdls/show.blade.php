@@ -79,6 +79,7 @@
                     <span class="cc-chip cc-chip-info">{{ $classification }}</span>
                     <span class="cc-chip cc-chip-neutral">{{ $pdl->legalRecords->count() }} legal {{ \Illuminate\Support\Str::plural('record', $pdl->legalRecords->count()) }}</span>
                     <span class="cc-chip {{ $pdl->disciplinaryRecords->count() ? 'cc-chip-warning' : 'cc-chip-neutral' }}">{{ $pdl->disciplinaryRecords->count() }} disciplinary</span>
+                    <span class="cc-chip {{ $authorizedVisitors->count() ? 'cc-chip-success' : 'cc-chip-neutral' }}">{{ $authorizedVisitors->count() }} authorized {{ \Illuminate\Support\Str::plural('visitor', $authorizedVisitors->count()) }}</span>
                 </div>
 
                 <div>
@@ -145,6 +146,44 @@
                                 </div>
                             @endforeach
                         </div>
+                    @endif
+                </div>
+
+                <div>
+                    <p class="text-card-title text-primary-navy">Authorized Visitors <span class="cc-chip cc-chip-neutral ml-xs">{{ $authorizedVisitors->count() }}</span></p>
+                    <p class="text-metadata text-text-secondary">Verified relationship and verified visitor account</p>
+
+                    @if ($authorizedVisitors->isEmpty())
+                        <p class="mt-sm text-body text-text-secondary">No authorized visitors yet.</p>
+                    @else
+                        <div class="mt-sm space-y-sm">
+                            @foreach ($authorizedVisitors as $rel)
+                                <div class="flex flex-wrap items-center justify-between gap-sm rounded-sm border border-border p-md">
+                                    <div class="flex min-w-0 items-center gap-sm">
+                                        @include('admin.partials.avatar', ['name' => $rel->visitor->full_name, 'size' => 'h-9 w-9'])
+                                        <div class="min-w-0">
+                                            <a href="{{ route('admin.visitors.show', $rel->visitor_id) }}"
+                                               class="block truncate text-body font-semibold text-primary-navy hover:underline">{{ $rel->visitor->full_name }}</a>
+                                            <p class="text-metadata text-text-secondary">
+                                                Verified {{ $rel->verified_at ? \Illuminate\Support\Carbon::parse($rel->verified_at)->format('M j, Y H:i') : '—' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-xs">
+                                        <span class="cc-chip cc-chip-info">{{ $rel->relationshipLabel() }}</span>
+                                        @if ($rel->isHighPriority())
+                                            <span class="cc-chip cc-chip-success">High priority</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @if ($awaitingVisitors > 0)
+                        <p class="mt-sm text-metadata text-text-secondary">
+                            {{ $awaitingVisitors }} more {{ \Illuminate\Support\Str::plural('visitor', $awaitingVisitors) }} linked to this PDL {{ $awaitingVisitors === 1 ? 'is' : 'are' }} still awaiting verification.
+                        </p>
                     @endif
                 </div>
             </div>

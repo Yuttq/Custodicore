@@ -33,28 +33,48 @@ class AuditController extends Controller
         if ($from && $to && $from > $to) {
             [$from, $to] = [$to, $from];
         }
-        $filtered = $search !== null || $from || $to;
+
+        // Time of day (24-hour "HH:MM"), applied to every day in the range.
+        // If "from" is later than "to" the window runs overnight (e.g. 22:00–06:00).
+        $fromTime = $this->timeParam($request->query('from_time'));
+        $toTime = $this->timeParam($request->query('to_time'));
+        $filtered = $search !== null || $from || $to || $fromTime || $toTime;
 
         $auditLogs = AuditLog::query()
-            ->with(['account.staffProfile', 'module'])
+            ->with(['account.staffProfile', 'account.visitorProfile', 'module'])
             ->when($like, function ($query) use ($like, $likeAction) {
                 $query->where(function ($q) use ($like, $likeAction) {
                     $q->where('description', 'like', $like)
                         ->orWhere('action_type', 'like', $likeAction)
                         ->orWhere('record_type', 'like', $like)
-                        ->orWhereHas('account', fn ($a) => $a->where('email', 'like', $like)->orWhere('username', 'like', $like))
+                        ->orWhereHas('account', fn ($a) => $a->where('email', 'like', $like)
+                            ->orWhere('username', 'like', $like)
+                            ->orWhereHas('staffProfile', fn ($p) => $p->where('full_name', 'like', $like))
+                            ->orWhereHas('visitorProfile', fn ($p) => $p->where('full_name', 'like', $like)))
                         ->orWhereHas('module', fn ($m) => $m->where('module_name', 'like', $like));
                 });
             })
             ->when($from, fn ($query) => $query->whereDate('created_at', '>=', $from))
             ->when($to, fn ($query) => $query->whereDate('created_at', '<=', $to))
+            ->when($fromTime || $toTime, function ($query) use ($fromTime, $toTime) {
+                $start = $fromTime ? $fromTime . ':00' : '00:00:00';
+                $end = $toTime ? $toTime . ':59' : '23:59:59';
+                if ($start <= $end) {
+                    $query->whereTime('created_at', '>=', $start)->whereTime('created_at', '<=', $end);
+                } else {
+                    // Overnight window: late evening OR early morning.
+                    $query->where(fn ($q) => $q->whereTime('created_at', '>=', $start)->orWhereTime('created_at', '<=', $end));
+                }
+            })
             ->orderByDesc('created_at')
             ->orderByDesc('audit_log_id')
             ->take(500)
             ->get()
             ->map(fn ($log) => [
                 'created_at' => $log->created_at?->format('Y-m-d H:i'),
-                'account' => $log->account?->email ?? 'system',
+                // The person's name (staff, or visitor for visitor actions) — never the email.
+                'account' => $log->account ? $log->account->displayName() : 'System',
+                'is_system' => $log->account === null,
                 'action_type' => $log->action_type,
                 'module' => $log->module?->module_name ?? '—',
                 'description' => $log->description,
@@ -70,7 +90,13 @@ class AuditController extends Controller
 
         $auditLogs = Pages::of($auditLogs);
 
-        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs', 'from', 'to', 'filtered'));
+        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs', 'from', 'to', 'fromTime', 'toTime', 'filtered'));
+    }
+
+    /** "HH:MM" (24-hour) if it is a real time of day, otherwise null. */
+    private function timeParam(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', trim($value)) ? trim($value) : null;
     }
 
     /** "YYYY-MM-DD" if it's a real calendar date, otherwise null. */

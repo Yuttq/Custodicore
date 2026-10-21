@@ -700,7 +700,7 @@ class VisitorApiController extends Controller
     private function formatTimeLabel(string $time): string
     {
         try {
-            return \Carbon\Carbon::createFromFormat('H:i:s', $this->normalizeTime($time))->format('g:i A');
+            return \Carbon\Carbon::createFromFormat('H:i:s', $this->normalizeTime($time))->format('H:i');
         } catch (\Throwable) {
             return substr($time, 0, 5);
         }

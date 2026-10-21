@@ -94,7 +94,7 @@ const MOCK_OFFICER_NOTES = [
   'Records: National ID matched submitted profile.',
   'Relationship: Spouse — marriage certificate on file.',
   null,
-  'Assignment: Visiting Area · Jun 16, 2:00 PM – 4:30 PM.',
+  'Assignment: Visiting Area · Jun 16, 14:00 – 16:30.',
   null,
   'QR valid for assigned window only.',
   'Gate scan recorded by Duty Officer Reyes.',

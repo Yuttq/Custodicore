@@ -122,18 +122,15 @@ export function shiftMonth(year, month, delta) {
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-/** "13:00" → "1:00 PM" */
-export function formatTime12(hhmm) {
+/** "13:00" → "13:00" */
+export function formatTime24(hhmm) {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm ?? ''));
   if (!m) return String(hhmm ?? '');
-  const h = Number(m[1]);
-  const suffix = h < 12 ? 'AM' : 'PM';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${m[2]} ${suffix}`;
+  return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
 }
 
 export function formatSlotRange(start, end) {
-  return `${formatTime12(start)} – ${formatTime12(end)}`;
+  return `${formatTime24(start)} – ${formatTime24(end)}`;
 }
 
 /** "2026-10-08" → "Thursday, October 8, 2026" */
@@ -209,7 +206,7 @@ function normalizeWholeDay(raw, date, slots, relationshipId) {
 }
 
 /**
- * "11:30 AM – 1:00 PM": the break between a whole-day visit's sessions.
+ * "11:30 – 13:00": the break between a whole-day visit's sessions.
  * @param {AvailabilitySlot[]} slots the day's slots, sorted by start
  * @returns {string | null}
  */

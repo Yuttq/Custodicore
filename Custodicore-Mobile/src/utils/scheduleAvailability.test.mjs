@@ -8,7 +8,7 @@ import {
   dayOfWeekIso,
   formatDateLong,
   formatSlotRange,
-  formatTime12,
+  formatTime24,
   formatVisitingDays,
   manilaTodayIso,
   middayBreakLabel,
@@ -46,10 +46,11 @@ test('month grid is Sunday-first with null padding', () => {
 });
 
 test('time and day formatting', () => {
-  assert.equal(formatTime12('09:00'), '9:00 AM');
-  assert.equal(formatTime12('13:00'), '1:00 PM');
-  assert.equal(formatTime12('12:30'), '12:30 PM');
-  assert.equal(formatSlotRange('13:00', '16:30'), '1:00 PM – 4:30 PM');
+  assert.equal(formatTime24('09:00'), '09:00');
+  assert.equal(formatTime24('9:05'), '09:05');
+  assert.equal(formatTime24('13:00'), '13:00');
+  assert.equal(formatTime24('12:30'), '12:30');
+  assert.equal(formatSlotRange('13:00', '16:30'), '13:00 – 16:30');
   assert.equal(formatDateLong('2026-10-08'), 'Thursday, October 8, 2026');
   assert.equal(formatVisitingDays(['thu', 'sat']), 'Thursday and Saturday');
   assert.equal(formatVisitingDays(['fri', 'sun']), 'Friday and Sunday');
@@ -180,7 +181,7 @@ test('whole day is one selectable option spanning both sessions', () => {
   assert.deepEqual(friday.startTimes, ['09:00', '13:00']);
   assert.equal(friday.available, true);
   assert.equal(friday.slotsRemaining, 3, 'the tightest session limits the whole day');
-  assert.equal(middayBreakLabel(rel.daysByDate['2026-10-09'].slots), '11:30 AM – 1:00 PM');
+  assert.equal(middayBreakLabel(rel.daysByDate['2026-10-09'].slots), '11:30 – 13:00');
 
   const sunday = rel.daysByDate['2026-10-11'].wholeDay;
   assert.equal(sunday.available, false);

@@ -76,11 +76,26 @@ class PdlController extends Controller
     /** View one PDL: profile, legal records, disciplinary records. */
     public function show(Pdl $pdl): View
     {
-        $pdl->load(['legalRecords', 'disciplinaryRecords']);
+        $pdl->load(['legalRecords', 'disciplinaryRecords', 'visitorRelationships.visitor']);
+
+        // Authorized visitors: people whose relationship to this PDL has been
+        // verified by the Records Officer AND whose own account is verified.
+        // Spouse / parent / legal guardian (high priority) are listed first.
+        $authorizedVisitors = $pdl->visitorRelationships
+            ->filter(fn ($rel) => $rel->isVerified()
+                && $rel->visitor
+                && $rel->visitor->verification_status === 'verified')
+            ->sortBy(fn ($rel) => [$rel->isHighPriority() ? 0 : 1, mb_strtolower((string) $rel->visitor->full_name)])
+            ->values();
+
+        // Linked to this PDL but not (yet) cleared to visit.
+        $awaitingVisitors = $pdl->visitorRelationships->count() - $authorizedVisitors->count();
 
         return view('admin.pdls.show', [
             'pdl' => $pdl,
             'nameParts' => $pdl->nameParts(),
+            'authorizedVisitors' => $authorizedVisitors,
+            'awaitingVisitors' => $awaitingVisitors,
         ]);
     }
 
