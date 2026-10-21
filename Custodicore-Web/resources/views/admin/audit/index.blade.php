@@ -14,23 +14,46 @@
             <div>
                 <p class="text-card-title">Recent Activity</p>
                 <p class="text-metadata text-text-secondary">
-                    @if ($search)
-                        {{ $auditLogs->total() }} of {{ $totalLogs }} entries match "{{ $search }}"
+                    @if ($filtered)
+                        {{ $auditLogs->total() }} of {{ $totalLogs }} entries match
+                        @if ($search) "{{ $search }}" @endif
+                        @if ($from || $to)
+                            · {{ $from ? \Carbon\Carbon::parse($from)->format('M j, Y') : 'start' }} – {{ $to ? \Carbon\Carbon::parse($to)->format('M j, Y') : 'today' }}
+                        @endif
                     @else
                         {{ $totalLogs }} entries, newest first
                     @endif
                 </p>
             </div>
-            {{-- Working search: account, action, module or description. --}}
-            <form method="GET" action="{{ route('admin.audit.index') }}" class="flex items-center gap-sm">
-                <input type="search" name="q" value="{{ $search }}" maxlength="100"
-                       placeholder="Search account, action, module or description…"
-                       class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body sm:w-72" />
-                <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
-                @if ($search)
+            {{-- Search (account, action, module or description) + date range. --}}
+            <form method="GET" action="{{ route('admin.audit.index') }}" class="flex flex-wrap items-end gap-sm">
+                <label class="flex flex-col text-metadata text-text-secondary">
+                    Search
+                    <input type="search" name="q" value="{{ $search }}" maxlength="100"
+                           placeholder="Account, action, module or description…"
+                           class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body text-text-primary sm:w-64" />
+                </label>
+                <label class="flex flex-col text-metadata text-text-secondary">
+                    From
+                    <input type="date" name="from" value="{{ $from }}" max="{{ now()->toDateString() }}"
+                           class="h-[38px] rounded-button border border-border bg-white px-sm text-body text-text-primary" />
+                </label>
+                <label class="flex flex-col text-metadata text-text-secondary">
+                    To
+                    <input type="date" name="to" value="{{ $to }}" max="{{ now()->toDateString() }}"
+                           class="h-[38px] rounded-button border border-border bg-white px-sm text-body text-text-primary" />
+                </label>
+                <button type="submit" class="cc-btn-secondary shrink-0">Filter</button>
+                @if ($filtered)
                     <a href="{{ route('admin.audit.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
                 @endif
             </form>
+        </div>
+        <div class="mb-md flex flex-wrap items-center gap-sm text-metadata">
+            <span class="text-text-secondary">Quick range:</span>
+            <a href="{{ route('admin.audit.index', array_filter(['q' => $search, 'from' => now()->toDateString(), 'to' => now()->toDateString()])) }}" class="cc-chip">Today</a>
+            <a href="{{ route('admin.audit.index', array_filter(['q' => $search, 'from' => now()->subDays(6)->toDateString(), 'to' => now()->toDateString()])) }}" class="cc-chip">Last 7 days</a>
+            <a href="{{ route('admin.audit.index', array_filter(['q' => $search, 'from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString()])) }}" class="cc-chip">This month</a>
         </div>
 
         <div class="overflow-x-auto">

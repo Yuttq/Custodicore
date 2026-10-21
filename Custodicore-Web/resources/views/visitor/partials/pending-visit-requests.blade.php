@@ -92,7 +92,7 @@
               </form>
             @endif
           </td>
-          <td class="muted-cell">{{ optional($vr->assigned_at)->format('M d, Y g:i A') ?? '—' }}</td>
+          <td class="muted-cell">{{ optional($vr->assigned_at)->format('M d, Y H:i') ?? '—' }}</td>
           <td>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
               @unless ($isPastDated)

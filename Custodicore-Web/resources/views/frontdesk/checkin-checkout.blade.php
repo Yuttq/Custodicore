@@ -1105,7 +1105,7 @@
                                         @endif
                                     </td>
                                     <td class="py-sm pr-md">{{ $checkin->id_surrendered_type ? ucwords(str_replace('_', ' ', $checkin->id_surrendered_type)) : '—' }}</td>
-                                    <td class="py-sm pr-md">{{ $checkin->check_in_time?->format('g:i A') ?? '—' }}</td>
+                                    <td class="py-sm pr-md">{{ $checkin->check_in_time?->format('H:i') ?? '—' }}</td>
                                     <td class="py-sm pr-md">
                                         @if ($checkin->verification_method === 'manual_override')
                                             <span class="cc-chip cc-chip-warning" @if ($checkin->override_reason) title="{{ $checkin->override_reason }}" @endif>Manual</span>
@@ -2217,16 +2217,16 @@
                                         @endif
                                     </td>
                                     <td class="py-sm pr-md">
-                                        {{ $checkin->check_in_time?->format('g:i A') ?? '—' }}
+                                        {{ $checkin->check_in_time?->format('H:i') ?? '—' }}
                                         @if ($checkin->check_in_time && ! $checkin->check_in_time->isToday())
                                             <span class="block text-metadata text-text-secondary">{{ $checkin->check_in_time->format('M j') }}</span>
                                         @endif
                                     </td>
-                                    <td class="py-sm pr-md">{{ $checkin->check_out_time->format('g:i A') }}</td>
+                                    <td class="py-sm pr-md">{{ $checkin->check_out_time->format('H:i') }}</td>
                                     <td class="py-sm pr-md">{{ $minutes === null ? '—' : ($minutes >= 60 ? intdiv($minutes, 60).'h '.($minutes % 60).'m' : $minutes.'m') }}</td>
                                     <td class="py-sm pr-md">
                                         @if ($checkin->id_returned_time)
-                                            <span class="cc-chip cc-chip-success">{{ $checkin->id_returned_time->format('g:i A') }}</span>
+                                            <span class="cc-chip cc-chip-success">{{ $checkin->id_returned_time->format('H:i') }}</span>
                                         @elseif ($checkin->id_surrendered_type)
                                             <span class="cc-chip cc-chip-danger">Not returned</span>
                                         @else

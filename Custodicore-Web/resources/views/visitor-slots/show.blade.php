@@ -6,7 +6,7 @@
   $statusBadge = ['open' => ['active', 'Open'], 'full' => ['rejected', 'Full'], 'closed' => ['released', 'Closed']];
   [$badgeClass, $badgeText] = $statusBadge[$schedule->status] ?? ['released', ucfirst($schedule->status)];
   $session = \App\Services\VisitSlotService::sessionOf($schedule->time_slot_start);
-  $group = $schedule->rule?->pdl_classification === 'drug_related' ? 'Drug-related' : 'Non-drug-related';
+  $group = $schedule->rule ? str_replace(' PDLs', '', \App\Models\FacilityVisitationRule::groupLabel($schedule->rule->groupKey())) : '—';
   $capacityStatuses = \App\Services\VisitAssignmentService::CAPACITY_STATUSES;
 @endphp
 

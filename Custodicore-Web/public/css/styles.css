@@ -523,3 +523,46 @@ a.pager-btn:hover{border-color:var(--teal);color:var(--teal);}
 .pager-btn.is-disabled{color:#c0c6d0;background:#fafbfc;cursor:default;}
 .pager-gap{color:var(--muted);padding:0 4px;}
 .elig-source{font-size:11.5px;font-weight:600;color:var(--teal);margin-top:4px;}
+
+/* ===================== DORM OVER CAPACITY (yellow, still allowed) ===================== */
+.occupancy-chip.is-over{background:#FEF9C3;border-color:#FACC15;}
+.occupancy-chip.is-over .occupancy-bar span{background:#EAB308;}
+.occupancy-chip.is-over .occupancy-sub{color:#A16207;font-weight:700;}
+.occupancy-inline.is-over{background:none !important;}
+tr.row-over > td{background:#FEFCE8;}
+.badge.over{background:#FEF08A;color:#854D0E;}
+.badge.over .dot{background:#CA8A04;}
+.stat-card.is-over-card{background:#FEFCE8;border-color:#FACC15;}
+
+/* ===================== DORM VISITING HOURS ===================== */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;}
+.week-day{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fafbfc;min-height:110px;}
+.week-day.has-hours{background:var(--teal-bg);border-color:#9fe0d3;}
+.week-day-name{font-weight:700;font-size:12.5px;margin-bottom:8px;color:var(--navy);}
+.week-slot{background:#fff;border:1px solid var(--border);border-radius:9px;padding:7px 8px;margin-bottom:6px;}
+.week-slot form{margin:4px 0 0;}
+.week-slot-time{font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;}
+.week-none{font-size:12px;}
+.day-picks{display:flex;gap:8px;flex-wrap:wrap;}
+.day-pick{display:inline-flex !important;align-items:center;gap:6px;border:1px solid var(--border);border-radius:9px;padding:7px 12px;font-weight:600 !important;cursor:pointer;margin:0 !important;}
+.day-pick:has(input:checked){background:var(--teal-bg);border-color:var(--teal);}
+.day-pick input{width:auto !important;}
+@media (max-width: 900px){ .week-grid{grid-template-columns:repeat(2,1fr);} }
+.hours-summary{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;}
+
+/* Cell/Block dropdown: yellow when the chosen dorm goes over its recommended number */
+select[data-cell-select].is-over{background:#FEF9C3;border-color:#EAB308;}
+.dorm-warning{margin-top:8px;padding:9px 12px;border-radius:10px;background:#FEF9C3;border:1px solid #FACC15;color:#854D0E;font-size:12.5px;font-weight:600;}
+
+/* ===================== VISITOR PHOTO ===================== */
+.visitor-no-photo{background:var(--teal) !important;color:#fff;}
+.visitor-photo-lg{width:88px !important;height:88px !important;border-radius:16px;font-size:30px;}
+.acct-photo-row{display:flex;align-items:center;gap:14px;}
+.acct-photo-img{width:96px;height:96px;border-radius:14px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;}
+.elig-check-sub{font-size:11.5px;color:var(--amber-text);font-weight:600;margin-top:2px;}
+
+/* Clickable stat cards */
+a.stat-card.stat-link{display:block;cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s;}
+a.stat-card.stat-link:hover{transform:translateY(-2px);box-shadow:0 16px 32px rgba(15,61,122,.2);border-color:var(--teal);}
+a.stat-card.stat-link:focus-visible{outline:3px solid rgba(13,165,138,.45);outline-offset:2px;}
+a.stat-card.stat-link.is-selected{border-color:#EAB308;box-shadow:0 0 0 2px rgba(234,179,8,.35);}

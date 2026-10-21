@@ -3,7 +3,16 @@
 
 @section('content')
 <div class="topbar">
-  <h1>Visitor Profile</h1>
+  <div class="pdl-header">
+    @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'pdl-photo-lg visitor-photo-lg'])
+    <div>
+      <h1 style="margin:0;">{{ $visitor->full_name }}</h1>
+      <div class="muted-cell">
+        Visitor Profile
+        @if ($visitor->photo_uploaded_at) · photo taken {{ $visitor->photo_uploaded_at->format('M j, Y H:i') }} @else · no photo yet (taken in the app when the account is created) @endif
+      </div>
+    </div>
+  </div>
   <div class="right">
     <a class="btn btn-outline-neutral" href="{{ route('visitor.index') }}">Back to Visitor Management</a>
   </div>
@@ -56,7 +65,7 @@
     </div>
     <div>
       <div class="stat-label">Reviewed</div>
-      <div>{{ $visitor->verified_at ? $visitor->verified_at->format('M d, Y g:i A') : '—' }}</div>
+      <div>{{ $visitor->verified_at ? $visitor->verified_at->format('M d, Y H:i') : '—' }}</div>
     </div>
   </div>
   @if ($visitor->verification_status === 'rejected' && $visitor->rejection_reason)
@@ -432,7 +441,7 @@
               <option
                 value="{{ $rel->relationship_id }}"
                 data-pdl-id="{{ $rel->pdl_id }}"
-                data-classification="{{ $rel->pdl->classification }}"
+                data-classification="{{ \App\Models\FacilityVisitationRule::groupKeyForPdl($rel->pdl) }}"
                 {{ (string) old('relationship_id') === (string) $rel->relationship_id ? 'selected' : '' }}
               >
                 {{ $rel->pdl->full_name }} — {{ $rel->relationshipLabel() }}
@@ -563,28 +572,29 @@
 @endif
 
 {{-- ================= VISITOR HISTORY / FLAGS ================= --}}
-<div class="panel">
+<div class="panel" id="flags">
   <div class="panel-header"><h2>History &amp; Flags</h2></div>
 
   @if ($visitor->flags->isEmpty())
     <p class="empty-note">No flags on file — clean history.</p>
   @else
     <table>
-      <thead><tr><th>Type</th><th>Description</th><th>Status</th><th>Flagged By</th><th>Date</th><th></th></tr></thead>
+      <thead><tr><th>Type</th><th>Description</th><th>Status</th><th>How Long</th><th>Flagged By</th><th>Date</th><th></th></tr></thead>
       <tbody>
         @foreach ($visitor->flags as $flag)
         <tr>
           <td>{{ $flag->typeLabel() }}</td>
           <td class="muted-cell">{{ $flag->description }}</td>
           <td>
-            <span class="badge {{ $flag->isActive() ? 'transferred' : 'active' }}">
-              <span class="dot"></span>{{ strtoupper($flag->status) }}
+            <span class="badge {{ $flag->isActive() ? 'transferred' : 'released' }}">
+              <span class="dot"></span>{{ $flag->isActive() ? 'ACTIVE' : ($flag->hasExpired() ? 'EXPIRED' : 'RESOLVED') }}
             </span>
           </td>
+          <td class="muted-cell">{{ $flag->durationLabel() }}</td>
           <td class="muted-cell">{{ $flag->flaggedBy?->full_name ?? '—' }}</td>
           <td class="muted-cell">{{ $flag->created_at->format('M d, Y') }}</td>
           <td>
-            @if ($flag->isActive())
+            @if ($flag->status === 'active')
               <form method="POST" action="{{ route('visitor.flags.resolve', [$visitor->visitor_id, $flag->flag_id]) }}"
                     data-confirm="Mark this flag as resolved?" data-confirm-title="Resolve flag" data-confirm-ok="Resolve">
                 @csrf
@@ -619,6 +629,17 @@
       </div>
       <div class="row">
         <div class="field-m"><label>Description</label><textarea name="description" required minlength="10" maxlength="1000"></textarea></div>
+      </div>
+      <div class="row cols-2">
+        <div class="field-m">
+          <label for="flag_duration">How long?</label>
+          <select id="flag_duration" name="duration" required>
+            @foreach (\App\Models\VisitorFlag::DURATIONS as $value => $label)
+              <option value="{{ $value }}" @selected(old('duration', '30') === (string) $value)>{{ $label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">While the flag applies, this visitor's visit requests go to the Review Queue. It ends automatically after this time, or when resolved.</p>
+        </div>
       </div>
       <button class="btn btn-blue" type="submit">Add Flag</button>
     </form>

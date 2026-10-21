@@ -15,7 +15,7 @@ class CellBlock extends Model
 
     public const DESIGNATIONS = ['any', 'male', 'female'];
 
-    // Only PDLs physically in custody take up a bed.
+    // Only PDLs physically in custody count toward a dorm.
     public const OCCUPYING_STATUS = 'active';
 
     protected $fillable = [
@@ -29,6 +29,37 @@ class CellBlock extends Model
         'capacity' => 'integer',
         'is_active' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        // A renamed dorm changes which PDLs follow its visiting schedule.
+        static::saved(fn () => FacilityVisitationRule::flushGroupCache());
+    }
+
+    public function visitationRules()
+    {
+        return $this->hasMany(FacilityVisitationRule::class, 'cell_block_id', 'cell_block_id');
+    }
+
+    /**
+     * "Mon, Thu 08:00–11:30 · Sat 13:00–16:30", or null when the dorm has no
+     * visiting hours of its own (its PDLs then follow the classification days).
+     */
+    public function visitingSummary(): ?string
+    {
+        $today = now()->toDateString();
+        $order = array_keys(FacilityVisitationRule::DAY_LABELS);
+        $rules = $this->visitationRules->filter(fn (FacilityVisitationRule $r) => $r->isInEffectOn($today) || ($r->effective_from && $r->effective_from->toDateString() > $today));
+        if ($rules->isEmpty()) {
+            return null;
+        }
+
+        return $rules->groupBy(fn ($r) => $r->hoursLabel())
+            ->sortBy(fn ($group, $hours) => $hours)
+            ->map(fn ($group, $hours) => $group->sortBy(fn ($r) => array_search($r->day_of_week, $order, true))
+                ->map(fn ($r) => ucfirst($r->day_of_week))->unique()->join(', ') . ' ' . $hours)
+            ->join(' · ');
+    }
 
     public function pdls()
     {
@@ -53,9 +84,34 @@ class CellBlock extends Model
         return max(0, $this->capacity - $this->occupied());
     }
 
+    /**
+     * Capacity is the RECOMMENDED number of occupants, not a hard limit:
+     * dorms are overpopulated in practice, so PDLs can still be assigned
+     * beyond it. isFull()/isOver() only drive the yellow warning.
+     */
     public function isFull(): bool
     {
         return $this->available() === 0;
+    }
+
+    public function isOver(): bool
+    {
+        return $this->occupied() > $this->capacity;
+    }
+
+    public function overBy(): int
+    {
+        return max(0, $this->occupied() - $this->capacity);
+    }
+
+    /** "3 available" / "At capacity" / "Over by 4". */
+    public function occupancyLabel(): string
+    {
+        return match (true) {
+            $this->isOver() => 'Over by ' . $this->overBy(),
+            $this->isFull() => 'At capacity',
+            default => $this->available() . ' available',
+        };
     }
 
     public function acceptsGender(?string $gender): bool

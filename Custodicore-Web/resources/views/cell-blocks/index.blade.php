@@ -11,10 +11,11 @@
 
 <div class="stat-strip" style="margin-bottom:20px;">
   <div class="stat-card"><div class="stat-label">Active Blocks</div><div class="stat-value">{{ $stats['blocks'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Total Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Occupied Beds</div><div class="stat-value">{{ $stats['occupied'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Full Blocks</div><div class="stat-value">{{ $stats['full'] }}</div></div>
+  <div class="stat-card"><div class="stat-label">Recommended Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div></div>
+  <a class="stat-card stat-link" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-label">PDLs Housed</div><div class="stat-value">{{ $stats['occupied'] }}</div></a>
+  <a class="stat-card stat-link {{ $stats['over'] ? 'is-over-card' : '' }} {{ $overOnly ? 'is-selected' : '' }}" href="{{ $overOnly ? route('cell-blocks.index') : route('cell-blocks.index', ['over' => 1]) }}" style="text-decoration:none;color:inherit;" title="{{ $overOnly ? 'Show all dorms' : 'Show only dorms over capacity' }}"><div class="stat-label">Over Capacity</div><div class="stat-value">{{ $stats['over'] }}</div>@if ($overOnly)<div class="muted-cell">showing these only · click to show all</div>@endif</a>
 </div>
+<p class="muted-cell" style="margin:-8px 0 16px;">Capacity is the <strong>recommended</strong> number of occupants. PDLs can still be assigned beyond it; dorms over capacity are highlighted in yellow.</p>
 
 <div class="panel-table">
   @if ($cellBlocks->isEmpty())
@@ -22,16 +23,16 @@
   @else
   <table>
     <thead>
-      <tr><th>Cell/Block</th><th>Designated For</th><th>Occupancy</th><th>Status</th><th></th></tr>
+      <tr><th>Cell/Block</th><th>Designated For</th><th>Occupancy</th><th>Status</th><th>Visiting Hours</th><th></th></tr>
     </thead>
     <tbody>
       @foreach ($cellBlocks as $block)
         @php $pct = min(100, round($block->occupied() / max(1, $block->capacity) * 100)); @endphp
-        <tr>
+        <tr class="{{ $block->is_active && $block->isOver() ? 'row-over' : '' }}">
           <td><strong>{{ $block->name }}</strong></td>
           <td class="muted-cell">{{ $block->designationLabel() }}</td>
           <td>
-            <div class="occupancy-chip occupancy-inline {{ $block->isFull() ? 'is-full' : ($pct >= 80 ? 'is-near' : '') }}" style="background:none;border:none;padding:0;">
+            <div class="occupancy-chip occupancy-inline {{ $block->isOver() || $block->isFull() ? 'is-over' : ($pct >= 80 ? 'is-near' : '') }}" style="background:none;border:none;padding:0;">
               <div class="occupancy-bar"><span style="width:{{ $pct }}%"></span></div>
               <span class="occupancy-count">{{ $block->occupied() }}/{{ $block->capacity }}</span>
             </div>
@@ -39,13 +40,21 @@
           <td>
             @if (! $block->is_active)
               <span class="badge released"><span class="dot"></span>Inactive</span>
-            @elseif ($block->isFull())
-              <span class="badge rejected"><span class="dot"></span>Full</span>
+            @elseif ($block->isOver() || $block->isFull())
+              <span class="badge over"><span class="dot"></span>{{ $block->occupancyLabel() }}</span>
             @else
-              <span class="badge active"><span class="dot"></span>{{ $block->available() }} available</span>
+              <span class="badge active"><span class="dot"></span>Within capacity</span>
+            @endif
+          </td>
+          <td>
+            @if ($summary = $block->visitingSummary())
+              <span class="hours-summary">{{ $summary }}</span>
+            @else
+              <span class="muted-cell">Classification days</span>
             @endif
           </td>
           <td style="text-align:right;">
+            <a class="row-action" href="{{ route('cell-blocks.visiting-hours', $block->cell_block_id) }}" style="margin-right:14px;">Visiting Hours</a>
             <a class="row-action" href="{{ route('pdl.index', ['cell' => $block->name]) }}" style="margin-right:14px;">View PDLs</a>
             @php
               $editPayload = [
@@ -66,7 +75,7 @@
   @endif
 </div>
 
-<p class="muted-cell">Occupancy counts PDLs with custody status <strong>Active</strong>. Released, transferred and deceased PDLs free up their bed automatically.</p>
+<p class="muted-cell">Occupancy counts PDLs with custody status <strong>Active</strong>. Released, transferred and deceased PDLs are no longer counted.</p>
 
 {{-- Add / edit modal (one form, switched between POST and PUT) --}}
 <div class="modal-overlay" id="cellBlockModal" onclick="if (event.target === this) closeCellBlockModal()">
@@ -89,7 +98,7 @@
             <input id="cb_name" type="text" name="name" maxlength="50" required placeholder="e.g. Dorm 6">
           </div>
           <div class="field-m">
-            <label for="cb_capacity">Capacity (beds)</label>
+            <label for="cb_capacity">Recommended capacity</label>
             <input id="cb_capacity" type="number" name="capacity" min="1" max="1000" required>
           </div>
         </div>
@@ -133,7 +142,7 @@
     document.getElementById('cellBlockSubmit').textContent = editing ? 'Save Changes' : 'Add Cell Block';
     document.getElementById('cb_name').value = editing ? block.name : '';
     document.getElementById('cb_capacity').value = editing ? block.capacity : '';
-    document.getElementById('cb_capacity').min = editing ? Math.max(1, block.occupied) : 1;
+    document.getElementById('cb_capacity').min = 1;
     document.getElementById('cb_designation').value = editing ? block.designation : 'any';
     document.getElementById('cbActiveField').style.display = editing ? '' : 'none';
     document.getElementById('cb_is_active').checked = editing ? block.is_active : true;

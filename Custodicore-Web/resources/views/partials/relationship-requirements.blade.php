@@ -45,7 +45,7 @@
           @if ($item['kind'] === 'document' && $item['document'])
             <div class="req-meta">
               <a href="{{ route('relationship-documents.file', $item['document']->document_id) }}" target="_blank" rel="noopener">View uploaded file</a>
-              · uploaded {{ $item['document']->uploaded_at?->format('M j, Y g:i A') }}
+              · uploaded {{ $item['document']->uploaded_at?->format('M j, Y H:i') }}
               @if ($item['status'] === 'rejected' && $item['note'])
                 <div class="req-reject-note">Rejected: {{ $item['note'] }} (waiting for the visitor to upload a new one)</div>
               @endif

@@ -128,12 +128,12 @@ class VisitorLookupController extends Controller
     {
         $active = $visit->checkins->firstWhere('status', 'checked_in');
         if ($active) {
-            return ['label' => 'Inside since '.Carbon::parse($active->check_in_time)->format('h:i A'), 'status' => 'checked_in'];
+            return ['label' => 'Inside since '.Carbon::parse($active->check_in_time)->format('H:i'), 'status' => 'checked_in'];
         }
 
         $last = $visit->checkins->sortByDesc('check_out_time')->first();
         if ($last?->check_out_time) {
-            return ['label' => 'Left at '.Carbon::parse($last->check_out_time)->format('h:i A'), 'status' => 'checked_out'];
+            return ['label' => 'Left at '.Carbon::parse($last->check_out_time)->format('H:i'), 'status' => 'checked_out'];
         }
 
         return match ($visit->status) {
@@ -152,7 +152,7 @@ class VisitorLookupController extends Controller
             : collect([$visit->schedule])->filter();
 
         return $sessions
-            ->map(fn ($s) => Carbon::parse($s->time_slot_start)->format('h:i A').' – '.Carbon::parse($s->time_slot_end)->format('h:i A'))
+            ->map(fn ($s) => Carbon::parse($s->time_slot_start)->format('H:i').' – '.Carbon::parse($s->time_slot_end)->format('H:i'))
             ->implode(' · ') ?: '—';
     }
 }

@@ -3,7 +3,8 @@
 @section('title', 'Visitor Profile')
 
 @php
-    $activeFlags = $visitor->flags->where('status', 'active');
+    // Only flags still in force (not resolved, not past their time limit).
+    $activeFlags = $visitor->flags->filter->isActive();
     $genderLabel = $visitor->gender ? ucfirst($visitor->gender) : '—';
     $show = fn ($value) => filled($value) ? $value : '—';
 @endphp
@@ -27,7 +28,7 @@
                     <li class="text-body">
                         <span class="font-semibold">{{ ucwords(str_replace('_', ' ', $flag->flag_type)) }}:</span>
                         {{ $flag->description }}
-                        <span class="text-metadata text-text-secondary">· {{ $flag->created_at?->format('M d, Y') }}</span>
+                        <span class="text-metadata text-text-secondary">· {{ $flag->created_at?->format('M d, Y') }} · {{ $flag->durationLabel() }}</span>
                     </li>
                 @endforeach
             </ul>
@@ -44,7 +45,12 @@
     {{-- Header --}}
     <div class="cc-card">
         <div class="flex flex-col gap-md sm:flex-row sm:items-center">
-            @include('admin.partials.avatar', ['name' => $visitor->full_name, 'size' => 'h-16 w-16'])
+            {{-- The visitor's own photo (from the app) so the gate can match the face; initials otherwise. --}}
+            @if ($photoUrl = $visitor->photoUrl())
+                <img src="{{ $photoUrl }}" alt="Photo of {{ $visitor->full_name }}" class="h-16 w-16 shrink-0 rounded-full border border-border object-cover">
+            @else
+                @include('admin.partials.avatar', ['name' => $visitor->full_name, 'size' => 'h-16 w-16'])
+            @endif
 
             <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-sm">
@@ -276,13 +282,13 @@
                             <td class="py-sm pr-md font-semibold">{{ $in?->format('M d, Y') ?? '—' }}</td>
                             <td class="py-sm pr-md">{{ $entry->visitRequest?->pdl?->full_name ?? '—' }}</td>
                             <td class="py-sm pr-md">
-                                {{ $in?->format('h:i A') ?? '—' }}
+                                {{ $in?->format('H:i') ?? '—' }}
                                 @if ($entry->checkInOfficer)
                                     <span class="block text-metadata text-text-secondary">by {{ $entry->checkInOfficer->full_name }}</span>
                                 @endif
                             </td>
                             <td class="py-sm pr-md">
-                                {{ $out?->format('h:i A') ?? '—' }}
+                                {{ $out?->format('H:i') ?? '—' }}
                                 @if ($in && $out)
                                     <span class="block text-metadata text-text-secondary">{{ $in->diffForHumans($out, ['syntax' => \Carbon\CarbonInterface::DIFF_ABSOLUTE, 'parts' => 2]) }}</span>
                                 @endif

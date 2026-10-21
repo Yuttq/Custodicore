@@ -64,7 +64,7 @@
         @php $lastDay = $day; @endphp
       @endif
       <div class="log-row">
-        <div class="log-time">{{ $log->created_at?->format('g:i A') }}</div>
+        <div class="log-time">{{ $log->created_at?->format('H:i') }}</div>
         <div>
           <div class="log-desc"><span class="log-dot is-{{ $tone }}" aria-hidden="true"></span>{{ $log->description }}</div>
           <div class="log-sub">

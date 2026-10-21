@@ -14,14 +14,14 @@
         <div class="timeline-text">{{ $log->description }}</div>
         <div class="timeline-meta">
           {{ \App\Services\ActivityLog::actor($log) }}
-          · <time datetime="{{ $log->created_at?->toIso8601String() }}" title="{{ $log->created_at?->format('M j, Y g:i A') }}">{{ $log->created_at?->format('M j, Y g:i A') }}</time>
+          · <time datetime="{{ $log->created_at?->toIso8601String() }}" title="{{ $log->created_at?->format('M j, Y H:i') }}">{{ $log->created_at?->format('M j, Y H:i') }}</time>
         </div>
       </li>
     @endforeach
     @if ($registeredAt)
       <li class="timeline-item is-info">
         <div class="timeline-text">{{ $registeredLabel }}</div>
-        <div class="timeline-meta"><time>{{ $registeredAt->format(($registeredDateOnly ?? false) ? 'M j, Y' : 'M j, Y g:i A') }}</time></div>
+        <div class="timeline-meta"><time>{{ $registeredAt->format(($registeredDateOnly ?? false) ? 'M j, Y' : 'M j, Y H:i') }}</time></div>
       </li>
     @endif
   </ol>

@@ -295,6 +295,9 @@ class AuthController extends Controller
             'governmentId' => ['nullable', ...$documentFileRules],
             'governmentIdType' => ['nullable', 'required_with:governmentId', 'string', Rule::in(VisitorId::TYPES)],
             'governmentIdNumber' => ['nullable', 'string', 'max:50'],
+            // The visitor's own photo (optional here so older app versions keep
+            // working; it can also be sent later to POST /api/me/photo).
+            'photo' => ['nullable', ...VisitorProfile::PHOTO_RULES],
             // Overrides the shared (optional) gender rule: required here.
             'gender' => ['required', 'string', Rule::in(self::GENDERS)],
         ] + $this->profileRegistrationRules() + $this->relationshipDocumentRules($request), $this->registrationMessages() + [
@@ -302,6 +305,9 @@ class AuthController extends Controller
             'governmentId.max' => 'The file is too large. Maximum size is 10 MB.',
             'governmentIdType.in' => 'Choose one of the accepted government ID types.',
             'governmentIdType.required_with' => 'Select the type of government ID you uploaded.',
+            'photo.image' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.mimes' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.max' => 'The photo is too large. Maximum size is 5 MB.',
         ]);
 
         $email = $request->input('email');
@@ -316,6 +322,10 @@ class AuthController extends Controller
                     $request->input('governmentIdType'),
                     $request->input('governmentIdNumber'),
                 );
+            }
+
+            if ($request->hasFile('photo')) {
+                VisitorPhotoController::storeFor($account->visitorProfile, $request->file('photo'));
             }
 
             return $account;
@@ -694,6 +704,9 @@ class AuthController extends Controller
             'emergencyContactName' => $profile?->emergency_contact_name,
             'emergencyContactNumber' => $profile?->emergency_contact_number,
             'relationshipHint' => $profile?->relationship_hint,
+            // The visitor's own photo: load it from photoUrl with the same Bearer token.
+            'hasPhoto' => (bool) $profile?->photo_path,
+            'photoUrl' => $profile?->photo_path ? url('/api/me/photo') : null,
         ];
     }
 

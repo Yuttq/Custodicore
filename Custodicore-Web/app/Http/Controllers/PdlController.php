@@ -84,7 +84,7 @@ class PdlController extends Controller
             ->when($visits === 'never', fn ($q) => $q->where('custody_status', 'active')->whereNotExists($checkins()->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->when($visits === 'stale', fn ($q) => $q->where('custody_status', 'active')
                 ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
-            ->with('legalRecords')
+            ->with(['legalRecords', 'restrictions'])
             ->orderBy('admission_date', 'desc')
             ->paginate(10)
             ->withQueryString();
@@ -102,7 +102,10 @@ class PdlController extends Controller
                 ->count(),
         ];
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits'));
+        // Every weekly visiting rule, loaded once for the "Visiting" column.
+        $visitingRules = \App\Models\FacilityVisitationRule::orderBy('time_slot_start')->get();
+
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules'));
     }
 
     // -----------------------------------------------------------------
@@ -258,21 +261,13 @@ class PdlController extends Controller
         $eligibilityStatus = $this->computeEligibilityStatus($pdl);
         $cellBlocks = $this->assignableCellBlocks($pdl->cell_block);
 
-        // Visiting days for this PDL's classification, from the facility's
-        // current visitation rules (e.g. "Thu, Sat").
-        $dayOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-        $visitingDays = \App\Models\FacilityVisitationRule::where('pdl_classification', $pdl->classification)
-            ->whereDate('effective_from', '<=', today())
-            ->where(fn ($q) => $q->whereNull('effective_to')->orWhereDate('effective_to', '>=', today()))
-            ->pluck('day_of_week')
-            ->unique()
-            ->sortBy(fn ($d) => array_search($d, $dayOrder, true))
-            ->map(fn ($d) => ucfirst($d))
-            ->implode(', ');
+        // When this PDL can be visited: their dorm's schedule, or the
+        // classification days when the dorm has none (24-hour times).
+        $visiting = \App\Services\PdlVisitingAvailability::for($pdl);
 
         $custodyHistory = \App\Services\ActivityLog::forPdl($pdl);
 
-        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visitingDays', 'custodyHistory'));
+        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visiting', 'custodyHistory'));
     }
 
     private function computeEligibilityStatus(Pdl $pdl): array
@@ -659,10 +654,10 @@ class PdlController extends Controller
     }
 
     /**
-     * The chosen block must exist, be active, match the PDL's gender and
-     * have a free bed. On edit, a PDL staying in their current block is
-     * left alone, and the bed check only applies when they'd be taking a
-     * new bed (moving blocks, or going back to active custody).
+     * The chosen block must exist, be active and match the PDL's gender. On
+     * edit, a PDL staying in their current block is left alone. Capacity is
+     * only a recommendation (dorms are overpopulated in practice), so a block
+     * at or over capacity can still be chosen; the screens highlight it.
      */
     private function cellBlockRule(?string $gender, ?Pdl $pdl = null, ?string $newStatus = 'active'): \Closure
     {
@@ -682,11 +677,6 @@ class PdlController extends Controller
 
             if (!$staysInSameBlock && !$block->acceptsGender($gender)) {
                 $fail("{$block->name} is designated for {$block->designation} PDLs only.");
-                return;
-            }
-
-            if ($newStatus === CellBlock::OCCUPYING_STATUS && $block->isFull()) {
-                $fail("{$block->name} is full ({$block->occupied()}/{$block->capacity} occupied). Choose another cell block.");
             }
         };
     }

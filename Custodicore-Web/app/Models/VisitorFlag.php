@@ -24,12 +24,14 @@ class VisitorFlag extends Model
         'related_visit_request_id',
         'flagged_by',
         'status',
+        'expires_at',
         'resolved_by',
         'resolved_at',
     ];
 
     protected $casts = [
         'resolved_at' => 'datetime',
+        'expires_at' => 'datetime',
         // $timestamps is off, so Eloquent won't cast created_at by itself.
         'created_at' => 'datetime',
     ];
@@ -49,9 +51,53 @@ class VisitorFlag extends Model
         return $this->belongsTo(StaffProfile::class, 'resolved_by', 'staff_id');
     }
 
+    /** How long a new flag can apply, in days (null = until resolved). */
+    public const DURATIONS = [
+        '7' => '7 days',
+        '30' => '30 days',
+        '90' => '90 days',
+        '180' => '6 months',
+        '365' => '1 year',
+        'until_resolved' => 'Until resolved',
+    ];
+
+    /** Not resolved, and its time limit (if any) hasn't passed. */
     public function isActive(): bool
     {
-        return $this->status === 'active';
+        return $this->status === 'active' && ($this->expires_at === null || $this->expires_at->isFuture());
+    }
+
+    public function hasExpired(): bool
+    {
+        return $this->status === 'active' && $this->expires_at !== null && ! $this->expires_at->isFuture();
+    }
+
+    /** Active, unexpired flags (query). */
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active')
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()));
+    }
+
+    /**
+     * "Flagged until Nov 20, 2026 · 30 days left", "Flagged until resolved",
+     * "Expired Nov 20, 2026" or "Resolved Oct 21, 2026".
+     */
+    public function durationLabel(): string
+    {
+        if ($this->status === 'resolved') {
+            return 'Resolved ' . ($this->resolved_at?->format('M j, Y') ?? '');
+        }
+        if ($this->expires_at === null) {
+            return 'Flagged until resolved';
+        }
+        if (! $this->expires_at->isFuture()) {
+            return 'Expired ' . $this->expires_at->format('M j, Y');
+        }
+
+        $days = (int) ceil(now()->floatDiffInDays($this->expires_at));
+
+        return 'Flagged until ' . $this->expires_at->format('M j, Y') . ' · ' . $days . ' ' . ($days === 1 ? 'day' : 'days') . ' left';
     }
 
     public function typeLabel(): string

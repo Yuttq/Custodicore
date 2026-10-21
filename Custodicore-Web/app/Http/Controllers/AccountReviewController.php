@@ -11,8 +11,6 @@ use Illuminate\Http\Request;
  * actions; this page just gathers what needs doing in one place.
  *
  *   pending  — waiting for approval, oldest first
- *   recheck  — approved before IDs were required to be verified; an officer
- *              should look at their ID again
  *   rejected — accounts returned to the visitor for correction (shown as
  *              "Returned"; the stored status stays 'rejected' for the mobile app)
  */
@@ -20,13 +18,10 @@ class AccountReviewController extends Controller
 {
     public function index(Request $request)
     {
-        $tab = in_array($request->query('tab'), ['recheck', 'rejected'], true) ? $request->query('tab') : 'pending';
-
-        $noVerifiedId = fn ($q) => $q->whereDoesntHave('idDocuments', fn ($d) => $d->where('verification_status', 'verified'));
+        $tab = $request->query('tab') === 'rejected' ? 'rejected' : 'pending';
 
         $queries = [
             'pending' => VisitorProfile::where('verification_status', 'pending')->orderBy('created_at'),
-            'recheck' => VisitorProfile::where('verification_status', 'verified')->where($noVerifiedId)->orderBy('verified_at'),
             'rejected' => VisitorProfile::where('verification_status', 'rejected')->orderByDesc('verified_at'),
         ];
 
@@ -39,6 +34,7 @@ class AccountReviewController extends Controller
                 'idDocuments.verifiedBy',
                 'relationships.pdl',
                 'registrationDocuments',
+                'flags',
             ])
             ->paginate(10)
             ->withQueryString();

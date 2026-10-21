@@ -4,7 +4,6 @@
 @php
   $tabs = [
     'pending' => ['Waiting for approval', ''],
-    'recheck' => ['Approved without verified ID', 'is-warn'],
     'rejected' => ['Returned', ''],
   ];
   $idBadge = ['verified' => ['active', 'Verified'], 'pending' => ['transferred', 'Not checked yet'], 'rejected' => ['rejected', 'Rejected']];
@@ -25,19 +24,11 @@
   @endforeach
 </div>
 
-@if ($tab === 'recheck' && $visitors->isNotEmpty())
-  <div class="elig-note is-warn" style="margin:0 0 16px;">
-    These visitors were approved before a verified government ID was required. Please open their ID and verify or reject it.
-    If an ID is fake or doesn't match, reject it and contact the visitor.
-  </div>
-@endif
-
 @if ($visitors->isEmpty())
   <div class="panel elig-empty">
     <div class="elig-empty-icon">✓</div>
     <div class="empty-title">
-      @if ($tab === 'recheck') Every approved visitor has a verified ID.
-      @elseif ($tab === 'rejected') No accounts are waiting on the visitor.
+      @if ($tab === 'rejected') No accounts are waiting on the visitor.
       @else No accounts are waiting for approval.
       @endif
     </div>
@@ -53,7 +44,7 @@
     <article class="panel elig-card {{ $hasVerifiedId ? 'is-ready' : '' }}">
       <header class="elig-head">
         <div class="elig-person">
-          <div class="thumb elig-visitor-avatar" aria-hidden="true">{{ strtoupper(mb_substr($visitor->full_name, 0, 1)) }}</div>
+          @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'thumb elig-visitor-avatar'])
           <div>
             <a class="elig-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a>
             <div class="muted-cell">
@@ -68,6 +59,13 @@
           <div class="muted-cell elig-since">{{ $visitor->created_at?->diffForHumans() }}</div>
         </div>
       </header>
+
+      @if ($flag = $visitor->longestActiveFlag())
+        <div class="elig-note is-warn" style="margin:0 20px 14px;">
+          ⚑ {{ $flag->typeLabel() }}: {{ $flag->durationLabel() }}.
+          <a href="{{ route('visitor.show', $visitor->visitor_id) }}#flags" style="color:inherit;font-weight:700;">See flag</a>
+        </div>
+      @endif
 
       {{-- What the visitor told us --}}
       <dl class="acct-facts">
@@ -90,6 +88,24 @@
           <div><dt>Note</dt><dd style="color:var(--amber-text);">Minor visitor</dd></div>
         @endif
       </dl>
+
+      {{-- The visitor's own photo, to compare with the ID picture --}}
+      <div class="acct-ids acct-photo">
+        <div class="elig-reqs-title" style="margin-bottom:8px;">Visitor Photo</div>
+        @if ($visitor->photo_path)
+          <div class="acct-photo-row">
+            <a href="{{ $visitor->photoUrl() }}" target="_blank" rel="noopener">
+              @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'acct-photo-img'])
+            </a>
+            <p class="muted-cell" style="margin:0;">
+              Taken in the app {{ $visitor->photo_uploaded_at?->format('M j, Y H:i') }}.<br>
+              Open the ID below and check that it shows the same person.
+            </p>
+          </div>
+        @else
+          <p class="muted-cell" style="margin:0;">No photo yet. The visitor takes it in the CustodiCore app when creating their account.</p>
+        @endif
+      </div>
 
       {{-- Government IDs --}}
       <div class="acct-ids">
@@ -155,7 +171,6 @@
       </details>
 
       {{-- Decision --}}
-      @if ($tab !== 'recheck')
         <footer class="elig-actions">
           <div class="elig-status">
             @if ($hasVerifiedId)
@@ -190,7 +205,6 @@
             </form>
           </div>
         </footer>
-      @endif
     </article>
   @endforeach
 

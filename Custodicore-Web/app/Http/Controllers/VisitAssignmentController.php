@@ -64,7 +64,8 @@ class VisitAssignmentController extends Controller
             ->where('status', 'open')
             ->whereDate('schedule_date', '>=', now()->toDateString())
             ->whereHas('rule', function ($q) use ($classification) {
-                $q->where('pdl_classification', $classification)
+                // $classification is a rule group: a classification or "dorm:{id}".
+                $q->forGroup($classification)
                     ->where(function ($q) {
                         $q->whereNull('effective_to')
                             ->orWhereDate('effective_to', '>=', now()->toDateString());

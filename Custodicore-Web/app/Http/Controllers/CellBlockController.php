@@ -21,18 +21,25 @@ class CellBlockController extends Controller
         'name.unique' => 'A cell block with this name already exists.',
     ];
 
-    public function index()
+    public function index(Request $request)
     {
-        $cellBlocks = CellBlock::withOccupancy()->orderBy('name')->get();
+        $cellBlocks = CellBlock::withOccupancy()->with('visitationRules')->orderBy('name')->get();
 
         $stats = [
             'blocks' => $cellBlocks->where('is_active', true)->count(),
             'capacity' => $cellBlocks->where('is_active', true)->sum('capacity'),
             'occupied' => $cellBlocks->sum('occupied_count'),
-            'full' => $cellBlocks->where('is_active', true)->filter->isFull()->count(),
+            // Over the recommended capacity (still allowed; shown in yellow).
+            'over' => $cellBlocks->where('is_active', true)->filter->isOver()->count(),
         ];
 
-        return view('cell-blocks.index', compact('cellBlocks', 'stats'));
+        // From the "Over Capacity" card: list only the overcrowded dorms.
+        $overOnly = $request->boolean('over');
+        if ($overOnly) {
+            $cellBlocks = $cellBlocks->filter(fn ($b) => $b->is_active && $b->isOver())->values();
+        }
+
+        return view('cell-blocks.index', compact('cellBlocks', 'stats', 'overOnly'));
     }
 
     public function store(Request $request)
@@ -61,13 +68,8 @@ class CellBlockController extends Controller
         $validated['name'] = trim($validated['name']);
         $validated['is_active'] = $request->boolean('is_active');
 
-        $occupied = $cellBlock->occupied();
-        if ($validated['capacity'] < $occupied) {
-            return redirect()->back()->withInput()->with(
-                'error',
-                "{$cellBlock->name} currently holds {$occupied} active PDLs, so its capacity can't be lower than {$occupied}."
-            );
-        }
+        // Capacity is a recommendation, so it may be set below the current
+        // headcount (the block then shows as over capacity).
 
         $oldName = $cellBlock->name;
 

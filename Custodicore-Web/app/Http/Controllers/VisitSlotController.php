@@ -47,7 +47,8 @@ class VisitSlotController extends Controller
         $today = $this->availability->now()->toDateString();
         $from = $this->dateFilter($request->query('from')) ?? $today;
         $to = $this->dateFilter($request->query('to'));
-        $classification = in_array($request->query('classification'), ['drug_related', 'non_drug_related'], true)
+        $groups = self::groups();
+        $classification = array_key_exists((string) $request->query('classification'), $groups)
             ? $request->query('classification') : '';
         $status = in_array($request->query('status'), ['open', 'full', 'closed'], true)
             ? $request->query('status') : '';
@@ -56,7 +57,7 @@ class VisitSlotController extends Controller
             ->with('rule')
             ->whereDate('schedule_date', '>=', $from)
             ->when($to, fn ($q) => $q->whereDate('schedule_date', '<=', $to))
-            ->when($classification, fn ($q) => $q->whereHas('rule', fn ($r) => $r->where('pdl_classification', $classification)))
+            ->when($classification, fn ($q) => $q->whereHas('rule', fn ($r) => $r->forGroup($classification)))
             ->when($status, fn ($q) => $q->where('status', $status))
             ->orderBy('schedule_date')
             ->orderBy('time_slot_start')
@@ -75,7 +76,8 @@ class VisitSlotController extends Controller
         $rules = FacilityVisitationRule::query()
             ->get()
             ->sortBy(fn (FacilityVisitationRule $r) => [
-                $r->pdl_classification,
+                $r->cell_block_id ? 1 : 0,
+                $groups[$r->groupKey()] ?? $r->groupKey(),
                 array_search($r->day_of_week, self::DAY_ORDER, true),
                 (string) $r->time_slot_start,
             ])
@@ -83,7 +85,26 @@ class VisitSlotController extends Controller
 
         $filters = compact('from', 'to', 'classification', 'status');
 
-        return view('visitor-slots.index', compact('schedules', 'summaries', 'editable', 'stats', 'rules', 'filters', 'today'));
+        return view('visitor-slots.index', compact('schedules', 'summaries', 'editable', 'stats', 'rules', 'filters', 'today', 'groups'));
+    }
+
+    /**
+     * Rule groups a session can belong to: the two PDL classifications, plus
+     * every dorm that has its own visiting schedule ("dorm:{id}" => name).
+     *
+     * @return array<string, string>
+     */
+    public static function groups(): array
+    {
+        $dorms = FacilityVisitationRule::query()
+            ->whereNotNull('facility_visitation_rules.cell_block_id')
+            ->join('cell_blocks', 'cell_blocks.cell_block_id', '=', 'facility_visitation_rules.cell_block_id')
+            ->orderBy('cell_blocks.name')
+            ->pluck('cell_blocks.name', 'facility_visitation_rules.cell_block_id')
+            ->mapWithKeys(fn ($name, $id) => ['dorm:' . $id => $name])
+            ->all();
+
+        return ['drug_related' => 'Drug-related', 'non_drug_related' => 'Non-drug-related'] + $dorms;
     }
 
     public function show(VisitSchedule $visitSchedule): View
@@ -117,7 +138,8 @@ class VisitSlotController extends Controller
     {
         $validated = $request->validate([
             'schedule_date' => ['required', 'date_format:Y-m-d'],
-            'pdl_classification' => ['required', Rule::in(['drug_related', 'non_drug_related'])],
+            // A classification, or "dorm:{id}" for a dorm with its own visiting schedule.
+            'pdl_classification' => ['required', Rule::in(array_keys(self::groups()))],
             'session' => ['required', Rule::in(VisitSlotService::SESSIONS)],
             'max_capacity' => $this->capacityRules(),
             'is_open' => ['nullable', 'boolean'],

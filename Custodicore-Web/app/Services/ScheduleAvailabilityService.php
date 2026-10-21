@@ -198,7 +198,8 @@ class ScheduleAvailabilityService
         $pdl = $relationship->pdl;
         $classification = $pdl->classification;
         $pdlAvailable = $pdl->custody_status === 'active' && $pdl->activeRestrictions->isEmpty();
-        $classificationRules = $rules->where('pdl_classification', $classification);
+        // The PDL's dorm schedule if their dorm has one, else their classification's days.
+        $classificationRules = FacilityVisitationRule::rulesForPdl($pdl, $rules);
 
         $days = [];
         for ($date = $from; $date->lte($to); $date = $date->addDay()) {

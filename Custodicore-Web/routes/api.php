@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\NotificationApiController;
 use App\Http\Controllers\Api\RegistrationRequirementsController;
 use App\Http\Controllers\Api\ScheduleAvailabilityController;
 use App\Http\Controllers\Api\VisitorApiController;
+use App\Http\Controllers\Api\VisitorPhotoController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\LegalController;
@@ -65,6 +66,9 @@ Route::get('/registration/requirements', [RegistrationRequirementsController::cl
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me',[AuthController::class, 'me']);
     Route::patch('/me', [AuthController::class, 'updateMe']);
+    // The visitor's own photo (taken in the app after creating the account).
+    Route::post('/me/photo', [VisitorPhotoController::class, 'store'])->middleware('throttle:10,1');
+    Route::get('/me/photo', [VisitorPhotoController::class, 'show']);
 
     Route::get('/documents', [VisitorApiController::class, 'documents']);
     Route::post('/documents', [VisitorApiController::class, 'storeDocument']);

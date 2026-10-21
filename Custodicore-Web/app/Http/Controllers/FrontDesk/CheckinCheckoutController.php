@@ -130,8 +130,8 @@ class CheckinCheckoutController extends Controller
                 'pdlName' => $visit->pdl?->full_name ?? '—',
                 'pdlNumber' => $visit->pdl?->pdl_number ?? '—',
                 'scheduleDate' => $session ? Carbon::parse($session->schedule_date)->format('M d, Y') : null,
-                'scheduleStart' => $session ? Carbon::parse($session->time_slot_start)->format('h:i A') : null,
-                'scheduleEnd' => $session ? Carbon::parse($session->time_slot_end)->format('h:i A') : null,
+                'scheduleStart' => $session ? Carbon::parse($session->time_slot_start)->format('H:i') : null,
+                'scheduleEnd' => $session ? Carbon::parse($session->time_slot_end)->format('H:i') : null,
             ];
         })->values();
 
@@ -157,12 +157,12 @@ class CheckinCheckoutController extends Controller
                     'visitStatus' => $details['visit_status'],
                     'scheduleDate' => $session ? Carbon::parse($session->schedule_date)->format('M d, Y') : '—',
                     'scheduleTime' => $session
-                        ? Carbon::parse($session->time_slot_start)->format('h:i A').' – '
-                            .Carbon::parse($session->time_slot_end)->format('h:i A')
+                        ? Carbon::parse($session->time_slot_start)->format('H:i').' – '
+                            .Carbon::parse($session->time_slot_end)->format('H:i')
                             .' ('.ucfirst($this->gate->sessionName($session)).')'
                         : '—',
                     'checkinTime' => $checkin->check_in_time
-                        ? Carbon::parse($checkin->check_in_time)->format('M d, Y h:i A')
+                        ? Carbon::parse($checkin->check_in_time)->format('M d, Y H:i')
                         : '—',
                     'status' => 'Inside Facility',
                     'registeredIdType' => $registered['type_label'] ?? '—',
@@ -219,8 +219,8 @@ class CheckinCheckoutController extends Controller
     private function sessionPayload(VisitRequest $visitRequest, VisitSchedule $session): array
     {
         $date = Carbon::parse($session->schedule_date);
-        $start = Carbon::parse($session->time_slot_start)->format('h:i A');
-        $end = Carbon::parse($session->time_slot_end)->format('h:i A');
+        $start = Carbon::parse($session->time_slot_start)->format('H:i');
+        $end = Carbon::parse($session->time_slot_end)->format('H:i');
         $isReentry = $visitRequest->checkins()->exists();
         $name = ucfirst($this->gate->sessionName($session));
 
@@ -425,7 +425,7 @@ class CheckinCheckoutController extends Controller
                         'pdl_name' => $visitRequest->pdl?->full_name ?? '—',
                         'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
                         'check_in_time' => $checkin->check_in_time
-                            ? Carbon::parse($checkin->check_in_time)->format('M d, Y h:i A')
+                            ? Carbon::parse($checkin->check_in_time)->format('M d, Y H:i')
                             : null,
                         'id_surrendered_type' => $checkin->id_surrendered_type,
                         'status' => 'checked_in',
@@ -944,7 +944,7 @@ class CheckinCheckoutController extends Controller
 
                     'time' =>
                         $checkin->check_in_time?->format(
-                            'h:i A'
+                            'H:i'
                         ),
 
                     'method' =>

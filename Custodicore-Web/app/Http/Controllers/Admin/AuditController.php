@@ -26,6 +26,15 @@ class AuditController extends Controller
         // "check in" typed with a space should still find the check_in action.
         $likeAction = $search !== null ? Sanitizer::like(str_replace(' ', '_', $search)) : null;
 
+        // Date range (inclusive). Invalid dates are ignored; a reversed
+        // range is swapped rather than returning nothing.
+        $from = $this->dateParam($request->query('from'));
+        $to = $this->dateParam($request->query('to'));
+        if ($from && $to && $from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $filtered = $search !== null || $from || $to;
+
         $auditLogs = AuditLog::query()
             ->with(['account.staffProfile', 'module'])
             ->when($like, function ($query) use ($like, $likeAction) {
@@ -37,6 +46,8 @@ class AuditController extends Controller
                         ->orWhereHas('module', fn ($m) => $m->where('module_name', 'like', $like));
                 });
             })
+            ->when($from, fn ($query) => $query->whereDate('created_at', '>=', $from))
+            ->when($to, fn ($query) => $query->whereDate('created_at', '<=', $to))
             ->orderByDesc('created_at')
             ->orderByDesc('audit_log_id')
             ->take(500)
@@ -59,6 +70,17 @@ class AuditController extends Controller
 
         $auditLogs = Pages::of($auditLogs);
 
-        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs'));
+        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs', 'from', 'to', 'filtered'));
+    }
+
+    /** "YYYY-MM-DD" if it's a real calendar date, otherwise null. */
+    private function dateParam(mixed $value): ?string
+    {
+        if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+        [$y, $m, $d] = array_map('intval', explode('-', $value));
+
+        return checkdate($m, $d, $y) ? $value : null;
     }
 }

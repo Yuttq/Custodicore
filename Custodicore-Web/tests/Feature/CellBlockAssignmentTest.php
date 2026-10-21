@@ -61,20 +61,22 @@ class CellBlockAssignmentTest extends TestCase
         }
     }
 
-    public function test_register_form_lists_blocks_with_occupancy_and_disables_full_ones(): void
+    public function test_register_form_is_a_dropdown_that_flags_dorms_over_capacity(): void
     {
         $open = CellBlock::create(['name' => 'Dorm 1', 'capacity' => 3, 'designation' => 'any']);
-        $full = CellBlock::create(['name' => 'Dorm 2', 'capacity' => 1, 'designation' => 'any']);
+        $over = CellBlock::create(['name' => 'Dorm 2', 'capacity' => 1, 'designation' => 'any']);
         CellBlock::create(['name' => 'Old Wing', 'capacity' => 5, 'designation' => 'any', 'is_active' => false]);
         $this->occupy($open, 1);
-        $this->occupy($full, 1);
+        $this->occupy($over, 3);
 
         $this->get('/pdls/create')
             ->assertOk()
-            ->assertSee('2 available')
-            ->assertSee('type="radio" name="cell_block" value="Dorm 1"', false)
-            ->assertSee('Full')
-            ->assertDontSee('<select id="cell_block"', false)
+            ->assertSee('<select id="cell_block" name="cell_block"', false)
+            ->assertSee('Dorm 1 — 1 PDL')
+            ->assertSee('Dorm 2 — 3 PDLs')
+            ->assertSee('⚠ over recommended')
+            ->assertSee('data-exceeds="1"', false)   // picking Dorm 2 shows the yellow warning
+            ->assertDontSee('available')            // no availability counts any more
             ->assertDontSee('Old Wing');
     }
 
@@ -87,13 +89,15 @@ class CellBlockAssignmentTest extends TestCase
         $this->assertDatabaseHas('pdl_profiles', ['full_name' => 'Juan Dela Cruz', 'cell_block' => 'Dorm 1']);
     }
 
-    public function test_full_block_is_rejected(): void
+    public function test_full_block_still_accepts_pdls_because_capacity_is_a_recommendation(): void
     {
         $block = CellBlock::create(['name' => 'Dorm 1', 'capacity' => 1, 'designation' => 'any']);
         $this->occupy($block, 1);
 
-        $this->post('/pdls', $this->newPdl(['cell_block' => 'Dorm 1']))->assertSessionHasErrors('cell_block');
-        $this->assertDatabaseMissing('pdl_profiles', ['full_name' => 'Juan Dela Cruz']);
+        $this->post('/pdls', $this->newPdl(['cell_block' => 'Dorm 1']))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('pdl_profiles', ['full_name' => 'Juan Dela Cruz', 'cell_block' => 'Dorm 1']);
+        $this->assertTrue($block->fresh()->isOver());
+        $this->assertSame('Over by 1', $block->fresh()->occupancyLabel());
     }
 
     public function test_released_pdls_do_not_take_up_a_bed(): void
@@ -170,7 +174,7 @@ class CellBlockAssignmentTest extends TestCase
         $this->assertSame(1, $block->fresh()->occupied());
     }
 
-    public function test_moving_a_pdl_into_a_full_block_is_rejected(): void
+    public function test_moving_a_pdl_into_a_full_block_is_allowed(): void
     {
         $full = CellBlock::create(['name' => 'Dorm 2', 'capacity' => 1, 'designation' => 'any']);
         $this->occupy($full, 1);
@@ -185,9 +189,9 @@ class CellBlockAssignmentTest extends TestCase
             'admission_date' => '2024-01-01',
             'custody_status' => 'active',
             'current_password' => 'password',
-        ])->assertSessionHasErrors('cell_block');
+        ])->assertSessionHasNoErrors();
 
-        $this->assertNull($this->pdl->fresh()->cell_block);
+        $this->assertSame('Dorm 2', $this->pdl->fresh()->cell_block);
     }
 
     public function test_record_officer_manages_cell_blocks(): void
@@ -200,11 +204,12 @@ class CellBlockAssignmentTest extends TestCase
 
         $this->occupy($block, 3);
 
-        // Capacity can't drop below current occupants.
+        // Capacity may be set below the headcount; the dorm then shows as over capacity.
         $this->put("/cell-blocks/{$block->cell_block_id}", [
             'name' => 'Dorm 6', 'capacity' => 2, 'designation' => 'male', 'is_active' => 1,
-        ])->assertSessionHas('error');
-        $this->assertSame(10, $block->fresh()->capacity);
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(2, $block->fresh()->capacity);
+        $this->get('/cell-blocks')->assertSee('Over by 1')->assertSee('row-over', false);
 
         // Renaming carries over to the PDLs already in the block.
         $this->put("/cell-blocks/{$block->cell_block_id}", [

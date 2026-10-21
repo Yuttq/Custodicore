@@ -29,12 +29,34 @@ class VisitorProfile extends Model
         'verified_by',
         'verified_at',
         'rejection_reason',
+        'photo_path',
+        'photo_uploaded_at',
     ];
 
     protected $casts = [
         'date_of_birth' => 'date',
         'verified_at' => 'datetime',
+        'photo_uploaded_at' => 'datetime',
     ];
+
+    /** Visitor photo rules (mobile upload): a real JPG/PNG/WEBP picture, up to 5 MB. */
+    public const PHOTO_RULES = ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
+
+    /** Staff-only link to the visitor's photo, or null when none was taken yet. */
+    public function photoUrl(): ?string
+    {
+        if (! $this->photo_path) {
+            return null;
+        }
+
+        // ?v= changes with the file so a retaken photo isn't served from cache.
+        return route('visitor.photo', $this->visitor_id) . '?v=' . substr(md5($this->photo_path), 0, 8);
+    }
+
+    public function initial(): string
+    {
+        return strtoupper(mb_substr(trim((string) $this->full_name), 0, 1)) ?: '?';
+    }
 
     public function account()
     {
@@ -68,9 +90,21 @@ class VisitorProfile extends Model
         return $this->hasMany(VisitorFlag::class, 'visitor_id', 'visitor_id');
     }
 
+    /**
+     * The active flag that lasts longest ("until resolved" beats any date),
+     * or null when the visitor has no active flag. Uses the loaded flags when present.
+     */
+    public function longestActiveFlag(): ?VisitorFlag
+    {
+        $flags = $this->relationLoaded('flags') ? $this->flags->filter->isActive() : $this->activeFlags()->get();
+
+        return $flags->sortByDesc(fn (VisitorFlag $f) => $f->expires_at?->timestamp ?? PHP_INT_MAX)->first();
+    }
+
     public function activeFlags()
     {
-        return $this->flags()->where('status', 'active');
+        // Not resolved and not past its time limit (VisitorFlag::scopeActive).
+        return $this->flags()->active();
     }
 
     public function visitRequests()

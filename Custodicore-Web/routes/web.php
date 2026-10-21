@@ -127,6 +127,12 @@ Route::prefix('account')
         Route::get('/photo/{staff}', [MyProfileController::class, 'photo'])->name('photo.show');
     });
 
+// A visitor's own photo (taken in the mobile app): any staff role can view it
+// — Records Officers during Account Review, Front Desk at the gate.
+Route::get('/visitors/{visitor}/photo', [\App\Http\Controllers\VisitorController::class, 'photo'])
+    ->middleware(['auth', 'role:System Administrator/Warden,Record Officer,Front Desk Officer'])
+    ->name('visitor.photo');
+
 /*
 |--------------------------------------------------------------------------
 | Home
@@ -393,6 +399,14 @@ Route::middleware([
         '/cell-blocks/{cellBlock}',
         [\App\Http\Controllers\CellBlockController::class, 'update']
     )->name('cell-blocks.update');
+
+    // A dorm's own visiting schedule (replaces the classification days for its PDLs).
+    Route::get('/cell-blocks/{cellBlock}/visiting-hours', [\App\Http\Controllers\DormVisitingHoursController::class, 'index'])
+        ->name('cell-blocks.visiting-hours');
+    Route::post('/cell-blocks/{cellBlock}/visiting-hours', [\App\Http\Controllers\DormVisitingHoursController::class, 'store'])
+        ->name('cell-blocks.visiting-hours.store');
+    Route::delete('/cell-blocks/{cellBlock}/visiting-hours/{rule}', [\App\Http\Controllers\DormVisitingHoursController::class, 'destroy'])
+        ->name('cell-blocks.visiting-hours.destroy');
 
 
     /*

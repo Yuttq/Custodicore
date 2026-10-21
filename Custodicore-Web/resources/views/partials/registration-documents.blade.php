@@ -18,7 +18,7 @@
             <div class="req-title">{{ $doc->label() }}</div>
             <div class="req-meta">
               <a href="{{ route('relationship-documents.file', $doc->document_id) }}" target="_blank" rel="noopener">View uploaded file</a>
-              · uploaded {{ $doc->uploaded_at?->format('M j, Y g:i A') }}
+              · uploaded {{ $doc->uploaded_at?->format('M j, Y H:i') }}
             </div>
           </div>
         </li>

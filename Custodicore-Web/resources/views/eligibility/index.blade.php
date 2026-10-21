@@ -87,7 +87,7 @@
       <header class="elig-head">
         <div class="elig-people">
           <div class="elig-person">
-            <div class="thumb elig-visitor-avatar" aria-hidden="true">{{ $visitor ? strtoupper(mb_substr($visitor->full_name, 0, 1)) : '?' }}</div>
+            @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'thumb elig-visitor-avatar'])
             <div>
               <div class="elig-role">Visitor</div>
               @if ($visitor)
@@ -124,7 +124,7 @@
             <div class="elig-role">Visit</div>
             <div class="elig-date">{{ $visit->schedule->schedule_date->format('D, M j, Y') }}</div>
             <div class="muted-cell">
-              {{ \Carbon\Carbon::parse($visit->schedule->time_slot_start)->format('g:i A') }}–{{ \Carbon\Carbon::parse($visit->schedule->time_slot_end)->format('g:i A') }}
+              {{ \Carbon\Carbon::parse($visit->schedule->time_slot_start)->format('H:i') }}–{{ \Carbon\Carbon::parse($visit->schedule->time_slot_end)->format('H:i') }}
             </div>
           @endif
           <div class="elig-source">{{ $byVisitor ? 'Requested by the visitor in the app' : 'Assigned by staff' }}</div>
@@ -150,6 +150,9 @@
             <div>
               <div class="elig-check-label">{{ $checkInfo[$key]['label'] }}</div>
               <div class="elig-check-text">{{ $text }}</div>
+              @if ($key === 'history' && $visitor && ($flag = $visitor->longestActiveFlag()))
+                <div class="elig-check-sub">{{ $flag->durationLabel() }}</div>
+              @endif
             </div>
           </div>
         @endforeach

@@ -68,7 +68,7 @@ class VisitGateService
 
         $opensAt = $this->opensAt($next);
         if ($opensAt && $now->lt($opensAt)) {
-            return [null, "This visit is for the {$this->sessionName($next)} ({$this->rangeLabel($next)}). Entry opens at {$opensAt->format('h:i A')}."];
+            return [null, "This visit is for the {$this->sessionName($next)} ({$this->rangeLabel($next)}). Entry opens at {$opensAt->format('H:i')}."];
         }
 
         return [$next, null];
@@ -106,8 +106,8 @@ class VisitGateService
     /** "01:00 PM - 04:30 PM" */
     public function rangeLabel(VisitSchedule $session): string
     {
-        return Carbon::parse((string) $session->time_slot_start)->format('h:i A')
-            .' - '.Carbon::parse((string) $session->time_slot_end)->format('h:i A');
+        return Carbon::parse((string) $session->time_slot_start)->format('H:i')
+            .' - '.Carbon::parse((string) $session->time_slot_end)->format('H:i');
     }
 
     private function endsAt(VisitSchedule $session): Carbon
@@ -126,7 +126,7 @@ class VisitGateService
             return null;
         }
 
-        $hasEarlierSession = FacilityVisitationRule::where('pdl_classification', $rule->pdl_classification)
+        $hasEarlierSession = FacilityVisitationRule::forGroup($rule->groupKey())
             ->where('day_of_week', $rule->day_of_week)
             ->where('time_slot_end', '<=', $session->time_slot_start)
             ->exists();

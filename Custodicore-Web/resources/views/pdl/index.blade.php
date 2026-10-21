@@ -80,7 +80,7 @@
     <thead>
       <tr>
         <th>PDL Number</th><th>Full Name</th><th>Gender</th><th>Offense / Classification</th>
-        <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th><th>Last Visit</th>
+        <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th><th>Last Visit</th><th>Visiting</th>
       </tr>
     </thead>
     <tbody>
@@ -116,7 +116,7 @@
           @if ($pdl->last_visit_at)
             @php $lastVisit = \Carbon\Carbon::parse($pdl->last_visit_at); @endphp
             <a class="muted-cell {{ $pdl->custody_status === 'active' && $lastVisit->lt(now()->subDays(30)) ? 'visit-stale' : '' }}"
-               href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}" title="{{ $lastVisit->format('M j, Y g:i A') }}">
+               href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}" title="{{ $lastVisit->format('M j, Y H:i') }}">
               {{ $lastVisit->format('M d, Y') }}<br><span style="font-size:11px;">{{ $lastVisit->diffForHumans() }}</span>
             </a>
           @elseif ($pdl->custody_status === 'active')
@@ -124,6 +124,10 @@
           @else
             <span class="muted-cell">—</span>
           @endif
+        </td>
+        <td>
+          @php $avail = \App\Services\PdlVisitingAvailability::for($pdl, $visitingRules); @endphp
+          <span class="badge {{ \App\Services\PdlVisitingAvailability::badgeClass($avail['state']) }}" title="{{ $avail['weekly'] ?: 'No schedule set' }} ({{ $avail['source'] }})"><span class="dot"></span>{{ $avail['label'] }}</span>
         </td>
       </tr>
       @endforeach
@@ -146,9 +150,9 @@
 </div>
 
 <div class="stat-strip">
-  <div class="stat-card accent-blue"><div class="stat-icon">👥</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></div>
-  <div class="stat-card accent-navy"><div class="stat-icon">⇄</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></div>
-  <div class="stat-card accent-amber"><div class="stat-icon">⚠</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></div>
-  <div class="stat-card accent-gray"><div class="stat-icon">📋</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></div>
+  <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">👥</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">⇄</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">⚠</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
+  <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">📋</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></a>
 </div>
 @endsection

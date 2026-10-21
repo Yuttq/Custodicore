@@ -35,6 +35,8 @@
       <div class="pdl-hero-badges">
         <span class="badge {{ $pdl->custody_status }}"><span class="dot"></span>{{ $statusLabels[$pdl->custody_status] ?? ucfirst($pdl->custody_status) }}</span>
         <span class="badge {{ $eligibilityStatus['class'] }}"><span class="dot"></span>{{ $eligibilityStatus['label'] }}</span>
+        {{-- Visiting availability from the dorm schedule (or classification days). --}}
+        <span class="badge {{ \App\Services\PdlVisitingAvailability::badgeClass($visiting['state']) }}" title="{{ $visiting['source'] }}"><span class="dot"></span>{{ $visiting['label'] }}</span>
         @if ($activeRestrictions->isNotEmpty())
           <a href="#restrictions" class="badge restricted" style="text-decoration:none;">
             <span class="dot"></span>{{ $activeRestrictions->count() }} active {{ \Illuminate\Support\Str::plural('restriction', $activeRestrictions->count()) }}
@@ -52,7 +54,10 @@
     <div><dt>Cell/Block</dt><dd>{{ $pdl->cell_block ?? 'Not assigned' }}</dd></div>
     <div><dt>Offense</dt><dd>{{ $pdl->primaryOffense() ?? 'No case on file' }}@if ($pdl->legalRecords->count() > 1) <span class="muted-cell">+{{ $pdl->legalRecords->count() - 1 }} more</span>@endif</dd></div>
     <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }}</dd></div>
-    <div><dt>Visiting Days</dt><dd>{{ $visitingDays ?: 'No schedule set' }}</dd></div>
+    <div>
+      <dt>Visiting Hours</dt>
+      <dd>{{ $visiting['weekly'] ?: 'No schedule set' }}<div class="muted-cell" style="font-weight:500;font-size:11.5px;">{{ $visiting['source'] }}</div></dd>
+    </div>
     <div>
       <dt>Age</dt>
       <dd>{{ $pdl->date_of_birth ? $pdl->date_of_birth->age . ' years old' : '—' }}</dd>

@@ -27,8 +27,8 @@ class CheckinController extends Controller
             ->map(fn ($c) => [
                 'reference' => 'VIS-' . ($c->visitRequest?->created_at?->format('Y-md') ?? now()->format('Y-md')) . '-' . str_pad((string) $c->visit_request_id, 3, '0', STR_PAD_LEFT),
                 'visitor' => $c->visitRequest?->visitor?->full_name ?? 'Unknown',
-                'check_in_time' => $c->check_in_time?->format('h:i A'),
-                'check_out_time' => $c->check_out_time?->format('h:i A'),
+                'check_in_time' => $c->check_in_time?->format('H:i'),
+                'check_out_time' => $c->check_out_time?->format('H:i'),
                 'status' => $c->status,
             ])
             ->all();

@@ -7,27 +7,37 @@
 </div>
 
 <section class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
-  <div class="stat-card accent-blue">
+  <a class="stat-card stat-link accent-blue" href="{{ route('visitor.index') }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Total Visitors</div>
     <div class="stat-value">{{ $stats['total_visitors'] }}</div>
-  </div>
-  <div class="stat-card accent-amber">
+  </a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('account-reviews.index') }}" style="text-decoration:none;color:inherit;" title="Open the Review Queue">
     <div class="stat-label">Pending Verification</div>
     <div class="stat-value">{{ $stats['pending_verification'] }}</div>
-  </div>
-  <div class="stat-card" style="border-left:3px solid var(--red);">
+    <div class="muted-cell">review accounts →</div>
+  </a>
+  <a class="stat-card stat-link" href="{{ route('visitor.index', ['flagged' => 1]) }}" style="border-left:3px solid var(--red);text-decoration:none;color:inherit;">
     <div class="stat-label">Flagged</div>
     <div class="stat-value">{{ $stats['flagged'] }}</div>
-  </div>
-  <a class="stat-card accent-teal" href="#visit-requests" style="text-decoration:none;color:inherit;">
+  </a>
+  <a class="stat-card stat-link accent-teal" href="{{ route('eligibility.index') }}" style="text-decoration:none;color:inherit;" title="Open the Review Queue">
     <div class="stat-label">Visit Requests to Review</div>
     <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
+    <div class="muted-cell">review requests →</div>
   </a>
 </section>
 
 @include('visitor.partials.pending-visit-requests', ['showVisitor' => true])
 
+@if ($flagged)
+  <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span>Showing only visitors with an active flag.</span>
+    <a href="{{ route('visitor.index') }}" style="color:inherit;font-weight:700;">Show all visitors</a>
+  </div>
+@endif
+
 <form class="filters" method="GET" action="{{ route('visitor.index') }}" style="grid-template-columns:2fr 1.2fr auto;">
+  @if ($flagged)<input type="hidden" name="flagged" value="1">@endif
   <div class="field">
     <label for="q">Search</label>
     <div class="input"><input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name or contact number"></div>
@@ -73,6 +83,9 @@
           <td class="muted-cell">
             @if ($visitor->active_flags_count > 0)
               <span class="flag">{{ $visitor->active_flags_count }} Active</span>
+              @if ($longest = $visitor->longestActiveFlag())
+                <div class="muted-cell" style="font-size:11.5px;margin-top:3px;">{{ str_replace('Flagged until', 'Until', $longest->durationLabel()) }}</div>
+              @endif
             @else
               —
             @endif

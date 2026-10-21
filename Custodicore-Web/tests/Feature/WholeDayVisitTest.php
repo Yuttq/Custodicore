@@ -353,7 +353,7 @@ class WholeDayVisitTest extends TestCase
         $token = $this->qrToken($visit);
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(1, VisitCheckin::where('visit_request_id', $visit->visit_request_id)->count());
 
@@ -362,7 +362,7 @@ class WholeDayVisitTest extends TestCase
             ->assertOk()
             ->assertJsonPath('schedule.session', 'Afternoon session')
             ->assertJsonPath('schedule.is_reentry', true)
-            ->assertJsonPath('schedule.start', '01:00 PM');
+            ->assertJsonPath('schedule.start', '13:00');
         $this->checkIn($token)->assertOk()->assertJsonPath('checkin.session', 'Afternoon session');
 
         $afternoon = $this->activeCheckin($visit);
@@ -460,7 +460,7 @@ class WholeDayVisitTest extends TestCase
         $this->at('10:15');
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(1, VisitCheckin::count());
 
@@ -468,14 +468,14 @@ class WholeDayVisitTest extends TestCase
         $this->at('11:30');
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
 
         // The 09:30 token has passed qr.expiry_minutes (180); the app fetches a fresh one.
         $this->at('12:59');
         $token = $this->qrToken($visit);
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(1, VisitCheckin::count());
 
@@ -497,7 +497,7 @@ class WholeDayVisitTest extends TestCase
 
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(0, VisitCheckin::count());
 
@@ -506,7 +506,7 @@ class WholeDayVisitTest extends TestCase
         $token = $this->qrToken($visit);
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit is for the afternoon session (01:00 PM - 04:30 PM). Entry opens at 01:00 PM.');
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(0, VisitCheckin::count());
 

@@ -57,7 +57,7 @@ class StaffVisitRequestVisibilityTest extends TestCase
     private function pendingCard(\Illuminate\Testing\TestResponse $response): string
     {
         $html = $response->getContent();
-        $start = strpos($html, '<a class="stat-card accent-teal"');
+        $start = strpos($html, '<a class="stat-card stat-link accent-teal"');
         $this->assertNotFalse($start, 'Pending visit request card is rendered.');
 
         return substr($html, $start, strpos($html, '</a>', $start) - $start);
@@ -138,7 +138,8 @@ class StaffVisitRequestVisibilityTest extends TestCase
         $response = $this->actingAs($this->recordOfficerAccount)->get(route('dashboard'))->assertOk();
 
         $response->assertSee('Visit Requests Awaiting Review')
-            ->assertSee('<a class="stat-card accent-teal" href="'.route('visitor.index').'#visit-requests"', false);
+            // Links to Review Queue → Visit Requests, which lists every request awaiting a decision.
+            ->assertSee('<a class="stat-card stat-link accent-teal" href="'.route('eligibility.index').'"', false);
         $this->assertSame(1, $response->viewData('stats')['pending_visit_requests']);
         $this->assertStringContainsString('ATTENTION', $this->pendingCard($response));
     }

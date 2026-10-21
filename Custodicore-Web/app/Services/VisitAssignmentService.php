@@ -797,9 +797,13 @@ class VisitAssignmentService
             ]);
         }
 
-        if ($rule->pdl_classification !== $pdl->classification) {
+        // Must be one of the PDL's own visiting windows: their dorm's schedule,
+        // or their classification's days when the dorm has no schedule.
+        if (! $rule->appliesTo($pdl)) {
             throw ValidationException::withMessages([
-                'schedule_id' => 'This schedule does not match the PDL classification visitation policy.',
+                'schedule_id' => $rule->cell_block_id || FacilityVisitationRule::groupKeyForPdl($pdl) !== $pdl->classification
+                    ? "This schedule is not part of the PDL's dorm visiting schedule."
+                    : 'This schedule does not match the PDL classification visitation policy.',
             ]);
         }
 

@@ -105,7 +105,8 @@ class VisitSlotService
     {
         $day = $date->toDateString();
 
-        return FacilityVisitationRule::where('pdl_classification', $classification)
+        // $classification is a rule group: a classification or "dorm:{id}".
+        return FacilityVisitationRule::forGroup($classification)
             ->where('day_of_week', self::DAY_KEYS[$date->dayOfWeek])
             ->orderBy('time_slot_start')
             ->get()
@@ -308,13 +309,15 @@ class VisitSlotService
      */
     private function noRuleMessage(string $classification, CarbonImmutable $date, string $session): string
     {
-        $group = $classification === 'drug_related' ? 'Drug-related' : 'Non-drug-related';
+        // $classification is a rule group: a classification or "dorm:{id}".
+        $group = str_replace(' PDLs', '', FacilityVisitationRule::groupLabel($classification));
+        $isDorm = str_starts_with($classification, 'dorm:');
         $weekday = $date->format('l').'s';
         $day = $date->toDateString();
         $inEffect = fn (FacilityVisitationRule $rule) => (! $rule->effective_from || $day >= $rule->effective_from->toDateString())
             && (! $rule->effective_to || $day <= $rule->effective_to->toDateString());
 
-        $rules = FacilityVisitationRule::where('pdl_classification', $classification)->get();
+        $rules = FacilityVisitationRule::forGroup($classification)->get();
         $dayRules = $rules->where('day_of_week', self::DAY_KEYS[$date->dayOfWeek]);
 
         if ($dayRules->isEmpty()) {
@@ -325,13 +328,13 @@ class VisitSlotService
                 ->map(fn ($key) => self::DAY_NAMES[array_search($key, self::DAY_KEYS, true)])
                 ->values();
 
-            return "{$group} PDLs have no visiting on {$weekday}. ".($days->isEmpty()
+            return ($isDorm ? "{$group} has" : "{$group} PDLs have")." no visiting on {$weekday}. ".($days->isEmpty()
                 ? 'No visiting days are currently configured for them.'
                 : 'Their configured visiting days are '.$days->join(', ', ' and ').'.');
         }
 
         if ($dayRules->filter($inEffect)->isEmpty()) {
-            return 'Visiting for '.lcfirst($group)." PDLs on {$weekday} is not in effect on {$date->format('M j, Y')}.";
+            return 'Visiting for '.($isDorm ? $group : lcfirst($group).' PDLs')." on {$weekday} is not in effect on {$date->format('M j, Y')}.";
         }
 
         $sessions = $dayRules->filter($inEffect)
@@ -340,7 +343,7 @@ class VisitSlotService
             ->unique()
             ->values();
 
-        return "There is no {$session} visiting session for ".lcfirst($group)." PDLs on {$weekday}. "
+        return "There is no {$session} visiting session for ".($isDorm ? $group : lcfirst($group).' PDLs')." on {$weekday}. "
             .'Sessions configured that day: '.$sessions->join(', ', ' and ').'.';
     }
 

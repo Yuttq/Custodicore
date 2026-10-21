@@ -39,6 +39,8 @@ class VisitorController extends Controller
     {
         $query = trim((string) $request->input('q', ''));
         $status = trim((string) $request->input('status', ''));
+        // From the "Flagged" card: only visitors with a flag still in force.
+        $flagged = $request->boolean('flagged');
 
         $visitors = VisitorProfile::query()
             ->when($query !== '', function ($q) use ($query) {
@@ -48,6 +50,7 @@ class VisitorController extends Controller
                 });
             })
             ->when($status !== '', fn ($q) => $q->where('verification_status', $status))
+            ->when($flagged, fn ($q) => $q->whereHas('activeFlags'))
             ->withCount(['idDocuments', 'activeFlags'])
             ->orderBy('created_at', 'desc')
             ->paginate(10)
@@ -63,7 +66,7 @@ class VisitorController extends Controller
             'pending_visit_requests' => $pendingVisitRequests->count(),
         ];
 
-        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'pendingVisitRequests'));
+        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'pendingVisitRequests', 'flagged'));
     }
 
     // -----------------------------------------------------------------
@@ -86,8 +89,9 @@ class VisitorController extends Controller
             ->values();
 
         $schedulesByClassification = [];
-        foreach ($assignableRelationships->pluck('pdl.classification')->unique()->filter() as $classification) {
-            $schedulesByClassification[$classification] = VisitAssignmentController::openSchedulesForClassification($classification);
+        // Keyed by rule group: the PDL's dorm schedule ("dorm:{id}") or classification.
+        foreach ($assignableRelationships->map(fn ($rel) => \App\Models\FacilityVisitationRule::groupKeyForPdl($rel->pdl))->unique()->filter() as $group) {
+            $schedulesByClassification[$group] = VisitAssignmentController::openSchedulesForClassification($group);
         }
 
         // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
@@ -257,6 +261,14 @@ class VisitorController extends Controller
             "Verified {$idDocument->typeLabel()} for {$visitor->full_name}");
 
         return back()->with('success', 'ID document verified.');
+    }
+
+    /** The visitor's own photo (from the mobile app), for staff. */
+    public function photo(VisitorProfile $visitor)
+    {
+        abort_unless($visitor->photo_path && Storage::disk('local')->exists($visitor->photo_path), 404);
+
+        return Storage::disk('local')->response($visitor->photo_path, null, ['Cache-Control' => 'private, max-age=86400']);
     }
 
     /** The uploaded ID picture, for staff to check against the visitor. */
@@ -459,12 +471,20 @@ class VisitorController extends Controller
         $validated = $request->validate([
             'flag_type' => ['required', 'in:' . implode(',', VisitorFlag::TYPES)],
             'description' => ['required', 'string', 'min:10', 'max:1000'],
+            'duration' => ['nullable', 'in:' . implode(',', array_keys(VisitorFlag::DURATIONS))],
         ], [
             'description.min' => 'Describe the reason for the flag in at least 10 characters.',
+            'duration.in' => 'Choose how long the flag applies.',
         ]);
 
+        // How long the flag applies: N days from now, or until an officer
+        // resolves it (also the default when no duration is sent, as before).
+        $duration = $validated['duration'] ?? 'until_resolved';
+        unset($validated['duration']);
+        $validated['expires_at'] = $duration === 'until_resolved' ? null : now()->addDays((int) $duration);
+
         // One open flag per type is enough; resolve it before adding another.
-        if ($visitor->flags()->where('flag_type', $validated['flag_type'])->where('status', 'active')->exists()) {
+        if ($visitor->flags()->where('flag_type', $validated['flag_type'])->active()->exists()) {
             return back()->withInput()->withErrors(['flag_type' => 'This visitor already has an active flag of this type.']);
         }
 
@@ -486,9 +506,9 @@ class VisitorController extends Controller
         }
 
         $this->logAudit('create', 'visitor_flags', $flag->flag_id,
-            "Flagged {$visitor->full_name}: {$flag->typeLabel()}");
+            "Flagged {$visitor->full_name}: {$flag->typeLabel()} (" . VisitorFlag::DURATIONS[$duration] . ')');
 
-        return back()->with('success', 'Visitor flagged.');
+        return back()->with('success', 'Visitor flagged. ' . $flag->durationLabel() . '.');
     }
 
     public function resolveFlag(VisitorProfile $visitor, VisitorFlag $flag)

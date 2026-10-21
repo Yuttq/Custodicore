@@ -70,13 +70,13 @@ class FrontDeskAttendanceLogTest extends TestCase
             ->get(route('frontdesk.attendance-log'))
             ->assertOk()
             ->assertSee('Maria D. Santos')
-            ->assertSee('09:05 AM')
-            ->assertSee('01:20 PM')
-            ->assertSee('Returned 10:40 AM')
+            ->assertSee('>09:05</td>', false)
+            ->assertSee('>13:20</td>', false)
+            ->assertSee('Returned 10:40')
             ->assertSee('Still held')
             ->assertSee('Noel D. Fernandez')
             ->assertSee('Showing 1–2 of 2 entries')
-            ->assertDontSee('09:00 AM');
+            ->assertDontSee('>09:00</td>', false);
     }
 
     public function test_an_earlier_day_can_be_selected(): void
@@ -88,8 +88,8 @@ class FrontDeskAttendanceLogTest extends TestCase
             ->get(route('frontdesk.attendance-log', ['date' => '2026-10-18']))
             ->assertOk()
             ->assertSee('Sunday, October 18, 2026')
-            ->assertSee('09:00 AM')
-            ->assertDontSee('01:20 PM');
+            ->assertSee('>09:00</td>', false)
+            ->assertDontSee('>13:20</td>', false);
     }
 
     public function test_past_day_without_check_out_is_flagged(): void
@@ -110,7 +110,7 @@ class FrontDeskAttendanceLogTest extends TestCase
             $this->actingAs($this->frontDeskAccount)
                 ->get(route('frontdesk.attendance-log', ['date' => $date]))
                 ->assertOk()
-                ->assertSee('09:05 AM');
+                ->assertSee('>09:05</td>', false);
         }
     }
 
@@ -122,14 +122,14 @@ class FrontDeskAttendanceLogTest extends TestCase
         $this->actingAs($this->frontDeskAccount)
             ->get(route('frontdesk.attendance-log', ['q' => 'PDL-TEST-001']))
             ->assertOk()
-            ->assertSee('09:05 AM')
-            ->assertDontSee('09:00 AM');
+            ->assertSee('>09:05</td>', false)
+            ->assertDontSee('>09:00</td>', false);
 
         $this->actingAs($this->frontDeskAccount)
             ->get(route('frontdesk.attendance-log', ['q' => 'Nobody Here']))
             ->assertOk()
             ->assertSee('No gate entries matched')
-            ->assertDontSee('09:05 AM');
+            ->assertDontSee('>09:05</td>', false);
     }
 
     public function test_shows_and_searches_the_handling_officer(): void

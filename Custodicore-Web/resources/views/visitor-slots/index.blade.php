@@ -4,7 +4,8 @@
 @section('content')
 @php
   $statusBadge = ['open' => ['active', 'Open'], 'full' => ['rejected', 'Full'], 'closed' => ['released', 'Closed']];
-  $groupLabel = fn ($c) => $c === 'drug_related' ? 'Drug-related' : 'Non-drug-related';
+  // Rule group: a PDL classification or a dorm with its own visiting schedule.
+  $groupLabel = fn ($rule) => $rule ? ($groups[$rule->groupKey()] ?? '—') : '—';
 @endphp
 
 <div class="topbar">
@@ -31,11 +32,12 @@
     <div class="input"><input id="to" type="date" name="to" value="{{ $filters['to'] }}"></div>
   </div>
   <div class="field">
-    <label for="classification">PDL Classification</label>
+    <label for="classification">Visiting Group</label>
     <select id="classification" name="classification">
       <option value="">All</option>
-      <option value="drug_related" @selected($filters['classification'] === 'drug_related')>Drug-related</option>
-      <option value="non_drug_related" @selected($filters['classification'] === 'non_drug_related')>Non-drug-related</option>
+      @foreach ($groups as $key => $label)
+        <option value="{{ $key }}" @selected($filters['classification'] === $key)>{{ str_starts_with($key, 'dorm:') ? 'Dorm: ' . $label : $label }}</option>
+      @endforeach
     </select>
   </div>
   <div class="field">
@@ -56,7 +58,7 @@
   @else
   <table>
     <thead>
-      <tr><th>Date</th><th>Session</th><th>PDL Classification</th><th>Booked / Capacity</th><th>Remaining</th><th>Status</th><th></th></tr>
+      <tr><th>Date</th><th>Session</th><th>Visiting Group</th><th>Booked / Capacity</th><th>Remaining</th><th>Status</th><th></th></tr>
     </thead>
     <tbody>
       @foreach ($schedules as $schedule)
@@ -72,7 +74,7 @@
             {{ ucfirst(\App\Services\VisitSlotService::sessionOf($schedule->time_slot_start)) }}
             <span class="muted-cell">{{ substr($schedule->time_slot_start, 0, 5) }}–{{ substr($schedule->time_slot_end, 0, 5) }}</span>
           </td>
-          <td class="muted-cell">{{ $groupLabel($schedule->rule?->pdl_classification) }}</td>
+          <td class="muted-cell">{{ $groupLabel($schedule->rule) }}</td>
           <td>
             <div class="occupancy-chip occupancy-inline {{ $s['remaining'] === 0 && $schedule->status !== 'closed' ? 'is-full' : ($pct >= 80 ? 'is-near' : '') }}" style="background:none;border:none;padding:0;">
               <div class="occupancy-bar"><span style="width:{{ $pct }}%"></span></div>
@@ -115,11 +117,11 @@
     <p class="empty-note" style="padding:24px;">No weekly visitation rules are configured.</p>
   @else
   <table>
-    <thead><tr><th>PDL Classification</th><th>Day</th><th>Session</th><th>Effective</th><th style="width:260px;">Default Capacity</th></tr></thead>
+    <thead><tr><th>Visiting Group</th><th>Day</th><th>Session</th><th>Effective</th><th style="width:260px;">Default Capacity</th></tr></thead>
     <tbody>
       @foreach ($rules as $rule)
         <tr>
-          <td class="muted-cell">{{ $groupLabel($rule->pdl_classification) }}</td>
+          <td class="muted-cell">{{ $groupLabel($rule) }}</td>
           <td><strong>{{ ucfirst($rule->day_of_week) }}</strong></td>
           <td>
             {{ ucfirst(\App\Services\VisitSlotService::sessionOf($rule->time_slot_start)) }}
@@ -155,7 +157,7 @@
       <div class="modal-header">
         <div>
           <h2>Create Visiting Session</h2>
-          <div class="sub">The day must be a visiting day for the chosen PDL classification. Times follow the weekly session.</div>
+          <div class="sub">The day must be a visiting day for the chosen group (a PDL classification, or a dorm with its own visiting hours). Times follow the weekly session.</div>
         </div>
         <button type="button" class="close" onclick="closeSlotModal()">✕</button>
       </div>
@@ -175,10 +177,11 @@
         </div>
         <div class="row cols-2">
           <div class="field-m">
-            <label for="slot_classification">PDL Classification</label>
+            <label for="slot_classification">Visiting Group</label>
             <select id="slot_classification" name="pdl_classification" required>
-              <option value="drug_related" @selected(old('pdl_classification') === 'drug_related')>Drug-related</option>
-              <option value="non_drug_related" @selected(old('pdl_classification') === 'non_drug_related')>Non-drug-related</option>
+              @foreach ($groups as $key => $label)
+                <option value="{{ $key }}" @selected(old('pdl_classification') === $key)>{{ str_starts_with($key, 'dorm:') ? 'Dorm: ' . $label : $label }}</option>
+              @endforeach
             </select>
           </div>
           <div class="field-m">

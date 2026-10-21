@@ -90,16 +90,12 @@ class AccountReviewTest extends TestCase
         $this->get('/dashboard')->assertSee('Review Queue')->assertSee('class="nav-count"', false);
     }
 
-    public function test_recheck_tab_lists_approved_visitors_without_a_verified_id(): void
+    public function test_approved_without_id_tab_is_gone(): void
     {
-        // The fixture visitor is approved and has no ID record.
-        $this->get('/account-reviews?tab=recheck')
-            ->assertOk()
-            ->assertSee($this->visitor->full_name)
-            ->assertSee('approved before a verified government ID was required');
-
-        $this->id($this->visitor, 'verified');
-        $this->get('/account-reviews?tab=recheck')->assertSee('Every approved visitor has a verified ID.');
+        $this->get('/account-reviews')->assertOk()->assertDontSee('Approved without verified ID');
+        // An old link to the removed tab just opens the waiting list.
+        $this->get('/account-reviews?tab=recheck')->assertOk()->assertSee('Waiting for approval')
+            ->assertDontSee('approved before a verified government ID was required');
     }
 
     public function test_staff_can_open_the_uploaded_id_picture(): void
