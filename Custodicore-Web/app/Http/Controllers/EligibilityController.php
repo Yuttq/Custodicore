@@ -49,17 +49,19 @@ class EligibilityController extends Controller
     // -----------------------------------------------------------------
     public function index(Request $request)
     {
-        $queue = EligibilityAssessment::where('overall_result', 'flagged_for_review')
-            ->whereNull('reviewed_at')
-            ->with(['visitRequest.visitor.idDocuments', 'visitRequest.pdl', 'visitRequest.schedule', 'visitRequest.relationship.documents'])
-            ->orderBy('assessed_at', 'asc') // oldest first — first flagged, first reviewed
-            ->get();
+        // Every visit request waiting for an officer decision (see ReviewQueue),
+        // soonest visit first.
+        $queue = \App\Services\ReviewQueue::visitsQuery()
+            ->with(['visitor.idDocuments', 'pdl', 'schedule', 'relationship.documents', 'eligibilityAssessment'])
+            ->get()
+            ->sortBy(fn ($v) => [$v->schedule?->schedule_date?->toDateString() ?? '9999', (string) $v->schedule?->time_slot_start, $v->visit_request_id])
+            ->values();
 
         // BJMP requirements checklist for each request's relationship.
-        $requirements = $queue->mapWithKeys(fn ($a) => [
-            $a->assessment_id => $a->visitRequest?->relationship ? RelationshipRequirements::for($a->visitRequest->relationship) : null,
+        $requirements = $queue->mapWithKeys(fn ($v) => [
+            $v->visit_request_id => $v->relationship ? RelationshipRequirements::for($v->relationship) : null,
         ]);
-        $isReady = fn ($a) => $requirements[$a->assessment_id] !== null && RelationshipRequirements::allMet($requirements[$a->assessment_id]);
+        $isReady = fn ($v) => \App\Services\ReviewQueue::approvalState($v, $requirements[$v->visit_request_id])[0];
 
         $counts = [
             'all' => $queue->count(),

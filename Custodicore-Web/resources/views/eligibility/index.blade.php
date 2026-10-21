@@ -33,7 +33,7 @@
 
 @section('content')
 @include('partials.review-queue-header', ['active' => 'visits'])
-<p class="muted-cell queue-help">Visit requests the system couldn't approve automatically. Check each one, then approve or reject it.</p>
+<p class="muted-cell queue-help">Visit requests waiting for a decision: everything visitors booked in the app, plus visits whose eligibility check needs a look. Approving confirms the visit and notifies the visitor.</p>
 
 {{-- ================= FILTER TABS ================= --}}
 <div class="elig-tabs" role="tablist">
@@ -44,7 +44,7 @@
     Ready to approve <span class="count-chip is-ok">{{ $counts['ready'] }}</span>
   </a>
   <a href="{{ route('eligibility.index', ['show' => 'waiting']) }}" class="elig-tab {{ $show === 'waiting' ? 'is-active' : '' }}" role="tab">
-    Missing requirements <span class="count-chip is-warn">{{ $counts['waiting'] }}</span>
+    Needs attention <span class="count-chip is-warn">{{ $counts['waiting'] }}</span>
   </a>
 </div>
 
@@ -53,29 +53,31 @@
     <div class="elig-empty-icon">✓</div>
     <div class="empty-title">
       @if ($show === 'ready') No requests are ready to approve yet.
-      @elseif ($show === 'waiting') No requests are missing requirements.
+      @elseif ($show === 'waiting') Nothing needs attention right now.
       @else Nothing is waiting for review.
       @endif
     </div>
-    <p class="muted-cell">New requests appear here when the eligibility check flags them.</p>
+    <p class="muted-cell">Visit requests appear here as soon as a visitor books one in the app.</p>
   </div>
 @else
-  @foreach ($assessments as $a)
+  @foreach ($assessments as $visit)
     @php
-      $visit = $a->visitRequest;
+      // Rows are visit requests; $a is their eligibility check (may be missing).
+      $a = $visit->eligibilityAssessment;
       $visitor = $visit->visitor;
       $pdl = $visit->pdl;
       $relationship = $visit->relationship;
-      $items = $requirements[$a->assessment_id] ?? null;
-      $ready = $items !== null && Req::allMet($items);
+      $items = $requirements[$visit->visit_request_id] ?? null;
+      [$ready, $blockedReason] = \App\Services\ReviewQueue::approvalState($visit, $items);
+      $byVisitor = $visit->status === 'assigned';
       $metCount = $items ? collect($items)->where('status', 'met')->count() : 0;
       $total = $items ? count($items) : 0;
       $missing = $items ? Req::unmetLabels($items) : [];
       $checks = [
-        'identity' => $a->identity_check_result,
-        'relationship' => $a->relationship_check_result,
-        'history' => $a->history_check_result,
-        'restriction' => $a->pdl_restriction_check_result,
+        'identity' => $a?->identity_check_result,
+        'relationship' => $a?->relationship_check_result,
+        'history' => $a?->history_check_result,
+        'restriction' => $a?->pdl_restriction_check_result,
       ];
       $visitorName = $visitor->full_name ?? 'this visitor';
     @endphp
@@ -125,11 +127,21 @@
               {{ \Carbon\Carbon::parse($visit->schedule->time_slot_start)->format('g:i A') }}–{{ \Carbon\Carbon::parse($visit->schedule->time_slot_end)->format('g:i A') }}
             </div>
           @endif
-          <div class="muted-cell elig-since">Flagged {{ $a->assessed_at?->diffForHumans() ?? '' }}</div>
+          <div class="elig-source">{{ $byVisitor ? 'Requested by the visitor in the app' : 'Assigned by staff' }}</div>
+          <div class="muted-cell elig-since">{{ $byVisitor ? 'Requested' : 'Assigned' }} {{ $visit->assigned_at?->diffForHumans() ?? $visit->created_at?->diffForHumans() }}</div>
         </div>
       </header>
 
       {{-- The four automatic checks, in plain words --}}
+      @if (! $a)
+        <div class="elig-note is-warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span>The eligibility check hasn't run for this request yet.</span>
+          <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin:0;">
+            @csrf
+            <button type="submit" class="btn btn-outline-neutral acct-small">Run eligibility check</button>
+          </form>
+        </div>
+      @else
       <div class="elig-checks">
         @foreach ($checks as $key => $result)
           @php [$tone, $text] = $checkInfo[$key][$result] ?? ['warn', ucfirst(str_replace('_', ' ', (string) $result))]; @endphp
@@ -142,16 +154,17 @@
           </div>
         @endforeach
       </div>
+      @endif
 
       {{-- BJMP documents / confirmations --}}
       @if ($items === null)
         <div class="elig-note is-bad">This request has no PDL relationship on record, so it can't be approved. Reject it, or add the relationship on the visitor's page.</div>
       @else
-        <details class="elig-reqs" data-remember-open="elig-reqs-{{ $a->assessment_id }}">
+        <details class="elig-reqs" data-remember-open="elig-reqs-{{ $visit->visit_request_id }}">
           <summary>
             <span class="elig-reqs-title">BJMP requirements</span>
             <span class="elig-progress" aria-hidden="true"><span style="width:{{ $total ? round($metCount / $total * 100) : 0 }}%"></span></span>
-            <span class="elig-reqs-count {{ $ready ? 'is-ok' : '' }}">{{ $metCount }} of {{ $total }} met</span>
+            <span class="elig-reqs-count {{ $metCount === $total ? 'is-ok' : '' }}">{{ $metCount }} of {{ $total }} met</span>
             <span class="elig-reqs-toggle">Show details</span>
           </summary>
           @include('partials.relationship-requirements', ['relationship' => $relationship, 'items' => $items])
@@ -162,26 +175,31 @@
       <footer class="elig-actions">
         <div class="elig-status">
           @if ($ready)
-            <span class="elig-status-ok">✓ All requirements met. This request can be approved.</span>
-          @elseif ($missing)
-            <span class="elig-status-wait">Waiting on: {{ implode(', ', $missing) }}</span>
+            <span class="elig-status-ok">✓ Ready to approve.{{ $byVisitor ? ' Approving confirms the visit and notifies the visitor.' : '' }}</span>
+          @elseif ($blockedReason)
+            <span class="elig-status-wait">{{ $blockedReason }}</span>
           @endif
         </div>
         <div class="elig-buttons">
-          <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}"
-                data-confirm="Reject this visit request for {{ $visitorName }}?" data-confirm-title="Reject visit" data-confirm-ok="Reject" data-confirm-danger>
+          <details class="acct-reject">
+            <summary class="btn btn-outline-neutral elig-reject">Reject</summary>
+            <form method="POST" action="{{ route('review-queue.visits.reject', $visit->visit_request_id) }}" class="acct-reject-form"
+                  data-confirm="Reject this visit request for {{ $visitorName }}?{{ $byVisitor ? ' The time slot is released and the visitor is notified with your reason.' : '' }}"
+                  data-confirm-title="Reject visit" data-confirm-ok="Reject" data-confirm-danger>
+              @csrf
+              <textarea name="reason" required minlength="5" maxlength="255" data-label="Reason (shown to the visitor)"
+                        placeholder="e.g. The visitor has an active restriction on this date."></textarea>
+              <button type="submit" class="btn btn-outline-neutral elig-reject">Confirm reject</button>
+            </form>
+          </details>
+          <form method="POST" action="{{ route('review-queue.visits.approve', $visit->visit_request_id) }}"
+                data-confirm="Approve this visit for {{ $visitorName }}{{ $visit->schedule ? ' on ' . $visit->schedule->schedule_date->format('M j, Y') : '' }}?{{ $byVisitor ? ' The visit is confirmed and the visitor is notified.' : '' }}"
+                data-confirm-title="Approve visit" data-confirm-ok="Approve">
             @csrf
-            <input type="hidden" name="decision" value="rejected">
-            <button type="submit" class="btn btn-outline-neutral elig-reject">Reject</button>
-          </form>
-          <form method="POST" action="{{ route('eligibility.review', $a->assessment_id) }}"
-                data-confirm="Approve this visit request for {{ $visitorName }}?" data-confirm-title="Approve visit" data-confirm-ok="Approve">
-            @csrf
-            <input type="hidden" name="decision" value="eligible">
             @if ($ready)
               <button type="submit" class="btn btn-blue">Approve</button>
             @else
-              <button type="submit" class="btn btn-blue" disabled title="All requirements must be met first">Approve</button>
+              <button type="submit" class="btn btn-blue" disabled title="{{ $blockedReason }}">Approve</button>
             @endif
           </form>
         </div>

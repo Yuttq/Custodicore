@@ -461,11 +461,17 @@ Route::middleware([
     // Review Queue: one sidebar entry for both review steps. Opens Step 1
     // (accounts) when accounts are waiting, otherwise Step 2 (visit requests).
     Route::get('/review-queue', function () {
-        $accountsWaiting = \App\Models\VisitorProfile::where('verification_status', 'pending')->exists();
-        $visitsWaiting = \App\Models\EligibilityAssessment::where('overall_result', 'flagged_for_review')->whereNull('reviewed_at')->exists();
+        $accountsWaiting = \App\Services\ReviewQueue::accountsQuery()->exists();
+        $visitsWaiting = \App\Services\ReviewQueue::visitsQuery()->exists();
 
         return redirect()->route(! $accountsWaiting && $visitsWaiting ? 'eligibility.index' : 'account-reviews.index');
     })->name('review-queue');
+
+    // One-step decisions on a visit request in Review Queue → Visit Requests.
+    Route::post('/review-queue/visits/{visitRequest}/approve', [\App\Http\Controllers\ReviewQueueController::class, 'approveVisit'])
+        ->name('review-queue.visits.approve');
+    Route::post('/review-queue/visits/{visitRequest}/reject', [\App\Http\Controllers\ReviewQueueController::class, 'rejectVisit'])
+        ->name('review-queue.visits.reject');
 
     // Queue of visitor accounts waiting for approval (identity check).
     Route::get(

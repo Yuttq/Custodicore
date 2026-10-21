@@ -5,10 +5,7 @@
     $active — 'accounts' | 'visits'
 --}}
 @php
-  $queueCounts = [
-    'accounts' => \App\Models\VisitorProfile::where('verification_status', 'pending')->count(),
-    'visits' => \App\Models\EligibilityAssessment::where('overall_result', 'flagged_for_review')->whereNull('reviewed_at')->count(),
-  ];
+  $queueCounts = \App\Services\ReviewQueue::counts();
 @endphp
 <div class="topbar">
   <div>

@@ -37,8 +37,7 @@
       </a>
       @php
         // Review Queue = accounts waiting for approval + visit requests flagged for review.
-        $reviewQueueCount = \App\Models\VisitorProfile::where('verification_status', 'pending')->count()
-          + \App\Models\EligibilityAssessment::where('overall_result', 'flagged_for_review')->whereNull('reviewed_at')->count();
+        $reviewQueueCount = array_sum(\App\Services\ReviewQueue::counts());
       @endphp
       <a href="{{ route('review-queue') }}" class="{{ request()->routeIs('review-queue', 'account-reviews.*', 'eligibility.*') ? 'active' : '' }}">
         Review Queue
