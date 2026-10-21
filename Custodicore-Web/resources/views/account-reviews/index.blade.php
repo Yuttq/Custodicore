@@ -142,12 +142,17 @@
                   </form>
                 @endif
                 @if ($doc->verification_status !== 'rejected')
-                  <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                        data-confirm="Reject {{ $visitor->full_name }}'s {{ $doc->typeLabel() }}? They will need to upload a new one."
-                        data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
-                    @csrf
-                    <button type="submit" class="btn btn-outline-neutral acct-small elig-reject">Reject</button>
-                  </form>
+                  <details class="acct-reject">
+                    <summary class="btn btn-outline-neutral acct-small elig-reject">Reject</summary>
+                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
+                          data-confirm="Reject {{ $visitor->full_name }}'s {{ $doc->typeLabel() }}? They will need to upload a new one."
+                          data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
+                      @csrf
+                      <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="Why the ID was rejected (shown to the visitor)"
+                                placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
+                      <button type="submit" class="btn btn-outline-neutral acct-small elig-reject">Confirm reject</button>
+                    </form>
+                  </details>
                 @endif
               </div>
             </div>

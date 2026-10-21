@@ -687,6 +687,14 @@ class VisitAssignmentService
                 'visitor_id' => 'This visitor was rejected and cannot be assigned a visit.',
             ]);
         }
+
+        // Staff-side twin of EnsureVisitorApproved: assign/approve go
+        // through here, not through the visitor API middleware.
+        if ($visitor->verification_status !== 'verified') {
+            throw ValidationException::withMessages([
+                'visitor_id' => 'This visitor\'s account has not been approved yet and cannot be assigned a visit.',
+            ]);
+        }
     }
 
     private function assertPdlAssignable(?Pdl $pdl): void

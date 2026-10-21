@@ -3,7 +3,7 @@ import { Camera } from 'expo-camera';
 import { Alert, Linking } from 'react-native';
 
 /**
- * @typedef {'camera' | 'gallery' | 'scanner' | 'upload_camera' | 'upload_gallery'} PermissionPurpose
+ * @typedef {'camera' | 'gallery' | 'scanner' | 'upload_camera' | 'upload_gallery' | 'registration_photo'} PermissionPurpose
  */
 
 /** @type {Record<PermissionPurpose, { rationaleTitle: string; rationaleMessage: string; deniedTitle: string; deniedMessage: string }>} */
@@ -45,6 +45,14 @@ const PERMISSION_COPY = {
     deniedTitle: 'Photo access needed',
     deniedMessage:
       'Photo library access is required to upload your government ID. Enable Photos access in Settings, or tap Try Again.',
+  },
+  registration_photo: {
+    rationaleTitle: 'Camera access required',
+    rationaleMessage:
+      'Camera access is required to take your photo. Facility staff compare it with your government ID.',
+    deniedTitle: 'Camera access needed',
+    deniedMessage:
+      'Camera access is required to take your photo. Enable it in Settings, or tap Try Again.',
   },
 };
 
@@ -182,6 +190,15 @@ export function ensureUploadMediaLibraryPermission() {
     purpose: 'upload_gallery',
     getPermission: ImagePicker.getMediaLibraryPermissionsAsync,
     requestPermission: ImagePicker.requestMediaLibraryPermissionsAsync,
+  });
+}
+
+/** Camera for the registration photo (expo-camera live preview). */
+export function ensureRegistrationPhotoPermission() {
+  return ensurePermission({
+    purpose: 'registration_photo',
+    getPermission: Camera.getCameraPermissionsAsync,
+    requestPermission: Camera.requestCameraPermissionsAsync,
   });
 }
 

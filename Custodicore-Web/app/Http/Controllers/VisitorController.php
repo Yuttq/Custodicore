@@ -251,6 +251,7 @@ class VisitorController extends Controller
                 'verification_status' => 'verified',
                 'verified_by' => $staffId,
                 'verified_at' => now(),
+                'rejection_reason' => null,
             ]);
         } catch (\Throwable $e) {
             Log::error('ID verification failed: ' . $e->getMessage());
@@ -284,6 +285,15 @@ class VisitorController extends Controller
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
 
+        // Shown to the visitor in the app — keep it to what they can act on.
+        $data = $request->validate([
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'rejection_reason.required' => 'Tell the visitor why this ID was rejected.',
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
+        ]);
+        $reason = trim((string) $data['rejection_reason']);
+
         if ($idDocument->verification_status === 'rejected') {
             return back()->with('error', 'This ID document is already rejected.');
         }
@@ -298,6 +308,7 @@ class VisitorController extends Controller
                 'verification_status' => 'rejected',
                 'verified_by' => $staffId,
                 'verified_at' => now(),
+                'rejection_reason' => $reason,
             ]);
         } catch (\Throwable $e) {
             Log::error('ID rejection failed: ' . $e->getMessage());
@@ -305,7 +316,7 @@ class VisitorController extends Controller
         }
 
         $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
-            "Rejected {$idDocument->typeLabel()} for {$visitor->full_name}");
+            "Rejected {$idDocument->typeLabel()} for {$visitor->full_name}: {$reason}");
 
         return back()->with('success', 'ID document rejected.');
     }

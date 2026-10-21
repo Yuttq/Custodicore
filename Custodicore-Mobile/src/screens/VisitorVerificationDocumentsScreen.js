@@ -89,6 +89,13 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
           />
         ) : (
           <>
+            {verification.rejectionReason ? (
+              <View style={styles.reasonBox}>
+                <Text style={styles.reasonLabel}>Reason</Text>
+                <Text style={styles.reasonText}>{verification.rejectionReason}</Text>
+              </View>
+            ) : null}
+
             <VerificationProgressCard
               documents={documents}
               overallStatus={verification.verificationStatus}
@@ -127,6 +134,24 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // Same look as the reason on VerificationReviewScreen.
+  reasonBox: {
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  reasonLabel: {
+    ...typography.sectionLabel,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  reasonText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
   sectionEyebrow: {
     ...typography.sectionLabel,
     color: colors.textSecondary,

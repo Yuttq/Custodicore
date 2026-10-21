@@ -167,9 +167,9 @@ class StaffAttributionTest extends TestCase
             ],
             'reject ID' => [
                 'setup' => fn () => $this->idDocument($this->newVisitor(), 'pending'),
-                'send' => fn (VisitorId $id) => $this->post(route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id])),
+                'send' => fn (VisitorId $id) => $this->post(route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id]), ['rejection_reason' => 'The ID photo is blurry.']),
                 'attributed' => fn (VisitorId $id) => [$id->fresh()->verified_by],
-                'state' => fn (VisitorId $id) => $id->fresh()->only(['verification_status', 'verified_by', 'verified_at']),
+                'state' => fn (VisitorId $id) => $id->fresh()->only(['verification_status', 'verified_by', 'verified_at', 'rejection_reason']),
             ],
             'verify relationship' => [
                 'setup' => function () {
@@ -392,7 +392,7 @@ class StaffAttributionTest extends TestCase
         $this->assertSame('The ID photo is blurry.', $returned->fresh()->rejection_reason);
 
         $id = $this->idDocument($this->newVisitor(), 'pending');
-        $this->post(route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id]))->assertSessionHas('success', 'ID document rejected.');
+        $this->post(route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id]), ['rejection_reason' => 'The ID photo is blurry.'])->assertSessionHas('success', 'ID document rejected.');
         $this->assertSame('rejected', $id->fresh()->verification_status);
 
         // Verification is still gated on the checklist.

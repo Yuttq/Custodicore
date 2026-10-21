@@ -6,19 +6,23 @@ use App\Models\VisitorPdlRelationship;
 use App\Models\VisitRequest;
 use App\Services\VisitAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 class VisitorApiContractTest extends TestCase
 {
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('local');
         $this->seedPhase1Fixtures();
     }
 
@@ -59,8 +63,8 @@ class VisitorApiContractTest extends TestCase
         $response = $this->postJson('/api/auth/register', [
             'fullName' => 'Juan Dela Cruz',
             'email' => 'juan.dela.cruz@example.com',
-            'password' => 'secret12',
-            'password_confirmation' => 'secret12',
+            'password' => 'Secret-pass-12',
+            'password_confirmation' => 'Secret-pass-12',
             'dateOfBirth' => '1995-06-15',
             'gender' => 'female',
             'address' => 'Quezon City',
@@ -70,6 +74,7 @@ class VisitorApiContractTest extends TestCase
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
             'consentVersion' => (string) config('legal.version'),
+            'photo' => $this->fakePhoto(),
         ]);
 
         // Phase 2: no session — the visitor must verify their email first.
@@ -97,14 +102,15 @@ class VisitorApiContractTest extends TestCase
         return array_filter([
             'fullName' => 'Ana Reyes',
             'email' => 'ana.reyes@example.com',
-            'password' => 'secret12',
-            'password_confirmation' => 'secret12',
+            'password' => 'Secret-pass-12',
+            'password_confirmation' => 'Secret-pass-12',
             'dateOfBirth' => '1992-02-02',
             'gender' => $gender,
             'intendedPdlName' => 'Pedro Santos Reyes',
             'contactNumber' => '09170002222',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
+            'photo' => $this->fakePhoto(),
             'consentVersion' => (string) config('legal.version'),
         ], fn ($value) => $value !== null);
     }

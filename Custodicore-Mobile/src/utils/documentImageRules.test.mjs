@@ -5,8 +5,12 @@ import assert from 'node:assert/strict';
 import {
   DOCUMENT_IMAGE_ERRORS,
   DOCUMENT_IMAGE_MAX_BYTES,
+  REGISTRATION_PHOTO_ERRORS,
+  REGISTRATION_PHOTO_MAX_BYTES,
+  hasVideoInputDevice,
   toDocumentImageUpload,
   validateDocumentImage,
+  validateRegistrationPhoto,
 } from './documentImageRules.js';
 
 test('max size is 10 MB', () => {
@@ -116,4 +120,36 @@ test('upload part falls back to extensions, then JPEG', () => {
     type: 'image/jpeg',
   });
   assert.equal(toDocumentImageUpload({ fileName: 'x.gif' }), null);
+});
+
+test('registration photo is required', () => {
+  assert.equal(validateRegistrationPhoto(null), REGISTRATION_PHOTO_ERRORS.missing);
+  assert.equal(validateRegistrationPhoto({ uri: '' }), REGISTRATION_PHOTO_ERRORS.missing);
+});
+
+test('registration photo uses the 5 MB backend limit, not the 10 MB document limit', () => {
+  assert.equal(REGISTRATION_PHOTO_MAX_BYTES, 5 * 1024 * 1024);
+  const photo = { uri: 'file:///photo.jpg', fileName: 'photo.jpg', mimeType: 'image/jpeg' };
+  assert.equal(validateRegistrationPhoto({ ...photo, fileSize: REGISTRATION_PHOTO_MAX_BYTES }), null);
+  assert.equal(
+    validateRegistrationPhoto({ ...photo, fileSize: REGISTRATION_PHOTO_MAX_BYTES + 1 }),
+    REGISTRATION_PHOTO_ERRORS.tooLarge,
+  );
+  // Native camera captures report no size; the backend checks it.
+  assert.equal(validateRegistrationPhoto({ ...photo, fileSize: null }), null);
+});
+
+test('registration photo must be a supported picture', () => {
+  assert.equal(
+    validateRegistrationPhoto({ uri: 'blob:x', fileName: 'photo.gif', mimeType: 'image/gif' }),
+    REGISTRATION_PHOTO_ERRORS.unsupportedType,
+  );
+  assert.equal(validateRegistrationPhoto({ uri: 'data:image/jpeg;base64,AA', mimeType: 'image/jpeg' }), null);
+});
+
+test('web camera check needs a listed video input (no camera means unavailable, not denied)', () => {
+  assert.equal(hasVideoInputDevice([{ kind: 'videoinput', label: '' }]), true);
+  assert.equal(hasVideoInputDevice([{ kind: 'audioinput' }, { kind: 'audiooutput' }]), false);
+  assert.equal(hasVideoInputDevice([]), false);
+  assert.equal(hasVideoInputDevice(undefined), false);
 });

@@ -19,3 +19,28 @@ export function getVerificationBadge(status) {
       return { verified: false, chip: 'verification_under_review', label: 'Under Review' };
   }
 }
+
+/**
+ * The staff-entered reason to show the visitor, only while the account or
+ * document is `rejected` (the backend sends null otherwise; this keeps a
+ * stale value from showing either way).
+ * @param {string | null | undefined} status
+ * @param {unknown} reason
+ * @returns {string | null}
+ */
+export function visibleRejectionReason(status, reason) {
+  if (status !== 'rejected' || typeof reason !== 'string') return null;
+  return reason.trim() || null;
+}
+
+/**
+ * True for the API's `403 visitor_not_approved` (EnsureVisitorApproved):
+ * staff changed the review status after this session loaded /me. Accepts the
+ * raw axios error and the api.js request error.
+ * @param {any} error
+ */
+export function isVisitorNotApprovedError(error) {
+  const status = error?.response?.status ?? error?.status;
+  const code = error?.response?.data?.code ?? error?.code;
+  return status === 403 && code === 'visitor_not_approved';
+}

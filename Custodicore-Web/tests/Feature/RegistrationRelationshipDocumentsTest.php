@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\GoogleIdTokenFixtures;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -24,11 +25,12 @@ use Tests\TestCase;
 class RegistrationRelationshipDocumentsTest extends TestCase
 {
     use GoogleIdTokenFixtures;
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
     private const EMAIL = 'doc.visitor@example.com';
-    private const PASSWORD = 'secret-pass-1';
+    private const PASSWORD = 'Secret-pass-1';
 
     protected function setUp(): void
     {
@@ -58,6 +60,7 @@ class RegistrationRelationshipDocumentsTest extends TestCase
             'contactNumber' => '09170001111',
             'acceptedTerms' => '1',
             'acceptedPrivacy' => '1',
+            'photo' => $this->fakePhoto(),
             'consentVersion' => (string) config('legal.version'),
             'governmentIdType' => 'national_id',
             'governmentId' => UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'),

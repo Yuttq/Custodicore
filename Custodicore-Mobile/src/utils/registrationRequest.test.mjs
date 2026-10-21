@@ -66,6 +66,14 @@ test('a spouse registration body is unchanged', () => {
   });
 });
 
+test('password_confirmation is never filled in from password', () => {
+  const missing = buildRegisterBody(payload({ password_confirmation: undefined }));
+  assert.equal('password_confirmation' in missing, false);
+  assert.equal(buildRegisterBody(payload({ password_confirmation: '' })).password_confirmation, undefined);
+  // A mismatch is sent as typed, for the backend to reject.
+  assert.equal(buildRegisterBody(payload({ password_confirmation: 'other' })).password_confirmation, 'other');
+});
+
 test('only fields AuthController::register() knows are sent', () => {
   const known = new Set([
     'fullName', 'firstName', 'lastName', 'email', 'password', 'password_confirmation',

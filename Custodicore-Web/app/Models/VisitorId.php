@@ -36,6 +36,7 @@ class VisitorId extends Model
         'file_path',
         'verification_status',
         'reason',
+        'rejection_reason',
         'verified_by',
         'verified_at',
     ];

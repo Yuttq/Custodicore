@@ -7,6 +7,7 @@ use App\Models\Account;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\View\View;
 
 /**
@@ -30,6 +31,10 @@ class LoginController extends Controller
         'Front Desk Officer',
     ];
 
+    /** Failed sign-ins allowed per email/username + IP before it locks. */
+    private const MAX_FAILURES = 5;
+    private const DECAY_SECONDS = 900;
+
     public function showLoginForm(): View
     {
         return view('auth.login');
@@ -46,14 +51,34 @@ class LoginController extends Controller
         // whichever they gave rather than forcing one format.
         $field = filter_var($credentials['email'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
 
+        // Failed attempts per email/username + IP (on top of the route's
+        // per-IP throttle). A locked key refuses even the right password.
+        $key = 'staff-login-failures:'.sha1(mb_strtolower(trim($credentials['email'])).'|'.$request->ip());
+
+        if (RateLimiter::tooManyAttempts($key, self::MAX_FAILURES)) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => 'Too many failed sign-in attempts. Please wait a few minutes and try again.']);
+        }
+
         $account = Account::where($field, $credentials['email'])->with('role')->first();
 
-        if ($account && $account->role?->role_name === 'Visitor') {
+        // Password first: nothing about the account (visitor, pending setup,
+        // inactive) is revealed without it.
+        if (! $account || ! Auth::guard('web')->validate(['account_id' => $account->account_id, 'password' => $credentials['password']])) {
+            RateLimiter::hit($key, self::DECAY_SECONDS);
+
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => 'These credentials do not match a staff account.']);
+        }
+
+        RateLimiter::clear($key);
+
+        if ($account->role?->role_name === 'Visitor') {
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => 'Visitor accounts sign in through the CustodiCore mobile app, not this dashboard.']);
         }
 
-        if (! $account || ! in_array($account->role?->role_name, self::STAFF_ROLES, true)) {
+        if (! in_array($account->role?->role_name, self::STAFF_ROLES, true)) {
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => 'These credentials do not match a staff account.']);
         }

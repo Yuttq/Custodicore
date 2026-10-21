@@ -4,6 +4,7 @@ import {
   DOCUMENT_IMAGE_ERRORS,
   toDocumentImageUpload,
   validateDocumentImage,
+  validateRegistrationPhoto,
 } from '../utils/documentImageRules';
 import { RELATIONSHIPS, getRelationshipLabel } from '../utils/registrationRequirements';
 import {
@@ -12,6 +13,7 @@ import {
   hasAnyRelationshipUpload,
   isAwaitingRelationshipLink,
 } from '../utils/relationshipRequirementDocuments';
+import { visibleRejectionReason } from '../utils/verificationStatusUi';
 import { GOVERNMENT_ID_KEY } from '../utils/visitorVerificationDocuments';
 
 /**
@@ -161,7 +163,7 @@ export function normalizeVerification(data, relationshipKey) {
       uploadStatus: toUploadStatus(currentId?.status, Boolean(currentId)),
       uploadedAt: currentId?.uploadedAt ?? null,
       verifiedAt: currentId?.verifiedAt ?? null,
-      rejectionReason: null,
+      rejectionReason: visibleRejectionReason(currentId?.status, currentId?.rejectionReason),
       reviewNote: null,
       canUpload: currentId?.status !== 'verified',
       unavailableReason: null,
@@ -179,6 +181,8 @@ export function normalizeVerification(data, relationshipKey) {
   return {
     backendStatus: typeof o.verificationStatus === 'string' ? o.verificationStatus : null,
     verificationStatus: toOverallStatus(o.verificationStatus, anyUploaded),
+    // Account-level reason staff gave when returning the account.
+    rejectionReason: visibleRejectionReason(o.verificationStatus, o.rejectionReason),
     relationshipId: relationshipKey,
     relationshipLabel: getRelationshipLabel(relationshipKey),
     awaitingRelationshipLink: isAwaitingRelationshipLink(relationships),
@@ -240,6 +244,21 @@ export function appendRegistrationRelationshipDocuments(form, files) {
   files.forEach(([requirementKey, file]) => {
     form.append(`relationshipDocuments[${requirementKey}]`, /** @type {any} */ (toFilePart(file)));
   });
+}
+
+/**
+ * Adds the visitor's own photo (taken with RegistrationPhotoCamera) to a
+ * registration multipart body as `photo`. Required by both /auth/register
+ * and /auth/google/register. On web the capture was already turned into a
+ * `File`; native sends the camera's JPEG file.
+ * @param {FormData} form
+ * @param {DocumentFile & { webFile?: File } | null | undefined} photo
+ */
+export function appendRegistrationPhoto(form, photo) {
+  const invalid = validateRegistrationPhoto(photo);
+  if (invalid || !photo) throw new Error(invalid ?? 'Please take a photo of yourself.');
+  const part = photo.webFile ?? { uri: photo.uri, name: 'photo.jpg', type: photo.mimeType || 'image/jpeg' };
+  form.append('photo', /** @type {any} */ (part));
 }
 
 /**

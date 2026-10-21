@@ -11,11 +11,13 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Support\GoogleIdTokenFixtures;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -29,16 +31,18 @@ use Tests\TestCase;
 class GoogleRegistrationTest extends TestCase
 {
     use GoogleIdTokenFixtures;
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
     private const GOOGLE_SUB = '109876543210987654321';
     private const GOOGLE_EMAIL = 'google.visitor@gmail.com'; // GoogleIdTokenFixtures default
-    private const NEW_PASSWORD = 'new-secret-pw';
+    private const NEW_PASSWORD = 'New-secret-pw1';
 
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('local');
         $this->seedPhase1Fixtures();
         $this->app->instance(GoogleIdTokenVerifier::class, $this->makeGoogleVerifier());
     }
@@ -57,6 +61,7 @@ class GoogleRegistrationTest extends TestCase
             'intendedPdlName' => 'Pedro Santos Reyes',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
+            'photo' => $this->fakePhoto(),
             'consentVersion' => (string) config('legal.version'),
         ], $overrides);
     }
@@ -75,6 +80,7 @@ class GoogleRegistrationTest extends TestCase
         $this->assertSame($accountsBefore, Account::count());
         $this->assertSame($profilesBefore, VisitorProfile::count());
         $this->assertSame(0, Account::where('google_id', self::GOOGLE_SUB)->count());
+        $this->assertSame([], Storage::disk('local')->allFiles('visitor-photos'), 'No registration photo is left behind.');
     }
 
     // ---------------------------------------------------------------
@@ -166,6 +172,7 @@ class GoogleRegistrationTest extends TestCase
             'accepted_terms' => true,
             'accepted_privacy' => true,
             'consent_version' => (string) config('legal.version'),
+            'photo' => $this->fakePhoto(),
         ])->assertCreated()
             ->assertJsonPath('status', 'authenticated')
             ->assertJsonPath('user.fullName', 'Snake Case')
@@ -581,6 +588,8 @@ class GoogleRegistrationTest extends TestCase
         $this->assertSame(0, Account::where('google_id', self::GOOGLE_SUB)->count());
         $this->assertSame($profilesBefore, VisitorProfile::count());
         $this->assertDatabaseCount('personal_access_tokens', 0);
+        // The conflict surfaced on the retry; the photo written for it is removed.
+        $this->assertSame([], Storage::disk('local')->allFiles('visitor-photos'));
     }
 
     public function test_concurrent_username_collision_is_retried(): void
@@ -605,6 +614,10 @@ class GoogleRegistrationTest extends TestCase
 
         $this->assertSame(1, Account::where('google_id', self::GOOGLE_SUB)->count());
         $this->assertSame(1, VisitorProfile::whereHas('account', fn ($q) => $q->where('email', self::GOOGLE_EMAIL))->count());
+
+        // Both attempts used the same photo file: exactly one, on the profile.
+        $profile = VisitorProfile::whereHas('account', fn ($q) => $q->where('email', self::GOOGLE_EMAIL))->first();
+        $this->assertSame([$profile->photo_path], Storage::disk('local')->allFiles('visitor-photos'));
     }
 
     public function test_failure_during_token_creation_rolls_back_everything(): void

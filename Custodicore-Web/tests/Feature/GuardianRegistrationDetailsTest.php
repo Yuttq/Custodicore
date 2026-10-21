@@ -9,7 +9,9 @@ use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\GoogleIdTokenFixtures;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -22,11 +24,12 @@ use Tests\TestCase;
 class GuardianRegistrationDetailsTest extends TestCase
 {
     use GoogleIdTokenFixtures;
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
     private const EMAIL = 'guardian.visitor@example.com';
-    private const PASSWORD = 'secret-pass-1';
+    private const PASSWORD = 'Secret-pass-1';
 
     private const GUARDIAN = [
         'guardianFullName' => 'Maria Santos Reyes',
@@ -37,6 +40,7 @@ class GuardianRegistrationDetailsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('local');
         $this->seedPhase1Fixtures();
         Mail::fake();
     }
@@ -58,6 +62,7 @@ class GuardianRegistrationDetailsTest extends TestCase
             'contactNumber' => '09170001111',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
+            'photo' => $this->fakePhoto(),
             'consentVersion' => (string) config('legal.version'),
         ], $overrides);
     }

@@ -31,7 +31,9 @@ export function buildRegisterBody(payload) {
     lastName: payload.lastName ? String(payload.lastName).trim() : undefined,
     email: String(payload.email || '').trim(),
     password: payload.password,
-    password_confirmation: payload.password_confirmation || payload.password,
+    // Sent exactly as typed — never filled in from `password`, so the
+    // backend's required confirmation check stays meaningful.
+    password_confirmation: payload.password_confirmation,
     dateOfBirth: payload.dateOfBirth || payload.birthdate,
     gender: mapGenderForApi(payload.gender),
     address: payload.address ? String(payload.address).trim() : undefined,

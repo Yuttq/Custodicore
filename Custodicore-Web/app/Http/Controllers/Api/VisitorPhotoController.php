@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The visitor's own photo, taken in the mobile app when they create their
@@ -18,8 +19,8 @@ use Illuminate\Support\Facades\Storage;
  *   POST /api/me/photo  multipart "photo" — take or retake the photo
  *   GET  /api/me/photo  the visitor's own photo (for the profile screen)
  *
- * The photo can also be sent with registration (AuthController::register,
- * field "photo"). Once staff have approved the account the photo is locked,
+ * The photo is required with registration (AuthController::register and
+ * registerWithGoogle, field "photo"). Once staff have approved the account the photo is locked,
  * because officers compared it with the government ID during Account Review.
  */
 class VisitorPhotoController extends Controller
@@ -59,11 +60,39 @@ class VisitorPhotoController extends Controller
         return Storage::disk('local')->response($visitor->photo_path, null, ['Cache-Control' => 'private, max-age=300']);
     }
 
-    /** Save (or replace) a visitor's photo on the private disk. Used by registration too. */
+    /** Save (or replace) a visitor's photo on the private disk. */
     public static function storeFor(VisitorProfile $visitor, UploadedFile $file): void
     {
+        self::assign($visitor, self::storeFile($file));
+    }
+
+    /**
+     * Writes the photo file only. Registration calls this before its
+     * transaction, so a failed registration can delete exactly this file.
+     * A failed write (the local disk does not throw) is reported on `photo`
+     * before anything is saved, instead of returning an empty path.
+     */
+    public static function storeFile(UploadedFile $file): string
+    {
+        $name = $file->hashName();
+        $path = $file->storeAs('visitor-photos', $name, 'local');
+
+        if (! is_string($path) || $path === '') {
+            // A failed write can leave a partial file under the intended name.
+            Storage::disk('local')->delete('visitor-photos/'.$name);
+
+            throw ValidationException::withMessages([
+                'photo' => 'Your photo could not be saved. Please try again.',
+            ]);
+        }
+
+        return $path;
+    }
+
+    /** Records an already stored photo on the profile (replacing any older one). */
+    public static function assign(VisitorProfile $visitor, string $path): void
+    {
         $old = $visitor->photo_path;
-        $path = $file->store('visitor-photos', 'local');
 
         $visitor->update(['photo_path' => $path, 'photo_uploaded_at' => now()]);
 

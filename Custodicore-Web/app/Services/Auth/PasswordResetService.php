@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\Password as PasswordRule;
+use App\Support\VisitorPasswordPolicy;
 
 /**
  * Visitor "Forgot Password": emailed reset link → web form → new password.
@@ -55,27 +55,12 @@ class PasswordResetService
     }
 
     /**
-     * The one password policy for a reset: at least 8 characters with a
-     * letter and a number, at most 72 (bcrypt only uses the first 72 bytes —
-     * the same limit the app applies at registration), confirmed, no
-     * leading/trailing spaces, and not the account's email address. Stricter
-     * than registration's min:6 on purpose; never weaker.
+     * The visitor password policy (VisitorPasswordPolicy — the same one
+     * registration uses), confirmed, plus: not the account's email address.
      */
     public static function passwordRules(?string $email = null): array
     {
-        return [
-            'required', 'string', 'max:72', 'confirmed',
-            PasswordRule::min(8)->letters()->numbers(),
-            function (string $attribute, $value, \Closure $fail) use ($email) {
-                $value = (string) $value;
-                if ($value !== trim($value)) {
-                    $fail('Your password cannot start or end with a space.');
-                }
-                if ($email !== null && mb_strtolower($value) === mb_strtolower(trim($email))) {
-                    $fail('Your password cannot be the same as your email address.');
-                }
-            },
-        ];
+        return VisitorPasswordPolicy::rules($email);
     }
 
     /**

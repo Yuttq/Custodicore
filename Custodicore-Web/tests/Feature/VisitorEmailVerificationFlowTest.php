@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\GoogleIdTokenFixtures;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -30,15 +31,17 @@ use Tests\TestCase;
 class VisitorEmailVerificationFlowTest extends TestCase
 {
     use GoogleIdTokenFixtures;
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
     private const EMAIL = 'juan.dela.cruz@example.com';
-    private const PASSWORD = 'secret-pass-1';
+    private const PASSWORD = 'Secret-pass-1';
 
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('local');
         $this->seedPhase1Fixtures();
         Mail::fake();
     }
@@ -60,6 +63,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
             'contactNumber' => '09170001111',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
+            'photo' => $this->fakePhoto(),
             'consentVersion' => (string) config('legal.version'),
         ], $overrides);
     }
@@ -710,6 +714,110 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $profile = $account->visitorProfile->fresh();
         $this->assertSame('verified', $profile->verification_status);
         $this->assertNull($profile->rejection_reason);
+    }
+
+    public function test_documents_shows_the_account_rejection_reason_only_while_rejected(): void
+    {
+        $account = $this->makeVisitor('rejected@example.com', 'rejected', ['rejection_reason' => 'The ID photo is unreadable.']);
+        $this->giveVerifiedId($account);
+
+        $token = $this->login('rejected@example.com')->json('token');
+        $this->bearer($token)->getJson('/api/documents')
+            ->assertOk()
+            ->assertJsonPath('verificationStatus', 'rejected')
+            ->assertJsonPath('rejectionReason', 'The ID photo is unreadable.');
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.approve', $account->visitorProfile->visitor_id))
+            ->assertSessionHas('success');
+
+        $this->app['auth']->forgetGuards();
+        $this->bearer($token)->getJson('/api/documents')
+            ->assertOk()
+            ->assertJsonPath('verificationStatus', 'verified')
+            ->assertJsonPath('rejectionReason', null);
+    }
+
+    public function test_documents_never_shows_a_stale_reason_on_a_pending_account(): void
+    {
+        // A reason left on a non-rejected profile is not the visitor's to see.
+        $this->makeVisitor('pending@example.com', 'pending', ['rejection_reason' => 'Old note.']);
+
+        $token = $this->login('pending@example.com')->json('token');
+        $this->bearer($token)->getJson('/api/documents')
+            ->assertOk()
+            ->assertJsonPath('rejectionReason', null);
+    }
+
+    public function test_rejecting_a_government_id_requires_a_reason(): void
+    {
+        $account = $this->makeVisitor('pending@example.com', 'pending');
+        $id = VisitorId::create([
+            'visitor_id' => $account->visitorProfile->visitor_id,
+            'id_type' => 'national_id',
+            'id_number' => 'ID-1',
+            'file_path' => 'visitor-ids/id.png',
+            'verification_status' => 'pending',
+        ]);
+        $route = route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id]);
+        $this->actingAs($this->recordOfficerAccount);
+
+        foreach (['', '   ', 'Bad', str_repeat('a', 501)] as $reason) {
+            $this->post($route, ['rejection_reason' => $reason])->assertSessionHasErrors('rejection_reason');
+        }
+        $this->post($route)->assertSessionHasErrors('rejection_reason');
+
+        $id->refresh();
+        $this->assertSame('pending', $id->verification_status);
+        $this->assertNull($id->rejection_reason);
+        $this->assertNull($id->verified_by);
+    }
+
+    public function test_government_id_rejection_reason_reaches_the_app_and_verifying_clears_it(): void
+    {
+        $account = $this->makeVisitor('pending@example.com', 'pending');
+        $id = VisitorId::create([
+            'visitor_id' => $account->visitorProfile->visitor_id,
+            'id_type' => 'national_id',
+            'id_number' => 'ID-1',
+            'file_path' => 'visitor-ids/id.png',
+            'verification_status' => 'pending',
+            'reason' => 'Front desk note.',
+        ]);
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.ids.reject', [$id->visitor_id, $id->visitor_id_doc_id]), [
+                'rejection_reason' => '  The ID photo is blurry.  ',
+            ])
+            ->assertSessionHas('success', 'ID document rejected.');
+
+        $id->refresh();
+        $this->assertSame('rejected', $id->verification_status);
+        $this->assertSame('The ID photo is blurry.', $id->rejection_reason);
+        $this->assertSame('Front desk note.', $id->reason, 'The Front Desk reason is a different field.');
+
+        $this->app['auth']->forgetGuards();
+        $token = $this->login('pending@example.com')->json('token');
+        $this->bearer($token)->getJson('/api/documents')
+            ->assertOk()
+            ->assertJsonPath('governmentIds.0.status', 'rejected')
+            ->assertJsonPath('governmentIds.0.rejectionReason', 'The ID photo is blurry.')
+            // The account itself is still pending: no account-level reason.
+            ->assertJsonPath('rejectionReason', null);
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.ids.verify', [$id->visitor_id, $id->visitor_id_doc_id]))
+            ->assertSessionHas('success');
+
+        $id->refresh();
+        $this->assertSame('verified', $id->verification_status);
+        $this->assertNull($id->rejection_reason);
+        $this->assertSame('Front desk note.', $id->reason);
+
+        $this->app['auth']->forgetGuards();
+        $this->bearer($token)->getJson('/api/documents')
+            ->assertOk()
+            ->assertJsonPath('governmentIds.0.rejectionReason', null);
     }
 
     public function test_visitors_cannot_approve_themselves(): void

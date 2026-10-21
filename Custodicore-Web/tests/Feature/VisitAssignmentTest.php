@@ -88,6 +88,23 @@ class VisitAssignmentTest extends TestCase
         $this->assertSame(0, VisitRequest::count());
     }
 
+    public function test_pending_visitor_cannot_be_assigned(): void
+    {
+        $this->visitor->update(['verification_status' => 'pending']);
+
+        $response = $this->actingAs($this->recordOfficerAccount)
+            ->from(route('visitor.show', $this->visitor->visitor_id))
+            ->post(route('visitor.visits.assign', $this->visitor->visitor_id), [
+                'pdl_id' => $this->pdl->pdl_id,
+                'relationship_id' => $this->relationship->relationship_id,
+                'schedule_id' => $this->schedule->schedule_id,
+            ]);
+
+        $response->assertSessionHasErrors('visitor_id');
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
+    }
+
     public function test_inactive_pdl_is_rejected(): void
     {
         $this->pdl->update(['custody_status' => 'released']);

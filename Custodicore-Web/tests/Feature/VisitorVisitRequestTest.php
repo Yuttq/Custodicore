@@ -861,6 +861,21 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame('assigned', $visit->fresh()->status);
     }
 
+    public function test_approval_is_refused_when_visitor_is_not_approved(): void
+    {
+        $visit = $this->submittedRequest();
+        $this->makeEligibleForApproval($visit);
+        $this->visitor->update(['verification_status' => 'pending']);
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
+            ->assertSessionHasErrors('visitor_id');
+
+        $this->assertSame('assigned', $visit->fresh()->status);
+        $this->assertNull($visit->fresh()->confirmed_at);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
+    }
+
     public function test_request_must_belong_to_the_visitor_in_the_url(): void
     {
         $visit = $this->submittedRequest();

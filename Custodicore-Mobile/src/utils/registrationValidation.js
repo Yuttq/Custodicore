@@ -7,7 +7,8 @@
  *   accounts.email                  varchar(100)
  *   visitor_profiles.contact_number varchar(20)
  *   visitor_profiles.address        max:255
- *   password                        min:6 (bcrypt only uses the first 72 bytes)
+ *   password                        VisitorPasswordPolicy: 12–64 printable ASCII,
+ *                                   A-Z, a-z, 0-9 and a symbol, no spaces
  *
  * This is a usability layer, NOT a security boundary — the backend must keep
  * validating the same data.
@@ -19,8 +20,8 @@ export const REGISTRATION_LIMITS = {
   ageMax: 120,
   emailMax: 100,
   emailLocalMax: 64,
-  passwordMin: 6,
-  passwordMax: 72,
+  passwordMin: 12,
+  passwordMax: 64,
   addressMax: 255,
   /** Allows "+63 912 345 6789" while typing; stored digits-only. */
   mobileInputMax: 16,
@@ -77,7 +78,9 @@ export const inputFilters = {
   },
   address: (v) =>
     stripControlChars(v, { multiline: true }).slice(0, REGISTRATION_LIMITS.addressMax),
-  password: (v) => stripControlChars(v).slice(0, REGISTRATION_LIMITS.passwordMax),
+  // Never altered or cut: an overlong or invalid password is rejected by
+  // validateRegistrationPassword instead, so what is saved is what was typed.
+  password: (v) => String(v ?? ''),
 };
 
 /** Trim + collapse internal whitespace runs. Case and punctuation are kept. */
@@ -174,7 +177,17 @@ export function validateRegistrationEmail(value) {
   return null;
 }
 
-/** Passwords are never trimmed or altered — only checked. */
+/** Hint under the password field — same text as the backend's VisitorPasswordPolicy::REQUIREMENTS. */
+export const PASSWORD_REQUIREMENTS =
+  '12–64 characters, with at least one uppercase letter, one lowercase letter, one number and one special character (such as ! @ # $ %). No spaces.';
+
+/**
+ * Rules for a NEW password (registration). Mirrors the backend's
+ * App\Support\VisitorPasswordPolicy, checked in the same order. Only
+ * printable ASCII is accepted, so 64 characters never exceed bcrypt's
+ * 72-byte limit. Not used at login: older accounts may have shorter
+ * passwords. Passwords are never trimmed or altered — only checked.
+ */
 export function validateRegistrationPassword(value) {
   const pw = String(value ?? '');
   if (!pw) return 'Password is required.';
@@ -184,9 +197,16 @@ export function validateRegistrationPassword(value) {
   if (pw.length > REGISTRATION_LIMITS.passwordMax) {
     return `Password must be ${REGISTRATION_LIMITS.passwordMax} characters or fewer.`;
   }
-  if (!pw.trim()) return 'Password cannot be only spaces.';
-  if (pw !== pw.trim()) return 'Password cannot start or end with a space.';
-  if (stripControlChars(pw) !== pw) return 'Password contains characters that are not allowed.';
+  if (/[\s\p{Z}]/u.test(pw)) return 'Password cannot contain spaces.';
+  if (/[^\x21-\x7E]/.test(pw)) {
+    return 'Use only English letters, numbers and standard keyboard symbols.';
+  }
+  if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter (A-Z).';
+  if (!/[a-z]/.test(pw)) return 'Password must contain at least one lowercase letter (a-z).';
+  if (!/[0-9]/.test(pw)) return 'Password must contain at least one number (0-9).';
+  if (!/[!-/:-@[-`{-~]/.test(pw)) {
+    return 'Password must contain at least one special character (such as ! @ # $ %).';
+  }
   return null;
 }
 

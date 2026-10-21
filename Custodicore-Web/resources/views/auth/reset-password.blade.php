@@ -56,14 +56,15 @@
 
                     <div class="field">
                         <label for="password">New password</label>
-                        <input id="password" type="password" name="password" autocomplete="new-password" required maxlength="72" class="{{ $errors->has('password') ? 'invalid' : '' }}">
-                        <div class="hint">At least 8 characters, with at least one letter and one number.</div>
+                        <input id="password" type="password" name="password" autocomplete="new-password" required class="{{ $errors->has('password') ? 'invalid' : '' }}">
+                        {{-- No maxlength: the browser would silently cut a pasted password; the server rejects > 64 instead. --}}
+                        <div class="hint">{{ \App\Support\VisitorPasswordPolicy::REQUIREMENTS }}</div>
                         @error('password') <div class="error">{{ $message }}</div> @enderror
                     </div>
 
                     <div class="field">
                         <label for="password_confirmation">Confirm new password</label>
-                        <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" required maxlength="72">
+                        <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" required>
                     </div>
 
                     @error('token') <div class="error" style="margin-bottom:12px;">This reset link is incomplete. Open the link from your email again.</div> @enderror

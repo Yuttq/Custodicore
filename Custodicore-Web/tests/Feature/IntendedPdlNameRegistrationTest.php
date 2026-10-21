@@ -9,8 +9,10 @@ use App\Models\VisitorProfile;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\GoogleIdTokenFixtures;
+use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -23,6 +25,7 @@ use Tests\TestCase;
 class IntendedPdlNameRegistrationTest extends TestCase
 {
     use GoogleIdTokenFixtures;
+    use MakesTestImages;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
@@ -32,6 +35,7 @@ class IntendedPdlNameRegistrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('local');
         $this->seedPhase1Fixtures();
         Mail::fake();
         $this->app->instance(GoogleIdTokenVerifier::class, $this->makeGoogleVerifier());
@@ -42,14 +46,15 @@ class IntendedPdlNameRegistrationTest extends TestCase
         return array_merge([
             'fullName' => 'Juan Miguel Dela Cruz',
             'email' => self::EMAIL,
-            'password' => 'secret-pass-1',
-            'password_confirmation' => 'secret-pass-1',
+            'password' => 'Secret-pass-1',
+            'password_confirmation' => 'Secret-pass-1',
             'dateOfBirth' => '1995-06-15',
             'gender' => 'male',
             'contactNumber' => '09170001111',
             'relationshipHint' => 'Spouse',
             'acceptedTerms' => true,
             'acceptedPrivacy' => true,
+            'photo' => $this->fakePhoto(),
         ], $overrides);
     }
 

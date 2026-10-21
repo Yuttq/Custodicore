@@ -477,6 +477,8 @@ class VisitorApiController extends Controller
         return response()->json([
             'verificationStatus' => $visitor->verification_status,
             'verifiedAt' => $visitor->verified_at?->toIso8601String(),
+            // Same rule as /me: only when the account was rejected.
+            'rejectionReason' => $visitor->verification_status === 'rejected' ? $visitor->rejection_reason : null,
             'relationshipHint' => $visitor->relationship_hint,
             'governmentIds' => $visitor->idDocuments->map(fn ($d) => $this->governmentIdPayload($d))->values(),
             'relationships' => $visitor->relationships->map(fn ($r) => $this->relationshipPayload($r))->values(),
@@ -589,6 +591,8 @@ class VisitorApiController extends Controller
             'status' => $d->verification_status,
             'uploadedAt' => $d->uploaded_at?->toIso8601String(),
             'verifiedAt' => $d->verified_at?->toIso8601String(),
+            // Only the visitor-facing reason staff entered, only when rejected.
+            'rejectionReason' => $d->verification_status === 'rejected' ? $d->rejection_reason : null,
             'hasFile' => (bool) $d->file_path,
         ];
     }

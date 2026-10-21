@@ -31,7 +31,7 @@ class PasswordResetTest extends TestCase
     use SeedsVisitAssignmentFixtures;
 
     private const OLD_PASSWORD = 'password'; // SeedsVisitAssignmentFixtures
-    private const NEW_PASSWORD = 'NewSecret123';
+    private const NEW_PASSWORD = 'NewSecret123!';
 
     protected function setUp(): void
     {
@@ -294,7 +294,7 @@ class PasswordResetTest extends TestCase
         [$token] = $this->linkFor($this->visitorAccount);
         $this->submitReset($token)->assertOk()->assertSee('Your password has been reset');
 
-        $this->submitReset($token, ['password' => 'Another123', 'password_confirmation' => 'Another123'])
+        $this->submitReset($token, ['password' => 'Another-pass123', 'password_confirmation' => 'Another-pass123'])
             ->assertOk()
             ->assertSee('This link is not valid');
 
@@ -394,7 +394,7 @@ class PasswordResetTest extends TestCase
 
     public function test_password_cannot_be_the_email_address(): void
     {
-        // Has a letter and a number, so only the "not your email" rule can reject it.
+        // Meets every policy rule, so only the "not your email" rule can reject it.
         $visitor = $this->makeVisitor('juan2024@example.com', ['email_verified_at' => now()]);
         [$token] = $this->linkFor($visitor);
 

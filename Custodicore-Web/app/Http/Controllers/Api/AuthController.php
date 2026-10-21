@@ -18,11 +18,14 @@ use App\Services\Auth\GoogleSignInUnavailableException;
 use App\Services\Auth\InvalidGoogleIdTokenException;
 use App\Services\Auth\VerifiedGoogleIdentity;
 use App\Support\Sanitizer;
+use App\Support\VisitorPasswordPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -38,6 +41,10 @@ class AuthController extends Controller
     /** The only gender values a visitor may submit (registration and PATCH /me). */
     private const GENDERS = ['male', 'female'];
 
+    /** Failed POST /api/auth/login attempts allowed per email + IP before it locks. */
+    private const LOGIN_MAX_FAILURES = 5;
+    private const LOGIN_DECAY_SECONDS = 900;
+
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -45,11 +52,28 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        // Failed attempts per address + IP (on top of the route's per-IP
+        // throttle). Unknown emails and wrong passwords count alike, and a
+        // locked key refuses even the right password until it decays.
+        $key = 'login-failures:'.sha1(mb_strtolower(trim($data['email'])).'|'.$request->ip());
+
+        if (RateLimiter::tooManyAttempts($key, self::LOGIN_MAX_FAILURES)) {
+            return response()->json([
+                'code' => 'too_many_requests',
+                'message' => 'Too many failed login attempts. Please wait a few minutes and try again.',
+                'retryAfter' => RateLimiter::availableIn($key),
+            ], 429);
+        }
+
         $account = Account::where('email', $data['email'])->first();
 
         if (! $account || ! Hash::check($data['password'], $account->password_hash)) {
+            RateLimiter::hit($key, self::LOGIN_DECAY_SECONDS);
+
             throw ValidationException::withMessages(['email' => 'Invalid email or password.']);
         }
+
+        RateLimiter::clear($key);
 
         // The mobile API is for visitors only. Staff (Admin/Warden, Record
         // Officer, Front Desk) sign in through the web console's session
@@ -264,6 +288,8 @@ class AuthController extends Controller
      * governmentId + governmentIdType [+ governmentIdNumber]) and stored as
      * `pending`, exactly like POST /documents — there is no token to upload
      * it with afterwards. The profile stays `pending` until staff review it.
+     * The visitor's own photo (multipart: photo) is required, as it is for
+     * registerWithGoogle().
      *
      *   201 verification_required  {status, message, email}
      *   422 validation errors
@@ -282,22 +308,15 @@ class AuthController extends Controller
             $request->files->set('governmentId', $request->file('government_id'));
         }
 
-        $passwordRules = ['required', 'string', 'min:6'];
-        if ($request->filled('password_confirmation')) {
-            $passwordRules[] = 'confirmed';
-        }
-
         $documentFileRules = array_values(array_diff(VisitorApiController::DOCUMENT_FILE_RULES, ['required']));
 
         $request->validate([
             'email' => ['required', 'email', 'max:100', 'unique:accounts,email'],
-            'password' => $passwordRules,
+            'password' => VisitorPasswordPolicy::rules(),
+            'password_confirmation' => ['required', 'string'],
             'governmentId' => ['nullable', ...$documentFileRules],
             'governmentIdType' => ['nullable', 'required_with:governmentId', 'string', Rule::in(VisitorId::TYPES)],
             'governmentIdNumber' => ['nullable', 'string', 'max:50'],
-            // The visitor's own photo (optional here so older app versions keep
-            // working; it can also be sent later to POST /api/me/photo).
-            'photo' => ['nullable', ...VisitorProfile::PHOTO_RULES],
             // Overrides the shared (optional) gender rule: required here.
             'gender' => ['required', 'string', Rule::in(self::GENDERS)],
         ] + $this->profileRegistrationRules() + $this->relationshipDocumentRules($request), $this->registrationMessages() + [
@@ -305,31 +324,33 @@ class AuthController extends Controller
             'governmentId.max' => 'The file is too large. Maximum size is 10 MB.',
             'governmentIdType.in' => 'Choose one of the accepted government ID types.',
             'governmentIdType.required_with' => 'Select the type of government ID you uploaded.',
-            'photo.image' => 'The photo must be a JPG, PNG or WEBP picture.',
-            'photo.mimes' => 'The photo must be a JPG, PNG or WEBP picture.',
-            'photo.max' => 'The photo is too large. Maximum size is 5 MB.',
         ]);
 
         $email = $request->input('email');
 
-        $account = DB::transaction(function () use ($request, $email) {
-            $account = $this->createVisitorAccount($request, $email);
+        // Written once, before the transaction: a rollback cannot remove files.
+        $photoPath = VisitorPhotoController::storeFile($request->file('photo'));
 
-            if ($request->hasFile('governmentId')) {
-                VisitorApiController::storeGovernmentId(
-                    $account->visitorProfile,
-                    $request->file('governmentId'),
-                    $request->input('governmentIdType'),
-                    $request->input('governmentIdNumber'),
-                );
-            }
+        try {
+            $account = DB::transaction(function () use ($request, $email, $photoPath) {
+                $account = $this->createVisitorAccount($request, $email, photoPath: $photoPath);
 
-            if ($request->hasFile('photo')) {
-                VisitorPhotoController::storeFor($account->visitorProfile, $request->file('photo'));
-            }
+                if ($request->hasFile('governmentId')) {
+                    VisitorApiController::storeGovernmentId(
+                        $account->visitorProfile,
+                        $request->file('governmentId'),
+                        $request->input('governmentIdType'),
+                        $request->input('governmentIdNumber'),
+                    );
+                }
 
-            return $account;
-        });
+                return $account;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($photoPath);
+
+            throw $e;
+        }
 
         // After commit: a mail failure never undoes the registration (the
         // visitor can request another link).
@@ -371,7 +392,9 @@ class AuthController extends Controller
 
         $request->validate([
             'idToken' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:6', 'confirmed'],
+            // A new Custodicore password is created here; linkGoogle() and
+            // login() only check an existing one and keep their plain rules.
+            'password' => VisitorPasswordPolicy::rules(),
             'password_confirmation' => ['required', 'string'],
         ] + $this->profileRegistrationRules() + $this->relationshipDocumentRules($request), $this->registrationMessages());
 
@@ -387,10 +410,25 @@ class AuthController extends Controller
             ]);
         }
 
-        $decision = $googleAuth->register(
-            $identity,
-            fn (string $verifiedEmail) => $this->createVisitorAccount($request, $verifiedEmail, maxUsernameBase: 40),
-        );
+        // Written once, after the token checks: every retry inside
+        // GoogleAuthService::register() reuses it, and it is removed unless
+        // an account was created.
+        $photoPath = VisitorPhotoController::storeFile($request->file('photo'));
+
+        try {
+            $decision = $googleAuth->register(
+                $identity,
+                fn (string $verifiedEmail) => $this->createVisitorAccount($request, $verifiedEmail, maxUsernameBase: 40, photoPath: $photoPath),
+            );
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($photoPath);
+
+            throw $e;
+        }
+
+        if ($decision->outcome !== GoogleAuthDecision::AUTHENTICATED) {
+            Storage::disk('local')->delete($photoPath);
+        }
 
         $response = $this->googleDecisionResponse($decision);
 
@@ -482,6 +520,9 @@ class AuthController extends Controller
             'firstName' => ['nullable', 'string', 'max:100'],
             'lastName' => ['nullable', 'string', 'max:100'],
             'dateOfBirth' => ['required', 'date', 'before:today'],
+            // The visitor's own photo, taken with the app's camera. The server
+            // can only check that it is a valid picture, not how it was taken.
+            'photo' => ['required', ...VisitorProfile::PHOTO_RULES],
             'contactNumber' => ['nullable', 'string', 'max:20'],
             // register() also makes it required; Google registration keeps
             // it optional as before, but neither accepts anything else.
@@ -518,6 +559,10 @@ class AuthController extends Controller
             'relationshipType.required_with' => 'Select your relationship to the PDL.',
             'relationshipDocuments.*.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
             'relationshipDocuments.*.max' => 'The file is too large. Maximum size is 10 MB.',
+            'photo.required' => 'Please take a photo of yourself.',
+            'photo.image' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.mimes' => 'The photo must be a JPG, PNG or WEBP picture.',
+            'photo.max' => 'The photo is too large. Maximum size is 5 MB.',
         ];
     }
 
@@ -526,7 +571,7 @@ class AuthController extends Controller
      * registration request. Callers wrap it in a transaction. Role, status
      * and consent are set here, never from the request.
      */
-    private function createVisitorAccount(Request $request, string $email, ?int $maxUsernameBase = null): Account
+    private function createVisitorAccount(Request $request, string $email, ?int $maxUsernameBase = null, ?string $photoPath = null): Account
     {
         $consentAt = now();
         $visitorRole = Role::where('role_name', 'Visitor')->firstOrFail();
@@ -567,6 +612,10 @@ class AuthController extends Controller
         // PDL; then they join that relationship's checklist as pending.
         foreach ((array) $request->file('relationshipDocuments', []) as $key => $file) {
             VisitorApiController::storeRegistrationDocument($profile, $key, $file);
+        }
+
+        if ($photoPath) {
+            VisitorPhotoController::assign($profile, $photoPath);
         }
 
         return $account;

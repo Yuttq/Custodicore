@@ -18,6 +18,7 @@ import {
   validateRegistrationEmail,
   validateRegistrationPassword,
 } from './registrationValidation.js';
+import { validatePassword } from './validators.js';
 
 test('mobile input stops at 11 digits for 09XXXXXXXXX', () => {
   assert.equal(inputFilters.mobile('0943434343434343'), '09434343434');
@@ -126,20 +127,55 @@ test('mobile: separators, letters and landlines', () => {
   assert.equal(inputFilters.mobile('abc'), '');
 });
 
-test('password: 6–72 chars, no edge spaces, confirmation must match', () => {
-  assert.notEqual(validateRegistrationPassword(''), null);
-  assert.notEqual(validateRegistrationPassword('abcde'), null);
-  assert.equal(validateRegistrationPassword('abcdef'), null);
-  assert.equal(validateRegistrationPassword('a'.repeat(72)), null);
-  assert.notEqual(validateRegistrationPassword('a'.repeat(73)), null);
-  assert.equal(inputFilters.password('a'.repeat(80)).length, 72);
-  assert.notEqual(validateRegistrationPassword(' abcdef'), null);
-  assert.notEqual(validateRegistrationPassword('abcdef '), null);
-  assert.notEqual(validateRegistrationPassword('      '), null);
-  assert.equal(validateRegistrationPassword('abc def'), null);
-  assert.equal(validatePasswordConfirmation('abcdef', 'abcdeg'), 'Passwords do not match.');
-  assert.notEqual(validatePasswordConfirmation('abcdef', ''), null);
-  assert.equal(validatePasswordConfirmation('abcdef', 'abcdef'), null);
+// Same cases as the backend's VisitorPasswordPolicyTest.
+test('password: valid 12- and 64-character passwords are accepted', () => {
+  assert.equal(validateRegistrationPassword('Abcdefgh12!x'), null);
+  assert.equal(validateRegistrationPassword(`Aa1!${'x'.repeat(60)}`), null);
+  assert.equal(validateRegistrationPassword('Zz9!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'), null);
+});
+
+test('password: every policy rule is enforced', () => {
+  const cases = {
+    '': 'Password is required.',
+    'Abcdefgh1!x': 'Password must be at least 12 characters.',
+    [`Aa1!${'x'.repeat(61)}`]: 'Password must be 64 characters or fewer.',
+    'abcdefgh123!': 'Password must contain at least one uppercase letter (A-Z).',
+    'ABCDEFGH123!': 'Password must contain at least one lowercase letter (a-z).',
+    'Abcdefghijk!': 'Password must contain at least one number (0-9).',
+    'Abcdefghij12': 'Password must contain at least one special character (such as ! @ # $ %).',
+    ' Abcdefgh12!': 'Password cannot contain spaces.',
+    'Abcdef gh12!': 'Password cannot contain spaces.',
+    'Abcdefgh12! ': 'Password cannot contain spaces.',
+    'Abcdef gh123': 'Password cannot contain spaces.',
+    'Abcdef\tgh12!': 'Password cannot contain spaces.',
+    'Abcdef gh12!': 'Password cannot contain spaces.',
+    'Contraseña12!': 'Use only English letters, numbers and standard keyboard symbols.',
+    'Abcdefghijk٣!': 'Use only English letters, numbers and standard keyboard symbols.',
+  };
+  for (const [pw, message] of Object.entries(cases)) {
+    assert.equal(validateRegistrationPassword(pw), message, JSON.stringify(pw));
+  }
+});
+
+test('password: input is never truncated or altered — overlong is rejected instead', () => {
+  const long = `Aa1!${'x'.repeat(76)}`;
+  assert.equal(inputFilters.password(long), long);
+  assert.equal(inputFilters.password(' Ab\tc '), ' Ab\tc ');
+  assert.notEqual(validateRegistrationPassword(inputFilters.password(long)), null);
+});
+
+test('password confirmation is required and must match exactly', () => {
+  assert.equal(validatePasswordConfirmation('Abcdefgh12!x', 'Abcdefgh12!y'), 'Passwords do not match.');
+  assert.equal(validatePasswordConfirmation('Abcdefgh12!x', 'abcdefgh12!x'), 'Passwords do not match.');
+  assert.equal(validatePasswordConfirmation('Abcdefgh12!x', ''), 'Please confirm your password.');
+  assert.equal(validatePasswordConfirmation('Abcdefgh12!x', undefined), 'Please confirm your password.');
+  assert.equal(validatePasswordConfirmation('Abcdefgh12!x', 'Abcdefgh12!x'), null);
+});
+
+test('login password check stays lenient for existing accounts', () => {
+  // Accounts created under the old 6-character rule must still be able to sign in.
+  assert.equal(validatePassword('abc123'), true);
+  assert.equal(validatePassword(''), false);
 });
 
 test('address: required, 255 max, control chars stripped, lines tidied', () => {

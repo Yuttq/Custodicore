@@ -122,3 +122,42 @@ export function toDocumentImageUpload(file) {
   const ext = uriExt || 'jpg';
   return { name: `${base}.${ext}`, type: SUPPORTED_EXTENSIONS[ext] };
 }
+
+/** Matches the backend `max:5120` (KB) visitor photo rule (VisitorProfile::PHOTO_RULES). */
+export const REGISTRATION_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+export const REGISTRATION_PHOTO_ERRORS = {
+  missing: 'Please take a photo of yourself.',
+  unsupportedType: 'This photo could not be used. Please retake it.',
+  tooLarge: 'This photo is larger than 5 MB. Please retake it.',
+};
+
+/**
+ * Validates the registration photo captured with the app's camera. A
+ * missing photo is an error here (the photo is required); the size limit is
+ * the backend's 5 MB, not the 10 MB document limit. Unknown size (native
+ * camera captures do not report one) is let through: the backend checks it.
+ * @param {DocumentImageFile | null | undefined} photo
+ * @returns {string | null} a user-facing error, or null when acceptable
+ */
+export function validateRegistrationPhoto(photo) {
+  if (!photo?.uri) return REGISTRATION_PHOTO_ERRORS.missing;
+  if (validateDocumentImage({ ...photo, fileSize: null })) return REGISTRATION_PHOTO_ERRORS.unsupportedType;
+
+  const size = Number(photo.fileSize);
+  if (photo.fileSize != null && Number.isFinite(size) && size > REGISTRATION_PHOTO_MAX_BYTES) {
+    return REGISTRATION_PHOTO_ERRORS.tooLarge;
+  }
+  return null;
+}
+
+/**
+ * Web: whether `navigator.mediaDevices.enumerateDevices()` lists a camera.
+ * Browsers report each device's kind even before camera permission, so an
+ * empty answer means there is no camera to ask for (expo-camera would
+ * otherwise report the failure as a denied permission).
+ * @param {unknown} devices
+ */
+export function hasVideoInputDevice(devices) {
+  return Array.isArray(devices) && devices.some((device) => device?.kind === 'videoinput');
+}

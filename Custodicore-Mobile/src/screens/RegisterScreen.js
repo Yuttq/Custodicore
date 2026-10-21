@@ -26,7 +26,12 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { toDocumentImageUpload, validateDocumentImage } from '../utils/documentImageRules';
+import RegistrationPhotoCamera from '../components/RegistrationPhotoCamera';
+import {
+  toDocumentImageUpload,
+  validateDocumentImage,
+  validateRegistrationPhoto,
+} from '../utils/documentImageRules';
 import { formatBirthdateDisplay } from '../utils/formatDate';
 import { useAuth } from '../hooks/useAuth';
 import { getLegal } from '../services/api';
@@ -63,6 +68,7 @@ import {
   normalizeEmail,
   normalizeMobile,
   normalizeName,
+  PASSWORD_REQUIREMENTS,
   validateAddress,
   validateBirthdateAge,
   validateFirstName,
@@ -232,6 +238,8 @@ const SERVER_FIELD_ERRORS = {
   relationshipDocuments: 'relationship_documents',
   // The required name of the PDL to visit (step 2).
   intendedPdlName: 'intendedPdlName',
+  // The visitor's own photo (step 3).
+  photo: 'photo',
 };
 
 /** Step-3 (documents) form fields among SERVER_FIELD_ERRORS targets. */
@@ -239,6 +247,7 @@ const DOCUMENT_STEP_FIELDS = new Set([
   'government_id',
   'government_id_type',
   'relationship_documents',
+  'photo',
 ]);
 
 /** Step-2 (relationship) form fields among SERVER_FIELD_ERRORS targets. */
@@ -324,6 +333,9 @@ export default function RegisterScreen({ navigation, route }) {
   // hint for facility staff, who link the PDL themselves — no lookup here.
   const [intendedPdlName, setIntendedPdlName] = useState('');
   const [documents, setDocuments] = useState({});
+  // The visitor's own photo: set only by "Use Photo" in RegistrationPhotoCamera.
+  const [photo, setPhoto] = useState(null);
+  const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
   // Live-in partners only: decides whether a child's birth certificate or a
   // witness statement is asked for (null = not answered yet).
   const [hasChildrenTogether, setHasChildrenTogether] = useState(null);
@@ -522,9 +534,21 @@ export default function RegisterScreen({ navigation, route }) {
         next[`${doc.key}_type`] = 'Select ID type';
       }
     }
+    const photoError = validateRegistrationPhoto(photo);
+    if (photoError) next.photo = photoError;
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [requiredDocs, documents, relationship, hasChildrenTogether]);
+  }, [requiredDocs, documents, relationship, hasChildrenTogether, photo]);
+
+  /** "Use Photo" in the camera; cancelling it never reaches here. */
+  const confirmPhoto = useCallback((captured) => {
+    setPhoto(captured);
+    setErrors((e) => {
+      const next = { ...e };
+      delete next.photo;
+      return next;
+    });
+  }, []);
 
   const validateStep4 = useCallback(() => {
     if (!certified) {
@@ -722,6 +746,7 @@ export default function RegisterScreen({ navigation, route }) {
         relationshipLabel: getRelationshipLabel(relationship),
         intendedPdlName: normalizeName(intendedPdlName),
         documents,
+        photo,
         // Sent as relationshipDocuments[key]; only this relationship's documents.
         relationshipDocumentKeys: requiredDocs
           .filter((doc) => doc.requirementKey)
@@ -800,6 +825,7 @@ export default function RegisterScreen({ navigation, route }) {
     getIntendedPdlFieldErrors,
     validateStep3,
     documents,
+    photo,
     certified,
     requiredDocs,
     acceptTerms,
@@ -926,7 +952,6 @@ export default function RegisterScreen({ navigation, route }) {
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
-            maxLength={REGISTRATION_LIMITS.passwordMax}
             textContentType="newPassword"
             accessibilityLabel={isGoogle ? 'Create password' : 'Password'}
             style={fieldStyles.passwordInput}
@@ -948,8 +973,8 @@ export default function RegisterScreen({ navigation, route }) {
         {errors.password ? <Text style={fieldStyles.error}>{errors.password}</Text> : null}
         <Text style={fieldStyles.hint}>
           {isGoogle
-            ? `At least ${REGISTRATION_LIMITS.passwordMin} characters. You can also sign in with this email and password.`
-            : `At least ${REGISTRATION_LIMITS.passwordMin} characters.`}
+            ? `${PASSWORD_REQUIREMENTS} You can also sign in with this email and password.`
+            : PASSWORD_REQUIREMENTS}
         </Text>
       </View>
       <View style={fieldStyles.wrap}>
@@ -971,7 +996,6 @@ export default function RegisterScreen({ navigation, route }) {
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
-            maxLength={REGISTRATION_LIMITS.passwordMax}
             textContentType="newPassword"
             accessibilityLabel="Confirm password"
             style={fieldStyles.passwordInput}
@@ -1170,6 +1194,35 @@ export default function RegisterScreen({ navigation, route }) {
     </Card>
   );
 
+  /** Required photo of the visitor, taken with the front camera only (no gallery). */
+  const renderPhotoCard = () => (
+    <Card style={styles.card}>
+      <View style={styles.docHeader}>
+        <Text style={styles.docTitle}>Take Your Photo</Text>
+        <Pressable
+          onPress={() => setPhotoCameraOpen(true)}
+          style={styles.uploadBtn}
+          accessibilityRole="button"
+          accessibilityLabel={photo ? 'Retake your photo' : 'Take your photo'}
+        >
+          <Text style={styles.uploadBtnText}>{photo ? 'Retake Photo' : 'Take Photo'}</Text>
+        </Pressable>
+      </View>
+      <Text style={fieldStyles.hint}>
+        Use the front camera. Facility staff compare this photo with your government ID.
+      </Text>
+      {photo ? (
+        <Image
+          source={{ uri: photo.uri }}
+          style={styles.photoPreview}
+          resizeMode="cover"
+          accessibilityLabel="Preview of your photo"
+        />
+      ) : null}
+      {errors.photo ? <Text style={fieldStyles.error}>{errors.photo}</Text> : null}
+    </Card>
+  );
+
   const renderStep3 = () => (
     <>
       {requiredDocs.some((doc) => doc.requiresIdType) ? (
@@ -1184,6 +1237,7 @@ export default function RegisterScreen({ navigation, route }) {
       <Card style={styles.card}>
         {requiredDocs.map(renderDocumentCard)}
       </Card>
+      {renderPhotoCard()}
       {renderRelationshipDocumentsNotice()}
     </>
   );
@@ -1464,17 +1518,25 @@ export default function RegisterScreen({ navigation, route }) {
                 title="Submit Registration"
                 onPress={onSubmit}
                 loading={submitting}
-                disabled={!certified || submitting}
+                disabled={!certified || !photo || submitting}
                 accessibilityLabel={
-                  certified
-                    ? 'Submit registration'
-                    : 'Submit registration, disabled until you certify your information'
+                  !photo
+                    ? 'Submit registration, disabled until you take your photo'
+                    : certified
+                      ? 'Submit registration'
+                      : 'Submit registration, disabled until you certify your information'
                 }
               />
             )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <RegistrationPhotoCamera
+        visible={photoCameraOpen}
+        onClose={() => setPhotoCameraOpen(false)}
+        onConfirm={confirmPhoto}
+      />
 
       <Modal visible={genderModalVisible} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={() => setGenderModalVisible(false)}>
@@ -1854,6 +1916,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.xs,
+  },
+  photoPreview: {
+    width: 120,
+    height: 120,
+    marginTop: spacing.sm,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   uploadedThumb: {
     width: 56,

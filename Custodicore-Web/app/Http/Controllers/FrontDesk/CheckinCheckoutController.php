@@ -650,14 +650,7 @@ class CheckinCheckoutController extends Controller
             $qr = QrCode::where(
                 'qr_token',
                 $data['qr_token']
-            )
-                ->with([
-                    'visitRequest.visitor',
-                    'visitRequest.pdl',
-                    'visitRequest.schedule',
-                    'visitRequest.checkin',
-                ])
-                ->first();
+            )->first();
 
             if (! $qr) {
                 return response()->json([
@@ -668,171 +661,190 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
-             * QR must still be active.
+             * Validate and check in under a lock on the visit, then its
+             * QR (check-out locks the visit first too). A repeated or
+             * concurrent request for the same visit waits here and is
+             * re-validated against what the first one wrote.
              */
-            if ($qr->status !== 'active') {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This QR code is no longer active.',
-                ], 422);
-            }
+            $result = DB::transaction(function () use ($qr, $data, $staffId, $newIdPhoto) {
 
-            /*
-             * Check expiration.
-             */
-            if (
-                $qr->expires_at &&
-                $qr->expires_at->isPast()
-            ) {
-                $qr->update([
-                    'status' => 'expired',
-                ]);
+                $visitRequest = VisitRequest::lockForUpdate()
+                    ->find($qr->visit_request_id);
 
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This QR code has expired.',
-                ], 422);
-            }
+                $qr = QrCode::lockForUpdate()
+                    ->find($qr->qr_code_id);
 
-            $visitRequest = $qr->visitRequest;
-
-            if (! $visitRequest) {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This QR code is not linked to a valid visit.',
-                ], 422);
-            }
-
-            /*
-             * Visit must still be confirmed.
-             */
-            if ($visitRequest->status !== 'confirmed') {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This visit is no longer confirmed.',
-                ], 422);
-            }
-
-            /*
-             * Prevent duplicate check-in.
-             */
-            if ($this->gate->activeCheckin($visitRequest)) {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This visitor is already checked in.',
-                ], 422);
-            }
-
-            /*
-             * Validate today's schedule.
-             */
-            if (
-                ! $visitRequest->schedule ||
-                ! $visitRequest->schedule->schedule_date
-            ) {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'No valid visit schedule was found.',
-                ], 422);
-            }
-
-            $scheduleDate = Carbon::parse(
-                $visitRequest->schedule->schedule_date
-            );
-
-            if (! $scheduleDate->isToday()) {
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'This visit is not scheduled for today.',
-                ], 422);
-            }
-
-            [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
-
-            if (! $session) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $sessionError,
-                ], 422);
-            }
-
-            /*
-             * -------------------------------------------------------
-             * SAVE REPLACEMENT ID
-             * -------------------------------------------------------
-             *
-             * The new ID is stored under the same visitor.
-             *
-             * It is NOT automatically verified.
-             *
-             * Records Officer will review it later.
-             */
-            if (
-                $data['id_match_status'] === 'replaced'
-            ) {
-
-                $photoPath = $newIdPhoto
-                    ? 'visitor-ids/'.Str::random(40).'.'.$newIdPhoto['extension']
-                    : null;
-
-                if ($photoPath) {
-                    Storage::disk('public')->put($photoPath, $newIdPhoto['contents']);
+                /*
+                 * QR must still be active.
+                 */
+                if (! $qr || $qr->status !== 'active') {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This QR code is no longer active.',
+                    ], 422);
                 }
 
-                VisitorId::create([
-                    'visitor_id' =>
-                        $visitRequest->visitor?->visitor_id,
+                /*
+                 * Check expiration.
+                 */
+                if (
+                    $qr->expires_at &&
+                    $qr->expires_at->isPast()
+                ) {
+                    $qr->update([
+                        'status' => 'expired',
+                    ]);
 
-                    'id_type' =>
-                        $data['new_id_type'],
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This QR code has expired.',
+                    ], 422);
+                }
 
-                    'id_number' =>
-                        $data['new_id_number'],
+                if (! $visitRequest) {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This QR code is not linked to a valid visit.',
+                    ], 422);
+                }
 
-                    'file_path' =>
-                        $photoPath,
+                /*
+                 * Visit must still be confirmed.
+                 */
+                if ($visitRequest->status !== 'confirmed') {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This visit is no longer confirmed.',
+                    ], 422);
+                }
 
-                    /*
-                     * IMPORTANT:
-                     *
-                     * Front Desk records the ID but does not
-                     * approve it.
-                     */
-                    'verification_status' =>
-                        'pending',
+                /*
+                 * Prevent duplicate check-in.
+                 */
+                if ($this->gate->activeCheckin($visitRequest)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This visitor is already checked in.',
+                    ], 422);
+                }
 
-                    'reason' =>
-                        $data['new_id_reason'],
+                /*
+                 * Validate today's schedule.
+                 */
+                if (
+                    ! $visitRequest->schedule ||
+                    ! $visitRequest->schedule->schedule_date
+                ) {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'No valid visit schedule was found.',
+                    ], 422);
+                }
 
-                    'verified_by' =>
-                        null,
+                $scheduleDate = Carbon::parse(
+                    $visitRequest->schedule->schedule_date
+                );
 
-                    'verified_at' =>
-                        null,
-                ]);
-            }
+                if (! $scheduleDate->isToday()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' =>
+                            'This visit is not scheduled for today.',
+                    ], 422);
+                }
 
-            /*
-             * -------------------------------------------------------
-             * ACTUAL CHECK-IN
-             * -------------------------------------------------------
-             */
-            $checkin = VisitCheckin::updateOrCreate(
-                [
+                /*
+                 * A session that already has a gate record (checked
+                 * out or not) is never offered again.
+                 */
+                [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
+
+                if (! $session) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $sessionError,
+                    ], 422);
+                }
+
+                /*
+                 * ---------------------------------------------------
+                 * SAVE REPLACEMENT ID
+                 * ---------------------------------------------------
+                 *
+                 * The new ID is stored under the same visitor.
+                 *
+                 * It is NOT automatically verified.
+                 *
+                 * Records Officer will review it later.
+                 */
+                if (
+                    $data['id_match_status'] === 'replaced'
+                ) {
+
+                    $photoPath = $newIdPhoto
+                        ? 'visitor-ids/'.Str::random(40).'.'.$newIdPhoto['extension']
+                        : null;
+
+                    if ($photoPath) {
+                        Storage::disk('public')->put($photoPath, $newIdPhoto['contents']);
+                    }
+
+                    VisitorId::create([
+                        'visitor_id' =>
+                            $visitRequest->visitor?->visitor_id,
+
+                        'id_type' =>
+                            $data['new_id_type'],
+
+                        'id_number' =>
+                            $data['new_id_number'],
+
+                        'file_path' =>
+                            $photoPath,
+
+                        /*
+                         * IMPORTANT:
+                         *
+                         * Front Desk records the ID but does not
+                         * approve it.
+                         */
+                        'verification_status' =>
+                            'pending',
+
+                        'reason' =>
+                            $data['new_id_reason'],
+
+                        'verified_by' =>
+                            null,
+
+                        'verified_at' =>
+                            null,
+                    ]);
+                }
+
+                /*
+                 * ---------------------------------------------------
+                 * ACTUAL CHECK-IN
+                 * ---------------------------------------------------
+                 *
+                 * Always a new gate record: the session was checked
+                 * above to have none, so an existing (checked-out)
+                 * record is never overwritten and reopened. The unique
+                 * (visit_request_id, schedule_id) index backs this up.
+                 */
+                $checkin = VisitCheckin::create([
                     'visit_request_id' =>
                         $visitRequest->visit_request_id,
 
                     'schedule_id' =>
                         $session->schedule_id,
-                ],
-                [
+
                     'qr_code_id' =>
                         $qr->qr_code_id,
 
@@ -858,24 +870,35 @@ class CheckinCheckoutController extends Controller
 
                     'status' =>
                         'checked_in',
-                ]
-            );
+                ]);
+
+                /*
+                 * Mark QR as used once no later session is left to enter.
+                 * A whole-day visitor keeps the same QR for the afternoon
+                 * re-entry.
+                 */
+                if ($this->gate->isLastSession($visitRequest, $session)) {
+                    $qr->update([
+                        'status' => 'used',
+                    ]);
+                }
+
+                return [$visitRequest, $checkin, $session];
+            });
 
             /*
-             * Mark QR as used once no later session is left to enter.
-             * A whole-day visitor keeps the same QR for the afternoon
-             * re-entry.
+             * A failed check returned its error response.
              */
-            if ($this->gate->isLastSession($visitRequest, $session)) {
-                $qr->update([
-                    'status' => 'used',
-                ]);
+            if ($result instanceof JsonResponse) {
+                return $result;
             }
+
+            [$visitRequest, $checkin, $session] = $result;
 
             $sessionName = $this->gate->sessionName($session);
 
             /*
-             * Audit trail.
+             * Audit trail (written once the check-in is committed).
              */
             try {
 
@@ -994,122 +1017,138 @@ class CheckinCheckoutController extends Controller
         try {
 
             /*
-             * Only confirmed visits.
+             * Validate and check in under a lock on the visit, then its
+             * QR (the same order as the QR check-in and check-out), so a
+             * repeated or concurrent request re-validates against what
+             * the first one wrote.
              */
-            if ($visitRequest->status !== 'confirmed') {
-                return back()->with(
-                    'error',
-                    'This visit is not confirmed.'
-                );
-            }
+            $result = DB::transaction(function () use ($visitRequest, $data, $staffId) {
 
-            /*
-             * Make sure the visit is scheduled for today.
-             */
-            if (
-                ! $visitRequest->schedule ||
-                ! $visitRequest->schedule->schedule_date
-            ) {
-                return back()->with(
-                    'error',
-                    'No valid visit schedule was found.'
-                );
-            }
+                $visitRequest = VisitRequest::lockForUpdate()
+                    ->findOrFail($visitRequest->visit_request_id);
 
-            if (
-                ! Carbon::parse(
-                    $visitRequest->schedule->schedule_date
-                )->isToday()
-            ) {
-                return back()->with(
-                    'error',
-                    'This visit is not scheduled for today.'
-                );
-            }
+                /*
+                 * Only confirmed visits.
+                 */
+                if ($visitRequest->status !== 'confirmed') {
+                    return back()->with(
+                        'error',
+                        'This visit is not confirmed.'
+                    );
+                }
 
-            /*
-             * Prevent duplicate check-in.
-             */
-            if ($this->gate->activeCheckin($visitRequest)) {
-                return back()->with(
-                    'error',
-                    'This visitor is already checked in.'
-                );
-            }
+                /*
+                 * Make sure the visit is scheduled for today.
+                 */
+                if (
+                    ! $visitRequest->schedule ||
+                    ! $visitRequest->schedule->schedule_date
+                ) {
+                    return back()->with(
+                        'error',
+                        'No valid visit schedule was found.'
+                    );
+                }
 
-            [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
+                if (
+                    ! Carbon::parse(
+                        $visitRequest->schedule->schedule_date
+                    )->isToday()
+                ) {
+                    return back()->with(
+                        'error',
+                        'This visit is not scheduled for today.'
+                    );
+                }
 
-            if (! $session) {
-                return back()->with(
-                    'error',
-                    $sessionError
-                );
-            }
+                /*
+                 * Prevent duplicate check-in.
+                 */
+                if ($this->gate->activeCheckin($visitRequest)) {
+                    return back()->with(
+                        'error',
+                        'This visitor is already checked in.'
+                    );
+                }
 
-            /*
-             * Make sure visitor exists.
-             */
-            if (! $visitRequest->visitor) {
-                return back()->with(
-                    'error',
-                    'No visitor profile is linked to this visit.'
-                );
-            }
+                /*
+                 * A session that already has a gate record (checked
+                 * out or not) is never offered again.
+                 */
+                [$session, $sessionError] = $this->gate->enterableSession($visitRequest);
 
-            /*
-             * -------------------------------------------------------
-             * SAVE REPLACEMENT ID
-             * -------------------------------------------------------
-             */
-            if (
-                ($data['id_match_status'] ?? null) === 'replaced'
-            ) {
+                if (! $session) {
+                    return back()->with(
+                        'error',
+                        $sessionError
+                    );
+                }
 
-                VisitorId::create([
-                    'visitor_id' =>
-                        $visitRequest->visitor->visitor_id,
+                /*
+                 * Make sure visitor exists.
+                 */
+                if (! $visitRequest->visitor) {
+                    return back()->with(
+                        'error',
+                        'No visitor profile is linked to this visit.'
+                    );
+                }
 
-                    'id_type' =>
-                        $data['new_id_type'],
+                /*
+                 * ---------------------------------------------------
+                 * SAVE REPLACEMENT ID
+                 * ---------------------------------------------------
+                 */
+                if (
+                    ($data['id_match_status'] ?? null) === 'replaced'
+                ) {
 
-                    'id_number' =>
-                        $data['new_id_number'],
+                    VisitorId::create([
+                        'visitor_id' =>
+                            $visitRequest->visitor->visitor_id,
 
-                    'file_path' =>
-                        null,
+                        'id_type' =>
+                            $data['new_id_type'],
 
-                    'verification_status' =>
-                        'pending',
+                        'id_number' =>
+                            $data['new_id_number'],
 
-                    'reason' =>
-                        $data['new_id_reason'],
+                        'file_path' =>
+                            null,
 
-                    'verified_by' =>
-                        null,
+                        'verification_status' =>
+                            'pending',
 
-                    'verified_at' =>
-                        null,
-                ]);
-            }
+                        'reason' =>
+                            $data['new_id_reason'],
 
-            /*
-             * Make sure visitor has a QR record.
-             */
-            $qr = $visitRequest->qrCode
-                ?? QrCode::generateFor($visitRequest);
+                        'verified_by' =>
+                            null,
 
-            /*
-             * Create/update check-in.
-             */
-            $checkin = VisitCheckin::updateOrCreate(
-                [
+                        'verified_at' =>
+                            null,
+                    ]);
+                }
+
+                /*
+                 * Make sure visitor has a QR record.
+                 */
+                $qr = $visitRequest->qrCode()->lockForUpdate()->first()
+                    ?? QrCode::generateFor($visitRequest);
+
+                /*
+                 * Always a new gate record: the session was checked
+                 * above to have none, so an existing (checked-out)
+                 * record is never overwritten and reopened. The unique
+                 * (visit_request_id, schedule_id) index backs this up.
+                 */
+                $checkin = VisitCheckin::create([
                     'visit_request_id' =>
                         $visitRequest->visit_request_id,
 
                     'schedule_id' =>
                         $session->schedule_id,
-                ],
-                [
+
                     'qr_code_id' =>
                         $qr->qr_code_id,
 
@@ -1143,20 +1182,31 @@ class CheckinCheckoutController extends Controller
 
                     'status' =>
                         'checked_in',
-                ]
-            );
+                ]);
+
+                /*
+                 * Mark QR as used once no later session is left to enter.
+                 */
+                if (
+                    $qr->status !== 'used' &&
+                    $this->gate->isLastSession($visitRequest, $session)
+                ) {
+                    $qr->update([
+                        'status' => 'used',
+                    ]);
+                }
+
+                return [$checkin, $session];
+            });
 
             /*
-             * Mark QR as used once no later session is left to enter.
+             * A failed check returned its error redirect.
              */
-            if (
-                $qr->status !== 'used' &&
-                $this->gate->isLastSession($visitRequest, $session)
-            ) {
-                $qr->update([
-                    'status' => 'used',
-                ]);
+            if ($result instanceof RedirectResponse) {
+                return $result;
             }
+
+            [$checkin, $session] = $result;
 
         } catch (\Throwable $e) {
 
@@ -1220,55 +1270,79 @@ class CheckinCheckoutController extends Controller
         try {
 
             /*
-             * Prevent checking out an already completed visit.
+             * Check out in one transaction under a lock on the visit,
+             * then this gate record (the same order as check-in). A
+             * repeated or concurrent check-out waits here, then finds
+             * the record already checked out and changes nothing.
              */
-            if ($checkin->status !== 'checked_in') {
-                return back()->with(
-                    'error',
-                    'This visitor is not currently checked in.'
-                );
-            }
+            $result = DB::transaction(function () use ($checkin, $staffId) {
 
-            $visitRequest = $checkin->visitRequest;
+                $visitRequest = VisitRequest::lockForUpdate()
+                    ->find($checkin->visit_request_id);
 
-            /*
-             * Leaving with a later session of the visit still ahead is
-             * the midday exit: the visit stays confirmed and the same QR
-             * admits the visitor again for the afternoon session.
-             */
-            $temporaryExit = $visitRequest
-                && $this->gate->hasReturnSession($visitRequest, $checkin);
-
-            $checkin->update([
-                'check_out_time' =>
-                    now(),
-
-                'check_out_officer_id' =>
-                    $staffId,
+                $checkin = VisitCheckin::lockForUpdate()
+                    ->find($checkin->checkin_id);
 
                 /*
-                 * Return the surrendered ID.
+                 * Prevent checking out an already completed visit.
                  */
-                'id_returned_time' =>
-                    now(),
+                if (! $checkin || $checkin->status !== 'checked_in') {
+                    return back()->with(
+                        'error',
+                        'This visitor is not currently checked in.'
+                    );
+                }
 
-                'status' =>
-                    'checked_out',
-            ]);
+                /*
+                 * Leaving with a later session of the visit still ahead is
+                 * the midday exit: the visit stays confirmed and the same QR
+                 * admits the visitor again for the afternoon session.
+                 */
+                $temporaryExit = $visitRequest
+                    && $this->gate->hasReturnSession($visitRequest, $checkin);
 
-            /*
-             * Final check-out completes the visit and retires its QR.
-             */
-            if ($visitRequest && ! $temporaryExit) {
-                $visitRequest->update([
+                $checkin->update([
+                    'check_out_time' =>
+                        now(),
+
+                    'check_out_officer_id' =>
+                        $staffId,
+
+                    /*
+                     * Return the surrendered ID.
+                     */
+                    'id_returned_time' =>
+                        now(),
+
                     'status' =>
-                        'completed',
+                        'checked_out',
                 ]);
 
-                $visitRequest->qrCode()
-                    ->where('status', 'active')
-                    ->update(['status' => 'used']);
+                /*
+                 * Final check-out completes the visit and retires its QR.
+                 */
+                if ($visitRequest && ! $temporaryExit) {
+                    $visitRequest->update([
+                        'status' =>
+                            'completed',
+                    ]);
+
+                    $visitRequest->qrCode()
+                        ->where('status', 'active')
+                        ->update(['status' => 'used']);
+                }
+
+                return [$checkin, $visitRequest, $temporaryExit];
+            });
+
+            /*
+             * A failed check returned its error redirect.
+             */
+            if ($result instanceof RedirectResponse) {
+                return $result;
             }
+
+            [$checkin, $visitRequest, $temporaryExit] = $result;
 
         } catch (\Throwable $e) {
 

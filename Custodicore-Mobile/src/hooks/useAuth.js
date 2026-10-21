@@ -23,8 +23,10 @@ import client, {
   updateMe as apiUpdateMe,
 } from '../services/api';
 import { buildRegisterBody, getRegistrationRelationshipFiles } from '../utils/registrationRequest';
+import { isVisitorNotApprovedError } from '../utils/verificationStatusUi';
 import {
   appendRegistrationGovernmentId,
+  appendRegistrationPhoto,
   appendRegistrationRelationshipDocuments,
   uploadGovernmentId,
 } from '../repositories/verificationRepository';
@@ -76,7 +78,8 @@ const UNRECOVERABLE_GOOGLE_REGISTRATION_CODES = new Set([
 /**
  * Build POST /api/auth/google/register body: the same registration fields as
  * buildRegisterBody() minus email (the backend reads it from the verified
- * Google ID token), plus the fresh ID token.
+ * Google ID token), plus the fresh ID token. Always multipart: the visitor's
+ * photo is required.
  * @param {Record<string, unknown>} payload
  * @param {string} idToken
  */
@@ -84,12 +87,12 @@ function buildGoogleRegisterBody(payload, idToken) {
   const body = buildRegisterBody(payload);
   delete body.email;
   const relationshipFiles = getRegistrationRelationshipFiles(payload);
-  if (!relationshipFiles.length) return { ...body, idToken };
 
-  // Relationship documents go with the registration itself (multipart). The
-  // government ID is still uploaded right after, with the new session.
+  // The photo and relationship documents go with the registration itself.
+  // The government ID is still uploaded right after, with the new session.
   const form = toFormData({ ...body, idToken });
   appendRegistrationRelationshipDocuments(form, relationshipFiles);
+  appendRegistrationPhoto(form, /** @type {any} */ (payload?.photo));
   return form;
 }
 
@@ -103,21 +106,21 @@ function toFormData(body) {
 }
 
 /**
- * POST /api/auth/register body. With documents picked during registration
- * (government ID, relationship documents) this is multipart — the visitor
- * gets no token until they verify their email, so they cannot be uploaded
- * afterwards; otherwise JSON.
+ * POST /api/auth/register body. Always multipart: it carries the required
+ * photo and the documents picked during registration (government ID,
+ * relationship documents) — the visitor gets no token until they verify
+ * their email, so they cannot be uploaded afterwards.
  * @param {Record<string, unknown>} payload
  */
 function buildRegisterRequest(payload) {
   const body = buildRegisterBody(payload);
   const governmentId = payload?.documents?.government_id;
   const relationshipFiles = getRegistrationRelationshipFiles(payload);
-  if (!governmentId?.uri && !relationshipFiles.length) return body;
 
   const form = toFormData(body);
   if (governmentId?.uri) appendRegistrationGovernmentId(form, governmentId);
   appendRegistrationRelationshipDocuments(form, relationshipFiles);
+  appendRegistrationPhoto(form, /** @type {any} */ (payload?.photo));
   return form;
 }
 
@@ -597,6 +600,27 @@ export function AuthProvider({ children }) {
     if (USE_MOCK_AUTH || !token) return user;
     return storeUser(await getMe());
   }, [token, user, storeUser]);
+
+  // 403 visitor_not_approved: staff changed the review status after /me was
+  // loaded. Re-read /me so AppNavigator switches to the restricted stack.
+  const approvalRefreshRef = useRef(false);
+  useEffect(() => {
+    const id = client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (token && isVisitorNotApprovedError(error) && !approvalRefreshRef.current) {
+          approvalRefreshRef.current = true;
+          refreshUser()
+            .catch(() => {})
+            .finally(() => {
+              approvalRefreshRef.current = false;
+            });
+        }
+        return Promise.reject(error);
+      },
+    );
+    return () => client.interceptors.response.eject(id);
+  }, [token, refreshUser]);
 
   /** PATCH /api/me with editable fields; returns the updated user. */
   const updateProfile = useCallback(

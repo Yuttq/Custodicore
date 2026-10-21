@@ -2,20 +2,28 @@
 
 namespace Tests\Feature;
 
+use App\Models\Account;
+use App\Models\VisitorProfile;
+use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
+use Tests\Support\GoogleIdTokenFixtures;
 use Tests\Support\MakesTestImages;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * Visitor photo: taken in the mobile app (POST /api/me/photo or with
- * registration), stored privately, shown to staff on the visitor's pages.
+ * Visitor photo: taken in the mobile app (required with registration, or
+ * POST /api/me/photo), stored privately, shown to staff on the visitor's pages.
  */
 class VisitorPhotoTest extends TestCase
 {
+    use GoogleIdTokenFixtures;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
     use MakesTestImages;
@@ -96,5 +104,128 @@ class VisitorPhotoTest extends TestCase
         $this->get("/visitors/{$this->visitor->visitor_id}")->assertOk()->assertSee('no photo yet');
         $this->get('/account-reviews')->assertSee('No photo yet. The visitor takes it in the CustodiCore app');
         $this->get("/visitors/{$this->visitor->visitor_id}/photo")->assertNotFound();
+    }
+
+    // ---------------------------------------------------------------
+    // Required photo at registration (password and Google)
+    // ---------------------------------------------------------------
+
+    private function registration(array $overrides = []): array
+    {
+        return array_filter(array_merge([
+            'fullName' => 'Ana Reyes',
+            'email' => 'photo.visitor@example.com',
+            'password' => 'Secret-pass-1',
+            'password_confirmation' => 'Secret-pass-1',
+            'dateOfBirth' => '1992-02-02',
+            'gender' => 'female',
+            'intendedPdlName' => 'Pedro Santos Reyes',
+            'acceptedTerms' => '1',
+            'acceptedPrivacy' => '1',
+            'consentVersion' => (string) config('legal.version'),
+            'photo' => $this->fakePhoto(),
+        ], $overrides), fn ($value) => $value !== null);
+    }
+
+    private function assertNoPhotoFiles(): void
+    {
+        $this->assertSame([], Storage::disk('local')->allFiles('visitor-photos'));
+    }
+
+    public static function badPhotos(): array
+    {
+        return [
+            'missing' => [null, 'Please take a photo of yourself.'],
+            'not a picture' => ['pdf', 'The photo must be a JPG, PNG or WEBP picture.'],
+            'over 5 MB' => ['oversized', 'The photo is too large. Maximum size is 5 MB.'],
+        ];
+    }
+
+    private function badPhoto(?string $kind): ?UploadedFile
+    {
+        return match ($kind) {
+            null => null,
+            'pdf' => UploadedFile::fake()->create('cv.pdf', 20, 'application/pdf'),
+            // A real PNG padded past 5 MB, so only the size rule can reject it.
+            'oversized' => (function () {
+                $path = $this->fakePhoto('big.png')->getPathname();
+                file_put_contents($path, str_repeat("\0", 5 * 1024 * 1024), FILE_APPEND);
+
+                return new UploadedFile($path, 'big.png', 'image/png', null, true);
+            })(),
+        };
+    }
+
+    #[DataProvider('badPhotos')]
+    public function test_registration_is_refused_without_a_valid_photo(?string $kind, string $message): void
+    {
+        Mail::fake();
+        $accounts = Account::count();
+
+        $this->post('/api/auth/register', $this->registration(['photo' => $this->badPhoto($kind)]), ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['photo' => $message]);
+
+        $this->assertSame($accounts, Account::count());
+        $this->assertNoPhotoFiles();
+        Mail::assertNothingSent();
+    }
+
+    #[DataProvider('badPhotos')]
+    public function test_google_registration_is_refused_without_a_valid_photo(?string $kind, string $message): void
+    {
+        $this->app->instance(GoogleIdTokenVerifier::class, $this->makeGoogleVerifier());
+        $accounts = Account::count();
+
+        $body = ['idToken' => $this->googleIdToken()] + $this->registration(['email' => null, 'photo' => $this->badPhoto($kind)]);
+        $this->post('/api/auth/google/register', $body, ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['photo' => $message])
+            ->assertJsonMissingPath('token');
+
+        $this->assertSame($accounts, Account::count());
+        $this->assertNoPhotoFiles();
+    }
+
+    public function test_registration_photo_is_stored_on_the_new_profile_for_staff(): void
+    {
+        Mail::fake();
+
+        $this->post('/api/auth/register', $this->registration(), ['Accept' => 'application/json'])->assertCreated();
+
+        $profile = Account::where('email', 'photo.visitor@example.com')->first()->visitorProfile;
+        $this->assertStringStartsWith('visitor-photos/', $profile->photo_path);
+        $this->assertNotNull($profile->photo_uploaded_at);
+        $this->assertSame([$profile->photo_path], Storage::disk('local')->allFiles('visitor-photos'));
+
+        $this->actingAs($this->recordOfficerAccount, 'web');
+        $this->get("/visitors/{$profile->visitor_id}/photo")->assertOk();
+        // Account Review shows the photo above the Government ID for comparison.
+        $this->get('/account-reviews')->assertOk()
+            ->assertSeeInOrder(['Visitor Photo', $profile->photoUrl(), 'Government ID'], false);
+    }
+
+    public function test_google_registration_stores_the_photo(): void
+    {
+        $this->app->instance(GoogleIdTokenVerifier::class, $this->makeGoogleVerifier());
+
+        $body = ['idToken' => $this->googleIdToken()] + $this->registration(['email' => null]);
+        $this->post('/api/auth/google/register', $body, ['Accept' => 'application/json'])->assertCreated();
+
+        $profile = Account::where('email', 'google.visitor@gmail.com')->first()->visitorProfile;
+        $this->assertSame([$profile->photo_path], Storage::disk('local')->allFiles('visitor-photos'));
+    }
+
+    public function test_a_failed_registration_leaves_no_photo_file(): void
+    {
+        Mail::fake();
+        VisitorProfile::creating(function () {
+            throw new RuntimeException('Simulated profile failure.');
+        });
+
+        $this->post('/api/auth/register', $this->registration(), ['Accept' => 'application/json'])->assertStatus(500);
+
+        $this->assertSame(0, Account::where('email', 'photo.visitor@example.com')->count());
+        $this->assertNoPhotoFiles();
     }
 }

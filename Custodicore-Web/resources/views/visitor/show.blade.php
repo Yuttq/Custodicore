@@ -142,12 +142,18 @@
                 </form>
               @endif
               @if ($doc->verification_status !== 'rejected')
-                <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                      data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor will need to upload a new one."
-                      data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
-                  @csrf
-                  <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
-                </form>
+                <details class="acct-reject">
+                  <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
+                  <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
+                        data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor will need to upload a new one."
+                        data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
+                    @csrf
+                    <textarea name="rejection_reason" required minlength="5" maxlength="500" aria-label="Why the ID was rejected (shown to the visitor)"
+                              data-label="Why the ID was rejected (shown to the visitor)"
+                              placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
+                    <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
+                  </form>
+                </details>
               @endif
             </div>
           </td>
@@ -422,6 +428,8 @@
 
   @if ($visitor->verification_status === 'rejected')
     <p class="empty-note">This visitor was rejected and cannot be assigned a visit.</p>
+  @elseif ($visitor->verification_status !== 'verified')
+    <p class="empty-note">Approve this visitor's account before assigning a visit.</p>
   @elseif ($visitor->account && $visitor->account->status !== 'active')
     <p class="empty-note">This visitor account is not active and cannot be assigned a visit.</p>
   @elseif ($assignableRelationships->isEmpty())
