@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Support\DateSearch;
 use App\Support\Pages;
 use App\Support\Sanitizer;
 use Illuminate\Http\Request;
@@ -16,29 +17,26 @@ use Illuminate\View\View;
  * (Admin/Warden, Records Officer, Front Desk) writes to via
  * App\Models\AuditLog::record(), so actions taken anywhere in the system
  * show up here together, tagged with the module they actually happened in.
+ *
+ * One search box does everything: type a date, month or year ("2026-10-20",
+ * "October 2026", "2026") or a time ("21:58") and every action in that period
+ * is listed; type anything else and it searches names, actions, modules and
+ * descriptions. See App\Support\DateSearch for the accepted spellings.
  */
 class AuditController extends Controller
 {
     public function index(Request $request): View
     {
         $search = Sanitizer::text($request->query('q'));
-        $like = $search !== null ? Sanitizer::like($search) : null;
+        $parsed = DateSearch::parse($search);
+
+        // Words to look for (null when the box held a date / time).
+        $words = $parsed['text'];
+        $like = $words !== null ? Sanitizer::like($words) : null;
         // "check in" typed with a space should still find the check_in action.
-        $likeAction = $search !== null ? Sanitizer::like(str_replace(' ', '_', $search)) : null;
+        $likeAction = $words !== null ? Sanitizer::like(str_replace(' ', '_', $words)) : null;
 
-        // Date range (inclusive). Invalid dates are ignored; a reversed
-        // range is swapped rather than returning nothing.
-        $from = $this->dateParam($request->query('from'));
-        $to = $this->dateParam($request->query('to'));
-        if ($from && $to && $from > $to) {
-            [$from, $to] = [$to, $from];
-        }
-
-        // Time of day (24-hour "HH:MM"), applied to every day in the range.
-        // If "from" is later than "to" the window runs overnight (e.g. 22:00–06:00).
-        $fromTime = $this->timeParam($request->query('from_time'));
-        $toTime = $this->timeParam($request->query('to_time'));
-        $filtered = $search !== null || $from || $to || $fromTime || $toTime;
+        $filtered = $search !== null;
 
         $auditLogs = AuditLog::query()
             ->with(['account.staffProfile', 'account.visitorProfile', 'module'])
@@ -54,21 +52,10 @@ class AuditController extends Controller
                         ->orWhereHas('module', fn ($m) => $m->where('module_name', 'like', $like));
                 });
             })
-            ->when($from, fn ($query) => $query->whereDate('created_at', '>=', $from))
-            ->when($to, fn ($query) => $query->whereDate('created_at', '<=', $to))
-            ->when($fromTime || $toTime, function ($query) use ($fromTime, $toTime) {
-                $start = $fromTime ? $fromTime . ':00' : '00:00:00';
-                $end = $toTime ? $toTime . ':59' : '23:59:59';
-                if ($start <= $end) {
-                    $query->whereTime('created_at', '>=', $start)->whereTime('created_at', '<=', $end);
-                } else {
-                    // Overnight window: late evening OR early morning.
-                    $query->where(fn ($q) => $q->whereTime('created_at', '>=', $start)->orWhereTime('created_at', '<=', $end));
-                }
-            })
+            ->when($parsed['active'], fn ($query) => DateSearch::apply($query, 'created_at', $parsed))
             ->orderByDesc('created_at')
             ->orderByDesc('audit_log_id')
-            ->take(500)
+            ->take(2000)
             ->get()
             ->map(fn ($log) => [
                 'created_at' => $log->created_at?->format('Y-m-d H:i'),
@@ -88,25 +75,9 @@ class AuditController extends Controller
             ['label' => 'Log Entries', 'value' => (string) $totalLogs, 'icon' => 'clipboard', 'accent' => 'info'],
         ];
 
+        $dateLabel = $parsed['label'];
         $auditLogs = Pages::of($auditLogs);
 
-        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs', 'from', 'to', 'fromTime', 'toTime', 'filtered'));
-    }
-
-    /** "HH:MM" (24-hour) if it is a real time of day, otherwise null. */
-    private function timeParam(mixed $value): ?string
-    {
-        return is_string($value) && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', trim($value)) ? trim($value) : null;
-    }
-
-    /** "YYYY-MM-DD" if it's a real calendar date, otherwise null. */
-    private function dateParam(mixed $value): ?string
-    {
-        if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-            return null;
-        }
-        [$y, $m, $d] = array_map('intval', explode('-', $value));
-
-        return checkdate($m, $d, $y) ? $value : null;
+        return view('admin.audit.index', compact('auditLogs', 'summary', 'search', 'totalLogs', 'filtered', 'dateLabel'));
     }
 }

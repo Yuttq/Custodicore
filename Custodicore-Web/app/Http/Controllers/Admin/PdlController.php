@@ -80,12 +80,12 @@ class PdlController extends Controller
 
         // Authorized visitors: people whose relationship to this PDL has been
         // verified by the Records Officer AND whose own account is verified.
-        // Spouse / parent / legal guardian (high priority) are listed first.
+        // Listed alphabetically by name.
         $authorizedVisitors = $pdl->visitorRelationships
             ->filter(fn ($rel) => $rel->isVerified()
                 && $rel->visitor
                 && $rel->visitor->verification_status === 'verified')
-            ->sortBy(fn ($rel) => [$rel->isHighPriority() ? 0 : 1, mb_strtolower((string) $rel->visitor->full_name)])
+            ->sortBy(fn ($rel) => mb_strtolower((string) $rel->visitor->full_name))
             ->values();
 
         // Linked to this PDL but not (yet) cleared to visit.

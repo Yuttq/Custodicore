@@ -171,9 +171,6 @@
                                     </div>
                                     <div class="flex flex-wrap items-center gap-xs">
                                         <span class="cc-chip cc-chip-info">{{ $rel->relationshipLabel() }}</span>
-                                        @if ($rel->isHighPriority())
-                                            <span class="cc-chip cc-chip-success">High priority</span>
-                                        @endif
                                     </div>
                                 </div>
                             @endforeach
