@@ -147,4 +147,34 @@ class FacilityVisitationRule extends Model
     {
         return substr((string) $this->time_slot_start, 0, 5) . '–' . substr((string) $this->time_slot_end, 0, 5);
     }
+
+    /**
+     * "Thu, Sat 09:00–11:30, 13:00–16:30" for the rules in effect today or
+     * starting later (sessions on the same days are listed together;
+     * different day sets are separated by " · "), or null when there are none.
+     */
+    public static function summarize($rules): ?string
+    {
+        $today = now()->toDateString();
+        $order = array_keys(self::DAY_LABELS);
+        $rules = collect($rules)->filter(fn (self $r) => $r->isInEffectOn($today) || ($r->effective_from && $r->effective_from->toDateString() > $today));
+        if ($rules->isEmpty()) {
+            return null;
+        }
+
+        // hours => "Thu, Sat", then the hours grouped under each set of days.
+        return $rules->groupBy(fn ($r) => $r->hoursLabel())
+            ->sortKeys()
+            ->map(fn ($group) => $group->sortBy(fn ($r) => array_search($r->day_of_week, $order, true))
+                ->map(fn ($r) => ucfirst($r->day_of_week))->unique()->join(', '))
+            ->groupBy(fn ($days) => $days, true)
+            ->map(fn ($hours, $days) => $days . ' ' . $hours->keys()->join(', '))
+            ->join(' · ');
+    }
+
+    /** Visiting schedule for PDLs of a classification whose dorm has no hours of its own. */
+    public static function classificationSummary(string $classification): ?string
+    {
+        return self::summarize(self::whereNull('cell_block_id')->where('pdl_classification', $classification)->get());
+    }
 }

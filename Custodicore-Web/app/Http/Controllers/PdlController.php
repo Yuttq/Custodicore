@@ -120,6 +120,15 @@ class PdlController extends Controller
         'offense_code.required' => 'Choose the offense from the list (or Other).',
         'offense_code.in' => 'Choose the offense from the list (or Other).',
         'offense_other.required_if' => 'Type the offense when "Other" is chosen.',
+        'case_status.required' => 'Choose the case status.',
+        'case_status.in' => 'Choose the case status from the list.',
+        'date_filed.before_or_equal' => 'The date filed cannot be in the future.',
+        'next_hearing_at.after_or_equal' => 'The next hearing must be today or later.',
+        'convicted_on.required' => 'Enter the date of conviction.',
+        'convicted_on.before_or_equal' => 'The date of conviction cannot be in the future.',
+        'sentence_years.max' => 'Sentence years must be 99 or less.',
+        'sentence_months.max' => 'Sentence months must be 0 to 11.',
+        'sentence_days.max' => 'Sentence days must be 0 to 30.',
     ];
 
     /** Case number + offense (picked from App\Support\Offenses, or Other with own wording) + court. */
@@ -145,6 +154,7 @@ class PdlController extends Controller
             'case_number' => mb_strtoupper((string) Sanitizer::text($request->input('case_number'))) ?: null,
             'offense_other' => Sanitizer::text($request->input('offense_other')),
             'court' => Sanitizer::text($request->input('court')),
+            'hearing_notes' => Sanitizer::text($request->input('hearing_notes')),
         ]);
     }
 
@@ -159,6 +169,75 @@ class PdlController extends Controller
             'offense' => $code === Offenses::OTHER ? $validated['offense_other'] : Offenses::label($code),
             'court' => $validated['court'] ?? null,
         ];
+    }
+
+    /**
+     * Case status, date filed, next court hearing and (when convicted) the
+     * conviction date and sentence. Shared by Register PDL, Add Legal Record
+     * and Update Legal Record.
+     */
+    private function caseDetailRules(Request $request): array
+    {
+        $convicted = in_array($request->input('case_status'), PdlLegalRecord::CONVICTED_STATUSES, true);
+
+        return [
+            // Missing means a new case: Pending trial (the forms always send one).
+            'case_status' => ['nullable', Rule::in(PdlLegalRecord::STATUSES)],
+            'date_filed' => ['nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
+            'next_hearing_at' => ['nullable', 'date', 'after_or_equal:today'],
+            'hearing_notes' => ['nullable', 'string', 'max:255'],
+            'convicted_on' => [Rule::requiredIf($convicted), 'nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
+            'sentence_years' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'sentence_months' => ['nullable', 'integer', 'min:0', 'max:11'],
+            'sentence_days' => ['nullable', 'integer', 'min:0', 'max:30'],
+        ];
+    }
+
+    /** Checks that need more than one field: a conviction needs a sentence and can't precede the filing. */
+    private function checkCaseDetails(array $validated): void
+    {
+        if (! in_array($validated['case_status'] ?? null, PdlLegalRecord::CONVICTED_STATUSES, true)) {
+            return;
+        }
+        if (((int) ($validated['sentence_years'] ?? 0) + (int) ($validated['sentence_months'] ?? 0) + (int) ($validated['sentence_days'] ?? 0)) === 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'sentence_years' => 'Enter the sentence (years, months and/or days).',
+            ]);
+        }
+        if (! empty($validated['date_filed']) && $validated['convicted_on'] < $validated['date_filed']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'convicted_on' => 'The date of conviction cannot be before the date the case was filed.',
+            ]);
+        }
+    }
+
+    /** Validated details → pdl_legal_records columns (conviction cleared unless convicted). */
+    private function caseDetailAttributes(array $validated): array
+    {
+        $status = $validated['case_status'] ?? PdlLegalRecord::PENDING;
+        $convicted = in_array($status, PdlLegalRecord::CONVICTED_STATUSES, true);
+
+        return [
+            'case_status' => $status,
+            'date_filed' => $validated['date_filed'] ?? null,
+            'convicted_on' => $convicted ? $validated['convicted_on'] : null,
+            'sentence_years' => $convicted ? (int) ($validated['sentence_years'] ?? 0) : null,
+            'sentence_months' => $convicted ? (int) ($validated['sentence_months'] ?? 0) : null,
+            'sentence_days' => $convicted ? (int) ($validated['sentence_days'] ?? 0) : null,
+        ];
+    }
+
+    /** Records the next hearing, if one was entered and the case is still open. */
+    private function addHearing(PdlLegalRecord $record, array $validated, int $staffId): ?\App\Models\CourtHearing
+    {
+        if (empty($validated['next_hearing_at']) || $record->isClosed()) {
+            return null;
+        }
+
+        return $record->hearings()->firstOrCreate(
+            ['hearing_at' => \Illuminate\Support\Carbon::parse($validated['next_hearing_at'])],
+            ['notes' => $validated['hearing_notes'] ?? null, 'recorded_by' => $staffId]
+        );
     }
 
     /** Cleans names/alias/cell before validation so "JUAN  dela cruz " is stored as "Juan Dela Cruz". */
@@ -194,9 +273,13 @@ class PdlController extends Controller
             'photo' => ['required', ...self::PHOTO_RULES],
             // The case they're detained for; it becomes their first legal record.
             ...$this->caseRules(),
+            ...$this->caseDetailRules($request),
         ]);
-        $case = $this->caseAttributes($validated);
-        $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court']));
+        $this->checkCaseDetails($validated);
+        $case = [...$this->caseAttributes($validated), ...$this->caseDetailAttributes($validated)];
+        $caseInput = $validated;
+        $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court',
+            ...array_keys($this->caseDetailRules($request))]));
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
@@ -206,7 +289,7 @@ class PdlController extends Controller
         $photoPath = $request->file('photo')->store('pdl-photos', 'local');
 
         try {
-            $pdl = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $photoPath, $case, $staffId) {
+            $pdl = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $photoPath, $case, $caseInput, $staffId) {
                 $pdl = Pdl::create([
                     ...$validated,
                     // Visiting-day group follows the offense (RA 9165 = drug-related).
@@ -217,11 +300,12 @@ class PdlController extends Controller
                     'registered_by' => $staffId,
                 ]);
 
-                PdlLegalRecord::create([
+                $record = PdlLegalRecord::create([
                     ...$case,
                     'pdl_id' => $pdl->pdl_id,
                     'recorded_by' => $staffId,
                 ]);
+                $this->addHearing($record, $caseInput, $staffId);
 
                 return $pdl;
             });
@@ -251,7 +335,7 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function show(Pdl $pdl)
     {
-        $pdl->load(['legalRecords', 'disciplinaryRecords', 'restrictions', 'registeredBy']);
+        $pdl->load(['legalRecords.hearings', 'disciplinaryRecords', 'restrictions', 'registeredBy']);
 
         // Visitation eligibility status, shown on the PDL's own page — this
         // is PDL-side information (is *this PDL* currently clear to
@@ -387,15 +471,15 @@ class PdlController extends Controller
     {
         $this->cleanCaseInput($request);
         $request->merge([
-            'case_status' => Sanitizer::text($request->input('case_status')),
             'remarks' => Sanitizer::paragraph($request->input('remarks')),
         ]);
 
         $validated = $request->validate([
             ...$this->caseRules($pdl),
-            'case_status' => ['nullable', 'string', 'max:100'],
+            ...$this->caseDetailRules($request),
             'remarks' => ['nullable', 'string', 'max:2000'],
         ], self::CASE_MESSAGES);
+        $this->checkCaseDetails($validated);
 
         $previousClassification = $pdl->classification;
 
@@ -407,11 +491,12 @@ class PdlController extends Controller
         try {
             $record = PdlLegalRecord::create([
                 ...$this->caseAttributes($validated),
-                'case_status' => $validated['case_status'] ?? null,
+                ...$this->caseDetailAttributes($validated),
                 'remarks' => $validated['remarks'] ?? null,
                 'pdl_id' => $pdl->pdl_id,
                 'recorded_by' => $staffId,
             ]);
+            $this->addHearing($record, $validated, $staffId);
             $classificationChanged = $pdl->refreshClassification();
         } catch (\Throwable $e) {
             Log::error('Legal record creation failed: ' . $e->getMessage());
@@ -434,6 +519,78 @@ class PdlController extends Controller
         }
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Legal record added.');
+    }
+
+    // -----------------------------------------------------------------
+    // Update a legal record: status, date filed, next hearing, conviction
+    // and remarks. The case number and offense stay as filed.
+    // -----------------------------------------------------------------
+    public function updateLegalRecord(Request $request, Pdl $pdl, PdlLegalRecord $record)
+    {
+        abort_unless((int) $record->pdl_id === (int) $pdl->pdl_id, 404);
+
+        $request->merge([
+            'remarks' => Sanitizer::paragraph($request->input('remarks')),
+            'hearing_notes' => Sanitizer::text($request->input('hearing_notes')),
+        ]);
+        $validated = $request->validate([
+            ...$this->caseDetailRules($request),
+            'remarks' => ['nullable', 'string', 'max:2000'],
+        ], self::CASE_MESSAGES);
+        $this->checkCaseDetails($validated);
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $before = [
+            'status' => $record->case_status,
+            'filed' => $record->date_filed?->toDateString(),
+            'conviction' => $record->convicted_on?->toDateString() . '|' . $record->sentenceLabel(),
+            'remarks' => $record->remarks,
+        ];
+
+        try {
+            $hearing = \Illuminate\Support\Facades\DB::transaction(function () use ($record, $validated, $staffId) {
+                $record->update([...$this->caseDetailAttributes($validated), 'remarks' => $validated['remarks'] ?? null]);
+
+                return $this->addHearing($record, $validated, $staffId);
+            });
+        } catch (\Throwable $e) {
+            Log::error('Legal record update failed: ' . $e->getMessage());
+            return redirect()->back()->withInput()->with('error', 'Could not update this legal record. ' . $this->friendlyMessage($e));
+        }
+
+        // What changed, in words, for the activity log.
+        $record->refresh();
+        $changes = [];
+        if ($before['status'] !== $record->case_status) {
+            $changes[] = 'status ' . ($before['status'] ?? 'none') . ' → ' . $record->case_status;
+        }
+        if ($before['filed'] !== $record->date_filed?->toDateString()) {
+            $changes[] = 'date filed ' . ($record->date_filed?->format('M j, Y') ?? 'cleared');
+        }
+        if ($before['conviction'] !== $record->convicted_on?->toDateString() . '|' . $record->sentenceLabel()) {
+            $changes[] = $record->isConvicted()
+                ? 'convicted ' . $record->convicted_on->format('M j, Y') . ', sentence ' . $record->sentenceLabel()
+                : 'conviction cleared';
+        }
+        if ($hearing && $hearing->wasRecentlyCreated) {
+            $changes[] = 'next hearing ' . $hearing->hearing_at->format('M j, Y H:i');
+        }
+        if ($before['remarks'] !== $record->remarks) {
+            $changes[] = 'remarks updated';
+        }
+
+        if ($changes === []) {
+            return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'No changes to save.');
+        }
+
+        $this->logAudit('update', 'pdl_legal_records', $record->legal_record_id,
+            "Updated legal record {$record->case_number} for {$pdl->full_name}: " . implode('; ', $changes));
+
+        return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', "Legal record {$record->case_number} updated.");
     }
 
     // -----------------------------------------------------------------
@@ -647,6 +804,7 @@ class PdlController extends Controller
     private function assignableCellBlocks(?string $currentBlock = null)
     {
         return CellBlock::withOccupancy()
+            ->with('visitationRules')
             ->where(fn ($q) => $q->where('is_active', true)
                 ->when($currentBlock, fn ($q2) => $q2->orWhere('name', $currentBlock)))
             ->orderBy('name')

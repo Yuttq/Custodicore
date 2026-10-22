@@ -15,6 +15,12 @@ class CellBlock extends Model
 
     public const DESIGNATIONS = ['any', 'male', 'female'];
 
+    /**
+     * Which cases a dorm is meant for (null = any). Guidance only: dorms are
+     * overcrowded, so either classification can still be assigned anywhere.
+     */
+    public const INTENDED = ['drug_related' => 'Drug-related cases', 'non_drug_related' => 'Non-drug-related cases'];
+
     // Only PDLs physically in custody count toward a dorm.
     public const OCCUPYING_STATUS = 'active';
 
@@ -22,8 +28,15 @@ class CellBlock extends Model
         'name',
         'capacity',
         'designation',
+        'intended_classification',
         'is_active',
     ];
+
+    /** "Drug-related cases" / "Non-drug-related cases" / "Any case". */
+    public function intendedLabel(): string
+    {
+        return self::INTENDED[$this->intended_classification] ?? 'Any case';
+    }
 
     protected $casts = [
         'capacity' => 'integer',
@@ -47,18 +60,7 @@ class CellBlock extends Model
      */
     public function visitingSummary(): ?string
     {
-        $today = now()->toDateString();
-        $order = array_keys(FacilityVisitationRule::DAY_LABELS);
-        $rules = $this->visitationRules->filter(fn (FacilityVisitationRule $r) => $r->isInEffectOn($today) || ($r->effective_from && $r->effective_from->toDateString() > $today));
-        if ($rules->isEmpty()) {
-            return null;
-        }
-
-        return $rules->groupBy(fn ($r) => $r->hoursLabel())
-            ->sortBy(fn ($group, $hours) => $hours)
-            ->map(fn ($group, $hours) => $group->sortBy(fn ($r) => array_search($r->day_of_week, $order, true))
-                ->map(fn ($r) => ucfirst($r->day_of_week))->unique()->join(', ') . ' ' . $hours)
-            ->join(' · ');
+        return FacilityVisitationRule::summarize($this->visitationRules);
     }
 
     public function pdls()

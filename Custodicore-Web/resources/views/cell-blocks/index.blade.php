@@ -23,7 +23,7 @@
   @else
   <table>
     <thead>
-      <tr><th>Cell/Block</th><th>Designated For</th><th>Occupancy</th><th>Status</th><th>Visiting Hours</th><th></th></tr>
+      <tr><th>Cell/Block</th><th>Designated For</th><th>Intended For</th><th>Occupancy</th><th>Status</th><th>Visiting Hours</th><th></th></tr>
     </thead>
     <tbody>
       @foreach ($cellBlocks as $block)
@@ -31,6 +31,7 @@
         <tr class="{{ $block->is_active && $block->isOver() ? 'row-over' : '' }}">
           <td><strong>{{ $block->name }}</strong></td>
           <td class="muted-cell">{{ $block->designationLabel() }}</td>
+          <td class="muted-cell">{{ $block->intendedLabel() }}</td>
           <td>
             <div class="occupancy-chip occupancy-inline {{ $block->isOver() || $block->isFull() ? 'is-over' : ($pct >= 80 ? 'is-near' : '') }}" style="background:none;border:none;padding:0;">
               <div class="occupancy-bar"><span style="width:{{ $pct }}%"></span></div>
@@ -62,6 +63,7 @@
                   'name' => $block->name,
                   'capacity' => $block->capacity,
                   'designation' => $block->designation,
+                  'intended' => $block->intended_classification,
                   'is_active' => $block->is_active,
                   'occupied' => $block->occupied(),
               ];
@@ -111,6 +113,18 @@
               <option value="female">Female only</option>
             </select>
           </div>
+          <div class="field-m">
+            <label for="cb_intended">Intended For</label>
+            <select id="cb_intended" name="intended_classification">
+              <option value="">Any case</option>
+              @foreach (\App\Models\CellBlock::INTENDED as $value => $label)
+                <option value="{{ $value }}">{{ $label }}</option>
+              @endforeach
+            </select>
+            <p class="field-hint">Guidance only. Because dorms are overcrowded, PDLs of either classification can still be placed here.</p>
+          </div>
+        </div>
+        <div class="row cols-2">
           <div class="field-m" id="cbActiveField" style="display:none;">
             <label>Status</label>
             <label style="display:flex;align-items:center;gap:8px;font-weight:500;font-size:13px;margin-top:10px;">
@@ -144,6 +158,7 @@
     document.getElementById('cb_capacity').value = editing ? block.capacity : '';
     document.getElementById('cb_capacity').min = 1;
     document.getElementById('cb_designation').value = editing ? block.designation : 'any';
+    document.getElementById('cb_intended').value = editing ? (block.intended || '') : '';
     document.getElementById('cbActiveField').style.display = editing ? '' : 'none';
     document.getElementById('cb_is_active').checked = editing ? block.is_active : true;
     document.getElementById('cellBlockModal').classList.add('open');

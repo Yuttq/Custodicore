@@ -367,6 +367,12 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'storeLegalRecord']
     )->name('pdl.legal-records.store');
 
+    // Status, date filed, next hearing, conviction and remarks of one case.
+    Route::patch(
+        '/pdls/{pdl}/legal-records/{record}',
+        [\App\Http\Controllers\PdlController::class, 'updateLegalRecord']
+    )->name('pdl.legal-records.update');
+
     Route::post(
         '/pdls/{pdl}/disciplinary-records',
         [\App\Http\Controllers\PdlController::class, 'storeDisciplinaryRecord']

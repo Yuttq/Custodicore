@@ -48,11 +48,12 @@ class CellBlockController extends Controller
             'name' => ['required', 'string', 'max:50', "regex:/^[\pL\pN][\pL\pN\s()#.\/\-]*$/u", Rule::unique('cell_blocks', 'name')],
             'capacity' => ['required', 'integer', 'min:1', 'max:1000'],
             'designation' => ['required', Rule::in(CellBlock::DESIGNATIONS)],
+            'intended_classification' => ['nullable', Rule::in(array_keys(CellBlock::INTENDED))],
         ], self::MESSAGES);
 
         $block = CellBlock::create([...$validated, 'name' => trim($validated['name']), 'is_active' => true]);
 
-        $this->logAudit('create', $block->cell_block_id, "Added cell block {$block->name} (capacity {$block->capacity}, {$block->designationLabel()})");
+        $this->logAudit('create', $block->cell_block_id, "Added cell block {$block->name} (capacity {$block->capacity}, {$block->designationLabel()}, for {$block->intendedLabel()})");
 
         return redirect()->route('cell-blocks.index')->with('success', "Cell block {$block->name} added.");
     }
@@ -63,6 +64,7 @@ class CellBlockController extends Controller
             'name' => ['required', 'string', 'max:50', "regex:/^[\pL\pN][\pL\pN\s()#.\/\-]*$/u", Rule::unique('cell_blocks', 'name')->ignore($cellBlock->cell_block_id, 'cell_block_id')],
             'capacity' => ['required', 'integer', 'min:1', 'max:1000'],
             'designation' => ['required', Rule::in(CellBlock::DESIGNATIONS)],
+            'intended_classification' => ['nullable', Rule::in(array_keys(CellBlock::INTENDED))],
             'is_active' => ['nullable', 'boolean'],
         ], self::MESSAGES);
         $validated['name'] = trim($validated['name']);
@@ -91,7 +93,7 @@ class CellBlockController extends Controller
             'update',
             $cellBlock->cell_block_id,
             "Updated cell block {$oldName}" . ($oldName !== $cellBlock->name ? " → {$cellBlock->name}" : '')
-                . " (capacity {$cellBlock->capacity}, {$cellBlock->designationLabel()}, " . ($cellBlock->is_active ? 'active' : 'inactive') . ')'
+                . " (capacity {$cellBlock->capacity}, {$cellBlock->designationLabel()}, for {$cellBlock->intendedLabel()}, " . ($cellBlock->is_active ? 'active' : 'inactive') . ')'
         );
 
         return redirect()->route('cell-blocks.index')->with('success', "Cell block {$cellBlock->name} updated.");

@@ -48,17 +48,20 @@
       </div>
       <div class="field-m">
         <label>Gender</label>
+        {{-- The facility houses male PDLs, so Male is the default. --}}
         <select name="gender">
-          <option value="male" {{ old('gender') === 'male' ? 'selected' : '' }}>Male</option>
+          <option value="male" {{ old('gender', 'male') === 'male' ? 'selected' : '' }}>Male</option>
           <option value="female" {{ old('gender') === 'female' ? 'selected' : '' }}>Female</option>
           <option value="other" {{ old('gender') === 'other' ? 'selected' : '' }}>Other</option>
         </select>
+        <p class="field-hint">Male dormitory facility: leave as Male unless told otherwise.</p>
       </div>
     </div>
 
     {{-- The case decides the classification (drug_related -> Thu/Sat visits, non_drug_related -> Fri/Sun). --}}
     <p class="section-title" style="margin-top:26px;"><span class="icon">⚖️</span> Case Details</p>
     @include('pdl.partials.case-fields', ['showClassification' => true])
+    @include('pdl.partials.case-status-fields')
 
     <p class="section-title" style="margin-top:26px;"><span class="icon">🏢</span> Custody Details</p>
     <div class="row cols-2">
