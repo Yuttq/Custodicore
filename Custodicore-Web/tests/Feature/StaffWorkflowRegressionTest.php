@@ -62,8 +62,8 @@ class StaffWorkflowRegressionTest extends TestCase
         $this->get("/visitors/{$this->visitor->visitor_id}")
             ->assertOk()
             ->assertSee('assignVisitForm', false)
-            ->assertSee('schedulesByClassification', false)
-            ->assertSee((string) $this->schedule->schedule_id, false);
+            ->assertSee('id="assignDays"', false)
+            ->assertSee($this->schedule->schedule_date->toDateString(), false);
     }
 
     public function test_front_desk_checkout_scan_finds_active_checkin_for_used_qr(): void

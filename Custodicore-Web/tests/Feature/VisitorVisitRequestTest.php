@@ -46,6 +46,7 @@ class VisitorVisitRequestTest extends TestCase
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-10-07 10:00:00', 'Asia/Manila'));
         $this->seedPhase1Fixtures();
+        $this->completeRequirements(withVerifiedId: false); // approval needs a complete BJMP checklist; tests add the ID
         $this->withoutVite();
 
         $this->afternoonRule = FacilityVisitationRule::create([
@@ -696,6 +697,7 @@ class VisitorVisitRequestTest extends TestCase
 
     public function test_record_officer_sees_pending_visitor_requests(): void
     {
+        $this->completeRequirements();
         $visit = $this->submittedRequest();
         $this->actingAs($this->recordOfficerAccount);
 

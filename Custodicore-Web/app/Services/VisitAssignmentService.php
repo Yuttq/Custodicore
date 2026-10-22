@@ -160,6 +160,91 @@ class VisitAssignmentService
         CarbonImmutable $date,
         string|array $startTimes
     ): VisitRequest {
+        return $this->bookSessions(
+            $visitor, $relationship, $date, $startTimes, 'assigned', null,
+            'You already have a visit with this PDL on this date.',
+            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
+                $scheduleLabel = $this->visitLabel($visitRequest);
+                Notification::notify(
+                    $visitor->account_id,
+                    'visits',
+                    'Visit Request Submitted',
+                    "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
+
+                AuditLog::record(
+                    'create',
+                    'visit_requests',
+                    $visitRequest->visit_request_id,
+                    "Visitor submitted visit request for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
+                    Module::CODE_VISIT_SCHEDULING
+                );
+            }
+        );
+    }
+
+    /**
+     * Record Officer assigns one visit on one day with one or more sessions
+     * (both = whole day), the staff twin of submitVisitorRequest. Slots come
+     * from the PDL's visiting hours and are created on demand. The visit is
+     * `pending_confirmation` until the visitor confirms it in the app.
+     *
+     * @param  array<int, string>  $startTimes
+     */
+    public function assignSessions(
+        VisitorProfile $visitor,
+        VisitorPdlRelationship $relationship,
+        CarbonImmutable $date,
+        array $startTimes,
+        mixed $confirmationDeadline = null
+    ): VisitRequest {
+        return $this->bookSessions(
+            $visitor, $relationship, $date, $startTimes, 'pending_confirmation',
+            $this->resolveDeadline($confirmationDeadline),
+            'This visitor already has a visit with this PDL on this date.',
+            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
+                $scheduleLabel = $this->visitLabel($visitRequest);
+                Notification::notify(
+                    $visitor->account_id,
+                    'visits',
+                    'Visit Assigned — Confirmation Required',
+                    "A visit with {$pdl->full_name} has been assigned for {$scheduleLabel}. Please confirm or decline in the app.",
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
+
+                AuditLog::record(
+                    'create',
+                    'visit_requests',
+                    $visitRequest->visit_request_id,
+                    "Record Officer assigned visit for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
+                    Module::CODE_VISIT_SCHEDULING
+                );
+            }
+        );
+    }
+
+    /**
+     * Shared core of a visit on one day with one or more sessions: every
+     * session must be available as the availability service reports it,
+     * each reserves a seat on its own (created-on-demand) schedule, and the
+     * sessions form ONE visit request with $status.
+     *
+     * @param  string|array<int, string>  $startTimes
+     * @param  callable(VisitRequest, Pdl): void  $afterCreate  notifications and audit
+     */
+    private function bookSessions(
+        VisitorProfile $visitor,
+        VisitorPdlRelationship $relationship,
+        CarbonImmutable $date,
+        string|array $startTimes,
+        string $status,
+        mixed $deadline,
+        string $duplicateMessage,
+        callable $afterCreate
+    ): VisitRequest {
         if ((int) $relationship->visitor_id !== (int) $visitor->visitor_id) {
             throw ValidationException::withMessages(['relationshipId' => 'Relationship not found.']);
         }
@@ -193,7 +278,7 @@ class VisitAssignmentService
         $this->assertPdlAssignable($pdl);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
-        return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots) {
+        return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots, $status, $deadline, $duplicateMessage, $afterCreate) {
             // Lock order: visitor, then schedules (see lockVisitor()). The
             // schedules are locked in start-time order, so two requests for
             // the same day always take the schedule locks in the same order.
@@ -220,7 +305,7 @@ class VisitAssignmentService
             $first = $schedules[0];
             $this->assertNoDuplicate(
                 $visitor, $pdl, $first,
-                'You already have a visit with this PDL on this date.'
+                $duplicateMessage
             );
             $this->assertWeeklyVisitLimit($visitor, $first);
 
@@ -229,8 +314,8 @@ class VisitAssignmentService
                 'pdl_id' => $pdl->pdl_id,
                 'relationship_id' => $relationship->relationship_id,
                 'schedule_id' => $first->schedule_id,
-                'status' => 'assigned',
-                'confirmation_deadline' => null,
+                'status' => $status,
+                'confirmation_deadline' => $deadline,
             ]);
 
             foreach ($schedules as $schedule) {
@@ -248,23 +333,7 @@ class VisitAssignmentService
                 'relationship',
             ]));
 
-            $scheduleLabel = $this->visitLabel($visitRequest);
-            Notification::notify(
-                $visitor->account_id,
-                'visits',
-                'Visit Request Submitted',
-                "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
-                'visit_requests',
-                $visitRequest->visit_request_id
-            );
-
-            AuditLog::record(
-                'create',
-                'visit_requests',
-                $visitRequest->visit_request_id,
-                "Visitor submitted visit request for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
-                Module::CODE_VISIT_SCHEDULING
-            );
+            $afterCreate($visitRequest, $pdl);
 
             return $visitRequest->fresh(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment']);
         });
@@ -295,6 +364,16 @@ class VisitAssignmentService
             if ($visitRequest->schedule->schedule_date->lt(now()->startOfDay())) {
                 throw ValidationException::withMessages([
                     'schedule_id' => 'This visit date has already passed. Reject the request instead.',
+                ]);
+            }
+
+            // The relationship's BJMP requirements checklist must be complete
+            // (a document can be rejected after the eligibility check passed).
+            $requirements = RelationshipRequirements::for($visitRequest->relationship);
+            if (! RelationshipRequirements::allMet($requirements)) {
+                throw ValidationException::withMessages([
+                    'requirements' => 'Requirements not complete. Waiting on: '
+                        .implode(', ', RelationshipRequirements::unmetLabels($requirements)).'.',
                 ]);
             }
 

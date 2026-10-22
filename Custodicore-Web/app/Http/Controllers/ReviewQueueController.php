@@ -67,7 +67,7 @@ class ReviewQueueController extends Controller
         $who = ($visitRequest->visitor?->full_name ?? 'the visitor') . ' → ' . ($visitRequest->pdl?->full_name ?? 'PDL');
 
         return back()->with('success', $visitRequest->status === 'assigned'
-            ? "Visit approved for {$who}. The visitor has been notified."
+            ? "Visit approved for {$who}. The visitor has been notified. It is now listed under Upcoming Visits."
             : "Eligibility approved for {$who}.");
     }
 

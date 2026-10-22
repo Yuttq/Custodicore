@@ -7,9 +7,10 @@
 </div>
 
 <section class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
-  <a class="stat-card stat-link accent-blue" href="{{ route('visitor.index') }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-label">Total Visitors</div>
-    <div class="stat-value">{{ $stats['total_visitors'] }}</div>
+  <a class="stat-card stat-link accent-blue" href="{{ route('visitor.index', ['status' => 'verified']) }}" style="text-decoration:none;color:inherit;" title="Show approved visitors">
+    <div class="stat-label">Approved Visitors</div>
+    <div class="stat-value">{{ $stats['approved_visitors'] }}</div>
+    <div class="muted-cell">can book visits →</div>
   </a>
   <a class="stat-card stat-link accent-amber" href="{{ route('account-reviews.index') }}" style="text-decoration:none;color:inherit;" title="Open the Review Queue">
     <div class="stat-label">Pending Verification</div>

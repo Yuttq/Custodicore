@@ -31,6 +31,13 @@ class PdlRestriction extends Model
         'end_date' => 'date',
     ];
 
+    protected static function booted(): void
+    {
+        // A new or lifted restriction changes the eligibility of this PDL's
+        // requests still awaiting review: re-check them.
+        static::saved(fn (self $restriction) => EligibilityAssessment::recheckAwaitingReview(pdlId: $restriction->pdl_id));
+    }
+
     public function pdl()
     {
         return $this->belongsTo(Pdl::class, 'pdl_id', 'pdl_id');

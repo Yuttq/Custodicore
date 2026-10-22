@@ -96,6 +96,7 @@ class WholeDayVisitTest extends TestCase
     private function confirmedVisit(array $startTimes = ['09:00', '13:00'], string $date = self::FRIDAY): VisitRequest
     {
         $id = $this->request($startTimes, $date)->assertCreated()->json('id');
+        $this->completeRequirements();
 
         return app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
     }

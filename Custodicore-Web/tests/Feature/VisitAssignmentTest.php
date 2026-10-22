@@ -385,67 +385,94 @@ class VisitAssignmentTest extends TestCase
         return [$afternoon, $nextWeek];
     }
 
-    /** Schedule ids the Record Officer's assign form offers for the fixture PDL's classification. */
-    private function assignFormScheduleIds(): array
+    /**
+     * Sessions the Record Officer's assign form offers for the fixture
+     * relationship, as "Y-m-d H:i", up to a week after the fixture day.
+     */
+    private function assignFormSessions(): array
     {
         $html = $this->actingAs($this->recordOfficerAccount)
             ->get(route('visitor.show', $this->visitor->visitor_id))
             ->assertOk()
             ->getContent();
 
-        $this->assertSame(1, preg_match('#<script type="application/json" id="schedulesByClassification">(.*?)</script>#s', $html, $m));
-        $options = json_decode(html_entity_decode($m[1]), true);
+        $this->assertSame(1, preg_match('#<script type="application/json" id="assignDays">(.*?)</script>#s', $html, $m));
+        $days = json_decode(html_entity_decode($m[1]), true)[$this->relationship->relationship_id] ?? [];
+        $until = $this->schedule->schedule_date->copy()->addWeek()->toDateString();
 
-        return array_column($options['non_drug_related'] ?? [], 'id');
+        return collect($days)
+            ->filter(fn ($day) => $day['date'] <= $until)
+            ->flatMap(fn ($day) => collect($day['sessions'])->where('available', true)->map(fn ($s) => "{$day['date']} {$s['start']}"))
+            ->values()
+            ->all();
+    }
+
+    /** One day of the assign form's data for the fixture relationship. */
+    private function assignFormDay(string $date): array
+    {
+        $html = $this->actingAs($this->recordOfficerAccount)->get(route('visitor.show', $this->visitor->visitor_id))->getContent();
+        preg_match('#<script type="application/json" id="assignDays">(.*?)</script>#s', $html, $m);
+
+        return collect(json_decode(html_entity_decode($m[1]), true)[$this->relationship->relationship_id])->firstWhere('date', $date);
+    }
+
+    /** "Y-m-d H:i" for the fixture visiting day, or $weeks later. */
+    private function sessionKey(string $start, int $weeks = 0): string
+    {
+        return $this->schedule->schedule_date->copy()->addWeeks($weeks)->toDateString().' '.$start;
     }
 
     public function test_assign_form_offers_todays_session_until_it_ends(): void
     {
-        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+        $this->addAfternoonAndNextWeekSessions();
 
         $this->onScheduleDayAt('11:29:59');
 
         $this->assertSame(
-            [$this->schedule->schedule_id, $afternoon->schedule_id, $nextWeek->schedule_id],
-            $this->assignFormScheduleIds()
+            [$this->sessionKey('09:00'), $this->sessionKey('13:00'), $this->sessionKey('09:00', 1), $this->sessionKey('13:00', 1)],
+            $this->assignFormSessions()
         );
     }
 
     public function test_assign_form_hides_a_session_exactly_at_its_end_time(): void
     {
-        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+        $this->addAfternoonAndNextWeekSessions();
 
         $this->onScheduleDayAt('11:30:00');
 
-        $this->assertSame([$afternoon->schedule_id, $nextWeek->schedule_id], $this->assignFormScheduleIds());
+        $this->assertSame([$this->sessionKey('13:00'), $this->sessionKey('09:00', 1), $this->sessionKey('13:00', 1)], $this->assignFormSessions());
     }
 
     public function test_assign_form_hides_a_session_that_ended_earlier_today_but_keeps_later_ones(): void
     {
-        [$afternoon, $nextWeek] = $this->addAfternoonAndNextWeekSessions();
+        $this->addAfternoonAndNextWeekSessions();
 
         // Midday break: the morning ended earlier today, the afternoon is still ahead.
         $this->onScheduleDayAt('12:15:00');
-        $this->assertSame([$afternoon->schedule_id, $nextWeek->schedule_id], $this->assignFormScheduleIds());
+        $this->assertSame([$this->sessionKey('13:00'), $this->sessionKey('09:00', 1), $this->sessionKey('13:00', 1)], $this->assignFormSessions());
 
-        // Evening: both of today's sessions are over; the next week's remains.
+        // Evening: both of today's sessions are over; next week's remain.
         $this->onScheduleDayAt('16:30:00');
-        $this->assertSame([$nextWeek->schedule_id], $this->assignFormScheduleIds());
+        $this->assertSame([$this->sessionKey('09:00', 1), $this->sessionKey('13:00', 1)], $this->assignFormSessions());
     }
 
-    public function test_assign_form_shows_the_empty_state_when_every_session_has_ended(): void
+    public function test_assign_form_offers_next_week_when_todays_only_session_has_ended(): void
     {
         $this->onScheduleDayAt('11:30:00');
 
-        $this->assertSame([], $this->assignFormScheduleIds());
-        $this->actingAs($this->recordOfficerAccount)
-            ->get(route('visitor.show', $this->visitor->visitor_id))
-            ->assertSee('No open schedules for this PDL classification');
+        // Today's only session is over; the PDL's next visiting day is offered.
+        $this->assertSame([$this->sessionKey('09:00', 1)], $this->assignFormSessions());
 
-        // The server still refuses the hidden session if it is posted anyway.
+        // The server still refuses the ended session if it is posted anyway.
         $this->assignViaForm()->assertSessionHasErrors([
             'schedule_id' => 'This session has already ended. Choose a later session.',
         ]);
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.visits.assign', $this->visitor->visitor_id), [
+                'relationship_id' => $this->relationship->relationship_id,
+                'date' => $this->schedule->schedule_date->toDateString(),
+                'start_times' => ['09:00'],
+            ])->assertSessionHasErrors('startTime');
         $this->assertSame(0, VisitRequest::count());
     }
 
@@ -462,7 +489,7 @@ class VisitAssignmentTest extends TestCase
             'max_capacity' => 2, 'slots_taken' => 0, 'status' => 'open',
         ]);
 
-        $this->assertSame([$this->schedule->schedule_id], $this->assignFormScheduleIds());
+        $this->assertSame([$this->sessionKey('09:00'), $this->sessionKey('13:00', 1)], $this->assignFormSessions());
     }
 
     public function test_end_time_is_judged_in_the_facility_timezone(): void
@@ -478,6 +505,60 @@ class VisitAssignmentTest extends TestCase
         $this->assignViaForm()->assertSessionHasErrors([
             'schedule_id' => 'This session has already ended. Choose a later session.',
         ]);
+        $this->assertSame(0, VisitRequest::count());
+    }
+
+    public function test_record_officer_assigns_a_whole_day_visit_with_both_sessions(): void
+    {
+        // Only the afternoon rule exists; its schedule is created on demand.
+        \App\Models\FacilityVisitationRule::create([
+            'pdl_classification' => 'non_drug_related', 'day_of_week' => 'fri',
+            'time_slot_start' => '13:00:00', 'time_slot_end' => '16:30:00',
+            'max_capacity' => 30, 'effective_from' => '2024-01-01',
+        ]);
+        $this->onScheduleDayAt('08:00:00');
+        $day = $this->schedule->schedule_date->toDateString();
+
+        // The form offers both sessions of the day and a "Whole day" option, like the mobile app.
+        $this->assertSame([$this->sessionKey('09:00'), $this->sessionKey('13:00')], array_slice($this->assignFormSessions(), 0, 2));
+        $day0 = $this->assignFormDay($day);
+        $this->assertSame(['start' => '09:00', 'end' => '16:30', 'startTimes' => ['09:00', '13:00'], 'available' => true],
+            array_intersect_key($day0['wholeDay'], array_flip(['start', 'end', 'startTimes', 'available'])));
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.visits.assign', $this->visitor->visitor_id), [
+                'relationship_id' => $this->relationship->relationship_id,
+                'date' => $day,
+                'start_times' => ['09:00', '13:00'],
+            ])
+            ->assertRedirect(route('visitor.show', $this->visitor->visitor_id))
+            ->assertSessionHas('success', fn ($m) => str_contains($m, 'whole day'));
+
+        // One visit, two sessions, a seat taken in each.
+        $visit = VisitRequest::sole();
+        $this->assertSame('pending_confirmation', $visit->status);
+        $this->assertNotNull($visit->confirmation_deadline);
+        $sessions = $visit->sessionSchedules()->orderBy('time_slot_start')->get();
+        $this->assertSame(['09:00', '13:00'], $sessions->map(fn ($s) => substr($s->time_slot_start, 0, 5))->all());
+        $this->assertSame([1, 1], $sessions->map(fn ($s) => (int) $s->slots_taken)->all());
+        $this->assertTrue(Notification::where('account_id', $this->visitor->account_id)
+            ->where('title', 'Visit Assigned — Confirmation Required')->exists());
+
+        // Declining releases both seats.
+        app(VisitAssignmentService::class)->declineAssignedVisit($visit, 'Cannot make it.');
+        $this->assertSame([0, 0], $visit->sessionSchedules()->orderBy('time_slot_start')->get()->map(fn ($s) => (int) $s->slots_taken)->all());
+    }
+
+    public function test_assign_needs_a_day_and_at_least_one_session(): void
+    {
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.visits.assign', $this->visitor->visitor_id), [
+                'relationship_id' => $this->relationship->relationship_id,
+            ])
+            ->assertSessionHasErrors([
+                'date' => 'Choose a visiting day.',
+                'start_times' => 'Choose a session: morning, afternoon or whole day.',
+            ]);
         $this->assertSame(0, VisitRequest::count());
     }
 }

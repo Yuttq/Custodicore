@@ -37,6 +37,7 @@ class VisitApprovalEligibilityTest extends TestCase
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-10-07 10:00:00', 'Asia/Manila'));
         $this->seedPhase1Fixtures();
+        $this->completeRequirements(withVerifiedId: false); // approval needs a complete BJMP checklist; tests add the ID
         $this->withoutVite();
     }
 

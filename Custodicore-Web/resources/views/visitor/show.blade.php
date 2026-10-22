@@ -440,6 +440,14 @@
           data-confirm-title="Assign visit" data-confirm-ok="Assign">
       @csrf
 
+      @php
+        $assignErrors = collect(['relationship_id', 'relationshipId', 'date', 'start_times', 'startTime', 'schedule_id', 'confirmation_deadline'])
+          ->flatMap(fn ($key) => $errors->get($key))->merge($errors->get('start_times.*'))->flatten()->unique();
+      @endphp
+      @if ($assignErrors->isNotEmpty())
+        <div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:var(--red-bg);color:var(--red-text);font-size:13px;">{{ $assignErrors->join(' ') }}</div>
+      @endif
+
       <div class="row cols-2">
         <div class="field-m">
           <label>Relationship / PDL</label>
@@ -448,23 +456,29 @@
             @foreach ($assignableRelationships as $rel)
               <option
                 value="{{ $rel->relationship_id }}"
-                data-pdl-id="{{ $rel->pdl_id }}"
-                data-classification="{{ \App\Models\FacilityVisitationRule::groupKeyForPdl($rel->pdl) }}"
+                {{ $rel->isVerified() ? '' : 'disabled' }}
                 {{ (string) old('relationship_id') === (string) $rel->relationship_id ? 'selected' : '' }}
               >
-                {{ $rel->pdl->full_name }} — {{ $rel->relationshipLabel() }}
-                ({{ strtoupper($rel->verification_status) }})
+                {{ $rel->pdl->full_name }} — {{ $rel->relationshipLabel() }}{{ $rel->isVerified() ? '' : ' (not verified yet)' }}
               </option>
             @endforeach
           </select>
-          <input type="hidden" name="pdl_id" id="pdlIdInput" value="{{ old('pdl_id') }}">
         </div>
 
         <div class="field-m">
-          <label>Visit Schedule</label>
-          <select name="schedule_id" id="scheduleSelect" required>
+          <label>Visiting Day</label>
+          <select name="date" id="assignDateSelect" required>
             <option value="">— Select a relationship first —</option>
           </select>
+        </div>
+      </div>
+
+      <div class="field-m" style="margin-bottom:14px;">
+        <label>Session</label>
+        <div id="assignSessions" class="muted-cell" style="display:flex;gap:10px;flex-wrap:wrap;">Select a visiting day first.</div>
+        <div id="assignSessionTimes"></div>
+        <div class="muted-cell" style="margin-top:6px;font-size:12px;">
+          Whole day is one visit with one QR code: the visitor visits in the morning, leaves for lunch, and the same QR lets them back in when the afternoon session opens (not before). It takes a seat in each session.
         </div>
       </div>
 
@@ -485,64 +499,106 @@
       <button class="btn btn-blue" type="submit">Assign Visit</button>
     </form>
 
-    {{-- Built in a PHP block first: Blade's json directive cannot parse a multi-line closure argument. --}}
-    @php
-      $scheduleOptionsByClassification = collect($schedulesByClassification ?? [])->map(function ($schedules) {
-        return $schedules->map(function ($s) {
-          $date = $s->schedule_date?->format('M j, Y');
-          $start = substr((string) $s->time_slot_start, 0, 5);
-          $end = substr((string) $s->time_slot_end, 0, 5);
-          return [
-            'id' => $s->schedule_id,
-            'label' => "{$date} · {$start}–{$end} · {$s->capacityLabel()} open",
-          ];
-        })->values();
-      });
-    @endphp
-    <script type="application/json" id="schedulesByClassification">@json($scheduleOptionsByClassification)</script>
+    <script type="application/json" id="assignDays">@json($assignDays ?? [])</script>
     <script>
       (function () {
         const relationshipSelect = document.getElementById('relationshipSelect');
-        const scheduleSelect = document.getElementById('scheduleSelect');
-        const pdlIdInput = document.getElementById('pdlIdInput');
-        const schedules = JSON.parse(document.getElementById('schedulesByClassification').textContent || '{}');
-        const oldScheduleId = @json(old('schedule_id'));
+        const dateSelect = document.getElementById('assignDateSelect');
+        const sessionsBox = document.getElementById('assignSessions');
+        const daysByRelationship = JSON.parse(document.getElementById('assignDays').textContent || '{}');
+        const oldDate = @json(old('date'));
+        const oldTimes = @json(old('start_times', []));
 
-        function refreshSchedules() {
-          const option = relationshipSelect.options[relationshipSelect.selectedIndex];
-          const classification = option ? option.getAttribute('data-classification') : null;
-          const pdlId = option ? option.getAttribute('data-pdl-id') : '';
-          pdlIdInput.value = pdlId || '';
+        function option(value, text, disabled) {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = text;
+          opt.disabled = !!disabled;
+          return opt;
+        }
 
-          scheduleSelect.innerHTML = '';
-          const placeholder = document.createElement('option');
-          placeholder.value = '';
-          placeholder.textContent = classification ? '— Select schedule —' : '— Select a relationship first —';
-          scheduleSelect.appendChild(placeholder);
+        function days() {
+          return daysByRelationship[relationshipSelect.value] || [];
+        }
 
-          const list = (classification && schedules[classification]) ? schedules[classification] : [];
-          if (!list.length && classification) {
-            const empty = document.createElement('option');
-            empty.value = '';
-            empty.textContent = 'No open schedules for this PDL classification';
-            empty.disabled = true;
-            scheduleSelect.appendChild(empty);
-            return;
+        function refreshDays() {
+          dateSelect.innerHTML = '';
+          if (!relationshipSelect.value) {
+            dateSelect.appendChild(option('', '— Select a relationship first —'));
+          } else if (!days().length) {
+            dateSelect.appendChild(option('', 'No visiting days for this PDL in the next 30 days', true));
+          } else {
+            dateSelect.appendChild(option('', '— Select a visiting day —'));
+            days().forEach(function (day) {
+              const opt = option(day.date, day.label + (day.available ? '' : ' (no open sessions)'), !day.available);
+              if (day.date === oldDate && day.available) opt.selected = true;
+              dateSelect.appendChild(opt);
+            });
           }
+          refreshSessions();
+        }
 
-          list.forEach(function (item) {
-            const opt = document.createElement('option');
-            opt.value = item.id;
-            opt.textContent = item.label;
-            if (String(oldScheduleId) === String(item.id)) opt.selected = true;
-            scheduleSelect.appendChild(opt);
+        // The chosen option's start times, posted as start_times[].
+        const timesBox = document.getElementById('assignSessionTimes');
+        function setTimes(times) {
+          timesBox.innerHTML = '';
+          times.forEach(function (t) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'start_times[]';
+            input.value = t;
+            timesBox.appendChild(input);
           });
         }
 
-        relationshipSelect.addEventListener('change', refreshSchedules);
-        refreshSchedules();
+        // Like the mobile app: each session, then "Whole day" (both sessions as one visit). Pick one.
+        function refreshSessions() {
+          const day = days().find(function (d) { return d.date === dateSelect.value; });
+          sessionsBox.innerHTML = '';
+          setTimes([]);
+          if (!day) {
+            sessionsBox.textContent = 'Select a visiting day first.';
+            return;
+          }
+          const choices = day.sessions.map(function (s) {
+            return { title: s.period, start: s.start, end: s.end, times: [s.start], available: s.available, seats: s.seats, reason: s.reason };
+          });
+          if (day.wholeDay) {
+            const w = day.wholeDay;
+            choices.push({ title: 'Whole day', start: w.start, end: w.end, times: w.startTimes, available: w.available, seats: w.seats, reason: w.reason });
+          }
+          choices.forEach(function (c) {
+            const label = document.createElement('label');
+            label.className = 'session-choice' + (c.available ? '' : ' is-disabled');
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'session_choice';
+            radio.required = true;
+            radio.disabled = !c.available;
+            radio.checked = c.available && oldTimes.slice().sort().join(',') === c.times.slice().sort().join(',');
+            radio.addEventListener('change', function () { setTimes(c.times); });
+            if (radio.checked) setTimes(c.times);
+            const text = document.createElement('span');
+            text.innerHTML = '<strong></strong><br><small></small>';
+            text.querySelector('strong').textContent = c.title + ' ' + c.start + '–' + c.end;
+            text.querySelector('small').textContent = c.available ? c.seats + ' seats left' : c.reason;
+            label.appendChild(radio);
+            label.appendChild(text);
+            sessionsBox.appendChild(label);
+          });
+        }
+
+        relationshipSelect.addEventListener('change', refreshDays);
+        dateSelect.addEventListener('change', refreshSessions);
+        refreshDays();
       })();
     </script>
+    <style>
+      .session-choice { display:flex; gap:8px; align-items:flex-start; border:1px solid var(--border); border-radius:8px; padding:8px 12px; cursor:pointer; color:var(--text); min-width:200px; }
+      .session-choice small { color:var(--muted); }
+      .session-choice:has(input:checked) { border-color:var(--teal); background:var(--teal-bg); }
+      .session-choice.is-disabled { opacity:.5; cursor:not-allowed; }
+    </style>
   @endif
 </div>
 

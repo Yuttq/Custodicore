@@ -36,6 +36,13 @@ class VisitorFlag extends Model
         'created_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // A new or resolved flag changes the eligibility of this visitor's
+        // requests still awaiting review: re-check them.
+        static::saved(fn (self $flag) => EligibilityAssessment::recheckAwaitingReview(visitorId: $flag->visitor_id));
+    }
+
     public function visitor()
     {
         return $this->belongsTo(VisitorProfile::class, 'visitor_id', 'visitor_id');

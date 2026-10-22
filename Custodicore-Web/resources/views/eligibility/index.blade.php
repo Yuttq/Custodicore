@@ -144,8 +144,17 @@
       @else
       <div class="elig-checks">
         @foreach ($checks as $key => $result)
-          @php [$tone, $text] = $checkInfo[$key][$result] ?? ['warn', ucfirst(str_replace('_', ' ', (string) $result))]; @endphp
-          <div class="elig-check is-{{ $tone }}">
+          @php
+            [$tone, $text] = $checkInfo[$key][$result] ?? ['warn', ucfirst(str_replace('_', ' ', (string) $result))];
+            // Visit history opens the visitor's flags; PDL restriction opens the PDL's restrictions.
+            $checkLink = match (true) {
+              $key === 'history' && $visitor => [route('visitor.show', $visitor->visitor_id) . '#flags', "View {$visitor->full_name}'s flags"],
+              $key === 'restriction' && $pdl => [route('pdl.show', $pdl->pdl_id) . '#restrictions', "View {$pdl->full_name}'s restrictions"],
+              default => null,
+            };
+          @endphp
+          <{{ $checkLink ? 'a' : 'div' }} class="elig-check is-{{ $tone }} {{ $checkLink ? 'is-link' : '' }}"
+            @if ($checkLink) href="{{ $checkLink[0] }}" title="{{ $checkLink[1] }}" @endif>
             <span class="elig-check-icon" aria-hidden="true">{{ $icons[$tone] }}</span>
             <div>
               <div class="elig-check-label">{{ $checkInfo[$key]['label'] }}</div>
@@ -154,7 +163,8 @@
                 <div class="elig-check-sub">{{ $flag->durationLabel() }}</div>
               @endif
             </div>
-          </div>
+            @if ($checkLink)<span class="elig-check-go" aria-hidden="true">›</span>@endif
+          </{{ $checkLink ? 'a' : 'div' }}>
         @endforeach
       </div>
       @endif
@@ -163,15 +173,76 @@
       @if ($items === null)
         <div class="elig-note is-bad">This request has no PDL relationship on record, so it can't be approved. Reject it, or add the relationship on the visitor's page.</div>
       @else
+        @php
+          // Every submitted requirement file, for the "View documents" window:
+          // the visitor's photo (to compare with the ID), the ID, then each document.
+          $isImage = fn (?string $path) => in_array(strtolower(pathinfo((string) $path, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+          $docFiles = collect();
+          if ($visitor?->photo_path) {
+            $docFiles->push(['label' => 'Visitor photo', 'sub' => 'Taken in the app', 'url' => $visitor->photoUrl(), 'image' => true, 'status' => null]);
+          }
+          foreach ($items as $item) {
+            if ($item['kind'] === 'valid_id' && $visitor) {
+              $id = $visitor->idDocuments->sortByDesc(fn ($d) => [$d->verification_status === 'verified', $d->getKey()])->first();
+              if ($id) {
+                $docFiles->push(['label' => $item['label'], 'sub' => $id->typeLabel(), 'url' => route('visitor.ids.file', [$visitor->visitor_id, $id->getKey()]),
+                  'image' => $isImage($id->file_path), 'status' => $item['status']]);
+              }
+            } elseif ($item['kind'] === 'document' && $item['document']) {
+              $docFiles->push(['label' => $item['label'], 'sub' => 'Uploaded ' . $item['document']->uploaded_at?->format('M j, Y H:i'),
+                'url' => route('relationship-documents.file', $item['document']->document_id),
+                'image' => $isImage($item['document']->original_name ?: $item['document']->file_path), 'status' => $item['status']]);
+            }
+          }
+          $docStatus = ['met' => ['active', 'Verified'], 'pending_review' => ['transferred', 'Awaiting review'], 'rejected' => ['rejected', 'Rejected']];
+          $docsId = 'elig-docs-' . $visit->visit_request_id;
+        @endphp
         <details class="elig-reqs" data-remember-open="elig-reqs-{{ $visit->visit_request_id }}">
           <summary>
             <span class="elig-reqs-title">BJMP requirements</span>
             <span class="elig-progress" aria-hidden="true"><span style="width:{{ $total ? round($metCount / $total * 100) : 0 }}%"></span></span>
             <span class="elig-reqs-count {{ $metCount === $total ? 'is-ok' : '' }}">{{ $metCount }} of {{ $total }} met</span>
+            @if ($docFiles->isNotEmpty())
+              <button type="button" class="elig-docs-btn" data-open-docs="{{ $docsId }}">View documents ({{ $docFiles->count() }})</button>
+            @endif
             <span class="elig-reqs-toggle">Show details</span>
           </summary>
           @include('partials.relationship-requirements', ['relationship' => $relationship, 'items' => $items])
         </details>
+
+        @if ($docFiles->isNotEmpty())
+          <dialog class="elig-docs" id="{{ $docsId }}" aria-label="Submitted documents">
+            <header class="elig-docs-head">
+              <div>
+                <strong>Submitted documents</strong>
+                <div class="muted-cell">{{ $visitorName }}{{ $relationship ? ' · ' . $relationship->relationshipLabel() . ' of ' . ($pdl->full_name ?? 'the PDL') : '' }}</div>
+              </div>
+              <button type="button" class="elig-docs-close" data-close-docs aria-label="Close">×</button>
+            </header>
+            <div class="elig-docs-grid">
+              @foreach ($docFiles as $file)
+                <figure class="elig-doc">
+                  @if ($file['image'])
+                    <a href="{{ $file['url'] }}" target="_blank" rel="noopener" title="Open full size">
+                      <img src="{{ $file['url'] }}" alt="{{ $file['label'] }}" loading="lazy">
+                    </a>
+                  @else
+                    <a class="elig-doc-file" href="{{ $file['url'] }}" target="_blank" rel="noopener">Open file ↗</a>
+                  @endif
+                  <figcaption>
+                    <div class="elig-doc-title">
+                      {{ $file['label'] }}
+                      @if ($file['status'] && isset($docStatus[$file['status']]))
+                        <span class="badge {{ $docStatus[$file['status']][0] }}"><span class="dot"></span>{{ $docStatus[$file['status']][1] }}</span>
+                      @endif
+                    </div>
+                    <div class="muted-cell">{{ $file['sub'] }} · <a href="{{ $file['url'] }}" target="_blank" rel="noopener">Open full size</a></div>
+                  </figcaption>
+                </figure>
+              @endforeach
+            </div>
+          </dialog>
+        @endif
       @endif
 
       {{-- Decision --}}
@@ -233,6 +304,21 @@
   </div>
 </details>
 
+<script>
+  // "View documents": open the card's documents window (without toggling the
+  // requirements details the button sits in); close on ×, Esc or a backdrop click.
+  document.addEventListener('click', function (e) {
+    const open = e.target.closest('[data-open-docs]');
+    if (open) {
+      e.preventDefault();
+      document.getElementById(open.dataset.openDocs)?.showModal();
+      return;
+    }
+    if (e.target.closest('[data-close-docs]') || e.target.matches('dialog.elig-docs')) {
+      e.target.closest('dialog.elig-docs')?.close();
+    }
+  });
+</script>
 <script>
   // Requirements start closed. A card the officer opened stays open across
   // the reload after verifying/rejecting a document (this browser tab only).

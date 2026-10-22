@@ -60,7 +60,7 @@ class VisitorController extends Controller
         $pendingVisitRequests = $this->pendingVisitRequests()->get();
 
         $stats = [
-            'total_visitors' => VisitorProfile::count(),
+            'approved_visitors' => VisitorProfile::where('verification_status', 'verified')->count(),
             'pending_verification' => VisitorProfile::where('verification_status', 'pending')->count(),
             'flagged' => VisitorProfile::whereHas('activeFlags')->count(),
             'pending_visit_requests' => $pendingVisitRequests->count(),
@@ -88,11 +88,13 @@ class VisitorController extends Controller
             ->filter(fn ($rel) => $rel->verification_status !== 'rejected' && $rel->pdl)
             ->values();
 
-        $schedulesByClassification = [];
-        // Keyed by rule group: the PDL's dorm schedule ("dorm:{id}") or classification.
-        foreach ($assignableRelationships->map(fn ($rel) => \App\Models\FacilityVisitationRule::groupKeyForPdl($rel->pdl))->unique()->filter() as $group) {
-            $schedulesByClassification[$group] = VisitAssignmentController::openSchedulesForClassification($group);
-        }
+        // Visiting days and their sessions for the next 30 days, per verified
+        // relationship, from the PDL's visiting hours (slots are created on
+        // demand). The assign form offers morning, afternoon or both.
+        $assignDays = VisitAssignmentController::assignableDays(
+            $visitor,
+            $assignableRelationships->filter(fn ($rel) => $rel->isVerified())->values()
+        );
 
         // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
         $relatablePdls = Pdl::whereNotIn('pdl_id', $visitor->relationships->pluck('pdl_id'))
@@ -105,7 +107,7 @@ class VisitorController extends Controller
 
         $activity = \App\Services\ActivityLog::forVisitor($visitor);
 
-        return view('visitor.show', compact('visitor', 'assignableRelationships', 'schedulesByClassification', 'relatablePdls', 'pendingVisitRequests', 'activity'));
+        return view('visitor.show', compact('visitor', 'assignableRelationships', 'assignDays', 'relatablePdls', 'pendingVisitRequests', 'activity'));
     }
 
     /** Visitor-submitted visit requests (`assigned`) awaiting Record Officer review. */

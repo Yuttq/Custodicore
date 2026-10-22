@@ -30,6 +30,7 @@ class StaffVisitRequestVisibilityTest extends TestCase
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-10-07 10:00:00', 'Asia/Manila'));
         $this->seedPhase1Fixtures();
+        $this->completeRequirements(withVerifiedId: false); // approval needs a complete BJMP checklist; tests add the ID
         $this->withoutVite();
 
         FacilityVisitationRule::create([
@@ -206,6 +207,7 @@ class StaffVisitRequestVisibilityTest extends TestCase
 
     public function test_upcoming_and_same_day_requests_are_not_labelled_past_dated(): void
     {
+        $this->completeRequirements();
         $visit = $this->submittedRequest();
         $approveUrl = route('visitor.visit-requests.approve', [$visit->visitor_id, $visit->visit_request_id]);
         $this->actingAs($this->recordOfficerAccount);

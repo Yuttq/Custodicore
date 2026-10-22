@@ -421,6 +421,12 @@ Route::middleware([
     | facility_visitation_rules. Rules live in App\Services\VisitSlotService.
     */
 
+    // Who is coming: confirmed / awaiting visits from today onward.
+    Route::get(
+        '/upcoming-visits',
+        [\App\Http\Controllers\UpcomingVisitsController::class, 'index']
+    )->name('upcoming-visits.index');
+
     Route::get(
         '/visitor-slots',
         [\App\Http\Controllers\VisitSlotController::class, 'index']

@@ -7,6 +7,7 @@ use App\Models\EligibilityAssessment;
 use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Pdl;
+use App\Models\RelationshipDocument;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\SystemSetting;
@@ -171,11 +172,43 @@ trait SeedsVisitAssignmentFixtures
             ]);
         }
 
+        $this->completeRequirements($visitRequest->relationship);
+
         return EligibilityAssessment::assessFor($visitRequest->fresh([
             'visitor.idDocuments',
             'visitor.flags',
             'pdl.restrictions',
             'relationship',
         ]));
+    }
+
+    /**
+     * Gives a relationship a complete BJMP requirements checklist (needed
+     * before a visit can be approved): a specific type (parent) instead of
+     * the legacy generic one, the verified PDL birth certificate and (unless
+     * $withVerifiedId is false, for tests that add the ID themselves) a
+     * verified visitor ID.
+     */
+    protected function completeRequirements(?VisitorPdlRelationship $relationship = null, bool $withVerifiedId = true): VisitorPdlRelationship
+    {
+        $relationship ??= $this->relationship;
+        $relationship->update(['relationship_type' => 'parent']);
+
+        if ($withVerifiedId && ! VisitorId::where('visitor_id', $relationship->visitor_id)->where('verification_status', 'verified')->exists()) {
+            VisitorId::create([
+                'visitor_id' => $relationship->visitor_id,
+                'id_type' => 'national_id',
+                'id_number' => 'ID-COMPLETE-'.$relationship->visitor_id,
+                'file_path' => 'x.png',
+                'verification_status' => 'verified',
+            ]);
+        }
+
+        RelationshipDocument::firstOrCreate(
+            ['relationship_id' => $relationship->relationship_id, 'requirement_key' => 'pdl_birth_certificate'],
+            ['visitor_id' => $relationship->visitor_id, 'file_path' => 'birth.png', 'original_name' => 'birth.png', 'status' => 'verified', 'uploaded_at' => now(), 'reviewed_at' => now()]
+        );
+
+        return $relationship->fresh();
     }
 }

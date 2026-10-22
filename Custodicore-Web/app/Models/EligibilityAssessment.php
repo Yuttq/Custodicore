@@ -53,10 +53,29 @@ class EligibilityAssessment extends Model
      *
      * NOTE: this reads the *current* state of IDs/relationships/flags/
      * restrictions at the moment it's run. It's a snapshot, not something
-     * that updates itself automatically if those change later — re-run it
-     * explicitly (the "Run Eligibility Check" button) if something's
-     * changed since the last assessment.
+     * that updates itself, except that adding, lifting or resolving a PDL
+     * restriction or visitor flag re-runs it for the requests still awaiting
+     * review (see recheckAwaitingReview). Otherwise re-run it with the
+     * "Run Eligibility Check" button if something's changed.
      */
+    /**
+     * Re-run the check on the requests still awaiting review for a visitor
+     * or a PDL, after one of their flags or restrictions changed. Returns
+     * how many were re-checked.
+     */
+    public static function recheckAwaitingReview(?int $visitorId = null, ?int $pdlId = null): int
+    {
+        $visits = VisitRequest::awaitingReview()
+            ->when($visitorId, fn ($q) => $q->where('visitor_id', $visitorId))
+            ->when($pdlId, fn ($q) => $q->where('pdl_id', $pdlId))
+            ->with(['visitor.idDocuments', 'visitor.flags', 'pdl.restrictions', 'relationship'])
+            ->get();
+
+        $visits->each(fn (VisitRequest $visit) => self::assessFor($visit));
+
+        return $visits->count();
+    }
+
     public static function assessFor(VisitRequest $visitRequest): self
     {
         $visitor = $visitRequest->visitor;

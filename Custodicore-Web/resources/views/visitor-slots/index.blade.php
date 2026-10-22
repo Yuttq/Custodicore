@@ -56,6 +56,7 @@
   @if ($schedules->isEmpty())
     <p class="empty-note" style="padding:24px;">No visiting sessions match these filters. Create one, or widen the dates.</p>
   @else
+  <div class="scroll-box">
   <table>
     <thead>
       <tr><th>Date</th><th>Session</th><th>Visiting Group</th><th>Booked / Capacity</th><th>Remaining</th><th>Status</th><th></th></tr>
@@ -102,6 +103,7 @@
       @endforeach
     </tbody>
   </table>
+  </div>
   @endif
 </div>
 
@@ -116,6 +118,7 @@
   @if ($rules->isEmpty())
     <p class="empty-note" style="padding:24px;">No weekly visitation rules are configured.</p>
   @else
+  <div class="scroll-box">
   <table>
     <thead><tr><th>Visiting Group</th><th>Day</th><th>Session</th><th>Effective</th><th style="width:260px;">Default Capacity</th></tr></thead>
     <tbody>
@@ -145,6 +148,7 @@
       @endforeach
     </tbody>
   </table>
+  </div>
   @endif
 </div>
 

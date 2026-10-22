@@ -28,7 +28,9 @@ class ReviewQueue
     public static function visitsQuery(): Builder
     {
         return VisitRequest::query()->where(function (Builder $q) {
-            $q->where('status', 'assigned')
+            // Same scope as Visitor Management's "awaiting review" list, so
+            // every request shown there is also in Step 2.
+            $q->awaitingReview()
                 ->orWhereHas('eligibilityAssessment', fn ($a) => $a->where('overall_result', 'flagged_for_review')->whereNull('reviewed_at'));
         });
     }
@@ -56,13 +58,13 @@ class ReviewQueue
         if ($assessment->overall_result === 'rejected') {
             return [false, 'Blocked by the eligibility check' . ($assessment->flagged_reason ? ": {$assessment->flagged_reason}" : '.') . ' Reject this request.'];
         }
-        if ($assessment->overall_result === 'flagged_for_review' && $assessment->reviewed_at === null) {
-            if ($requirements === null) {
-                return [false, 'This request has no PDL relationship on record. Reject it.'];
-            }
-            if (! RelationshipRequirements::allMet($requirements)) {
-                return [false, 'Waiting on: ' . implode(', ', RelationshipRequirements::unmetLabels($requirements))];
-            }
+        // Every request needs its relationship requirements complete, whatever
+        // the eligibility result (documents can be rejected after a check passed).
+        if ($requirements === null) {
+            return [false, 'This request has no PDL relationship on record. Reject it.'];
+        }
+        if (! RelationshipRequirements::allMet($requirements)) {
+            return [false, 'Requirements not complete. Waiting on: ' . implode(', ', RelationshipRequirements::unmetLabels($requirements))];
         }
         if ($visit->status === 'assigned' && $visit->schedule && $visit->schedule->schedule_date->lt(now()->startOfDay())) {
             return [false, 'The visit date has passed. Reject this request.'];

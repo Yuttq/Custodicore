@@ -15,6 +15,7 @@
   @if ($pendingVisitRequests->isEmpty())
     <p class="empty-note">No visitor-submitted visit requests are awaiting review.</p>
   @else
+    <div class="scroll-box">
     <table>
       <thead>
         <tr>
@@ -96,10 +97,22 @@
           <td>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
               @unless ($isPastDated)
-                <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}">
-                  @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-                </form>
+                @php
+                  [$canApprove, $blockedReason] = \App\Services\ReviewQueue::approvalState(
+                    $vr, $vr->relationship ? \App\Services\RelationshipRequirements::for($vr->relationship) : null
+                  );
+                @endphp
+                @if ($canApprove)
+                  <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}">
+                    @csrf
+                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
+                  </form>
+                @else
+                  <div style="max-width:220px;">
+                    <button type="button" class="row-action" disabled title="{{ $blockedReason }}" style="opacity:.45;cursor:not-allowed;">Approve</button>
+                    <div class="muted-cell" style="font-size:12px;margin-top:4px;">{{ $blockedReason }}</div>
+                  </div>
+                @endif
               @endunless
               <details>
                 <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
@@ -118,5 +131,6 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 </div>

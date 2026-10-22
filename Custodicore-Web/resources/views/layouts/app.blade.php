@@ -43,6 +43,9 @@
         Review Queue
         @if ($reviewQueueCount)<span class="nav-count" title="{{ $reviewQueueCount }} waiting for review">{{ $reviewQueueCount }}</span>@endif
       </a>
+      <a href="{{ route('upcoming-visits.index') }}" class="{{ request()->routeIs('upcoming-visits.*') ? 'active' : '' }}">
+        Upcoming Visits
+      </a>
       <a href="{{ route('visitor-slots.index') }}" class="{{ request()->routeIs('visitor-slots.*') ? 'active' : '' }}">
         Manage Visitor Slots
       </a>
@@ -126,5 +129,17 @@
 
 {{-- "Are you sure?" popup for forms marked data-confirm. --}}
 @include('partials.action-confirm')
+
+{{-- Back to top: appears once the page is scrolled down. --}}
+<button type="button" class="to-top" id="toTop" aria-label="Back to top" title="Back to top">↑</button>
+<script>
+  (function () {
+    const btn = document.getElementById('toTop');
+    const toggle = function () { btn.classList.toggle('is-visible', window.scrollY > 400); };
+    window.addEventListener('scroll', toggle, { passive: true });
+    btn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    toggle();
+  })();
+</script>
 </body>
 </html>
