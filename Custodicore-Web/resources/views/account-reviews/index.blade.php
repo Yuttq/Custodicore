@@ -16,6 +16,23 @@
   Relationship documents (marriage certificate, CENOMAR, …) are checked per visit request in Step 2.
 </p>
 
+@if ($walkInsAwaitingDecision->isNotEmpty())
+  <div class="panel" style="margin-bottom:16px;border-left:4px solid var(--amber);">
+    <div class="panel-header" style="margin-bottom:8px;">
+      <h2>Walk-ins waiting for your decision <span class="count-chip">{{ $walkInsAwaitingDecision->count() }}</span></h2>
+    </div>
+    <p class="muted-cell" style="margin:0 0 10px;">Approved accounts registered at the Front Desk. Complete the walk-in assessment so the Front Desk can book the visit.</p>
+    <ul style="margin:0;padding-left:18px;">
+      @foreach ($walkInsAwaitingDecision as $walkIn)
+        <li style="margin:4px 0;">
+          <a class="elig-name" href="{{ route('visitor.show', $walkIn->visitor_id) }}#walk-in">{{ $walkIn->full_name }}</a>
+          <span class="muted-cell">· visiting {{ $walkIn->intended_pdl_name ?: '—' }} · registered {{ $walkIn->created_at?->diffForHumans() }}</span>
+        </li>
+      @endforeach
+    </ul>
+  </div>
+@endif
+
 <div class="elig-tabs" role="tablist">
   @foreach ($tabs as $key => [$label, $chipClass])
     <a href="{{ route('account-reviews.index', $key === 'pending' ? [] : ['tab' => $key]) }}" class="elig-tab {{ $tab === $key ? 'is-active' : '' }}" role="tab">
@@ -32,7 +49,7 @@
       @else No accounts are waiting for approval.
       @endif
     </div>
-    <p class="muted-cell">New visitor registrations from the app appear here.</p>
+    <p class="muted-cell">New visitor registrations from the app and walk-ins registered at the Front Desk appear here.</p>
   </div>
 @else
   @foreach ($visitors as $visitor)
@@ -47,6 +64,9 @@
           @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'thumb elig-visitor-avatar'])
           <div>
             <a class="elig-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a>
+            @if ($visitor->isWalkIn())
+              <span class="badge transferred" title="Registered at the Front Desk without the app"><span class="dot"></span>Walk-in{{ $visitor->created_at?->isToday() && $tab === 'pending' ? ' · waiting at gate' : '' }}</span>
+            @endif
             <div class="muted-cell">
               {{ $visitor->account?->email ?? 'No email' }}
               @if ($visitor->contact_number) · {{ $visitor->contact_number }} @endif
@@ -71,9 +91,13 @@
       <dl class="acct-facts">
         <div><dt>Date of Birth</dt><dd>{{ $visitor->date_of_birth ? $visitor->date_of_birth->format('M j, Y') . " ({$age})" : '—' }}</dd></div>
         <div><dt>Gender</dt><dd>{{ ucfirst($visitor->gender ?? '—') }}</dd></div>
-        <div><dt>Email Confirmed</dt><dd>{{ $visitor->account?->email_verified_at ? 'Yes' : 'Not yet' }}</dd></div>
+        <div><dt>Email Confirmed</dt><dd>{{ $visitor->account?->email ? ($visitor->account->email_verified_at ? 'Yes' : 'Not yet') : 'No email (walk-in)' }}</dd></div>
         <div><dt>Says They're The PDL's</dt><dd>{{ $visitor->relationship_hint ?: '—' }}</dd></div>
         <div><dt>PDL Name Given (unverified)</dt><dd>{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
+        @if ($visitor->isWalkIn())
+          <div><dt>PDL ID Number Given (unverified)</dt><dd>{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
+          <div><dt>Purpose of Visit</dt><dd>{{ $visitor->walkInAssessments->first()?->visit_purpose ?: '—' }}</dd></div>
+        @endif
         <div>
           <dt>Linked PDLs</dt>
           <dd>

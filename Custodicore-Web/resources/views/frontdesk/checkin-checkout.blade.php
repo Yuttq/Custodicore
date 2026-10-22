@@ -56,9 +56,6 @@
 
             <div class="flex items-center gap-sm">
 
-                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-navy text-sm font-bold text-white">
-                    1
-                </span>
 
                 <div>
 
@@ -302,16 +299,19 @@
                     id="manualBackupPanel"
                     class="hidden mt-lg border-t border-border pt-lg">
 
+                    @include('frontdesk.partials.manual-steps', ['wizard' => 'mci', 'steps' => ['Find Visitor', 'Visitor Info', 'Verify ID', 'Confirm']])
+
+
                     <label
                         for="manualVisitorSearch"
-                        class="text-section-label text-text-secondary">
+                        class="text-section-label text-text-secondary" data-mci="1">
 
                         SEARCH VISITOR
 
                     </label>
 
 
-                    <div class="relative mt-xs">
+                    <div class="relative mt-xs" data-mci="1">
 
                         <input
                             type="text"
@@ -333,13 +333,13 @@
 
                     <div
                         id="manualSearchResults"
-                        class="mt-sm hidden overflow-hidden rounded-lg border border-border bg-surface">
+                        class="mt-sm hidden overflow-hidden rounded-lg border border-border bg-surface" data-mci="1">
                     </div>
 
 
                     <div
                         id="selectedManualVisitor"
-                        class="hidden mt-md rounded-lg border border-border bg-background p-md">
+                        class="hidden mt-md rounded-lg border border-border bg-background p-md" data-mci="2">
 
                         <div class="flex flex-col gap-md md:flex-row md:items-start md:justify-between">
 
@@ -390,19 +390,23 @@
                     </div>
 
 
+                    <div class="mt-md flex justify-end" data-mci="2">
+                        <button type="button" class="cc-btn-primary" data-wizard-next="mci">Next: Verify ID</button>
+                    </div>
+
                     {{-- MANUAL VERIFICATION --}}
                     <div
                         id="manualVerificationSection"
                         class="hidden">
 
-                        <div class="mt-lg border-t border-border pt-lg">
+                        <div class="mt-lg">
 
-                            <p class="text-card-title">
+                            <p class="text-card-title" data-mci="3">
                                 Manual ID Verification
                             </p>
 
 
-                            <div class="mt-md rounded-lg border border-border bg-background p-md">
+                            <div class="mt-md rounded-lg border border-border bg-background p-md" data-mci="3">
 
                                 <div class="grid grid-cols-1 gap-md md:grid-cols-3">
 
@@ -455,7 +459,7 @@
                             </div>
 
 
-                            <div class="mt-md">
+                            <div class="mt-md" data-mci="3">
 
                                 <label
                                     for="manualIdType"
@@ -477,7 +481,7 @@
                             </div>
 
 
-                            <div class="mt-md">
+                            <div class="mt-md" data-mci="3">
 
                                 <label
                                     for="manualIdNumber"
@@ -500,7 +504,7 @@
                             </div>
 
 
-                            <div class="mt-md">
+                            <div class="mt-md" data-mci="3">
 
                                 <label
                                     for="overrideReason"
@@ -523,7 +527,7 @@
                             </div>
 
 
-                            <div class="mt-md rounded-lg border border-border bg-background p-md">
+                            <div class="mt-md rounded-lg border border-border bg-background p-md" data-mci="3">
 
                                 <label class="flex items-start gap-sm">
 
@@ -541,13 +545,31 @@
                             </div>
 
 
+                            <p id="manualStepError" role="alert" class="mt-md hidden text-body font-semibold text-danger" data-mci="3"></p>
+                            <div class="mt-md flex justify-between" data-mci="3">
+                                <button type="button" class="cc-btn-secondary" data-wizard-back="mci">Back</button>
+                                <button type="button" class="cc-btn-primary" data-wizard-next="mci">Next: Review</button>
+                            </div>
+
+                            {{-- Confirm: what will be recorded. --}}
+                            <div class="rounded-lg border border-border bg-background p-md" data-mci="4">
+                                <p class="text-card-title">Review &amp; Confirm</p>
+                                <dl class="mt-md grid grid-cols-1 gap-md text-body md:grid-cols-2">
+                                    <div><dt class="text-section-label text-text-secondary">VISITOR</dt><dd id="mciSumVisitor" class="mt-xs font-semibold">—</dd></div>
+                                    <div><dt class="text-section-label text-text-secondary">VISIT</dt><dd id="mciSumVisit" class="mt-xs font-semibold">—</dd></div>
+                                    <div><dt class="text-section-label text-text-secondary">ID SURRENDERED</dt><dd id="mciSumId" class="mt-xs font-semibold">—</dd></div>
+                                    <div><dt class="text-section-label text-text-secondary">REASON FOR MANUAL CHECK-IN</dt><dd id="mciSumReason" class="mt-xs font-semibold">—</dd></div>
+                                </dl>
+                            </div>
+
                             <div
                                 id="manualCheckInError"
                                 role="alert"
-                                class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-body font-semibold text-red-700">
+                                class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-body font-semibold text-red-700" data-mci="4">
                             </div>
 
-                            <div class="mt-md flex justify-end">
+                            <div class="mt-md flex justify-between" data-mci="4">
+                                <button type="button" class="cc-btn-secondary" data-wizard-back="mci">Back</button>
 
                                 <button
                                     type="button"
@@ -1116,9 +1138,9 @@
                                     <td class="py-sm pr-md">{{ $checkin->checkInOfficer?->full_name ?? '—' }}</td>
                                     <td class="py-sm pr-md">
                                         @if ($checkin->isCheckedIn())
-                                            <span class="cc-chip cc-chip-success">Inside</span>
+                                            <span class="font-semibold text-success">Inside</span>
                                         @else
-                                            <span class="cc-chip cc-chip-info">Checked Out</span>
+                                            <span class="font-semibold text-text-secondary">Checked Out</span>
                                         @endif
                                     </td>
                                 </tr>
@@ -1150,9 +1172,6 @@
 
             <div class="flex items-center gap-sm">
 
-                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-navy text-sm font-bold text-white">
-                    1
-                </span>
 
                 <div>
 
@@ -1394,16 +1413,19 @@
                     id="manualCheckoutSection"
                     class="hidden mt-lg border-t border-border pt-lg">
 
+                    @include('frontdesk.partials.manual-steps', ['wizard' => 'mco', 'steps' => ['Find Visitor', 'Active Visit', 'Return ID', 'Confirm']])
+
+
                     <label
                         for="manualCheckoutVisitorSearch"
-                        class="text-section-label text-text-secondary">
+                        class="text-section-label text-text-secondary" data-mco="1">
 
                         SEARCH VISITOR
 
                     </label>
 
 
-                    <div class="relative mt-xs">
+                    <div class="relative mt-xs" data-mco="1">
 
                         <input
                             type="text"
@@ -1426,13 +1448,13 @@
 
                     <div
                         id="manualCheckoutSearchResults"
-                        class="mt-sm hidden overflow-hidden rounded-lg border border-border bg-surface">
+                        class="mt-sm hidden overflow-hidden rounded-lg border border-border bg-surface" data-mco="1">
                     </div>
 
 
                     <div
                         id="selectedCheckoutVisitor"
-                        class="hidden mt-md rounded-lg border border-border bg-background p-md">
+                        class="hidden mt-md rounded-lg border border-border bg-background p-md" data-mco="2">
 
                         <div class="flex flex-col gap-md md:flex-row md:items-start md:justify-between">
 
@@ -1476,17 +1498,17 @@
                         id="checkoutActiveVisit"
                         class="hidden mt-lg">
 
-                        <p class="text-card-title">
+                        <p class="text-card-title" data-mco="2">
                             Active Visit Information
                         </p>
 
-                        <p class="mt-xs text-metadata text-text-secondary">
+                        <p class="mt-xs text-metadata text-text-secondary" data-mco="2">
                             Review the same visitor, PDL, schedule, and registered ID information retrieved during check-in.
                         </p>
 
 
                         {{-- VISITOR + PDL --}}
-                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
+                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2" data-mco="2">
 
                             <div class="rounded-xl border border-border bg-background p-md">
 
@@ -1599,7 +1621,7 @@
 
 
                         {{-- APPROVED VISIT SCHEDULE --}}
-                        <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                        <div class="mt-lg rounded-xl border border-border bg-background p-md" data-mco="2">
 
                             <p class="text-section-label text-text-secondary">
                                 APPROVED VISIT SCHEDULE
@@ -1687,7 +1709,7 @@
 
 
                         {{-- REGISTERED ID --}}
-                        <div class="mt-lg rounded-xl border border-border bg-background p-md">
+                        <div class="mt-lg rounded-xl border border-border bg-background p-md" data-mco="2">
 
                             <p class="text-section-label text-text-secondary">
                                 REGISTERED ID
@@ -1745,7 +1767,7 @@
 
 
                         {{-- CHECK-IN RECORD --}}
-                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2">
+                        <div class="mt-lg grid grid-cols-1 gap-lg lg:grid-cols-2" data-mco="2">
 
                             <div class="rounded-xl border border-border bg-background p-md">
 
@@ -1779,8 +1801,13 @@
                         </div>
 
 
+                        <div class="mt-lg flex justify-between" data-mco="2">
+                            <button type="button" class="cc-btn-secondary" data-wizard-back="mco">Back</button>
+                            <button type="button" class="cc-btn-primary" data-wizard-next="mco">Next: Return ID</button>
+                        </div>
+
                         {{-- RETURN ID --}}
-                        <div class="mt-lg rounded-lg border border-border bg-background p-md">
+                        <div class="mt-lg rounded-lg border border-border bg-background p-md" data-mco="3">
 
                             <p class="text-card-title">
                                 Return ID
@@ -1841,7 +1868,25 @@
                         </div>
 
 
-                        <div class="mt-lg flex justify-end">
+                        <p id="mcoStepError" role="alert" class="mt-md hidden text-body font-semibold text-danger" data-mco="3"></p>
+                        <div class="mt-lg flex justify-between" data-mco="3">
+                            <button type="button" class="cc-btn-secondary" data-wizard-back="mco">Back</button>
+                            <button type="button" class="cc-btn-primary" data-wizard-next="mco">Next: Review</button>
+                        </div>
+
+                        {{-- Confirm: what will be recorded. --}}
+                        <div class="mt-lg rounded-lg border border-border bg-background p-md" data-mco="4">
+                            <p class="text-card-title">Review &amp; Confirm</p>
+                            <dl class="mt-md grid grid-cols-1 gap-md text-body md:grid-cols-2">
+                                <div><dt class="text-section-label text-text-secondary">VISITOR</dt><dd id="mcoSumVisitor" class="mt-xs font-semibold">—</dd></div>
+                                <div><dt class="text-section-label text-text-secondary">PDL</dt><dd id="mcoSumPdl" class="mt-xs font-semibold">—</dd></div>
+                                <div><dt class="text-section-label text-text-secondary">CHECKED IN</dt><dd id="mcoSumCheckin" class="mt-xs font-semibold">—</dd></div>
+                                <div><dt class="text-section-label text-text-secondary">ID RETURNED</dt><dd id="mcoSumId" class="mt-xs font-semibold">—</dd></div>
+                            </dl>
+                        </div>
+
+                        <div class="mt-lg flex justify-between" data-mco="4">
+                            <button type="button" class="cc-btn-secondary" data-wizard-back="mco">Back</button>
 
                             <button
                                 type="button"
@@ -4584,5 +4629,140 @@ function showCheckinStep(step) {
     EXISTING QR SCANNER SCRIPT
 ============================================================ --}}
 @vite('resources/js/frontdesk-checkin.js')
+
+@push('scripts')
+<script>
+    /*
+     * Manual (no QR) check-in and check-out: one step at a time, with the
+     * same four-step progress bar as the QR flow. The steps only show and
+     * hide the panels' existing fields; recording the check-in / check-out
+     * is unchanged (frontdesk-checkin.js and the checkout script above).
+     */
+    (() => {
+        const tone = {
+            done: ['border-success', 'bg-success', 'text-white'],
+            current: ['border-warning', 'bg-warning/10', 'text-warning'],
+            todo: ['border-border', 'bg-white', 'text-text-secondary'],
+        };
+        const text = { done: 'text-success', current: 'text-warning', todo: 'text-text-secondary' };
+        const $ = id => document.getElementById(id);
+        const value = id => ($(id)?.textContent || '').replace(/\s+/g, ' ').trim() || '—';
+
+        function wizard(name, { canLeave, onEnter } = {}) {
+            const progress = document.querySelector(`[data-wizard-progress="${name}"]`);
+            let step = 1;
+
+            const show = n => {
+                step = Math.min(Math.max(n, 1), 4);
+                document.querySelectorAll(`[data-${name}]`).forEach(el => {
+                    el.style.display = Number(el.dataset[name]) === step ? '' : 'none';
+                });
+                progress?.querySelectorAll('[data-wizard-step]').forEach(li => {
+                    const i = Number(li.dataset.wizardStep);
+                    const state = i < step ? 'done' : (i === step ? 'current' : 'todo');
+                    const circle = li.querySelector('[data-wizard-circle]');
+                    const label = li.querySelector('[data-wizard-label]');
+                    const line = li.querySelector('[data-wizard-line]');
+                    circle.classList.remove(...tone.done, ...tone.current, ...tone.todo);
+                    circle.classList.add(...tone[state]);
+                    circle.textContent = state === 'done' ? '✓' : i;
+                    label.classList.remove(...Object.values(text));
+                    label.classList.add(text[state]);
+                    line?.classList.toggle('bg-success', i < step);
+                    line?.classList.toggle('bg-border', i >= step);
+                    if (state === 'current') li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+                });
+                onEnter?.(step);
+            };
+
+            document.querySelectorAll(`[data-wizard-next="${name}"]`).forEach(button => button.addEventListener('click', () => {
+                if (canLeave && canLeave(step) === false) return;
+                show(step + 1);
+            }));
+            document.querySelectorAll(`[data-wizard-back="${name}"]`).forEach(button => button.addEventListener('click', () => show(step - 1)));
+
+            show(1);
+            return { show, step: () => step };
+        }
+
+        // Follows the selected-visitor card: shown on select, hidden on "Change Visitor".
+        function followSelection(cardId, flow) {
+            const card = $(cardId);
+            if (!card) return;
+            new MutationObserver(() => {
+                const selected = !card.classList.contains('hidden');
+                if (selected && flow.step() === 1) flow.show(2);
+                if (!selected && flow.step() > 1) flow.show(1);
+            }).observe(card, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        function stepError(id, message) {
+            const box = $(id);
+            if (!box) return;
+            box.textContent = message || '';
+            box.classList.toggle('hidden', !message);
+        }
+
+        // ---- Manual check-in: Find Visitor → Visitor Info → Verify ID → Confirm ----
+        const checkin = wizard('mci', {
+            canLeave(step) {
+                if (step !== 3) return true;
+                const idNumber = ($('manualIdNumber')?.value || '').replace(/[^A-Za-z0-9]/g, '');
+                const reason = ($('overrideReason')?.value || '').replace(/\s+/g, ' ').trim();
+                const problem =
+                    !$('manualIdType')?.value ? 'Select the type of ID the visitor surrendered.'
+                    : idNumber.length < 4 ? "Enter the visitor's ID number."
+                    : reason.length < 10 ? 'Describe the reason for the manual check-in in at least 10 characters.'
+                    : !$('manualIdVerified')?.checked ? "Confirm that you physically verified the visitor's ID."
+                    : null;
+                stepError('manualStepError', problem);
+                return !problem;
+            },
+            onEnter(step) {
+                if (step !== 4) return;
+                const type = $('manualIdType');
+                $('mciSumVisitor').textContent = `${value('selectedVisitorName')} · ${value('selectedVisitorId')}`;
+                $('mciSumVisit').textContent = `${value('selectedVisitorDetails')} · ${value('selectedVisitorSchedule')}`;
+                $('mciSumId').textContent = `${type?.selectedOptions[0]?.textContent.trim() || '—'} · ${($('manualIdNumber')?.value || '—').toUpperCase()}`;
+                $('mciSumReason').textContent = ($('overrideReason')?.value || '—').trim();
+            },
+        });
+        followSelection('selectedManualVisitor', checkin);
+
+        // ---- Manual check-out: Find Visitor → Active Visit → Return ID → Confirm ----
+        const checkout = wizard('mco', {
+            canLeave(step) {
+                if (step !== 3) return true;
+                const returned = $('checkoutIdReturned')?.checked;
+                stepError('mcoStepError', returned ? null : 'Confirm that the ID has been returned to the visitor.');
+                return !!returned;
+            },
+            onEnter(step) {
+                if (step !== 4) return;
+                $('mcoSumVisitor').textContent = value('checkoutInfoVisitor');
+                $('mcoSumPdl').textContent = `${value('checkoutInfoPdl')} (${value('checkoutInfoPdlNumber')})`;
+                $('mcoSumCheckin').textContent = value('checkoutInfoCheckinTime');
+                $('mcoSumId').textContent = `${value('checkoutIdType')} · ${value('checkoutIdNumber')}`;
+            },
+        });
+        followSelection('selectedCheckoutVisitor', checkout);
+        window.addEventListener('custodicore:checkout-manual-selected', () => setTimeout(() => checkout.show(2), 0));
+    })();
+</script>
+
+<script>
+    // ?checkin=Name (from a booked walk-in): open Manual Check-In with that visitor searched.
+    setTimeout(() => {
+        const name = new URLSearchParams(location.search).get('checkin');
+        const search = document.getElementById('manualVisitorSearch');
+        if (!name || !search) return;
+        if (document.getElementById('manualBackupPanel')?.classList.contains('hidden')) {
+            document.getElementById('manualBackupBtn')?.click();
+        }
+        search.value = name;
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+    }, 0);
+</script>
+@endpush
 
 @endsection

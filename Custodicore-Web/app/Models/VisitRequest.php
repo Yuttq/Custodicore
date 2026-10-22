@@ -27,6 +27,7 @@ class VisitRequest extends Model
         'confirmed_at',
         'cancelled_at',
         'cancellation_reason',
+        'is_walk_in',
     ];
 
     protected $casts = [
@@ -34,6 +35,7 @@ class VisitRequest extends Model
         'confirmation_deadline' => 'datetime',
         'confirmed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'is_walk_in' => 'boolean',
     ];
 
     protected static function booted(): void

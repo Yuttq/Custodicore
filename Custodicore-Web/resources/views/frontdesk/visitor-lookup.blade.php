@@ -7,10 +7,12 @@
         <p class="text-card-title">Visitor Lookup</p>
         <p class="text-metadata text-text-secondary">Search by name or contact number, then open the visitor&rsquo;s profile.</p>
 
-        <form method="GET" action="{{ route('frontdesk.visitor-lookup') }}" class="mt-md flex gap-sm">
-            <label for="visitorLookupQuery" class="sr-only">Visitor name or contact number</label>
-            <input type="search" id="visitorLookupQuery" name="q" value="{{ $query }}" placeholder="Search by name or contact number…" maxlength="100" autocomplete="off" class="cc-input flex-1" />
+        <form method="GET" action="{{ route('frontdesk.visitor-lookup') }}" class="mt-md flex flex-wrap items-center gap-sm">
+            @include('frontdesk.partials.search-input', ['id' => 'visitorLookupQuery', 'value' => $query, 'placeholder' => 'Search by name or contact number…'])
             <button type="submit" class="cc-btn-primary">Search</button>
+            @if ($query !== '')
+                <a href="{{ route('frontdesk.visitor-lookup') }}" class="cc-btn-secondary">Clear</a>
+            @endif
         </form>
 
         <div class="mt-md space-y-sm">

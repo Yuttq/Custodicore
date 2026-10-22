@@ -7,6 +7,9 @@
     @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'pdl-photo-lg visitor-photo-lg'])
     <div>
       <h1 style="margin:0;">{{ $visitor->full_name }}</h1>
+      @if ($visitor->isWalkIn())
+        <span class="badge transferred" style="margin-top:6px;"><span class="dot"></span>Walk-in · registered at the Front Desk</span>
+      @endif
       <div class="muted-cell">
         Visitor Profile
         @if ($visitor->photo_uploaded_at) · photo taken {{ $visitor->photo_uploaded_at->format('M j, Y H:i') }} @else · no photo yet (taken in the app when the account is created) @endif
@@ -48,6 +51,250 @@
   </div>
   @endif
 </div>
+
+{{-- ================= WALK-IN ASSESSMENT ================= --}}
+@if ($visitor->isWalkIn() && ($assessment = $visitor->walkInAssessments->first()))
+  @php
+    $options = \App\Models\WalkInAssessment::OPTIONS;
+    $checks = app(\App\Services\WalkInService::class)->checks($visitor);
+    $locked = $assessment->visit_request_id !== null;
+    // Live checks until the visit is booked; then what was saved with the decision.
+    $auto = fn ($field) => $locked ? $assessment->{$field} : $checks[$field];
+    $value = fn ($field) => old($field, $assessment->{$field});
+    $tone = fn ($v) => in_array($v, ['verified', 'yes'], true) ? 'active' : ($v === 'no' || $v === 'not_found' ? 'rejected' : 'transferred');
+    $statusBadge = fn ($status) => ['verified' => 'active', 'rejected' => 'rejected'][$status] ?? 'transferred';
+    $decisionBadge = ['approved' => 'active', 'declined' => 'rejected'][$assessment->decision] ?? 'transferred';
+    $linkedNames = $checks['linkedPdls']->pluck('full_name')->join(', ');
+  @endphp
+  <div class="panel" id="walk-in" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <h2>Walk-in Assessment</h2>
+      <span class="badge {{ $decisionBadge }}"><span class="dot"></span>{{ $assessment->label('decision') }}</span>
+    </div>
+
+    <div class="row cols-3" style="margin-bottom:16px;">
+      <div><div class="stat-label">Visitor Type</div><div>Walk-In</div></div>
+      <div><div class="stat-label">Registered at the Front Desk by</div><div>{{ $visitor->walkInRegisteredBy?->full_name ?? '—' }} · {{ $visitor->created_at?->format('M j, Y H:i') }}</div></div>
+      <div><div class="stat-label">Purpose of Visit</div><div>{{ $assessment->visit_purpose }}</div></div>
+      <div><div class="stat-label">PDL Name Given</div><div>{{ $visitor->intended_pdl_name ?: '—' }}</div></div>
+      <div><div class="stat-label">PDL ID Number Given</div><div>{{ $visitor->intended_pdl_number ?: '—' }}</div></div>
+      <div><div class="stat-label">Relationship Given</div><div>{{ $visitor->relationship_hint ?: '—' }}</div></div>
+    </div>
+
+    {{-- 1. Checks the system fills in --}}
+    <h3 style="margin:0 0 8px;font-size:14px;">Automatic Checks</h3>
+    <table style="margin-bottom:16px;">
+      <thead><tr><th style="width:170px;">Check</th><th style="width:130px;">Status</th><th>Remarks</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>PDL Verification</strong></td>
+          <td><span class="badge {{ $tone($auto('pdl_verification')) }}"><span class="dot"></span>{{ $options['pdl_verification'][$auto('pdl_verification')] ?? '—' }}</span></td>
+          <td class="muted-cell">
+            @if ($checks['linkedPdls']->isNotEmpty())
+              Linked to {{ $checks['linkedPdls']->map(fn ($p) => "{$p->full_name} ({$p->pdl_number})")->join(', ') }}.
+            @elseif ($checks['matches']->count() === 1)
+              @php $match = $checks['matches']->first(); @endphp
+              Matches {{ $match->full_name }} ({{ $match->pdl_number }}, {{ ucfirst($match->custody_status) }}).
+              Linked automatically as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? 'the given relationship' }} once every document is verified.
+            @elseif ($checks['matches']->isNotEmpty())
+              Several PDLs match the name or number given. Link the right one:
+            @else
+              No PDL matches "{{ $visitor->intended_pdl_name }}"{{ $visitor->intended_pdl_number ? ' / '.$visitor->intended_pdl_number : '' }}. Search for the PDL under Relationships to PDLs below.
+            @endif
+            @if (! $locked && $checks['matches']->count() > 1 && $assessment->relationship_type)
+              @foreach ($checks['matches'] as $pdl)
+                <form method="POST" action="{{ route('visitor.relationships.store', $visitor->visitor_id) }}" style="display:flex;gap:8px;align-items:center;margin-top:6px;"
+                      data-confirm="Link {{ $visitor->full_name }} to {{ $pdl->full_name }} ({{ $pdl->pdl_number }}) as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] }}?"
+                      data-confirm-title="Link PDL" data-confirm-ok="Link">
+                  @csrf
+                  <input type="hidden" name="pdl_id" value="{{ $pdl->pdl_id }}">
+                  <input type="hidden" name="relationship_type" value="{{ $assessment->relationship_type }}">
+                  @if ($assessment->has_children_together !== null)
+                    <input type="hidden" name="has_children_together" value="{{ $assessment->has_children_together ? 1 : 0 }}">
+                  @endif
+                  <span style="color:var(--text);">{{ $pdl->full_name }} · {{ $pdl->pdl_number }} · {{ ucfirst($pdl->custody_status) }}</span>
+                  <button type="submit" class="row-action" style="color:var(--green);">Link as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] }}</button>
+                </form>
+              @endforeach
+            @endif
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Visitor Eligibility</strong></td>
+          <td><span class="badge {{ $tone($auto('visitor_eligibility')) }}"><span class="dot"></span>{{ $options['visitor_eligibility'][$auto('visitor_eligibility')] ?? '—' }}</span></td>
+          <td class="muted-cell">
+            Account {{ $visitor->verification_status === 'verified' ? 'approved' : 'not approved yet' }} ·
+            ID {{ $visitor->hasVerifiedId() ? 'verified' : 'not verified yet' }} ·
+            {{ $checks['flagged'] ? 'Has an active flag' : 'No active flags' }}
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Authorized Visitor</strong></td>
+          <td><span class="badge {{ $tone($auto('authorized_visitor')) }}"><span class="dot"></span>{{ $options['authorized_visitor'][$auto('authorized_visitor')] ?? '—' }}</span></td>
+          <td class="muted-cell">
+            @if ($auto('authorized_visitor') === 'yes')
+              Relationship to {{ $linkedNames }} verified: every requirement was checked.
+            @elseif ($auto('authorized_visitor') === 'no')
+              The relationship was rejected.
+            @else
+              Not verified yet. It is verified automatically once every document and the valid ID are verified.
+            @endif
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {{-- 2. Every file the visitor gave --}}
+    @php
+      $claimed = \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? $visitor->relationship_hint;
+      $relationshipTag = function ($doc) use ($claimed) {
+          return $doc->relationship
+              ? $doc->relationship->relationshipLabel().' · '.($doc->relationship->pdl?->full_name ?? 'PDL')
+              : $claimed.' · not linked yet';
+      };
+    @endphp
+    <h3 style="margin:0 0 4px;font-size:14px;">Files to Review <span class="count-chip">{{ $checks['pendingFiles'] }} waiting</span></h3>
+    <p class="field-hint" style="margin:0 0 8px;">
+      Open each file. Check the names and details match the visitor ({{ $visitor->full_name }})
+      and the PDL{{ $linkedNames ? " ({$linkedNames})" : ($visitor->intended_pdl_name ? " ({$visitor->intended_pdl_name})" : '') }},
+      e.g. that the marriage certificate names both of them, and that nothing looks altered.
+    </p>
+    <table style="margin-bottom:16px;">
+      <thead><tr><th>File</th><th>Relationship</th><th>Status</th><th>Remarks</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Photo of the Visitor</td>
+          <td><span class="badge released"><span class="dot"></span>Identity</span></td>
+          <td><span class="badge {{ $visitor->photo_path ? 'active' : 'rejected' }}"><span class="dot"></span>{{ $visitor->photo_path ? 'Taken' : 'Missing' }}</span></td>
+          <td class="muted-cell">Taken at the Front Desk. Compare it with the ID.</td>
+          <td>@if ($visitor->photo_path)<a class="row-action" href="{{ route('visitor.photo', $visitor->visitor_id) }}" target="_blank" rel="noopener">View</a>@endif</td>
+        </tr>
+        @foreach ($checks['ids'] as $doc)
+          <tr>
+            <td>{{ $doc->typeLabel() }} · {{ $doc->id_number }}</td>
+            <td><span class="badge released"><span class="dot"></span>Identity</span></td>
+            <td><span class="badge {{ $statusBadge($doc->verification_status) }}"><span class="dot"></span>{{ ucfirst($doc->verification_status) }}</span></td>
+            <td class="muted-cell">
+              @if ($doc->verification_status === 'rejected') {{ $doc->rejection_reason ?: 'Rejected.' }}
+              @elseif ($doc->verification_status === 'verified') Verified by {{ $doc->verifiedBy?->full_name ?? 'staff' }}
+              @else Check it matches the visitor's photo and details.
+              @endif
+            </td>
+            <td>
+              <div style="display:flex;gap:8px;align-items:flex-start;">
+                @if ($doc->file_path)
+                  <a class="row-action" href="{{ route('visitor.ids.file', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" target="_blank" rel="noopener">View</a>
+                @endif
+                @if (! $locked && $doc->verification_status === 'pending')
+                  <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
+                        data-confirm="Mark this {{ $doc->typeLabel() }} as verified? Only do this after checking it matches the visitor."
+                        data-confirm-title="Verify ID" data-confirm-ok="Verify">
+                    @csrf
+                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                  </form>
+                  <details class="acct-reject">
+                    <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
+                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form">
+                      @csrf
+                      <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="Why the ID is rejected"></textarea>
+                      <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
+                    </form>
+                  </details>
+                @endif
+              </div>
+            </td>
+          </tr>
+        @endforeach
+        @foreach ($checks['documents'] as $doc)
+          <tr>
+            <td>{{ $doc->label() }}</td>
+            <td><span class="badge {{ $doc->relationship ? 'detained' : 'released' }}"><span class="dot"></span>{{ $relationshipTag($doc) }}</span></td>
+            <td><span class="badge {{ $statusBadge($doc->status) }}"><span class="dot"></span>{{ ucfirst($doc->status) }}</span></td>
+            <td class="muted-cell">
+              @if ($doc->status === 'rejected') {{ $doc->rejection_reason ?: 'Rejected.' }}
+              @elseif ($doc->status === 'verified') Verified by {{ $doc->reviewedBy?->full_name ?? 'staff' }}
+              @else Check the names on it match the visitor and the PDL.
+              @endif
+            </td>
+            <td>
+              <div style="display:flex;gap:8px;align-items:flex-start;">
+                <a class="row-action" href="{{ route('relationship-documents.file', $doc->document_id) }}" target="_blank" rel="noopener">View</a>
+                @if (! $locked && $doc->status === 'pending' && $doc->relationship?->verification_status !== 'verified')
+                  <form method="POST" action="{{ route('visitor.walk-in-documents.verify', [$visitor->visitor_id, $doc->document_id]) }}"
+                        data-confirm="Mark the {{ $doc->label() }} as verified? Only do this after checking the names match the visitor and the PDL."
+                        data-confirm-title="Verify Document" data-confirm-ok="Verify">
+                    @csrf
+                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                  </form>
+                  <details class="acct-reject">
+                    <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
+                    <form method="POST" action="{{ route('visitor.walk-in-documents.reject', [$visitor->visitor_id, $doc->document_id]) }}" class="acct-reject-form">
+                      @csrf
+                      <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The names on the certificate do not match"></textarea>
+                      <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
+                    </form>
+                  </details>
+                @endif
+              </div>
+            </td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+
+    {{-- 3. The Records Officer's decision --}}
+    @if ($locked)
+      <p class="muted-cell" style="margin:0 0 12px;">The Front Desk booked the visit, so this assessment is final.</p>
+    @elseif (! $checks['canApprove'])
+      <div class="field-hint" style="margin:0 0 12px;">
+        <strong>Before You Can Approve:</strong>
+        <ul style="margin:4px 0 0;padding-left:18px;">
+          @foreach ($checks['blockers'] as $blocker)<li>{{ $blocker }}</li>@endforeach
+        </ul>
+        You can save the decision as Pending or Rejected meanwhile.
+      </div>
+    @endif
+
+    <form method="POST" action="{{ route('visitor.walk-in-assessment', $visitor->visitor_id) }}">
+      @csrf
+      <fieldset @disabled($locked) style="border:none;padding:0;margin:0;">
+        <div class="row cols-3">
+          <div class="field-m">
+            <label for="walkin_decision">Walk-In Decision</label>
+            <select id="walkin_decision" name="decision" required>
+              <option value="">— Select —</option>
+              @foreach ($options['decision'] as $optionValue => $optionLabel)
+                <option value="{{ $optionValue }}" @selected($value('decision') === $optionValue)
+                  @disabled($optionValue === 'approved' && ! $checks['canApprove'])>{{ $optionLabel }}</option>
+              @endforeach
+            </select>
+          </div>
+          <div class="field-m">
+            <label for="walkin_reason">Reason for Walk-In</label>
+            <select id="walkin_reason" name="walk_in_reason" required>
+              @foreach ($options['walk_in_reason'] as $optionValue => $optionLabel)
+                <option value="{{ $optionValue }}" @selected($value('walk_in_reason') === $optionValue)>{{ $optionLabel }}</option>
+              @endforeach
+            </select>
+          </div>
+        </div>
+        <div class="field-m" style="margin-bottom:12px;">
+          <label for="walkin_remarks">Officer Remarks</label>
+          <textarea id="walkin_remarks" name="remarks" maxlength="1000" placeholder="Required when the reason is Other or the walk-in is rejected">{{ $value('remarks') }}</textarea>
+        </div>
+      </fieldset>
+
+      <div class="row cols-3" style="margin-bottom:12px;">
+        <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</div></div>
+        <div><div class="stat-label">Date and Time Processed</div><div>{{ $assessment->processed_at?->format('M j, Y H:i') ?? '—' }}</div></div>
+      </div>
+
+      @unless ($locked)
+        <button class="btn btn-blue" type="submit">Save Walk-in Decision</button>
+      @endunless
+    </form>
+  </div>
+@endif
 
 {{-- ================= ACCOUNT REVIEW ================= --}}
 <div class="panel" style="margin-bottom:20px;">
@@ -109,7 +356,7 @@
 </div>
 
 {{-- ================= IDENTITY VERIFICATION ================= --}}
-<div class="panel" style="margin-bottom:20px;">
+<div class="panel" id="identity" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Identity Documents</h2></div>
 
   @if ($visitor->idDocuments->isEmpty())
@@ -167,7 +414,7 @@
 </div>
 
 {{-- ================= RELATIONSHIP VERIFICATION ================= --}}
-<div class="panel" style="margin-bottom:20px;">
+<div class="panel" id="relationships" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Relationships to PDLs</h2></div>
 
   @if ($visitor->relationships->isEmpty())

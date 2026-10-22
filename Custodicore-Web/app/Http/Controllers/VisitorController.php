@@ -80,6 +80,8 @@ class VisitorController extends Controller
             'relationships.pdl',
             'relationships.documents',
             'registrationDocuments',
+            'walkInAssessments.processedBy',
+            'walkInRegisteredBy',
             'flags' => fn ($q) => $q->orderBy('created_at', 'desc'),
             'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule', 'sessionSchedules'])->orderByDesc('assigned_at')->limit(10),
         ]);
@@ -167,7 +169,8 @@ class VisitorController extends Controller
         );
 
         $visitor->loadMissing('account');
-        if ($visitor->account) {
+        // A walk-in registered without an email has nowhere to send it.
+        if ($visitor->account?->email) {
             try {
                 Mail::to($visitor->account->email)->send(new VisitorAccountApproved($visitor->account));
             } catch (\Throwable $e) {
@@ -178,6 +181,12 @@ class VisitorController extends Controller
 
         $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id,
             "Approved visitor account: {$visitor->full_name}");
+
+        if ($visitor->isWalkIn()) {
+            $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
+
+            return back()->with('success', trim('Walk-in visitor approved. '.($note ?? '')));
+        }
 
         return back()->with('success', 'Visitor approved. The visitor has been notified.');
     }
@@ -263,7 +272,10 @@ class VisitorController extends Controller
         $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
             "Verified {$idDocument->typeLabel()} for {$visitor->full_name}");
 
-        return back()->with('success', 'ID document verified.');
+        // A walk-in's relationship may now meet every requirement.
+        $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
+
+        return back()->with('success', trim('ID document verified. '.($note ?? '')));
     }
 
     /** The visitor's own photo (from the mobile app), for staff. */

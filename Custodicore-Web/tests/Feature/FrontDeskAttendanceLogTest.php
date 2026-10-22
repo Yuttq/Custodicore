@@ -87,7 +87,7 @@ class FrontDeskAttendanceLogTest extends TestCase
         $this->actingAs($this->frontDeskAccount)
             ->get(route('frontdesk.attendance-log', ['date' => '2026-10-18']))
             ->assertOk()
-            ->assertSee('Sunday, October 18, 2026')
+            ->assertSee('name="date" value="2026-10-18"', false)
             ->assertSee('>09:00</td>', false)
             ->assertDontSee('>13:20</td>', false);
     }
@@ -99,7 +99,7 @@ class FrontDeskAttendanceLogTest extends TestCase
         $this->actingAs($this->frontDeskAccount)
             ->get(route('frontdesk.attendance-log', ['date' => '2026-10-18']))
             ->assertOk()
-            ->assertSee('Never Checked Out');
+            ->assertSee('Never checked out');
     }
 
     public function test_invalid_or_future_dates_fall_back_to_today(): void
@@ -153,6 +153,48 @@ class FrontDeskAttendanceLogTest extends TestCase
             ->get(route('frontdesk.attendance-log', ['q' => 'Salcedo']))
             ->assertOk()
             ->assertSee('No gate entries matched');
+    }
+
+    public function test_filters_by_method(): void
+    {
+        $this->gateEntry('2026-10-19 09:05', '2026-10-19 10:40');
+        $this->actingAs($this->frontDeskAccount);
+
+        $this->get(route('frontdesk.attendance-log', ['method' => 'qr_scan']))
+            ->assertOk()
+            ->assertSee('>09:05</td>', false)
+            ->assertSee('Clear');
+
+        $this->get(route('frontdesk.attendance-log', ['method' => 'manual_override']))
+            ->assertSee('No Manual entries for today.')
+            ->assertDontSee('>09:05</td>', false);
+
+        // Only Search, Method and one Date.
+        $this->get(route('frontdesk.attendance-log'))
+            ->assertSee('name="q"', false)
+            ->assertSee('name="method"', false)
+            ->assertSee('name="date"', false)
+            ->assertDontSee('name="status"', false)
+            ->assertDontSee('name="who"', false)
+            ->assertDontSee('name="from"', false);
+    }
+
+    public function test_numbered_pages(): void
+    {
+        foreach (range(1, 27) as $i) {
+            $this->gateEntry('2026-10-19 '.sprintf('%02d', 6 + intdiv($i, 4)).':'.sprintf('%02d', ($i % 4) * 10));
+        }
+        $this->actingAs($this->frontDeskAccount);
+
+        $this->get(route('frontdesk.attendance-log'))
+            ->assertOk()
+            ->assertSee('Showing 1–25 of 27 entries')
+            ->assertSee('aria-current="page">1</span>', false)
+            ->assertSee(e(route('frontdesk.attendance-log', ['page' => 2])), false);
+
+        $this->get(route('frontdesk.attendance-log', ['page' => 2]))
+            ->assertSee('Showing 26–27 of 27 entries')
+            ->assertSee('aria-current="page">2</span>', false);
     }
 
     public function test_page_is_read_only(): void

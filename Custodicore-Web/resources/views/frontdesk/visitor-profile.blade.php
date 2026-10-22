@@ -9,14 +9,11 @@
     $show = fn ($value) => filled($value) ? $value : '—';
 @endphp
 
-@section('content')
-    <div>
-        <a href="{{ route('frontdesk.visitor-lookup', array_filter(['q' => $backQuery])) }}"
-           class="text-metadata font-semibold text-primary-teal hover:underline">
-            ← Back to Visitor Lookup
-        </a>
-    </div>
+@section('header_actions')
+    <a href="{{ route('frontdesk.visitor-lookup', array_filter(['q' => $backQuery])) }}" class="cc-btn-secondary">Back to Visitor Lookup</a>
+@endsection
 
+@section('content')
     {{-- Warnings come first: an officer must see them before anything else. --}}
     @if ($activeFlags->isNotEmpty())
         <div class="cc-card border-l-4 border-l-danger" role="alert">
