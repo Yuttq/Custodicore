@@ -68,7 +68,7 @@ import {
   normalizeEmail,
   normalizeMobile,
   normalizeName,
-  PASSWORD_REQUIREMENTS,
+  passwordRequirementChecks,
   validateAddress,
   validateBirthdateAge,
   validateFirstName,
@@ -971,11 +971,29 @@ export default function RegisterScreen({ navigation, route }) {
           </Pressable>
         </View>
         {errors.password ? <Text style={fieldStyles.error}>{errors.password}</Text> : null}
-        <Text style={fieldStyles.hint}>
-          {isGoogle
-            ? `${PASSWORD_REQUIREMENTS} You can also sign in with this email and password.`
-            : PASSWORD_REQUIREMENTS}
-        </Text>
+        <Text style={fieldStyles.checklistTitle}>Password requirements</Text>
+        <View style={fieldStyles.checklist}>
+          {passwordRequirementChecks(password).map((req) => (
+            <View
+              key={req.key}
+              style={fieldStyles.checkItem}
+              accessible
+              accessibilityLabel={`${req.label}, ${req.met ? 'met' : 'not met'}`}
+            >
+              <Ionicons
+                name={req.met ? 'checkmark-circle' : 'ellipse-outline'}
+                size={16}
+                color={req.met ? colors.successStrong : colors.textSecondary}
+              />
+              <Text style={[fieldStyles.checkText, req.met && fieldStyles.checkTextMet]}>
+                {req.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+        {isGoogle ? (
+          <Text style={fieldStyles.hint}>You can also sign in with this email and password.</Text>
+        ) : null}
       </View>
       <View style={fieldStyles.wrap}>
         <Text style={fieldStyles.label}>Confirm Password</Text>
@@ -1757,6 +1775,34 @@ const fieldStyles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
+  checklistTitle: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginTop: spacing.sm,
+  },
+  // Two columns when each item gets ≥ 140px; one column on narrower screens.
+  checklist: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
+  checkItem: {
+    width: '50%',
+    minWidth: 140,
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+    paddingRight: spacing.xs,
+  },
+  checkText: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    flexShrink: 1,
+  },
+  checkTextMet: { color: colors.successStrong },
   inputError: { borderColor: colors.danger },
   error: {
     ...typography.metadata,

@@ -8,6 +8,7 @@ import {
   normalizeAddress,
   normalizeMobile,
   normalizeName,
+  passwordRequirementChecks,
   validateAddress,
   validateBirthdateAge,
   validateFirstName,
@@ -187,4 +188,37 @@ test('address: required, 255 max, control chars stripped, lines tidied', () => {
   assert.equal(inputFilters.address('A'.repeat(300)).length, 255);
   assert.equal(inputFilters.address('12\u0000 Rizal\u0007 St‮'), '12 Rizal St');
   assert.equal(normalizeAddress('Blk 1\r\n\n  Lot 2  \nQC'), 'Blk 1\nLot 2\nQC');
+});
+
+test('password checklist reflects each rule as the password changes', () => {
+  const met = (pw) =>
+    Object.fromEntries(passwordRequirementChecks(pw).map((r) => [r.key, r.met]));
+  assert.deepEqual(met(''), {
+    length: false, upper: false, lower: false, number: false, special: false, noSpaces: false,
+  });
+  assert.deepEqual(met('abc'), {
+    length: false, upper: false, lower: true, number: false, special: false, noSpaces: true,
+  });
+  assert.deepEqual(met('Abcdefgh12!x'), {
+    length: true, upper: true, lower: true, number: true, special: true, noSpaces: true,
+  });
+  // Editing back to an invalid password reverts the affected rows.
+  assert.equal(met('Abcdefgh12 x').noSpaces, false);
+  assert.equal(met('Abcdefgh12 x').special, false);
+  assert.equal(met(`Aa1!${'x'.repeat(61)}`).length, false);
+  assert.deepEqual(
+    passwordRequirementChecks('').map((r) => r.label),
+    ['12–64 characters', 'A–Z uppercase', 'a–z lowercase', '0–9 number', 'Special character (!@#$%)', 'No spaces'],
+  );
+});
+
+test('password checklist all-met agrees with validateRegistrationPassword for ASCII input', () => {
+  for (const pw of ['', 'abc', 'Abcdefgh12!x', 'Abcdefgh12 x!', 'abcdefgh12!x', 'ABCDEFGH12!X',
+    'Abcdefghij!x', 'Abcdefgh12xy', `Aa1!${'x'.repeat(60)}`, `Aa1!${'x'.repeat(61)}`]) {
+    const allMet = passwordRequirementChecks(pw).every((r) => r.met);
+    assert.equal(allMet, validateRegistrationPassword(pw) === null, pw);
+  }
+  // Non-ASCII stays rejected by the validator even if every row is ticked.
+  assert.ok(passwordRequirementChecks('Abcdefgh12!ñ').every((r) => r.met));
+  assert.notEqual(validateRegistrationPassword('Abcdefgh12!ñ'), null);
 });

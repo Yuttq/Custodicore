@@ -182,6 +182,31 @@ export const PASSWORD_REQUIREMENTS =
   '12–64 characters, with at least one uppercase letter, one lowercase letter, one number and one special character (such as ! @ # $ %). No spaces.';
 
 /**
+ * Live checklist under the password field. Display only — the same tests as
+ * validateRegistrationPassword, which still decides whether the form submits
+ * (including the ASCII-only rule, which has no checklist row).
+ * @returns {{ key: string, label: string, met: boolean }[]}
+ */
+export function passwordRequirementChecks(value) {
+  const pw = String(value ?? '');
+  return [
+    {
+      key: 'length',
+      label: `${REGISTRATION_LIMITS.passwordMin}–${REGISTRATION_LIMITS.passwordMax} characters`,
+      met:
+        pw.length >= REGISTRATION_LIMITS.passwordMin &&
+        pw.length <= REGISTRATION_LIMITS.passwordMax,
+    },
+    { key: 'upper', label: 'A–Z uppercase', met: /[A-Z]/.test(pw) },
+    { key: 'lower', label: 'a–z lowercase', met: /[a-z]/.test(pw) },
+    { key: 'number', label: '0–9 number', met: /[0-9]/.test(pw) },
+    { key: 'special', label: 'Special character (!@#$%)', met: /[!-/:-@[-`{-~]/.test(pw) },
+    // An empty password is not shown as passing "No spaces".
+    { key: 'noSpaces', label: 'No spaces', met: pw.length > 0 && !/[\s\p{Z}]/u.test(pw) },
+  ];
+}
+
+/**
  * Rules for a NEW password (registration). Mirrors the backend's
  * App\Support\VisitorPasswordPolicy, checked in the same order. Only
  * printable ASCII is accepted, so 64 characters never exceed bcrypt's
