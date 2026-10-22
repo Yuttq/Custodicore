@@ -49,6 +49,7 @@
       <div class="empty-text">This PDL has not received any authorized visits since intake on {{ $pdl->admission_date->format('M d, Y') }}.</div>
     </div>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Visitor</th><th>Status</th><th>Assigned</th><th>Confirmed</th><th>Cancelled</th><th>Eligibility</th></tr></thead>
       <tbody>
@@ -89,6 +90,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 </div>
 @endsection

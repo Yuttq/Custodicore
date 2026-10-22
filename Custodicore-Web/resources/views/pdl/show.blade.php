@@ -191,6 +191,7 @@
   @if ($pdl->restrictions->isEmpty())
     <p class="empty-note">No restrictions on file.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Type</th><th>Status</th><th>Start</th><th>End</th><th>Reason</th><th></th></tr></thead>
       <tbody>
@@ -220,6 +221,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 
   @if ($pdl->custody_status === 'active')
@@ -256,6 +258,7 @@
   @if ($pdl->legalRecords->isEmpty())
     <p class="empty-note">No legal records on file yet.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Case Number</th><th>Offense</th><th>Court</th><th>Status</th><th>Remarks</th><th>Recorded</th></tr></thead>
       <tbody>
@@ -271,6 +274,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 
   <details class="add-record" {{ $openLegal ? 'open' : '' }}>
@@ -295,6 +299,7 @@
   @if ($pdl->disciplinaryRecords->isEmpty())
     <p class="empty-note">No disciplinary records on file.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Incident Date</th><th>Description</th><th>Action Taken</th><th>Triggers Restriction</th></tr></thead>
       <tbody>
@@ -308,6 +313,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 
   <details class="add-record" {{ $openDisciplinary ? 'open' : '' }}>

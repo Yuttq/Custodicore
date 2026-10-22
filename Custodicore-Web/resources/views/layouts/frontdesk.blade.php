@@ -13,9 +13,9 @@
 </head>
 
 <body class="min-h-screen bg-background text-text-primary">
-    <div class="flex min-h-screen">
+    <div class="flex min-h-screen flex-col lg:flex-row">
         {{-- Sidebar: white, text-only buttons, teal when active (same as the Record Officer sidebar) --}}
-        <aside class="hidden w-[220px] shrink-0 flex-col border-r border-border bg-white px-[14px] py-5 lg:flex">
+        <aside class="cc-sidebar flex w-[220px] shrink-0 flex-col border-r border-border bg-white px-[14px] py-5">
             <div class="flex items-center gap-[10px] px-2 pb-[22px] pt-[6px]">
                 <img src="{{ asset('images/bjmp-logo.png') }}" alt="BJMP logo" class="h-[38px] w-[38px] shrink-0 object-contain"
                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">

@@ -6,7 +6,7 @@
   <h1>Visitor Management</h1>
 </div>
 
-<section class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+<section class="stats" style="margin-bottom:18px;">
   <a class="stat-card stat-link accent-blue" href="{{ route('visitor.index', ['status' => 'verified']) }}" style="text-decoration:none;color:inherit;" title="Show approved visitors">
     <div class="stat-label">Approved Visitors</div>
     <div class="stat-value">{{ $stats['approved_visitors'] }}</div>
@@ -37,7 +37,7 @@
   </div>
 @endif
 
-<form class="filters" method="GET" action="{{ route('visitor.index') }}" style="grid-template-columns:2fr 1.2fr auto;">
+<form class="filters filters-3" method="GET" action="{{ route('visitor.index') }}">
   @if ($flagged)<input type="hidden" name="flagged" value="1">@endif
   <div class="field">
     <label for="q">Search</label>

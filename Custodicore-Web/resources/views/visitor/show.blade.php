@@ -115,6 +115,7 @@
   @if ($visitor->idDocuments->isEmpty())
     <p class="empty-note">No ID documents uploaded yet.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Verified By</th><th></th></tr></thead>
       <tbody>
@@ -161,6 +162,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 </div>
 
@@ -171,6 +173,7 @@
   @if ($visitor->relationships->isEmpty())
     <p class="empty-note">No PDL relationships registered for this visitor yet.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>PDL</th><th>Relationship</th><th>Priority</th><th>Status</th><th></th></tr></thead>
       <tbody>
@@ -235,6 +238,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 
   @include('partials.registration-documents', ['visitor' => $visitor])
@@ -606,6 +610,7 @@
 @if (($visitor->visitRequests ?? collect())->isNotEmpty())
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Recent Visit Assignments</h2></div>
+  <div class="table-scroll">
   <table>
     <thead><tr><th>PDL</th><th>Schedule</th><th>Status</th><th>Assigned</th></tr></thead>
     <tbody>
@@ -632,6 +637,7 @@
       @endforeach
     </tbody>
   </table>
+  </div>
 </div>
 @endif
 
@@ -642,6 +648,7 @@
   @if ($visitor->flags->isEmpty())
     <p class="empty-note">No flags on file — clean history.</p>
   @else
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Type</th><th>Description</th><th>Status</th><th>How Long</th><th>Flagged By</th><th>Date</th><th></th></tr></thead>
       <tbody>
@@ -670,6 +677,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   @endif
 
   <details style="margin-top:14px;">

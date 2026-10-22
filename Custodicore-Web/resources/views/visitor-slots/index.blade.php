@@ -22,7 +22,7 @@
   <div class="stat-card"><div class="stat-label">Remaining Slots</div><div class="stat-value">{{ $stats['remaining'] }}</div></div>
 </div>
 
-<form class="filters" method="GET" action="{{ route('visitor-slots.index') }}" style="grid-template-columns:1fr 1fr 1.2fr 1fr auto;">
+<form class="filters filters-5" method="GET" action="{{ route('visitor-slots.index') }}">
   <div class="field">
     <label for="from">From</label>
     <div class="input"><input id="from" type="date" name="from" value="{{ $filters['from'] }}"></div>

@@ -80,6 +80,7 @@
       @if ($recentActivity->isEmpty())
         <p class="empty-note">No PDL records yet.</p>
       @else
+        <div class="table-scroll">
         <table>
           <thead><tr><th>PDL</th><th>Custody Status</th><th>Last Updated</th></tr></thead>
           <tbody>
@@ -100,6 +101,7 @@
             @endforeach
           </tbody>
         </table>
+        </div>
       @endif
     </div>
   </div>

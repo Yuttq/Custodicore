@@ -33,7 +33,7 @@
   Who is coming to visit. Approved requests show here as <strong>Confirmed</strong>; on the day, the front desk checks the visitor in with their QR pass.
 </p>
 
-<section class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+<section class="stats" style="margin-bottom:18px;">
   <a class="stat-card stat-link accent-teal" href="{{ $link(['range' => 'today', 'status' => '']) }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Visits Today</div>
     <div class="stat-value">{{ $stats['today'] }}</div>
@@ -74,6 +74,7 @@
       <h2>{{ $date === $todayKey ? 'Today · ' : '' }}{{ $day->format('l, M j, Y') }}</h2>
       <span class="muted-cell">{{ $visits->count() }} {{ $visits->count() === 1 ? 'visit' : 'visits' }}</span>
     </div>
+    <div class="table-scroll">
     <table>
       <thead>
         <tr><th>Session</th><th>Visitor</th><th>PDL</th><th>Status</th><th>Approved</th></tr>
@@ -127,6 +128,7 @@
         @endforeach
       </tbody>
     </table>
+    </div>
   </div>
 @empty
   <div class="panel">

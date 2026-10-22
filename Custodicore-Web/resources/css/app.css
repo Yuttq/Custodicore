@@ -149,3 +149,43 @@
         background-image: linear-gradient(#0da58a, #2563eb);
     }
 }
+
+/* Below Tailwind's lg breakpoint (narrow windows / high browser zoom) the Admin and
+   Front Desk sidebar becomes a wrapping bar above the page instead of disappearing.
+   Same links and styles; kept outside @layer so it wins over the sidebar's utilities.
+   Children: brand (first div), nav, profile + sign-out (last div). */
+@media (max-width: 1023.98px) {
+    .cc-sidebar {
+        width: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        border-right-width: 0;
+        border-bottom-width: 1px;
+    }
+    .cc-sidebar > div:first-child {
+        padding: 0;
+    }
+    .cc-sidebar > nav {
+        margin-top: 0;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .cc-sidebar .cc-nav-link {
+        padding: 6px 10px;
+    }
+    .cc-sidebar > div:last-child {
+        margin-top: 0;
+        margin-left: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .cc-sidebar > div:last-child > a {
+        padding-top: 0;
+        border-top-width: 0;
+    }
+}
