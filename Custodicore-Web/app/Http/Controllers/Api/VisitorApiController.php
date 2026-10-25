@@ -419,7 +419,7 @@ class VisitorApiController extends Controller
      */
     public static function storeGovernmentId(VisitorProfile $visitor, UploadedFile $file, string $type, ?string $idNumber): VisitorId
     {
-        $path = $file->store('visitor-ids', 'public');
+        $path = $file->store('visitor-ids', VisitorId::DISK);
 
         $document = VisitorId::create([
             'visitor_id' => $visitor->visitor_id,

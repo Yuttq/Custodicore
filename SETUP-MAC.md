@@ -97,11 +97,13 @@ cd ~/Documents/Custodicore/Custodicore-Web
    npm install
    npm run build
    php artisan migrate
-   php artisan storage:link
    php artisan config:clear
+   php artisan visitor-ids:move-to-private
    ```
 
    `migrate` should say "Nothing to migrate" or run a few new ones. **Never** run `migrate:fresh`; it wipes the database.
+
+   Do **not** run `php artisan storage:link` — uploaded IDs and documents are private and nothing needs it. The last command is a dry run that changes nothing: if it lists files "to copy", the copied folder still has government IDs in the old public location. Move them with the steps in `Custodicore-Web/README.md` → "Moving old government ID files to private storage" (copy first, delete originals as a separate step).
 
 5. Start the server (leave this Terminal window open during the demo):
 
@@ -184,7 +186,7 @@ Plug the MacBook into power and turn off sleep (System Settings → Lock Screen 
 | Phone app says network error / can't reach server | Is `php artisan serve` still running? Is the mobile `.env` URL exactly `http://10.0.2.2:8000/api`? After changing `.env`, stop Expo (Ctrl+C) and run `npx expo start -c`. |
 | Web shows "SQLSTATE … Access denied" or "Connection refused" | `brew services start mysql`, check `DB_USERNAME` / `DB_PASSWORD` in the web `.env`, then `php artisan config:clear`. |
 | Web page loads but no styling | Run `npm run build` in `Custodicore-Web`. |
-| Uploaded ID pictures don't show | `php artisan storage:link`, and check `storage/app` was copied over. |
+| Uploaded ID pictures don't show | Check `storage/app` was copied over (IDs live in `storage/app/private/visitor-ids`, older ones in `storage/app/public/visitor-ids`). Run `php artisan visitor-ids:move-to-private` to see counts; "missing on both disks" means the files weren't copied. `storage:link` is not needed. |
 | Verification email never arrives | Check `MAIL_*` lines in the web `.env`, then `php artisan config:clear` and restart `php artisan serve`. Last resort: set `MAIL_MAILER=log` and read the code from `storage/logs/laravel.log`. |
 | Google Sign-In fails ("DEVELOPER_ERROR") | The `debug.keystore` wasn't copied before building. Copy it into `android/app/` and run `npx expo run:android` again. |
 | `npx expo run:android` says SDK location not found | Redo step 1.4, then close and reopen Terminal. |

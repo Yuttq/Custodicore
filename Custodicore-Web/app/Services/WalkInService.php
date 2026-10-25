@@ -107,7 +107,7 @@ class WalkInService
                 ]);
 
                 if ($governmentId) {
-                    $stored[] = $path = $governmentId->store('visitor-ids', 'public');
+                    $stored[] = $path = $governmentId->store('visitor-ids', VisitorId::DISK);
                     VisitorId::create([
                         'visitor_id' => $profile->visitor_id,
                         'id_type' => $data['id_type'],
@@ -154,7 +154,7 @@ class WalkInService
         } catch (\Throwable $e) {
             Storage::disk('local')->delete($photoPath);
             foreach ($stored as $path) {
-                Storage::disk(str_starts_with($path, 'visitor-ids/') ? 'public' : 'local')->delete($path);
+                Storage::disk('local')->delete($path);
             }
 
             throw $e;

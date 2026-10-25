@@ -171,7 +171,7 @@
             <ul class="mt-md divide-y divide-border">
                 @forelse ($visitor->idDocuments as $doc)
                     @php
-                        $hasPhoto = $doc->file_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($doc->file_path);
+                        $hasPhoto = $doc->fileDisk() !== null;
                     @endphp
                     <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
                         <div>

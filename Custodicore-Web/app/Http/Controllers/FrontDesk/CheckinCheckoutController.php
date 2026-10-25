@@ -792,7 +792,7 @@ class CheckinCheckoutController extends Controller
                         : null;
 
                     if ($photoPath) {
-                        Storage::disk('public')->put($photoPath, $newIdPhoto['contents']);
+                        Storage::disk(VisitorId::DISK)->put($photoPath, $newIdPhoto['contents']);
                     }
 
                     VisitorId::create([

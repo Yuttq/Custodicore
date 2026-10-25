@@ -55,10 +55,9 @@ This builds every table and seeds the test accounts listed below. Both commands 
 
 The seeder adds visit schedules dated relative to the day you seed. After that, Record Officers create and adjust dated visiting sessions on **Manage Visitor Slots** (`/visitor-slots`).
 
-**5. Link storage** (so uploaded visitor ID photos are servable):
-```bash
-php artisan storage:link
-```
+**5. Uploaded files are private — no `storage:link` needed.** Government IDs, photos and documents are stored under `storage/app/private` and shown to staff only through signed-in, role-checked pages. Do **not** run `php artisan storage:link`: nothing needs it.
+
+If you are upgrading a copy where IDs were uploaded before they moved to private storage (old files are in `storage/app/public/visitor-ids`), move them with the steps in [Custodicore-Web/README.md → Moving old government ID files](Custodicore-Web/README.md#moving-old-government-id-files-to-private-storage).
 
 **6. Build the frontend assets.** The dashboards' CSS/JS are bundled with Vite — either run the dev server in its own terminal (rebuilds on save, useful while developing):
 ```bash

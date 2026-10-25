@@ -74,13 +74,33 @@ php artisan key:generate
 
 Edit `.env` and set database values for your machine (see [Database Setup](#database-setup) and [Environment Variables](#environment-variables)).
 
-### 5. Link public storage (needed for visitor ID uploads via API)
+### 5. Uploaded files (no `storage:link` needed)
 
-```powershell
-php artisan storage:link
-```
+Government IDs, visitor/staff/PDL photos and relationship documents are all stored on the private `local` disk (`storage/app/private`) and served only through signed-in, role-checked routes. Nothing uses the `public` disk, so do **not** run `php artisan storage:link`.
 
-This creates `public/storage` → `storage/app/public`. The API stores uploaded visitor IDs under the `public` disk (`visitor-ids/`).
+#### Moving old government ID files to private storage
+
+Government IDs uploaded before this change were saved in `storage/app/public/visitor-ids`. Until they are moved, the staff ID viewers still read them from there (a temporary fallback in `App\Models\VisitorId::fileDisk()`). The database does not change: each `file_path` (`visitor-ids/<name>`) is the same on both disks.
+
+1. **Back up first:** copy `storage/app` and export the database.
+2. **Dry run** — changes nothing, shows counts only:
+   ```powershell
+   php artisan visitor-ids:move-to-private
+   ```
+3. **Copy** — copies each file, checks its SHA-256 checksum, keeps the originals:
+   ```powershell
+   php artisan visitor-ids:move-to-private --copy
+   ```
+   The result should show no "checksum mismatch", "copy failed" or "missing" rows. Open a few IDs from Account Review and Front Desk Visitor Lookup to confirm they still display.
+4. **Delete the originals** — a separate step; deletes a public file only when its private copy exists and matches:
+   ```powershell
+   php artisan visitor-ids:move-to-private --delete-originals
+   ```
+   Run the dry run again: every file should be "already private".
+5. **Remove an old storage link, if one exists.** Removing `storage:link` from these instructions does not delete a link created earlier. If `public/storage` exists, delete that link (it is only a shortcut — `storage/app/public` itself is untouched). Until it is gone, old ID files that are still in the public folder can be downloaded by URL.
+6. Files the command reports as "not referenced by any visitor_ids row" are left in place; review and remove them by hand.
+
+After step 4 succeeds on every installation, the fallback (`VisitorId::LEGACY_DISK`) can be removed.
 
 ---
 
@@ -375,9 +395,7 @@ php artisan key:generate
 
 ### Permission / storage problems
 
-```powershell
-php artisan storage:link
-```
+Uploaded files are private (`storage/app/private`); `storage:link` is not needed. If government IDs uploaded before the move to private storage don't show, see [Moving old government ID files](#moving-old-government-id-files-to-private-storage).
 
 Ensure `storage/` and `bootstrap/cache/` are writable by PHP (on Windows this is usually fine if you own the project folder).
 
@@ -503,7 +521,6 @@ Create DB `custodicore` in MySQL, confirm `.env` `DB_*` values, then:
 ```powershell
 php artisan migrate
 php artisan db:seed
-php artisan storage:link
 ```
 
 **Terminal 1:**

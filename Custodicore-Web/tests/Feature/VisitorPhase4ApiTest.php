@@ -296,6 +296,7 @@ class VisitorPhase4ApiTest extends TestCase
 
     public function test_visitor_can_submit_allowed_government_id(): void
     {
+        Storage::fake('local');
         Storage::fake('public');
         Sanctum::actingAs($this->otherAccount);
 
@@ -310,7 +311,9 @@ class VisitorPhase4ApiTest extends TestCase
             ->assertJsonMissingPath('filePath');
 
         $doc = VisitorId::where('visitor_id', $this->otherVisitor->visitor_id)->firstOrFail();
-        Storage::disk('public')->assertExists($doc->file_path);
+        // Private disk only — never reachable through /storage.
+        Storage::disk('local')->assertExists($doc->file_path);
+        Storage::disk('public')->assertMissing($doc->file_path);
 
         // Display labels are accepted and mapped to the stored key.
         $this->postJson('/api/documents', [

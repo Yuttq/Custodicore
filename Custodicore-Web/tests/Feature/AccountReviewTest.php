@@ -100,8 +100,9 @@ class AccountReviewTest extends TestCase
 
     public function test_staff_can_open_the_uploaded_id_picture(): void
     {
+        Storage::fake('local');
         Storage::fake('public');
-        Storage::disk('public')->put('visitor-ids/id.png', 'png-bytes');
+        Storage::disk('local')->put('visitor-ids/id.png', 'png-bytes');
         $visitor = $this->pendingVisitor();
         $id = $this->id($visitor, 'pending');
 

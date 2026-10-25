@@ -224,7 +224,9 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->assertSame('national_id', $document->id_type);
         $this->assertSame('pending', $document->verification_status);
         $this->assertSame(Account::where('email', self::EMAIL)->first()->visitorProfile->visitor_id, $document->visitor_id);
-        Storage::disk('public')->assertExists($document->file_path);
+        // Private disk only — never reachable through /storage.
+        Storage::disk('local')->assertExists($document->file_path);
+        Storage::disk('public')->assertMissing($document->file_path);
     }
 
     public function test_registration_with_a_government_id_but_no_type_creates_nothing(): void

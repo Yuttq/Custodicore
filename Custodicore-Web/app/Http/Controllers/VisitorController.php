@@ -290,9 +290,10 @@ class VisitorController extends Controller
     public function idFile(VisitorProfile $visitor, VisitorId $idDocument)
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
-        abort_unless($idDocument->file_path && Storage::disk('public')->exists($idDocument->file_path), 404);
+        $disk = $idDocument->fileDisk();
+        abort_unless($disk !== null, 404);
 
-        return Storage::disk('public')->response($idDocument->file_path);
+        return Storage::disk($disk)->response($idDocument->file_path);
     }
 
     public function rejectId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
