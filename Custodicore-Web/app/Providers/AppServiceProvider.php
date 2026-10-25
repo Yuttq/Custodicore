@@ -9,6 +9,8 @@ use GuzzleHttp\Client as GuzzleClient;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Session\SessionManager;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,6 +39,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Mobile bearer tokens stop working as soon as the account is no
+        // longer active (inactive/suspended). Sanctum's own checks
+        // (expiration, expires_at, provider) still decide first: an invalid
+        // token never becomes valid here. A rejected token gives the API a 401.
+        Sanctum::authenticateAccessTokensUsing(
+            fn (PersonalAccessToken $token, bool $isValid) => $isValid && $token->tokenable?->status === 'active'
+        );
     }
 }

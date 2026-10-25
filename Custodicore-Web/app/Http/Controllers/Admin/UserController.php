@@ -191,8 +191,19 @@ class UserController extends Controller
                 ->with('status', 'You cannot deactivate your own account.');
         }
 
-        $account->status = $account->status === 'active' ? 'inactive' : 'active';
-        $account->save();
+        // Row lock: two admins toggling at once flip it once each, in turn,
+        // and the sign-out below always matches the status that was saved.
+        $account->status = DB::transaction(function () use ($account) {
+            $locked = Account::whereKey($account->account_id)->lockForUpdate()->firstOrFail();
+            $locked->status = $locked->status === 'active' ? 'inactive' : 'active';
+            $locked->save();
+
+            if ($locked->status !== 'active') {
+                $this->signOutEverywhere($locked);
+            }
+
+            return $locked->status;
+        });
 
         AuditLog::record(
             'update',
@@ -250,6 +261,23 @@ class UserController extends Controller
         }
 
         return StaffInvitationService::describe($result);
+    }
+
+    /**
+     * A deactivated account's mobile tokens and stored web sessions are
+     * removed. This is cleanup only: EnsureRoleAccess and the Sanctum token
+     * check (AppServiceProvider) are what actually refuse an inactive account.
+     */
+    private function signOutEverywhere(Account $account): void
+    {
+        $account->tokens()->delete();
+
+        if (config('session.driver') === 'database') {
+            DB::connection(config('session.connection'))
+                ->table(config('session.table', 'sessions'))
+                ->where('user_id', $account->account_id)
+                ->delete();
+        }
     }
 
     private static function rows(?string $search): array
