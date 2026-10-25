@@ -23,6 +23,7 @@ use App\Http\Controllers\FrontDesk\CheckinCheckoutController;
 use App\Http\Controllers\FrontDesk\ScheduleController as FrontDeskScheduleController;
 use App\Http\Controllers\FrontDesk\VisitorLookupController;
 use App\Http\Controllers\FrontDesk\AttendanceLogController;
+use App\Http\Controllers\FrontDesk\WalkInController;
 use App\Http\Controllers\FrontDesk\SettingsController as FrontDeskSettingsController;
 
 use Illuminate\Support\Facades\Route;
@@ -367,6 +368,12 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'storeLegalRecord']
     )->name('pdl.legal-records.store');
 
+    // Status, date filed, next hearing, conviction and remarks of one case.
+    Route::patch(
+        '/pdls/{pdl}/legal-records/{record}',
+        [\App\Http\Controllers\PdlController::class, 'updateLegalRecord']
+    )->name('pdl.legal-records.update');
+
     Route::post(
         '/pdls/{pdl}/disciplinary-records',
         [\App\Http\Controllers\PdlController::class, 'storeDisciplinaryRecord']
@@ -508,6 +515,22 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'idFile']
     )->name('visitor.ids.file');
 
+    // Walk-in assessment and decision (walk-ins registered at the Front Desk).
+    Route::post(
+        '/visitors/{visitor}/walk-in-assessment',
+        [\App\Http\Controllers\WalkInAssessmentController::class, 'update']
+    )->name('visitor.walk-in-assessment');
+
+    Route::post(
+        '/visitors/{visitor}/walk-in-documents/{document}/verify',
+        [\App\Http\Controllers\WalkInAssessmentController::class, 'verifyDocument']
+    )->name('visitor.walk-in-documents.verify');
+
+    Route::post(
+        '/visitors/{visitor}/walk-in-documents/{document}/reject',
+        [\App\Http\Controllers\WalkInAssessmentController::class, 'rejectDocument']
+    )->name('visitor.walk-in-documents.reject');
+
     Route::post(
         '/visitors/{visitor}/approve',
         [\App\Http\Controllers\VisitorController::class, 'approve']
@@ -645,8 +668,10 @@ Route::middleware([
 |
 | - Dashboard
 | - QR Check-In / Check-Out
-| - Today's Schedule
+| - Walk-in Visitors
+| - Visit Schedule
 | - Visitor Lookup
+| - Attendance Log
 | - Settings
 |
 | IMPORTANT CHECK-IN FLOW:
@@ -687,6 +712,11 @@ Route::prefix('front-desk')
             '/',
             [FrontDeskDashboardController::class, 'index']
         )->name('dashboard');
+
+        Route::get(
+            '/dashboard/stats',
+            [FrontDeskDashboardController::class, 'stats']
+        )->name('dashboard.stats');
 
 
         /*
@@ -773,14 +803,19 @@ Route::prefix('front-desk')
 
         /*
         |--------------------------------------------------------------------------
-        | Today's Schedule
+        | Visit Schedule
         |--------------------------------------------------------------------------
+        |
+        | Today's visitors (one tab per dashboard card) and the upcoming
+        | visiting sessions.
+        |
         */
 
         Route::get(
-            '/schedule',
+            '/schedule/{tab?}',
             [FrontDeskScheduleController::class, 'index']
-        )->name('schedule');
+        )->whereIn('tab', [...array_keys(FrontDeskDashboardController::LISTS), FrontDeskScheduleController::SESSIONS_TAB])
+            ->name('schedule');
 
 
         /*
@@ -803,6 +838,24 @@ Route::prefix('front-desk')
             '/visitor-lookup/{visitor}/ids/{idDocument}/photo',
             [VisitorLookupController::class, 'idPhoto']
         )->name('visitor-lookup.id-photo');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Walk-in Visitors
+        |--------------------------------------------------------------------------
+        |
+        | Visitors without a phone: registered at the desk, approved and
+        | assessed by the Record Officer (which sets up today's visit), then
+        | checked in at the gate (WalkInService).
+        |
+        */
+
+        Route::get('/walk-ins', [WalkInController::class, 'index'])->name('walk-ins.index');
+        Route::get('/walk-ins/create', [WalkInController::class, 'create'])->name('walk-ins.create');
+        Route::get('/walk-ins/pdl-lookup', [WalkInController::class, 'pdlLookup'])->name('walk-ins.pdl-lookup');
+        Route::post('/walk-ins', [WalkInController::class, 'store'])->name('walk-ins.store');
+        Route::get('/walk-ins/{visitor}', [WalkInController::class, 'show'])->name('walk-ins.show');
 
 
         /*

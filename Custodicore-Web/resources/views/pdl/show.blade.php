@@ -12,7 +12,9 @@
   // field), and the matching "Add …" form after its own validation error.
   $profileFields = ['first_name', 'middle_name', 'last_name', 'alias', 'gender', 'date_of_birth', 'admission_date', 'cell_block', 'custody_status', 'photo', 'current_password'];
   $editing = $errors->hasAny($profileFields);
-  $openLegal = $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'remarks']);
+  // Errors from a record's Update window re-open that window instead (old('editing_record')).
+  $openLegal = ! old('editing_record') && $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'date_filed',
+    'next_hearing_at', 'hearing_notes', 'convicted_on', 'sentence_years', 'sentence_months', 'sentence_days', 'remarks']);
   $openDisciplinary = $errors->hasAny(['incident_date', 'description', 'action_taken']);
   $openRestriction = $errors->hasAny(['restriction_type', 'start_date', 'end_date', 'reason']);
 @endphp
@@ -153,7 +155,7 @@
       </div>
     </div>
     <div class="row">
-      @include('pdl.partials.cell-block-select', ['selected' => old('cell_block', $pdl->cell_block), 'current' => $pdl->cell_block, 'required' => false])
+      @include('pdl.partials.cell-block-select', ['selected' => old('cell_block', $pdl->cell_block), 'current' => $pdl->cell_block, 'required' => false, 'classification' => $pdl->classification, 'pdl' => $pdl])
     </div>
 
     <div class="form-actions">
@@ -260,16 +262,66 @@
   @else
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Case Number</th><th>Offense</th><th>Court</th><th>Status</th><th>Remarks</th><th>Recorded</th></tr></thead>
+      <thead><tr><th>Case Number</th><th>Offense</th><th>Court</th><th>Status</th><th>Next Hearing</th><th>Remarks</th><th>Recorded</th><th></th></tr></thead>
       <tbody>
         @foreach ($pdl->legalRecords as $record)
+        @php
+          $caseBadge = match (true) {
+            $record->isConvicted() => 'rejected',
+            $record->isClosed() => 'released',
+            default => 'transferred',
+          };
+          $next = $record->nextHearing();
+          $past = $record->pastHearings();
+          // Re-open this record's Update form after a failed save.
+          $editingThis = (string) old('editing_record') === (string) $record->legal_record_id;
+        @endphp
         <tr>
-          <td><strong>{{ $record->case_number }}</strong></td>
+          <td><strong>{{ $record->case_number }}</strong>
+            @if ($record->date_filed)<div class="muted-cell" style="font-size:12px;">Filed {{ $record->date_filed->format('M j, Y') }}</div>@endif
+          </td>
           <td>{{ $record->offense }}@if ($record->isDrugRelated()) <span class="pill drug-pill">RA 9165</span>@endif</td>
           <td class="muted-cell">{{ $record->court ?? '—' }}</td>
-          <td class="muted-cell">{{ $record->case_status ?? '—' }}</td>
+          <td>
+            @if ($record->case_status)
+              <span class="badge {{ $caseBadge }}"><span class="dot"></span>{{ $record->case_status }}</span>
+            @else
+              <span class="muted-cell">—</span>
+            @endif
+            @if ($record->isConvicted())
+              <div style="font-size:12px;margin-top:4px;">
+                {{ $record->convicted_on?->format('M j, Y') }} · {{ $record->sentenceLabel() ?? 'no sentence entered' }}
+              </div>
+              @if ($release = $record->estimatedRelease())
+                <div class="muted-cell" style="font-size:12px;" title="Admission date plus the sentence, before good conduct time allowance and other credits">
+                  Est. release {{ $release->format('M j, Y') }}
+                </div>
+              @endif
+            @endif
+          </td>
+          <td>
+            @if ($next)
+              <strong>{{ $next->hearing_at->format('M j, Y') }}</strong>
+              <div class="muted-cell" style="font-size:12px;">{{ $next->hearing_at->format('H:i') }}@if ($next->notes) · {{ $next->notes }}@endif</div>
+            @else
+              <span class="muted-cell">{{ $record->isClosed() ? 'Case closed' : 'None set' }}</span>
+            @endif
+            @if ($past->isNotEmpty())
+              <details class="past-hearings">
+                <summary>{{ $past->count() }} past {{ $past->count() === 1 ? 'hearing' : 'hearings' }}</summary>
+                <ul>
+                  @foreach ($past as $hearing)
+                    <li>{{ $hearing->hearing_at->format('M j, Y H:i') }}@if ($hearing->notes) · {{ $hearing->notes }}@endif</li>
+                  @endforeach
+                </ul>
+              </details>
+            @endif
+          </td>
           <td class="muted-cell">{{ $record->remarks ?? '—' }}</td>
           <td class="muted-cell">{{ $record->created_at->format('M d, Y') }}</td>
+          <td>
+            <button type="button" class="row-action" data-open-record="record-update-{{ $record->legal_record_id }}">Update</button>
+          </td>
         </tr>
         @endforeach
       </tbody>
@@ -277,15 +329,56 @@
     </div>
   @endif
 
+  {{-- One Update window per record (outside the scrolling table so nothing is clipped). --}}
+  @foreach ($pdl->legalRecords as $record)
+    @php $editingThis = (string) old('editing_record') === (string) $record->legal_record_id; @endphp
+    <dialog class="record-update" id="record-update-{{ $record->legal_record_id }}" aria-label="Update legal record" @if ($editingThis) data-open-on-load @endif>
+      <header class="record-update-head">
+        <div>
+          <strong>Update case {{ $record->case_number }}</strong>
+          <div class="muted-cell">{{ $record->offense }}{{ $record->court ? ' · ' . $record->court : '' }}</div>
+        </div>
+        <button type="button" class="elig-docs-close" data-close-record aria-label="Close">×</button>
+      </header>
+      <form method="POST" action="{{ route('pdl.legal-records.update', [$pdl->pdl_id, $record->legal_record_id]) }}"
+            data-confirm="Save the changes to case {{ $record->case_number }}?" data-confirm-title="Update legal record" data-confirm-ok="Save">
+        @csrf
+        @method('PATCH')
+        <input type="hidden" name="editing_record" value="{{ $record->legal_record_id }}">
+        @include('pdl.partials.case-status-fields', ['record' => $record, 'useOld' => $editingThis])
+        <div class="field-m" style="margin-bottom:14px;">
+          <label>Remarks (optional)</label>
+          <input type="text" name="remarks" value="{{ $editingThis ? old('remarks', $record->remarks) : $record->remarks }}" maxlength="2000">
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-blue" type="submit">Save</button>
+          <button class="btn btn-outline-neutral" type="button" data-close-record>Cancel</button>
+        </div>
+      </form>
+    </dialog>
+  @endforeach
+  <script>
+    (function () {
+      document.addEventListener('click', function (e) {
+        var open = e.target.closest('[data-open-record]');
+        if (open) { document.getElementById(open.dataset.openRecord)?.showModal(); return; }
+        if (e.target.closest('[data-close-record]') || e.target.matches('dialog.record-update')) {
+          e.target.closest('dialog.record-update')?.close();
+        }
+      });
+      document.querySelectorAll('dialog.record-update[data-open-on-load]').forEach(function (d) { d.showModal(); });
+    })();
+  </script>
+
   <details class="add-record" {{ $openLegal ? 'open' : '' }}>
     <summary class="btn btn-outline-neutral">+ Add Legal Record</summary>
     <form method="POST" action="{{ route('pdl.legal-records.store', $pdl->pdl_id) }}" style="margin-top:14px;"
           data-confirm="Add this legal record to {{ $pdl->full_name }}'s file?" data-confirm-title="Add legal record" data-confirm-ok="Add">
       @csrf
       @include('pdl.partials.case-fields')
-      <div class="row cols-2">
-        <div class="field-m"><label>Case Status</label><input type="text" name="case_status" value="{{ old('case_status') }}" maxlength="100" placeholder="e.g. Pending, Dismissed, Convicted"></div>
-        <div class="field-m"><label>Remarks</label><input type="text" name="remarks" value="{{ old('remarks') }}" maxlength="2000"></div>
+      @include('pdl.partials.case-status-fields', ['useOld' => ! old('editing_record')])
+      <div class="row">
+        <div class="field-m"><label>Remarks (optional)</label><input type="text" name="remarks" value="{{ old('editing_record') ? '' : old('remarks') }}" maxlength="2000"></div>
       </div>
       <button class="btn btn-blue" type="submit">Add Legal Record</button>
     </form>

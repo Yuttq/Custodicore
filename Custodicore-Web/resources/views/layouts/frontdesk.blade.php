@@ -31,7 +31,8 @@
                     $links = [
                         ['route' => 'frontdesk.dashboard', 'label' => 'Dashboard'],
                         ['route' => 'frontdesk.checkin-checkout', 'label' => 'Check-In / Check-Out'],
-                        ['route' => 'frontdesk.schedule', 'label' => "Today's Schedule"],
+                        ['route' => 'frontdesk.walk-ins.index', 'label' => 'Walk-in Visitors', 'active' => 'frontdesk.walk-ins.*'],
+                        ['route' => 'frontdesk.schedule', 'label' => 'Visit Schedule'],
                         ['route' => 'frontdesk.visitor-lookup', 'label' => 'Visitor Lookup'],
                         ['route' => 'frontdesk.attendance-log', 'label' => 'Attendance Log'],
                     ];
@@ -39,7 +40,7 @@
 
                 @foreach ($links as $link)
                     <a href="{{ route($link['route']) }}"
-                       class="cc-nav-link {{ request()->routeIs($link['route']) ? 'cc-nav-link-active' : '' }}">
+                       class="cc-nav-link {{ request()->routeIs($link['active'] ?? $link['route']) ? 'cc-nav-link-active' : '' }}">
                         {{ $link['label'] }}
                     </a>
                 @endforeach
@@ -74,21 +75,18 @@
                     <h1 id="greeting" class="mt-xs text-[28px] font-bold leading-tight">Welcome back, {{ $firstName }}</h1>
                     <p class="mt-xs text-body text-white/90">Here is what is happening at the gate today.</p>
                 @else
-                    <h1 class="mt-xs text-[28px] font-bold leading-tight">@yield('title', 'Dashboard')</h1>
+                    <div class="mt-xs flex flex-wrap items-center justify-between gap-sm">
+                        <h1 class="text-[28px] font-bold leading-tight">@yield('title', 'Dashboard')</h1>
+                        {{-- Optional page buttons, aligned with the title (e.g. "Back to …"). --}}
+                        @yield('header_actions')
+                    </div>
+                    @hasSection('subtitle')
+                        <p class="mt-xs text-body text-white/90">@yield('subtitle')</p>
+                    @endif
                 @endif
             </header>
 
             <main class="relative flex-1 space-y-lg px-8 pb-[22px] {{ $isHome ? '-mt-[72px]' : '-mt-11' }}">
-                @if (session('status'))
-                    <div class="cc-card border-l-4 border-l-info">
-                        {{ session('status') }}
-                    </div>
-                @endif
-                @if (session('error'))
-                    <div class="cc-card border-l-4 border-l-danger" role="alert">
-                        {{ session('error') }}
-                    </div>
-                @endif
                 @if ($errors->any())
                     <div class="cc-card border-l-4 border-l-danger" role="alert">
                         <p class="font-semibold">Please correct the following:</p>
@@ -116,6 +114,76 @@
             })();
         </script>
     @endif
+
+    <script>
+        // Keeps every count on the page (dashboard cards, Visit Schedule tabs) current as visitors
+        // check in and out, and flags each change on the cards (+1 / −1) for a few seconds.
+        (() => {
+            const url = @json(route('frontdesk.dashboard.stats'));
+            const tones = { up: ['bg-[#DCFCE7]', 'text-success'], down: ['bg-[#FEE2E2]', 'text-danger'] };
+            const timers = {};
+
+            const refresh = async () => {
+                if (document.hidden) return;
+                try {
+                    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                    if (!response.ok) return;
+                    const counts = await response.json();
+
+                    Object.entries(counts).forEach(([key, value]) => {
+                        const valueEls = document.querySelectorAll(`[data-stat="${key}"]`);
+                        if (!valueEls.length) return;
+
+                        const change = value - Number(valueEls[0].textContent);
+                        valueEls.forEach(el => { el.textContent = value; });
+
+                        const deltaEl = document.querySelector(`[data-stat-delta="${key}"]`);
+                        if (!change || !deltaEl) return;
+
+                        deltaEl.textContent = change > 0 ? `+${change}` : `\u2212${Math.abs(change)}`;
+                        deltaEl.classList.remove('hidden', ...tones.up, ...tones.down);
+                        deltaEl.classList.add(...(change > 0 ? tones.up : tones.down));
+                        clearTimeout(timers[key]);
+                        timers[key] = setTimeout(() => deltaEl.classList.add('hidden'), 8000);
+                    });
+                } catch {
+                    // Offline or signed out: keep the last numbers and try again next time.
+                }
+            };
+
+            setInterval(refresh, 10000);
+            document.addEventListener('visibilitychange', refresh);
+        })();
+    </script>
+
+    {{-- Short messages: shown at the top right, gone after 5 seconds. --}}
+    <div id="ccToasts" class="pointer-events-none fixed right-6 top-6 z-50 flex w-[360px] max-w-[calc(100vw-48px)] flex-col gap-sm" aria-live="polite">
+        @if (session('status'))
+            <div data-toast="info" class="hidden">{{ session('status') }}</div>
+        @endif
+        @if (session('error'))
+            <div data-toast="danger" class="hidden">{{ session('error') }}</div>
+        @endif
+    </div>
+    <script>
+        // window.ccToast(message, tone): tone is info | success | warning | danger.
+        (() => {
+            const box = document.getElementById('ccToasts');
+            const tones = {
+                info: 'border-l-info', success: 'border-l-success', warning: 'border-l-warning', danger: 'border-l-danger',
+            };
+            window.ccToast = (message, tone = 'info') => {
+                const toast = document.createElement('div');
+                toast.setAttribute('role', tone === 'danger' ? 'alert' : 'status');
+                toast.className = `pointer-events-auto cc-card border-l-4 ${tones[tone] ?? tones.info} text-body shadow-card transition-opacity duration-500`;
+                toast.textContent = message;
+                box.appendChild(toast);
+                setTimeout(() => { toast.style.opacity = '0'; }, 5000);
+                setTimeout(() => toast.remove(), 5500);
+            };
+            box.querySelectorAll('[data-toast]').forEach(el => { window.ccToast(el.textContent.trim(), el.dataset.toast); el.remove(); });
+        })();
+    </script>
 
     @stack('scripts')
 </body>

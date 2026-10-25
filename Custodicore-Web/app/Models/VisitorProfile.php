@@ -19,6 +19,7 @@ class VisitorProfile extends Model
         'address',
         'relationship_hint',
         'intended_pdl_name',
+        'intended_pdl_number',
         'guardian_full_name',
         'guardian_relationship',
         'guardian_contact_number',
@@ -31,6 +32,8 @@ class VisitorProfile extends Model
         'rejection_reason',
         'photo_path',
         'photo_uploaded_at',
+        'registered_via',
+        'walk_in_registered_by',
     ];
 
     protected $casts = [
@@ -38,6 +41,12 @@ class VisitorProfile extends Model
         'verified_at' => 'datetime',
         'photo_uploaded_at' => 'datetime',
     ];
+
+    /** Registered at the Front Desk (no phone), not through the mobile app. */
+    public function isWalkIn(): bool
+    {
+        return $this->registered_via === 'walk_in';
+    }
 
     /** Visitor photo rules (mobile upload): a real JPG/PNG/WEBP picture, up to 5 MB. */
     public const PHOTO_RULES = ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
@@ -61,6 +70,18 @@ class VisitorProfile extends Model
     public function account()
     {
         return $this->belongsTo(Account::class, 'account_id');
+    }
+
+    /** Walk-in arrivals with the Front Desk assessment, newest first. */
+    public function walkInAssessments()
+    {
+        return $this->hasMany(WalkInAssessment::class, 'visitor_id', 'visitor_id')->latest('assessment_id');
+    }
+
+    /** The Front Desk officer who registered this walk-in. */
+    public function walkInRegisteredBy()
+    {
+        return $this->belongsTo(StaffProfile::class, 'walk_in_registered_by', 'staff_id');
     }
 
     public function relationships()

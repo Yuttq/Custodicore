@@ -11,34 +11,28 @@ use Illuminate\View\View;
 
 /**
  * Attendance Log — read-only list of every gate entry (check-in / check-out)
- * for one day. Lets the Front Desk look back at earlier days; nothing here
- * edits or deletes a record.
+ * for one day (today by default), filtered by search and check-in method.
+ * Lets the Front Desk look back at earlier days; nothing here edits or
+ * deletes a record.
  */
 class AttendanceLogController extends Controller
 {
     private const PER_PAGE = 25;
 
+    /** ?method= => verification_method. */
+    public const METHODS = ['qr_scan' => 'QR Scan', 'manual_override' => 'Manual'];
+
     public function index(Request $request): View
     {
-        $date = $this->selectedDate((string) $request->input('date', ''));
+        $date = $this->parseDay((string) $request->input('date', '')) ?? today();
 
         // Cleaned and capped; matched literally, so % and _ are not wildcards.
         $query = mb_substr(Sanitizer::text((string) $request->input('q', '')) ?? '', 0, 100);
+        $method = array_key_exists((string) $request->input('method'), self::METHODS) ? (string) $request->input('method') : '';
 
-        $dayEntries = VisitCheckin::whereNotNull('check_in_time')
-            ->whereDate('check_in_time', $date);
-
-        // Day totals ignore the search box so they always describe the whole day.
-        $total = (clone $dayEntries)->count();
-        $stillInside = (clone $dayEntries)->where('status', 'checked_in')->count();
-
-        $stats = [
-            ['label' => 'Gate Entries', 'value' => (string) $total, 'hint' => 'Check-ins on this day', 'accent' => 'info', 'icon' => 'qrcode'],
-            ['label' => 'Checked Out', 'value' => (string) ($total - $stillInside), 'hint' => 'Left the facility', 'accent' => 'success', 'icon' => 'check-circle'],
-            ['label' => $date->isToday() ? 'Still Inside' : 'Never Checked Out', 'value' => (string) $stillInside, 'hint' => $date->isToday() ? 'Not yet checked out' : 'No check-out recorded', 'accent' => $stillInside > 0 && ! $date->isToday() ? 'danger' : 'warning', 'icon' => 'calendar'],
-        ];
-
-        $entries = $dayEntries
+        $entries = VisitCheckin::whereNotNull('check_in_time')
+            ->whereDate('check_in_time', $date)
+            ->when($method !== '', fn ($q) => $q->where('verification_method', $method))
             ->when($query !== '', function ($q) use ($query) {
                 $like = Sanitizer::like($query);
                 $q->where(fn ($match) => $match
@@ -55,26 +49,26 @@ class AttendanceLogController extends Controller
 
         return view('frontdesk.attendance-log', [
             'entries' => $entries,
-            'stats' => $stats,
             'date' => $date,
             'query' => $query,
+            'method' => $method,
+            'filtered' => $query !== '' || $method !== '' || ! $date->isToday(),
         ]);
     }
 
-    /** The requested day, or today when it is missing, malformed or in the future. */
-    private function selectedDate(string $value): Carbon
+    /** A Y-m-d day that is real and not in the future, or null (then today). */
+    private function parseDay(string $value): ?Carbon
     {
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-            try {
-                $date = Carbon::createFromFormat('!Y-m-d', $value);
-                if ($date && $date->format('Y-m-d') === $value && ! $date->isFuture()) {
-                    return $date;
-                }
-            } catch (\Throwable) {
-                // Fall through to today.
-            }
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
         }
 
-        return today();
+        try {
+            $date = Carbon::createFromFormat('!Y-m-d', $value);
+
+            return $date && $date->format('Y-m-d') === $value && ! $date->isFuture() ? $date : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

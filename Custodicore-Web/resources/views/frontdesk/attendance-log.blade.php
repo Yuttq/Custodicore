@@ -3,32 +3,40 @@
 @section('title', 'Attendance Log')
 
 @section('content')
-    <section class="grid grid-cols-1 gap-md md:grid-cols-3">
-        @foreach ($stats as $stat)
-            @include('admin.partials.stat-card', $stat)
-        @endforeach
-    </section>
+    @php $period = $date->isToday() ? 'today' : $date->format('l, F j, Y'); @endphp
 
     <div class="cc-card">
-        <p class="text-card-title">Attendance Log</p>
-        <p class="text-metadata text-text-secondary">
-            Every visitor check-in and check-out for {{ $date->isToday() ? 'today' : $date->format('l, F j, Y') }}. Read-only.
-        </p>
+        <div class="flex flex-wrap items-center justify-between gap-md">
+            <p class="text-card-title">Gate Activity</p>
 
-        <form method="GET" action="{{ route('frontdesk.attendance-log') }}" class="mt-md flex flex-wrap gap-sm">
-            <label for="attendanceDate" class="sr-only">Date</label>
-            <input type="date" id="attendanceDate" name="date" value="{{ $date->format('Y-m-d') }}" max="{{ today()->format('Y-m-d') }}" class="cc-input w-auto" />
+            <form method="GET" action="{{ route('frontdesk.attendance-log') }}" class="flex flex-wrap items-center justify-end gap-sm">
+                @include('frontdesk.partials.search-input', ['id' => 'attendanceQuery', 'value' => $query, 'placeholder' => 'Search visitor, PDL or officer…'])
 
-            <label for="attendanceQuery" class="sr-only">Visitor, PDL or officer</label>
-            <input type="search" id="attendanceQuery" name="q" value="{{ $query }}" placeholder="Filter by visitor, PDL or officer…" maxlength="100" autocomplete="off" class="cc-input min-w-[220px] flex-1" />
+                <label for="attendanceMethod" class="sr-only">Method</label>
+                <select id="attendanceMethod" name="method" onchange="this.form.submit()" class="cc-input !mt-0 w-auto">
+                    <option value="">All methods</option>
+                    @foreach (\App\Http\Controllers\FrontDesk\AttendanceLogController::METHODS as $key => $label)
+                        <option value="{{ $key }}" @selected($method === $key)>{{ $label }}</option>
+                    @endforeach
+                </select>
 
-            <button type="submit" class="cc-btn-primary">Show</button>
-            @unless ($date->isToday() && $query === '')
-                <a href="{{ route('frontdesk.attendance-log') }}" class="cc-btn-secondary">Today</a>
-            @endunless
-        </form>
+                @php $dayLink = fn ($d) => route('frontdesk.attendance-log', array_filter(['date' => $d->isToday() ? null : $d->format('Y-m-d'), 'q' => $query, 'method' => $method])); @endphp
+                @include('frontdesk.partials.date-nav', [
+                    'value' => $date->format('Y-m-d'),
+                    'prevUrl' => $dayLink($date->copy()->subDay()),
+                    'nextUrl' => $date->isToday() ? null : $dayLink($date->copy()->addDay()),
+                    'max' => today(),
+                ])
 
-        <div class="mt-md overflow-x-auto">
+                {{-- Enter in the search box also submits. --}}
+                <button type="submit" class="sr-only">Search</button>
+                @if ($filtered)
+                    <a href="{{ route('frontdesk.attendance-log') }}" class="cc-btn-secondary">Clear</a>
+                @endif
+            </form>
+        </div>
+
+        <div class="mt-lg overflow-x-auto border-t border-border pt-md">
             <table class="w-full min-w-[960px] text-left">
                 <thead>
                     <tr class="border-b border-border text-section-label text-text-secondary">
@@ -80,13 +88,22 @@
                                 @endif
                             </td>
                             <td class="py-sm pr-md">{{ $entry->verification_method === 'qr_scan' ? 'QR Scan' : 'Manual' }}</td>
-                            <td class="py-sm">@include('admin.partials.status-chip', ['status' => $entry->status])</td>
+                            <td class="py-sm">
+                                @if ($entry->status === 'checked_in' && ! $date->isToday())
+                                    {{-- An earlier day with no check-out recorded. --}}
+                                    <span class="font-semibold text-danger">Never checked out</span>
+                                @else
+                                    @include('admin.partials.status-chip', ['status' => $entry->status])
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr>
                             <td colspan="8" class="py-md text-center text-metadata text-text-secondary">
                                 @if ($query !== '')
-                                    No gate entries matched "{{ $query }}" on this day.
+                                    No gate entries matched "{{ $query }}" for {{ $period }}.
+                                @elseif ($method !== '')
+                                    No {{ \App\Http\Controllers\FrontDesk\AttendanceLogController::METHODS[$method] }} entries for {{ $period }}.
                                 @else
                                     No visitors checked in on this day.
                                 @endif
@@ -97,25 +114,6 @@
             </table>
         </div>
 
-        @if ($entries->total() > 0)
-            <div class="mt-md flex flex-col gap-sm border-t border-border pt-md text-metadata text-text-secondary sm:flex-row sm:items-center sm:justify-between">
-                <span>Showing {{ $entries->firstItem() }}–{{ $entries->lastItem() }} of {{ $entries->total() }} {{ \Illuminate\Support\Str::plural('entry', $entries->total()) }}</span>
-                @if ($entries->hasPages())
-                    <div class="flex items-center gap-xs">
-                        @if ($entries->onFirstPage())
-                            <span class="flex h-8 items-center rounded-sm border border-border px-sm text-text-secondary/40">Previous</span>
-                        @else
-                            <a href="{{ $entries->previousPageUrl() }}" class="flex h-8 items-center rounded-sm border border-border px-sm hover:bg-background">Previous</a>
-                        @endif
-                        <span class="px-sm">Page {{ $entries->currentPage() }} of {{ $entries->lastPage() }}</span>
-                        @if ($entries->hasMorePages())
-                            <a href="{{ $entries->nextPageUrl() }}" class="flex h-8 items-center rounded-sm border border-border px-sm hover:bg-background">Next</a>
-                        @else
-                            <span class="flex h-8 items-center rounded-sm border border-border px-sm text-text-secondary/40">Next</span>
-                        @endif
-                    </div>
-                @endif
-            </div>
-        @endif
+        @include('frontdesk.partials.pagination', ['paginator' => $entries, 'noun' => 'entry'])
     </div>
 @endsection
