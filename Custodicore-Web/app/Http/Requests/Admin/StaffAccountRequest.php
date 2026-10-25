@@ -14,8 +14,10 @@ use Illuminate\Validation\Rule;
  * at three levels so one real person cannot end up with two accounts: the
  * email, the mobile number, and the exact same name.
  *
- * `email` is the official sign-in address (e.g. name@bjmp.gov.ph);
- * `personal_email` is the officer's own inbox where the setup link is sent.
+ * There is no separate "official email" any more: `personal_email` is the
+ * officer's own email. It is where the setup link is sent AND the address they
+ * sign in with (UserController copies it to accounts.email). They can also sign
+ * in with the unique username they choose on the setup page.
  */
 class StaffAccountRequest extends FormRequest
 {
@@ -34,7 +36,6 @@ class StaffAccountRequest extends FormRequest
             'middle_name' => Sanitizer::name($this->input('middle_name')),
             'suffix' => Sanitizer::suffix($this->input('suffix')),
             'role_name' => Sanitizer::text($this->input('role_name')),
-            'email' => Sanitizer::email($this->input('email')),
             'personal_email' => Sanitizer::email($this->input('personal_email')),
             'contact_number' => Sanitizer::mobile($this->input('contact_number')),
         ]);
@@ -69,20 +70,19 @@ class StaffAccountRequest extends FormRequest
             'middle_name' => ['nullable', 'string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX],
             'suffix' => ['nullable', Rule::in(Sanitizer::SUFFIXES)],
             'role_name' => ['required', Rule::in(self::ROLE_NAMES)],
-            'email' => [
-                'required', 'email:rfc', 'max:100',
-                Rule::unique('accounts', 'email')->ignore($accountId, 'account_id'),
-            ],
             'contact_number' => [
                 'required', 'regex:' . Sanitizer::MOBILE_REGEX,
                 Rule::unique('staff_profiles', 'contact_number')->ignore($staffId, 'staff_id'),
             ],
-            // Where the setup link is emailed: the officer's own inbox (e.g. Gmail).
-            // Required for a new officer; optional when editing an older account that has none.
+            // The officer's own email (e.g. Gmail): the setup link goes here and it is
+            // also their sign-in email. Required for a new officer; optional when
+            // editing an older account (blank = keep what the account has now).
+            // Must not already be anybody's sign-in email or staff personal email.
             'personal_email' => [
                 $this->isMethod('post') ? 'required' : 'nullable',
                 'email:rfc', 'max:100',
                 Rule::unique('staff_profiles', 'personal_email')->ignore($staffId, 'staff_id'),
+                Rule::unique('accounts', 'email')->ignore($accountId, 'account_id'),
             ],
         ];
     }
@@ -94,10 +94,9 @@ class StaffAccountRequest extends FormRequest
             'first_name.regex' => 'The first name may only contain letters, spaces, dots, apostrophes and hyphens.',
             'middle_name.regex' => 'The middle name may only contain letters, spaces, dots, apostrophes and hyphens.',
             'suffix.in' => 'Choose a suffix from the list (Jr., Sr., II, III, IV, V) or leave it blank.',
-            'email.unique' => 'This email address already belongs to another account.',
-            'personal_email.required' => 'Enter the officer\'s personal email — the setup link is sent there.',
-            'personal_email.email' => 'Enter a valid personal email address, e.g. juan.delacruz@gmail.com.',
-            'personal_email.unique' => 'This personal email is already used by another staff member.',
+            'personal_email.required' => 'Enter the officer\'s email — the setup link is sent there and they sign in with it.',
+            'personal_email.email' => 'Enter a valid email address, e.g. juan.delacruz@gmail.com.',
+            'personal_email.unique' => 'This email is already used by another account. Use a different email.',
             'contact_number.regex' => 'Enter a valid Philippine mobile number, e.g. 0917 123 4567.',
             'contact_number.unique' => 'This mobile number already belongs to another staff member.',
         ];
@@ -105,6 +104,6 @@ class StaffAccountRequest extends FormRequest
 
     public function attributes(): array
     {
-        return ['contact_number' => 'mobile number', 'role_name' => 'role', 'personal_email' => 'personal email'];
+        return ['contact_number' => 'mobile number', 'role_name' => 'role', 'personal_email' => 'email'];
     }
 }

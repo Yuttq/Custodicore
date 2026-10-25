@@ -9,6 +9,64 @@
         @endforeach
     </div>
 
+    {{-- "Today's Scheduled Visits" card opens this list. --}}
+    <dialog id="todays-visits" class="cc-modal">
+        <div class="mb-md flex items-center justify-between">
+            <div>
+                <p class="text-card-title">Today's Scheduled Visits</p>
+                <p class="text-metadata text-text-secondary">{{ now()->format('l, F j, Y') }} · {{ count($todaysVisits) }} {{ count($todaysVisits) === 1 ? 'visit' : 'visits' }} · times in 24-hour format</p>
+            </div>
+            <button type="button" class="cc-modal-close" onclick="document.getElementById('todays-visits').close()">Close</button>
+        </div>
+
+        <div class="max-h-[60vh] overflow-y-auto">
+            <table class="w-full text-left text-body">
+                <thead>
+                    <tr class="border-b border-border text-section-label text-text-secondary">
+                        <th class="py-sm pr-md">Time</th>
+                        <th class="py-sm pr-md">Visitor</th>
+                        <th class="py-sm pr-md">PDL</th>
+                        <th class="py-sm pr-md">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    @forelse ($todaysVisits as $visit)
+                        <tr>
+                            <td class="py-sm pr-md text-text-secondary">{{ $visit['time'] }}</td>
+                            <td class="py-sm pr-md">
+                                @if ($visit['visitor_id'])
+                                    <a href="{{ route('admin.visitors.show', $visit['visitor_id']) }}" class="font-semibold hover:underline">{{ $visit['visitor'] }}</a>
+                                @else
+                                    <span class="font-semibold">{{ $visit['visitor'] }}</span>
+                                @endif
+                            </td>
+                            <td class="py-sm pr-md">
+                                {{ $visit['pdl'] }}
+                                @if ($visit['pdl_number'])
+                                    <span class="block text-metadata text-text-secondary">{{ $visit['pdl_number'] }}</span>
+                                @endif
+                            </td>
+                            <td class="py-sm pr-md">@include('admin.partials.status-chip', ['status' => $visit['status']])</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="py-lg text-center text-text-secondary">No visits are scheduled for today.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </dialog>
+    <script>
+        (function () {
+            var card = document.querySelector('a[href="#todays-visits"]');
+            var dialog = document.getElementById('todays-visits');
+            if (card && dialog) {
+                card.addEventListener('click', function (e) { e.preventDefault(); dialog.showModal(); });
+            }
+        })();
+    </script>
+
     <div class="grid grid-cols-1 gap-lg xl:grid-cols-3">
         {{-- Left: weekly trend and peak hours share one column width; Most / Least Visited sit beside them. --}}
         <div class="space-y-lg xl:col-span-2">

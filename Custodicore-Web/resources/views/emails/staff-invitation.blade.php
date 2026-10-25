@@ -13,7 +13,7 @@
                 <tr><td style="padding:28px 24px;line-height:1.6;">
                     <h1 style="margin:0 0 12px;font-size:22px;color:#0F3D7A;">Set up your staff account</h1>
                     <p style="margin:0 0 12px;">Hello {{ $name }},</p>
-                    <p style="margin:0 0 12px;">A CustodiCore staff account{{ $roleName ? ' (' . $roleName . ')' : '' }} has been created for you. Your sign-in email will be <strong>{{ $loginEmail }}</strong>.</p>
+                    <p style="margin:0 0 12px;">A CustodiCore staff account{{ $roleName ? ' (' . $roleName . ')' : '' }} has been created for you. You can sign in with this email address (<strong>{{ $loginEmail }}</strong>) or with a username you choose in the next step.</p>
                     <p style="margin:0 0 20px;">For your security no password has been set for you. Use the button below to choose your own password and confirm your details.</p>
                     <p style="margin:0 0 24px;">
                         <a href="{{ $setupUrl }}" style="display:inline-block;background:#16A34A;color:#FFFFFF;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;">Set up my account</a>

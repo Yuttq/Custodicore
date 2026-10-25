@@ -44,22 +44,29 @@
             <div>
                 <p class="text-card-title">Staff Accounts</p>
                 <p class="text-metadata text-text-secondary">
+                    @if ($filterLabel)
+                        <span class="font-semibold text-text-primary">{{ $filterLabel }}</span> ·
+                    @endif
                     @if ($search)
                         {{ $accounts->total() }} of {{ $totalAccounts }} accounts match "{{ $search }}"
                     @else
                         {{ $accounts->total() }} accounts, sorted by last name
+                    @endif
+                    @if ($filter)
+                        · <a href="{{ route('admin.users.index') }}" class="font-semibold text-primary-navy hover:underline">Show all</a>
                     @endif
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-sm">
                 {{-- Working search: last name, first name, middle name, employee #, email, username or mobile number. --}}
                 <form method="GET" action="{{ route('admin.users.index') }}" class="flex items-center gap-sm">
+                    @if ($filter)<input type="hidden" name="filter" value="{{ $filter }}" />@endif
                     <input type="search" name="q" value="{{ $search }}" maxlength="100"
-                           placeholder="Search name, email, employee # or mobile…"
+                           placeholder="Search name, email, username, employee # or mobile…"
                            class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body sm:w-72" />
                     <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
                     @if ($search)
-                        <a href="{{ route('admin.users.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
+                        <a href="{{ route('admin.users.index', array_filter(['filter' => $filter])) }}" class="cc-btn-secondary shrink-0">Clear</a>
                     @endif
                 </form>
                 <button type="button" class="cc-btn-primary shrink-0" onclick="document.getElementById('new-account-modal').showModal()">
@@ -75,7 +82,7 @@
                         <th class="py-sm pr-md">Employee #</th>
                         <th class="py-sm pr-md">Name</th>
                         <th class="py-sm pr-md">Role</th>
-                        <th class="py-sm pr-md">Email</th>
+                        <th class="py-sm pr-md">Sign-in (email / username)</th>
                         <th class="py-sm pr-md">Mobile</th>
                         <th class="py-sm pr-md">Last Login</th>
                         <th class="py-sm pr-md">Status</th>
@@ -95,8 +102,10 @@
                             <td class="py-sm pr-md">{{ \App\Models\Role::label($account['role_name']) }}</td>
                             <td class="py-sm pr-md text-text-secondary">
                                 {{ $account['email'] }}
-                                @if ($account['personal_email'])
-                                    <span class="block text-metadata">Link to: {{ $account['personal_email'] }}</span>
+                                <span class="block text-metadata">Username: {{ $account['username'] ?: '—' }}</span>
+                                @if ($account['personal_email'] && strcasecmp($account['personal_email'], $account['email']) !== 0)
+                                    {{-- Older accounts: the sign-in email differs from the officer's own email. --}}
+                                    <span class="block text-metadata">Personal email: {{ $account['personal_email'] }}</span>
                                 @endif
                             </td>
                             <td class="py-sm pr-md text-text-secondary">{{ $account['contact_number'] ?? '—' }}</td>
@@ -131,7 +140,7 @@
                     @empty
                         <tr>
                             <td colspan="8" class="py-lg text-center text-text-secondary">
-                                {{ $search ? 'No staff match your search.' : 'No staff accounts yet.' }}
+                                {{ $search || $filter ? 'No staff match your search.' : 'No staff accounts yet.' }}
                             </td>
                         </tr>
                     @endforelse
@@ -199,19 +208,15 @@
                 </div>
                 <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                     <div>
-                        <label class="cc-label" for="new-email">Official Email <span class="normal-case">(sign-in)</span></label>
-                        <input id="new-email" type="email" name="email" value="{{ $isNew ? old('email') : '' }}" required maxlength="100" class="cc-input" placeholder="name@bjmp.gov.ph" />
+                        <label class="cc-label" for="new-personal-email">Email <span class="normal-case">(sign-in &amp; setup link)</span></label>
+                        <input id="new-personal-email" type="email" name="personal_email" value="{{ $isNew ? old('personal_email') : '' }}" required maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
                     </div>
                     <div>
                         <label class="cc-label" for="new-contact">Mobile Number</label>
                         <input id="new-contact" type="tel" inputmode="tel" name="contact_number" value="{{ $isNew ? old('contact_number') : '' }}" required maxlength="20" class="cc-input" placeholder="0917 123 4567" />
                     </div>
                 </div>
-                <div>
-                    <label class="cc-label" for="new-personal-email">Personal Email <span class="normal-case">(setup link is sent here)</span></label>
-                    <input id="new-personal-email" type="email" name="personal_email" value="{{ $isNew ? old('personal_email') : '' }}" required maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
-                    <p class="mt-xs text-metadata text-text-secondary">The officer's own inbox that they check. The official email above stays their sign-in.</p>
-                </div>
+                <p class="text-metadata text-text-secondary">The officer's own email that they check. The setup link is sent there, and they sign in with this email or with the unique username they choose when they set up their account.</p>
 
                 <p class="rounded-sm bg-background p-sm text-metadata text-text-secondary">
                     No password is set here. After you create the account, a one-time setup link is sent to the officer's
@@ -229,9 +234,9 @@
                 <p class="text-card-title">Send the setup link now?</p>
                 <p class="mt-xs text-body">
                     The account for <strong id="register-confirm-name"></strong> will be created and the one-time setup link will be
-                    emailed to <strong id="register-confirm-email"></strong> right away. They will sign in later with <strong id="register-confirm-login"></strong>. You do not need to send anything yourself.
+                    emailed to <strong id="register-confirm-email"></strong> right away. They will sign in with this email or with the username they choose. You do not need to send anything yourself.
                 </p>
-                <p class="mt-xs text-metadata text-text-secondary">Check that the personal email is correct and belongs to the officer.</p>
+                <p class="mt-xs text-metadata text-text-secondary">Check that the email is correct and belongs to the officer.</p>
                 @unless ($mailConnected)
                     <p class="mt-sm rounded-sm border-l-4 border-l-warning bg-warning/5 p-sm text-metadata">
                         Email sending is not connected yet (mail is in log mode), so nothing will actually be delivered.
@@ -263,8 +268,7 @@
                     var name = [v('first_name'), v('middle_name'), v('last_name'), v('suffix')].filter(Boolean).join(' ');
                     document.getElementById('register-confirm-name').textContent = name;
                     document.getElementById('register-confirm-email').textContent = v('personal_email').toLowerCase();
-                    document.getElementById('register-confirm-login').textContent = v('email').toLowerCase();
-                    showConfirm(true);
+                        showConfirm(true);
                 }
 
                 document.getElementById('register-review').addEventListener('click', review);
@@ -349,18 +353,18 @@
                     </div>
                     <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                         <div>
-                            <label class="cc-label">Official Email <span class="normal-case">(sign-in)</span></label>
-                            <input type="email" name="email" value="{{ $mine ? old('email') : $account['email'] }}" required maxlength="100" class="cc-input" />
+                            <label class="cc-label">Email <span class="normal-case">(sign-in &amp; setup link)</span></label>
+                            <input type="email" name="personal_email" value="{{ $mine ? old('personal_email') : $account['personal_email'] }}" maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
                         </div>
                         <div>
                             <label class="cc-label">Mobile Number</label>
                             <input type="tel" inputmode="tel" name="contact_number" value="{{ $mine ? old('contact_number') : $account['contact_number'] }}" required maxlength="20" class="cc-input" placeholder="0917 123 4567" />
                         </div>
                     </div>
-                    <div>
-                        <label class="cc-label">Personal Email <span class="normal-case">(setup link is sent here)</span></label>
-                        <input type="email" name="personal_email" value="{{ $mine ? old('personal_email') : $account['personal_email'] }}" maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
-                    </div>
+                    <p class="text-metadata text-text-secondary">
+                        Signs in with: <strong>{{ $account['email'] }}</strong> or username <strong>{{ $account['username'] ?: '—' }}</strong>.
+                        Changing the email here changes the address they sign in with. Leave it as is to keep the current sign-in.
+                    </p>
                     @if ($account['invite'] !== null)
                         <p class="text-metadata text-text-secondary">This officer has not set up their account yet. If you change the personal email, a new setup link is sent to the new address.</p>
                     @endif

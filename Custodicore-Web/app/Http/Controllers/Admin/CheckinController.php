@@ -29,13 +29,19 @@ class CheckinController extends Controller
         $search = Sanitizer::text($request->query('q'));
         $parsed = DateSearch::parse($search);
 
-        $checkins = $this->rows($parsed);
+        // Clicking "Currently Inside" shows only visitors still inside: ?filter=inside.
+        $filter = $request->query('filter') === 'inside' ? 'inside' : null;
 
-        $checkedIn = count(array_filter($checkins, fn ($c) => $c['status'] === 'checked_in'));
+        // The cards describe every record matching the search; the filter narrows the table only.
+        $all = $this->rows($parsed);
+        $checkedIn = count(array_filter($all, fn ($c) => $c['status'] === 'checked_in'));
+        $checkins = $filter === 'inside' ? $this->onlyInside($all) : $all;
 
         $summary = [
-            ['label' => 'Visitors Entered', 'value' => (string) count($checkins), 'icon' => 'qrcode', 'accent' => 'info'],
-            ['label' => 'Currently Inside', 'value' => (string) $checkedIn, 'icon' => 'check-circle', 'accent' => 'success'],
+            ['label' => 'Visitors Entered', 'value' => (string) count($all), 'icon' => 'qrcode', 'accent' => 'info',
+                'href' => route('admin.checkins.index', array_filter(['q' => $search])), 'active' => $filter === null],
+            ['label' => 'Currently Inside', 'value' => (string) $checkedIn, 'icon' => 'check-circle', 'accent' => 'success',
+                'href' => route('admin.checkins.index', array_filter(['q' => $search, 'filter' => 'inside'])), 'active' => $filter === 'inside'],
         ];
 
         // Kept for the view's sake even though nothing on this read-only
@@ -47,7 +53,7 @@ class CheckinController extends Controller
         $dateLabel = $parsed['label'];
         $checkins = Pages::of($checkins);
 
-        return view('admin.checkins.index', compact('checkins', 'summary', 'suggestedVisitors', 'search', 'filtered', 'dateLabel'));
+        return view('admin.checkins.index', compact('checkins', 'summary', 'suggestedVisitors', 'search', 'filtered', 'dateLabel', 'filter'));
     }
 
     /** PDF of every row matching the page's filters (24-hour times). */
@@ -56,11 +62,15 @@ class CheckinController extends Controller
         $search = Sanitizer::text($request->query('q'));
         $parsed = DateSearch::parse($search);
         $rows = $this->rows($parsed);
+        $onlyInside = $request->query('filter') === 'inside';
+        if ($onlyInside) {
+            $rows = $this->onlyInside($rows);
+        }
 
         $inside = count(array_filter($rows, fn ($c) => $c['status'] === 'checked_in'));
 
         $meta = [
-            'Showing: ' . ($search === null ? 'All records' : ($parsed['label'] ?? 'Search "' . $search . '"')),
+            'Showing: ' . ($search === null ? 'All records' : ($parsed['label'] ?? 'Search "' . $search . '"')) . ($onlyInside ? ' · currently inside only' : ''),
             'Visitors entered: ' . count($rows) . '   ·   Currently inside: ' . $inside . '   ·   Times are in 24-hour format',
         ];
 
@@ -92,6 +102,12 @@ class CheckinController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="checkin-checkout-' . now()->format('Y-m-d_Hi') . '.pdf"',
         ]);
+    }
+
+    /** Only the visitors who have checked in and not yet out. */
+    private function onlyInside(array $rows): array
+    {
+        return array_values(array_filter($rows, fn ($c) => $c['status'] === 'checked_in'));
     }
 
     /** Every matching gate record, newest first. */

@@ -41,7 +41,7 @@
                     <div>
                         <label for="email" class="cc-label">Email or Username</label>
                         <input type="text" id="email" name="email" value="{{ old('email') }}" required autofocus
-                               autocomplete="username" placeholder="you@bjmp.gov.ph" class="cc-input" />
+                               autocomplete="username" placeholder="Your email or username" class="cc-input" />
                     </div>
 
                     <div>

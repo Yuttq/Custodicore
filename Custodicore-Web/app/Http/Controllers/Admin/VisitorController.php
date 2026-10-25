@@ -23,17 +23,27 @@ class VisitorController extends Controller
     {
         $search = Sanitizer::text($request->query('q'));
 
-        $visitors = self::rows($search);
+        // Clicking a summary card filters the list: ?filter=verified|pending.
+        $filter = $request->query('filter');
+        $filter = in_array($filter, ['verified', 'pending'], true) ? $filter : null;
 
+        $visitors = self::rows($search, $filter);
+
+        // The cards always count ALL visitors, whatever the search or filter.
         $verified = VisitorProfile::where('verification_status', 'verified')->count();
         $pending = VisitorProfile::where('verification_status', 'pending')->count();
         $total = VisitorProfile::count();
 
         $summary = [
-            ['label' => 'Total Visitors', 'value' => (string) $total, 'icon' => 'visitor', 'accent' => 'info'],
-            ['label' => 'Verified', 'value' => (string) $verified, 'icon' => 'check-circle', 'accent' => 'success'],
-            ['label' => 'Pending Verification', 'value' => (string) $pending, 'icon' => 'clock', 'accent' => 'warning'],
+            ['label' => 'Total Visitors', 'value' => (string) $total, 'icon' => 'visitor', 'accent' => 'info',
+                'href' => route('admin.visitors.index'), 'active' => $filter === null && $search === null],
+            ['label' => 'Verified', 'value' => (string) $verified, 'icon' => 'check-circle', 'accent' => 'success',
+                'href' => route('admin.visitors.index', ['filter' => 'verified']), 'active' => $filter === 'verified'],
+            ['label' => 'Pending Verification', 'value' => (string) $pending, 'icon' => 'clock', 'accent' => 'warning',
+                'href' => route('admin.visitors.index', ['filter' => 'pending']), 'active' => $filter === 'pending'],
         ];
+
+        $filterLabel = ['verified' => 'Verified visitors', 'pending' => 'Visitors pending verification'][$filter] ?? null;
 
         $visitors = Pages::of($visitors);
 
@@ -41,6 +51,8 @@ class VisitorController extends Controller
             'visitors' => $visitors,
             'summary' => $summary,
             'search' => $search,
+            'filter' => $filter,
+            'filterLabel' => $filterLabel,
             'totalVisitors' => $total,
         ]);
     }
@@ -71,7 +83,7 @@ class VisitorController extends Controller
         return VisitorProfile::where('verification_status', 'verified')->pluck('full_name')->all();
     }
 
-    private static function rows(?string $search): array
+    private static function rows(?string $search, ?string $filter = null): array
     {
         $like = $search !== null ? Sanitizer::like($search) : null;
 
@@ -81,6 +93,7 @@ class VisitorController extends Controller
 
         return VisitorProfile::query()
             ->with(['relationships' => fn ($q) => $q->orderByDesc('priority_tier')->with('pdl')])
+            ->when($filter, fn ($query) => $query->where('verification_status', $filter))
             ->when($like, function ($query) use ($like, $likeDigits) {
                 $query->where(function ($q) use ($like, $likeDigits) {
                     $q->where('full_name', 'like', $like)

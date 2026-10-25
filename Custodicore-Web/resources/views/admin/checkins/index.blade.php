@@ -15,6 +15,10 @@
                 <p class="text-card-title">Visitors Who Entered</p>
                 <p class="text-metadata text-text-secondary">
                     Checked in and out via QR code at the gate · times in 24-hour format
+                    @if ($filter)
+                        · <span class="font-semibold text-text-primary">Currently inside only</span>
+                        · <a href="{{ route('admin.checkins.index', array_filter(['q' => $search])) }}" class="font-semibold text-primary-navy hover:underline">Show all</a>
+                    @endif
                     @if ($filtered)
                         · {{ $checkins->total() }} {{ $checkins->total() === 1 ? 'record matches' : 'records match' }}
                         @if ($dateLabel) <span class="font-semibold text-text-primary">{{ $dateLabel }}</span>@else "{{ $search }}"@endif
@@ -26,14 +30,15 @@
                  else searches the reference or visitor name. "Export PDF" uses the same search. --}}
             <form method="GET" action="{{ route('admin.checkins.index') }}" class="w-full lg:w-[32rem]">
                 <div class="flex items-center gap-sm">
+                    @if ($filter)<input type="hidden" name="filter" value="{{ $filter }}" />@endif
                     <input type="search" name="q" value="{{ $search }}" maxlength="100"
                            placeholder="Search a date, month, year, visitor or PDL…" autocomplete="off"
                            class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body text-text-primary" />
                     <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
                     @if ($filtered)
-                        <a href="{{ route('admin.checkins.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
+                        <a href="{{ route('admin.checkins.index', array_filter(['filter' => $filter])) }}" class="cc-btn-secondary shrink-0">Clear</a>
                     @endif
-                    <a href="{{ route('admin.checkins.export', array_filter(['q' => $search])) }}"
+                    <a href="{{ route('admin.checkins.export', array_filter(['q' => $search, 'filter' => $filter])) }}"
                        class="cc-btn-primary shrink-0">Export PDF</a>
                 </div>
             </form>
@@ -73,7 +78,7 @@
                     @empty
                         <tr>
                             <td colspan="8" class="py-lg text-center text-text-secondary">
-                                {{ $dateLabel ? 'No check-ins were recorded for ' . $dateLabel . '.' : ($filtered ? 'No check-ins match your search.' : 'No check-ins recorded yet.') }}
+                                {{ $filter ? 'Nobody is currently inside.' : ($dateLabel ? 'No check-ins were recorded for ' . $dateLabel . '.' : ($filtered ? 'No check-ins match your search.' : 'No check-ins recorded yet.')) }}
                             </td>
                         </tr>
                     @endforelse

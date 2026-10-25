@@ -42,15 +42,36 @@ class UserController extends Controller
     {
         $search = Sanitizer::text($request->query('q'));
 
-        $accounts = self::rows($search);
+        // Clicking a summary card filters the table: ?filter=active|awaiting|inactive.
+        $filter = $request->query('filter');
+        $filter = in_array($filter, ['active', 'awaiting', 'inactive'], true) ? $filter : null;
 
-        $all = self::rows(null);
-        $summary = [
-            ['label' => 'Total Accounts', 'value' => (string) count($all), 'icon' => 'users', 'accent' => 'info'],
-            ['label' => 'Active', 'value' => (string) count(array_filter($all, fn ($a) => $a['status'] === 'active')), 'icon' => 'check-circle', 'accent' => 'success'],
-            ['label' => 'Awaiting Setup', 'value' => (string) count(array_filter($all, fn ($a) => $a['invite'] !== null)), 'icon' => 'clock', 'accent' => 'warning'],
-            ['label' => 'Inactive', 'value' => (string) count(array_filter($all, fn ($a) => $a['status'] !== 'active' && $a['invite'] === null)), 'icon' => 'warning', 'accent' => 'danger'],
+        $matches = [
+            'active' => fn ($a) => $a['status'] === 'active',
+            'awaiting' => fn ($a) => $a['invite'] !== null,
+            'inactive' => fn ($a) => $a['status'] !== 'active' && $a['invite'] === null,
         ];
+
+        $accounts = self::rows($search);
+        if ($filter) {
+            $accounts = array_values(array_filter($accounts, $matches[$filter]));
+        }
+
+        // The cards always count ALL accounts, whatever the search or filter.
+        $all = self::rows(null);
+        $count = fn (string $key) => (string) count(array_filter($all, $matches[$key]));
+        $summary = [
+            ['label' => 'Total Accounts', 'value' => (string) count($all), 'icon' => 'users', 'accent' => 'info',
+                'href' => route('admin.users.index'), 'active' => $filter === null && $search === null],
+            ['label' => 'Active', 'value' => $count('active'), 'icon' => 'check-circle', 'accent' => 'success',
+                'href' => route('admin.users.index', ['filter' => 'active']), 'active' => $filter === 'active'],
+            ['label' => 'Awaiting Setup', 'value' => $count('awaiting'), 'icon' => 'clock', 'accent' => 'warning',
+                'href' => route('admin.users.index', ['filter' => 'awaiting']), 'active' => $filter === 'awaiting'],
+            ['label' => 'Inactive', 'value' => $count('inactive'), 'icon' => 'warning', 'accent' => 'danger',
+                'href' => route('admin.users.index', ['filter' => 'inactive']), 'active' => $filter === 'inactive'],
+        ];
+
+        $filterLabel = ['active' => 'Active accounts', 'awaiting' => 'Accounts awaiting setup', 'inactive' => 'Inactive accounts'][$filter] ?? null;
 
         $accounts = Pages::of($accounts);
 
@@ -58,6 +79,8 @@ class UserController extends Controller
             'accounts' => $accounts,
             'summary' => $summary,
             'search' => $search,
+            'filter' => $filter,
+            'filterLabel' => $filterLabel,
             'totalAccounts' => count($all),
             'suffixes' => Sanitizer::SUFFIXES,
             // False while MAIL_MAILER=log: the confirmation step then warns that nothing will really be emailed.
@@ -74,8 +97,10 @@ class UserController extends Controller
 
             $account = Account::create([
                 'role_id' => $role->role_id,
-                'username' => $this->uniqueUsername($data['email']),
-                'email' => $data['email'],
+                // The officer's own email is also their sign-in email; the username is a
+                // suggestion they can change on the setup page (it must stay unique).
+                'username' => $this->uniqueUsername($data['personal_email']),
+                'email' => $data['personal_email'],
                 // Random and unknown to everyone: the officer chooses their own
                 // through the setup link, and the account stays inactive until then.
                 'password_hash' => StaffInvitationService::unusablePasswordHash(),
@@ -131,7 +156,17 @@ class UserController extends Controller
         DB::transaction(function () use ($account, $data) {
             $role = Role::where('role_name', $data['role_name'])->firstOrFail();
 
-            $account->update(['email' => $data['email'], 'role_id' => $role->role_id]);
+            $accountChanges = ['role_id' => $role->role_id];
+
+            // Changing the officer's email also changes the address they sign in with.
+            // Left blank, or unchanged, the account keeps the sign-in email it has now
+            // (older accounts may still have an @bjmp.gov.ph one; the username works too).
+            $newEmail = $data['personal_email'] ?? null;
+            if ($newEmail && mb_strtolower($newEmail) !== mb_strtolower((string) $account->staffProfile?->personal_email)) {
+                $accountChanges['email'] = $newEmail;
+            }
+
+            $account->update($accountChanges);
 
             $profile = [
                 'first_name' => $data['first_name'],
@@ -336,6 +371,7 @@ class UserController extends Controller
                     'personal_email' => $profile?->personal_email,
                     'role_name' => $account->role?->role_name ?? '—',
                     'email' => $account->email,
+                    'username' => $account->username,
                     'status' => $account->status,
                     'invite' => $invite,
                     'display_status' => $invite === 'pending' ? 'invited' : ($invite === 'expired' ? 'invite_expired' : $account->status),
@@ -353,9 +389,16 @@ class UserController extends Controller
         return 'EMP-' . str_pad((string) ($maxId + 1), 3, '0', STR_PAD_LEFT);
     }
 
+    /** A free username from the part of the email before the "@", in the form the setup page accepts. */
     private function uniqueUsername(string $email): string
     {
-        $base = Str::before($email, '@');
+        // Setup page rule: 4-30 chars, lowercase letters / numbers / . - _, starting with a letter or number.
+        $base = preg_replace('/[^a-z0-9._-]/', '', mb_strtolower(Str::before($email, '@'))) ?? '';
+        $base = ltrim($base, '._-');
+        $base = Str::limit($base, 24, '');
+        if (strlen($base) < 4) {
+            $base .= 'staff';
+        }
         $username = $base;
         $suffix = 1;
 

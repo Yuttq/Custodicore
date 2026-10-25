@@ -14,21 +14,28 @@
             <div>
                 <p class="text-card-title">Registered Visitors</p>
                 <p class="text-metadata text-text-secondary">
+                    @if ($filterLabel)
+                        <span class="font-semibold text-text-primary">{{ $filterLabel }}</span> ·
+                    @endif
                     @if ($search)
                         {{ $visitors->total() }} of {{ $totalVisitors }} visitors match "{{ $search }}"
                     @else
                         {{ $visitors->total() }} visitors
                     @endif
+                    @if ($filter)
+                        · <a href="{{ route('admin.visitors.index') }}" class="font-semibold text-primary-navy hover:underline">Show all</a>
+                    @endif
                 </p>
             </div>
             {{-- Working search: visitor name, contact #, email, or the related PDL's name / number. --}}
             <form method="GET" action="{{ route('admin.visitors.index') }}" class="flex items-center gap-sm">
+                @if ($filter)<input type="hidden" name="filter" value="{{ $filter }}" />@endif
                 <input type="search" name="q" value="{{ $search }}" maxlength="100"
                        placeholder="Search visitor, contact #, email or PDL…"
                        class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body sm:w-72" />
                 <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
                 @if ($search)
-                    <a href="{{ route('admin.visitors.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
+                    <a href="{{ route('admin.visitors.index', array_filter(['filter' => $filter])) }}" class="cc-btn-secondary shrink-0">Clear</a>
                 @endif
             </form>
         </div>
@@ -72,7 +79,7 @@
                     @empty
                         <tr>
                             <td colspan="7" class="py-lg text-center text-text-secondary">
-                                {{ $search ? 'No visitor matches your search.' : 'No visitors registered yet.' }}
+                                {{ $search || $filter ? 'No visitor matches your search.' : 'No visitors registered yet.' }}
                             </td>
                         </tr>
                     @endforelse

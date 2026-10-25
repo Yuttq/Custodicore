@@ -46,12 +46,14 @@ class DashboardController extends Controller
                 'hint' => Pdl::where('custody_status', 'released')->count() . ' released · '
                     . Pdl::where('custody_status', 'transferred')->count() . ' transferred',
                 'accent' => 'info', 'icon' => 'identification',
+                'href' => route('admin.pdls.index', ['filter' => 'active']),
             ],
             [
                 'label' => 'Verified Visitors',
                 'value' => (string) VisitorProfile::where('verification_status', 'verified')->count(),
                 'hint' => VisitorProfile::where('verification_status', 'pending')->count() . ' pending verification',
                 'accent' => 'success', 'icon' => 'check-circle',
+                'href' => route('admin.visitors.index', ['filter' => 'verified']),
             ],
             [
                 'label' => "Today's Scheduled Visits",
@@ -60,8 +62,29 @@ class DashboardController extends Controller
                     ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()))
                     ->count() . ' awaiting confirmation',
                 'accent' => 'warning', 'icon' => 'calendar',
+                // Opens the "Today's Scheduled Visits" list on this page (see the dashboard view).
+                'href' => '#todays-visits',
             ],
         ];
+
+        // The visits behind the "Today's Scheduled Visits" card, earliest time slot first.
+        $todaysVisits = VisitRequest::query()
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()))
+            ->with(['visitor', 'pdl', 'schedule'])
+            ->get()
+            ->sortBy(fn ($v) => $v->schedule?->time_slot_start)
+            ->map(fn ($v) => [
+                'visitor_id' => $v->visitor_id,
+                'visitor' => $v->visitor?->full_name ?? 'Unknown',
+                'pdl' => $v->pdl?->full_name ?? '—',
+                'pdl_number' => $v->pdl?->pdl_number,
+                'time' => $v->schedule
+                    ? substr($v->schedule->time_slot_start, 0, 5) . '–' . substr($v->schedule->time_slot_end, 0, 5)
+                    : '—',
+                'status' => $v->status,
+            ])
+            ->values()
+            ->all();
 
         // The five busiest visiting slots of the chosen month. Every bar is
         // one slot: its height is the share of that slot's capacity that was
@@ -133,6 +156,7 @@ class DashboardController extends Controller
 
         return view('admin.dashboard.index', compact(
             'stats',
+            'todaysVisits',
             'peakHours',
             'visitsTrend',
             'mostVisitedPdls',

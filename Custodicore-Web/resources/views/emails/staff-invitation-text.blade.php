@@ -1,6 +1,6 @@
 Hello {{ $name }},
 
-A CustodiCore staff account{{ $roleName ? ' (' . $roleName . ')' : '' }} has been created for you. Your sign-in email will be {{ $loginEmail }}.
+A CustodiCore staff account{{ $roleName ? ' (' . $roleName . ')' : '' }} has been created for you. You can sign in with this email address ({{ $loginEmail }}) or with a username you choose in the next step.
 
 For your security no password has been set for you. Open this link to choose your own password and confirm your details:
 

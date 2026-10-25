@@ -14,21 +14,28 @@
             <div>
                 <p class="text-card-title">Persons Deprived of Liberty</p>
                 <p class="text-metadata text-text-secondary">
+                    @if ($filterLabel)
+                        <span class="font-semibold text-text-primary">{{ $filterLabel }}</span> ·
+                    @endif
                     @if ($search)
                         {{ $pdls->total() }} of {{ $totalPdls }} records match "{{ $search }}"
                     @else
                         {{ $pdls->total() }} records
                     @endif
+                    @if ($filter)
+                        · <a href="{{ route('admin.pdls.index') }}" class="font-semibold text-primary-navy hover:underline">Show all</a>
+                    @endif
                 </p>
             </div>
             {{-- Working search: name (first / middle / last / alias), PDL # or cell block. --}}
             <form method="GET" action="{{ route('admin.pdls.index') }}" class="flex items-center gap-sm">
+                @if ($filter)<input type="hidden" name="filter" value="{{ $filter }}" />@endif
                 <input type="search" name="q" value="{{ $search }}" maxlength="100"
                        placeholder="Search name, PDL # or cell block…"
                        class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body sm:w-72" />
                 <button type="submit" class="cc-btn-secondary shrink-0">Search</button>
                 @if ($search)
-                    <a href="{{ route('admin.pdls.index') }}" class="cc-btn-secondary shrink-0">Clear</a>
+                    <a href="{{ route('admin.pdls.index', array_filter(['filter' => $filter])) }}" class="cc-btn-secondary shrink-0">Clear</a>
                 @endif
             </form>
         </div>
@@ -71,7 +78,7 @@
                     @empty
                         <tr>
                             <td colspan="6" class="py-lg text-center text-text-secondary">
-                                {{ $search ? 'No PDL matches your search.' : 'No PDL records yet.' }}
+                                {{ $search || $filter ? 'No PDL matches your search.' : 'No PDL records yet.' }}
                             </td>
                         </tr>
                     @endforelse

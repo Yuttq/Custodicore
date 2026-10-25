@@ -56,7 +56,7 @@
                     <label for="username">Username</label>
                     <input id="username" name="username" type="text" required minlength="4" maxlength="30"
                            value="{{ old('username', $account->username) }}" autocapitalize="none" spellcheck="false">
-                    <div class="hint">You can sign in with this or your email. Lowercase letters, numbers, . - _</div>
+                    <div class="hint">You can sign in with this username or with {{ $account->email }}. Must be unique. Lowercase letters, numbers, . - _</div>
 
                     <label for="contact_number">Mobile number</label>
                     <input id="contact_number" name="contact_number" type="tel" inputmode="tel" required maxlength="20"

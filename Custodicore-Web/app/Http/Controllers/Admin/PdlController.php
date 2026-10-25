@@ -26,8 +26,14 @@ class PdlController extends Controller
         $search = Sanitizer::text($request->query('q'));
         $like = $search !== null ? Sanitizer::like($search) : null;
 
+        // Clicking a summary card filters the list: ?filter=active|restricted.
+        $filter = $request->query('filter');
+        $filter = in_array($filter, ['active', 'restricted'], true) ? $filter : null;
+
         $pdls = Pdl::query()
             ->withCount(['restrictions as active_restrictions' => fn ($q) => $q->where('status', 'active')])
+            ->when($filter === 'active', fn ($query) => $query->where('custody_status', 'active'))
+            ->when($filter === 'restricted', fn ($query) => $query->whereHas('restrictions', fn ($q) => $q->where('status', 'active')))
             ->when($like, function ($query) use ($like) {
                 $query->where(function ($q) use ($like) {
                     $q->where('full_name', 'like', $like)
@@ -58,10 +64,15 @@ class PdlController extends Controller
         $withRestrictions = Pdl::whereHas('restrictions', fn ($q) => $q->where('status', 'active'))->count();
 
         $summary = [
-            ['label' => 'Total PDLs', 'value' => (string) $total, 'icon' => 'identification', 'accent' => 'info'],
-            ['label' => 'Active in Custody', 'value' => (string) $activeCustody, 'icon' => 'check-circle', 'accent' => 'success'],
-            ['label' => 'With Restrictions', 'value' => (string) $withRestrictions, 'icon' => 'warning', 'accent' => 'danger'],
+            ['label' => 'Total PDLs', 'value' => (string) $total, 'icon' => 'identification', 'accent' => 'info',
+                'href' => route('admin.pdls.index'), 'active' => $filter === null && $search === null],
+            ['label' => 'Active in Custody', 'value' => (string) $activeCustody, 'icon' => 'check-circle', 'accent' => 'success',
+                'href' => route('admin.pdls.index', ['filter' => 'active']), 'active' => $filter === 'active'],
+            ['label' => 'With Restrictions', 'value' => (string) $withRestrictions, 'icon' => 'warning', 'accent' => 'danger',
+                'href' => route('admin.pdls.index', ['filter' => 'restricted']), 'active' => $filter === 'restricted'],
         ];
+
+        $filterLabel = ['active' => 'PDLs in active custody', 'restricted' => 'PDLs with active restrictions'][$filter] ?? null;
 
         $pdls = Pages::of($pdls);
 
@@ -69,6 +80,8 @@ class PdlController extends Controller
             'pdls' => $pdls,
             'summary' => $summary,
             'search' => $search,
+            'filter' => $filter,
+            'filterLabel' => $filterLabel,
             'totalPdls' => $total,
         ]);
     }
