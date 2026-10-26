@@ -884,4 +884,19 @@ class ManageVisitorSlotsTest extends TestCase
             ->assertSee($this->visitor->full_name)
             ->assertSee('Confirmed');
     }
+
+    public function test_summary_cards_are_links(): void
+    {
+        $this->actingAs($this->recordOfficerAccount)
+            ->get(route('visitor-slots.index', ['classification' => 'drug_related']))
+            ->assertOk()
+            ->assertSee('href="#sessions"', false)
+            ->assertSee('href="#weekly-defaults"', false)
+            ->assertSee('href="' . route('upcoming-visits.index', ['range' => 'month']) . '"', false)
+            // Remaining Slots keeps the current filters and shows only open sessions.
+            ->assertSee('status=open', false)
+            ->assertSee('classification=drug_related', false)
+            ->assertSee('id="sessions"', false)
+            ->assertSee('id="weekly-defaults"', false);
+    }
 }

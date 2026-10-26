@@ -16,13 +16,26 @@
 </div>
 
 <div class="stat-strip" style="margin-bottom:20px;">
-  <div class="stat-card"><div class="stat-label">Sessions Listed</div><div class="stat-value">{{ $stats['sessions'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Total Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Booked Slots</div><div class="stat-value">{{ $stats['booked'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Remaining Slots</div><div class="stat-value">{{ $stats['remaining'] }}</div></div>
+  {{-- Each card leads somewhere: the list, the default capacities, who booked, and the sessions still open. --}}
+  <a class="stat-card stat-link" href="#sessions" title="Go to the sessions list">
+    <div class="stat-label">Sessions Listed</div><div class="stat-value">{{ $stats['sessions'] }}</div>
+    <div class="muted-cell">view list ↓</div>
+  </a>
+  <a class="stat-card stat-link" href="#weekly-defaults" title="Go to the default capacity per weekly session">
+    <div class="stat-label">Total Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div>
+    <div class="muted-cell">default capacities ↓</div>
+  </a>
+  <a class="stat-card stat-link" href="{{ route('upcoming-visits.index', ['range' => 'month']) }}" title="See who booked in Upcoming Visits">
+    <div class="stat-label">Booked Slots</div><div class="stat-value">{{ $stats['booked'] }}</div>
+    <div class="muted-cell">who's coming →</div>
+  </a>
+  <a class="stat-card stat-link" href="{{ route('visitor-slots.index', array_filter([...$filters, 'status' => 'open'])) }}#sessions" title="Show only open sessions">
+    <div class="stat-label">Remaining Slots</div><div class="stat-value">{{ $stats['remaining'] }}</div>
+    <div class="muted-cell">open sessions →</div>
+  </a>
 </div>
 
-<form class="filters filters-5" method="GET" action="{{ route('visitor-slots.index') }}">
+<form class="filters filters-5" method="GET" action="{{ route('visitor-slots.index') }}" id="sessions">
   <div class="field">
     <label for="from">From</label>
     <div class="input"><input id="from" type="date" name="from" value="{{ $filters['from'] }}"></div>
@@ -109,7 +122,7 @@
 
 <p class="muted-cell">Booked counts visits that hold a seat: awaiting review, awaiting visitor confirmation, confirmed, completed and no-show. Cancelled and declined visits free their seat. Closing a session stops new bookings but keeps existing ones.</p>
 
-<div class="topbar" style="margin-top:28px;">
+<div class="topbar" style="margin-top:28px;" id="weekly-defaults">
   <h1 style="font-size:16px;">Default Capacity per Weekly Session</h1>
 </div>
 <p class="muted-cell" style="margin-top:-12px;">Used for every date of a weekly session that has no session listed above yet — the visitor app shows it, and the first booking creates the session with it. Sessions that already exist keep their own capacity.</p>

@@ -10,12 +10,18 @@
 </div>
 
 <div class="stat-strip" style="margin-bottom:20px;">
-  <div class="stat-card"><div class="stat-label">Active Blocks</div><div class="stat-value">{{ $stats['blocks'] }}</div></div>
-  <div class="stat-card"><div class="stat-label">Recommended Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div></div>
+  <a class="stat-card stat-link" href="{{ route('cell-blocks.index') }}#blocks" title="Show all cell blocks">
+    <div class="stat-label">Active Blocks</div><div class="stat-value">{{ $stats['blocks'] }}</div>
+    <div class="muted-cell">all cell blocks ↓</div>
+  </a>
+  <a class="stat-card stat-link" href="{{ route('cell-blocks.index') }}#blocks" title="See and edit each dorm's capacity">
+    <div class="stat-label">Recommended Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div>
+    <div class="muted-cell">capacity per dorm ↓</div>
+  </a>
   <a class="stat-card stat-link" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-label">PDLs Housed</div><div class="stat-value">{{ $stats['occupied'] }}</div></a>
   <a class="stat-card stat-link {{ $stats['over'] ? 'is-over-card' : '' }} {{ $overOnly ? 'is-selected' : '' }}" href="{{ $overOnly ? route('cell-blocks.index') : route('cell-blocks.index', ['over' => 1]) }}" style="text-decoration:none;color:inherit;" title="{{ $overOnly ? 'Show all dorms' : 'Show only dorms over capacity' }}"><div class="stat-label">Over Capacity</div><div class="stat-value">{{ $stats['over'] }}</div>@if ($overOnly)<div class="muted-cell">showing these only · click to show all</div>@endif</a>
 </div>
-<p class="muted-cell" style="margin:-8px 0 16px;">Capacity is the <strong>recommended</strong> number of occupants. PDLs can still be assigned beyond it; dorms over capacity are highlighted in yellow.</p>
+<p class="muted-cell" style="margin:-8px 0 16px;" id="blocks">Capacity is the <strong>recommended</strong> number of occupants. PDLs can still be assigned beyond it; dorms over capacity are highlighted in yellow.</p>
 
 <div class="panel-table">
   @if ($cellBlocks->isEmpty())

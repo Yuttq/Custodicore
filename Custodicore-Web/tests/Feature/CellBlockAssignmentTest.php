@@ -313,4 +313,13 @@ class CellBlockAssignmentTest extends TestCase
         $this->post('/cell-blocks', ['name' => 'Dorm 8', 'capacity' => 20, 'designation' => 'any', 'intended_classification' => 'violent'])
             ->assertSessionHasErrors('intended_classification');
     }
+
+    public function test_every_summary_card_on_cell_blocks_is_a_link(): void
+    {
+        $this->get(route('cell-blocks.index', ['over' => 1]))->assertOk()
+            // Active Blocks / Recommended Capacity show all blocks (the over filter is cleared).
+            ->assertSee('href="' . route('cell-blocks.index') . '#blocks"', false)
+            ->assertSee('id="blocks"', false)
+            ->assertSee('href="' . route('pdl.index', ['status' => 'active']) . '"', false);
+    }
 }
