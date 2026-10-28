@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Account;
 use App\Models\FacilityVisitationRule;
 use App\Models\QrCode;
+use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\SystemSetting;
 use App\Models\VisitCheckin;
@@ -12,6 +14,7 @@ use App\Models\VisitRequest;
 use App\Services\VisitAssignmentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
@@ -301,6 +304,31 @@ class QrPassValidityTest extends TestCase
             ->assertDontSee('qr.expiry_minutes')
             ->assertDontSee('Minutes a generated QR code stays valid')
             ->assertSee('visit.confirmation_window_hours');
+
+        $this->assertSame('180', SystemSetting::value('qr.expiry_minutes'));
+    }
+
+    public function test_the_unused_qr_expiry_setting_is_hidden_from_admin_settings_but_kept(): void
+    {
+        $staffId = StaffProfile::first()->staff_id;
+        SystemSetting::create(['setting_key' => 'qr.expiry_minutes', 'setting_value' => '180', 'updated_by' => $staffId]);
+        SystemSetting::create(['setting_key' => 'visit.max_per_week', 'setting_value' => '2', 'updated_by' => $staffId]);
+
+        $admin = Account::create([
+            'role_id' => Role::where('role_name', 'System Administrator/Warden')->value('role_id'),
+            'username' => 'warden',
+            'email' => 'warden@bjmp.gov.ph',
+            'password_hash' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'web');
+        $this->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertDontSee('qr.expiry_minutes')
+            ->assertDontSee('Minutes a generated QR code stays valid')
+            ->assertSee('visit.max_per_week')
+            ->assertSee('Maximum visits a single visitor may attend per week');
 
         $this->assertSame('180', SystemSetting::value('qr.expiry_minutes'));
     }

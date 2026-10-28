@@ -18,11 +18,15 @@ class SystemSetting extends Model
     const DESCRIPTIONS = [
         'visit.max_per_week' => 'Maximum visits a single visitor may attend per week',
         'visit.confirmation_window_hours' => 'Hours a visitor has to confirm an assigned schedule',
-        // Kept in the table but unused: a QR pass is valid until the visit's
-        // last session ends (QrCode::validUntil).
-        'qr.expiry_minutes' => 'No longer used — a QR pass is valid until the visit\'s last session ends',
         'schedule.slot_capacity_default' => 'Default visitor capacity per time slot',
     ];
+
+    /**
+     * Kept in the table but no longer used, so not listed on settings pages.
+     * qr.expiry_minutes: a QR pass is valid until the visit's last session
+     * ends (QrCode::validUntil).
+     */
+    const HIDDEN = ['qr.expiry_minutes'];
 
     public static function value(string $key, ?string $default = null): ?string
     {

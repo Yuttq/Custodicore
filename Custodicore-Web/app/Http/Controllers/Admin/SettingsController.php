@@ -14,6 +14,7 @@ class SettingsController extends Controller
     public function index(): View
     {
         $settings = SystemSetting::query()
+            ->whereNotIn('setting_key', SystemSetting::HIDDEN)
             ->orderBy('setting_key')
             ->get()
             ->map(fn ($s) => [
