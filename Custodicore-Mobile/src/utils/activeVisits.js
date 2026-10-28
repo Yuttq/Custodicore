@@ -105,3 +105,49 @@ export function pickQrVisit(visits, now = new Date()) {
     visits.filter((v) => v?.status === 'confirmed' && isUpcomingVisit(v, today)),
   );
 }
+
+/**
+ * Whether the QR Pass tab may show the visit's pass: only on the visit's
+ * Manila calendar date. Display only — the gate enforces the date itself.
+ * @param {{ scheduledAt?: unknown }} visit
+ * @param {Date} [now]
+ */
+export function isQrPassDay(visit, now = new Date()) {
+  const date = scheduledDateIso(visit);
+  return date !== null && date === manilaTodayIso(now);
+}
+
+/**
+ * "16:30" from a pass's `expiresAt` — a Manila local timestamp from the
+ * backend, the end of the visit's last session — whatever the phone's
+ * timezone. Null when missing.
+ * @param {unknown} expiresAt
+ * @returns {string | null}
+ */
+export function passValidUntilTime(expiresAt) {
+  const m = typeof expiresAt === 'string' ? /T(\d{2}:\d{2})/.exec(expiresAt) : null;
+  return m ? m[1] : null;
+}
+
+/**
+ * Whether the pass is past its `expiresAt` (display only; the gate decides).
+ * @param {unknown} expiresAt
+ * @param {Date} [now]
+ */
+export function isPassExpired(expiresAt, now = new Date()) {
+  const t = typeof expiresAt === 'string' ? Date.parse(expiresAt) : Number.NaN;
+  return !Number.isNaN(t) && now.getTime() >= t;
+}
+
+/**
+ * The QR Pass tab's visit (see pickQrVisit) and whether its pass is shown
+ * today; a later confirmed visit is shown without its pass.
+ * @template {{ status?: string; scheduledAt?: unknown }} T
+ * @param {T[] | null | undefined} visits
+ * @param {Date} [now]
+ * @returns {{ visit: T; passDay: boolean } | null}
+ */
+export function qrPassSelection(visits, now = new Date()) {
+  const visit = pickQrVisit(visits, now);
+  return visit ? { visit, passDay: isQrPassDay(visit, now) } : null;
+}

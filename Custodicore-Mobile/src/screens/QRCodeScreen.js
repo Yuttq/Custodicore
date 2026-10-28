@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
-import moment from 'moment';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,7 +28,14 @@ import {
   resolveScheduleIdForQr,
 } from '../repositories/qrRepository';
 import { formatDate, formatTime } from '../utils';
-import { pickQrVisit, visitSessionsText, visitTimeText } from '../utils/activeVisits';
+import {
+  isPassExpired,
+  isQrPassDay,
+  passValidUntilTime,
+  qrPassSelection,
+  visitSessionsText,
+  visitTimeText,
+} from '../utils/activeVisits';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
@@ -76,20 +82,12 @@ function normalizeQrPayload(data) {
     qrToken,
     expiresAt,
     checkedIn,
+    scheduledAt,
     pdlName,
     dateDisplay,
     timeLabel: visitTimeText({ timeLabel, isWholeDay }),
     sessionsText: isWholeDay ? visitSessionsText(schedule.sessions) : null,
   };
-}
-
-function formatCountdown(totalSeconds) {
-  const safe = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 /**
@@ -175,48 +173,48 @@ export default function QRCodeScreen({ route, navigation }) {
     refreshVisits,
   } = useVisits();
 
+  // Re-checked every minute so the pass appears once the Manila date rolls
+  // over to the visit day while this screen is open.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // Reload visits on focus so a newly approved visit is picked up; a changed
   // autoSelection then reloads the pass below. Not skipping the first
   // focus: this tab mounts lazily, long after the session's initial load.
   useFocusEffect(
     useCallback(() => {
+      setNow(new Date());
       refreshVisits().catch(() => {
         // error already stored in VisitsContext
       });
     }, [refreshVisits]),
   );
 
+  const selection = useMemo(() => qrPassSelection(visits, now), [visits, now]);
+
   // Automatic selection (no explicit visit passed in): the nearest confirmed
-  // visit today or later. 'none' = visits loaded, nothing eligible;
-  // 'pending' = list still loading; 'fallback' = list failed to load, so keep
-  // the previous behaviour of asking the backend for the upcoming visit.
+  // visit today or later. 'later' = that visit is on a later date, so show
+  // its details without fetching a pass; 'none' = visits loaded, nothing
+  // eligible; 'pending' = list still loading; 'fallback' = list failed to
+  // load, so keep the previous behaviour of asking the backend for the
+  // upcoming visit.
   const autoSelection = useMemo(() => {
-    const qrVisit = pickQrVisit(visits);
-    if (qrVisit) return `visit:${qrVisit.id}`;
+    if (selection) return selection.passDay ? `visit:${selection.visit.id}` : 'later';
     if (visitsError) return 'fallback';
     if (visitsLoading) return 'pending';
     return 'none';
-  }, [visits, visitsError, visitsLoading]);
+  }, [selection, visitsError, visitsLoading]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [qrPayload, setQrPayload] = useState(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  // A fetched pass dated later than today ('fallback' path): its details only.
+  const [laterPass, setLaterPass] = useState(null);
   const hasLoadedOnce = useRef(false);
-
-  const applyExpiry = useCallback((expiresAt) => {
-    if (!expiresAt) {
-      setSecondsLeft(0);
-      return;
-    }
-    const exp = moment(expiresAt);
-    if (!exp.isValid()) {
-      setSecondsLeft(0);
-      return;
-    }
-    setSecondsLeft(Math.max(0, exp.diff(moment(), 'seconds')));
-  }, []);
 
   const load = useCallback(
     async (mode = 'initial') => {
@@ -224,9 +222,10 @@ export default function QRCodeScreen({ route, navigation }) {
       if (requestedId == null) {
         // Wait for the visits list; the effect reruns once it settles.
         if (autoSelection === 'pending') return;
-        if (autoSelection === 'none') {
+        if (autoSelection === 'none' || autoSelection === 'later') {
           setQrPayload(null);
-          setError(NO_ACTIVE_QR_MESSAGE);
+          setLaterPass(null);
+          setError(autoSelection === 'none' ? NO_ACTIVE_QR_MESSAGE : null);
           setLoading(false);
           return;
         }
@@ -240,6 +239,7 @@ export default function QRCodeScreen({ route, navigation }) {
       else {
         setLoading(true);
         setError(null);
+        setLaterPass(null);
       }
       try {
         const sid = await resolveScheduleIdForQr(requestedId);
@@ -250,8 +250,14 @@ export default function QRCodeScreen({ route, navigation }) {
         if (!normalized.qrToken) {
           throw new Error('Invalid response: missing QR token.');
         }
+        if (!normalized.checkedIn && normalized.scheduledAt && !isQrPassDay(normalized)) {
+          setQrPayload(null);
+          setLaterPass(normalized);
+          setError(null);
+          return;
+        }
+        setLaterPass(null);
         setQrPayload(normalized);
-        applyExpiry(normalized.expiresAt);
         setError(null);
         hasLoadedOnce.current = true;
       } catch (e) {
@@ -266,7 +272,7 @@ export default function QRCodeScreen({ route, navigation }) {
         else setLoading(false);
       }
     },
-    [scheduleIdParam, autoSelection, applyExpiry],
+    [scheduleIdParam, autoSelection],
   );
 
   useEffect(() => {
@@ -274,18 +280,8 @@ export default function QRCodeScreen({ route, navigation }) {
     load('initial');
   }, [scheduleIdParam, autoSelection, load]);
 
-  useEffect(() => {
-    if (!qrPayload?.expiresAt) return undefined;
-    const tick = () => {
-      const exp = moment(qrPayload.expiresAt);
-      if (!exp.isValid()) return;
-      setSecondsLeft(Math.max(0, exp.diff(moment(), 'seconds')));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [qrPayload?.expiresAt]);
-
+  // Picks up check-in / check-out at the gate; the token itself stays the
+  // same for the whole visit day.
   useEffect(() => {
     if (!qrPayload?.qrToken || loading) return undefined;
     const id = setInterval(() => {
@@ -294,12 +290,23 @@ export default function QRCodeScreen({ route, navigation }) {
     return () => clearInterval(id);
   }, [qrPayload?.qrToken, loading, load]);
 
-  const countdownDisplay = formatCountdown(secondsLeft);
   const checkedIn = qrPayload?.checkedIn === true;
-  const isExpired = !checkedIn && secondsLeft <= 0 && Boolean(qrPayload?.expiresAt);
+  const validUntil = passValidUntilTime(qrPayload?.expiresAt);
+  const isExpired = !checkedIn && isPassExpired(qrPayload?.expiresAt, now);
   const tabBarInset = useTabBarScrollInset();
   const showNoActivePass = !loading && !qrPayload && isNoActiveQrPassError(error);
   const passStatus = getPassStatus(isExpired, checkedIn);
+
+  // Confirmed visit on a later date: its details, no pass yet.
+  const laterVisit =
+    scheduleIdParam == null && selection && !selection.passDay ? selection.visit : null;
+  const later = laterVisit
+    ? {
+        dateDisplay: laterVisit.dateDisplay || formatDate(laterVisit.scheduledAt),
+        timeLabel: visitTimeText(laterVisit),
+        pdlName: laterVisit.pdlName || '—',
+      }
+    : laterPass;
 
   const onViewMyVisits = useCallback(() => {
     navigation.navigate('Schedule');
@@ -344,6 +351,20 @@ export default function QRCodeScreen({ route, navigation }) {
             <ActivityIndicator size="large" color={colors.primaryTeal} />
             <Text style={styles.loadingText}>Loading visit pass…</Text>
           </View>
+        ) : later ? (
+          <EmptyState
+            title="Visit Confirmed"
+            message={`${later.dateDisplay} · ${later.timeLabel}\n${later.pdlName}\n\nYour QR pass will appear here on the day of your visit.`}
+            iconName="calendar-outline"
+            iconColor={colors.primaryTeal}
+            style={styles.centerBlock}
+          >
+            <Button
+              title="View My Visits"
+              onPress={onViewMyVisits}
+              accessibilityLabel="View my assigned visits"
+            />
+          </EmptyState>
         ) : showNoActivePass ? (
           <EmptyState
             title="No Active QR Pass"
@@ -381,19 +402,19 @@ export default function QRCodeScreen({ route, navigation }) {
             <Card style={styles.passCard}>
               <PassStatusBanner status={passStatus} />
 
-              {checkedIn ? null : (
+              {checkedIn || !validUntil ? null : (
                 <View style={styles.expiryRow}>
                   <Ionicons
                     name="time-outline"
                     size={16}
                     color={isExpired ? colors.warning : colors.textSecondary}
                   />
-                  <Text style={styles.expiryLabel}>Expires in</Text>
+                  <Text style={styles.expiryLabel}>Valid until</Text>
                   <Text
                     style={[styles.countdown, isExpired && styles.countdownExpired]}
-                    accessibilityLabel={`Expires in ${countdownDisplay}`}
+                    accessibilityLabel={`Valid until ${validUntil}`}
                   >
-                    {isExpired ? '00:00:00' : countdownDisplay}
+                    {validUntil}
                   </Text>
                 </View>
               )}

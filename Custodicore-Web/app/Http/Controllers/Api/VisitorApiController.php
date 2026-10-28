@@ -223,14 +223,25 @@ class VisitorApiController extends Controller
             ], 409);
         }
 
-        $expiryMinutes = (int) \App\Models\SystemSetting::value('qr.expiry_minutes', '180');
-
-        // Reuse an existing active, non-expired token; otherwise generate/refresh.
+        // One token for the whole visit day, valid until the visit's last
+        // session ends; not re-issued once that has passed.
         $existing = $visitRequest->qrCode;
-        if ($checkedIn || ($existing && $existing->isValid())) {
+        $validUntil = QrCode::validUntil($visitRequest);
+        if ($checkedIn) {
             $qr = $existing;
+        } elseif ($validUntil->isPast()) {
+            return response()->json([
+                'message' => 'A QR pass is not available for this visit.',
+                'status' => 'expired',
+            ], 409);
+        } elseif ($existing && $existing->isValid()) {
+            $qr = $existing;
+            // A pass issued under an older expiry keeps its token.
+            if (! $qr->expires_at?->equalTo($validUntil)) {
+                $qr->update(['expires_at' => $validUntil]);
+            }
         } else {
-            $qr = QrCode::generateFor($visitRequest, $expiryMinutes);
+            $qr = QrCode::generateFor($visitRequest);
         }
 
         $window = $this->visitWindow($visitRequest);

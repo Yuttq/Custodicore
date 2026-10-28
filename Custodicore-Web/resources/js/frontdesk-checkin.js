@@ -1,5 +1,13 @@
 import { Html5Qrcode } from "html5-qrcode";
 
+// Front Desk verification is online only. When no answer comes back from the
+// server, nothing was verified or recorded, so nobody is admitted.
+function serverUnreachable() {
+    throw new Error(
+        "Could not reach the server, so the QR code was not verified and nothing was recorded. Check the connection and try again."
+    );
+}
+
 function initializeFrontDeskScanner() {
 
     /*
@@ -1439,11 +1447,11 @@ function initializeFrontDeskScanner() {
                                     "checkin",
                             }),
                     }
-                );
+                ).catch(serverUnreachable);
 
 
             const data =
-                await response.json();
+                await response.json().catch(() => ({}));
 
 
             if (
@@ -1782,11 +1790,11 @@ function initializeFrontDeskScanner() {
                                     "checkout",
                             }),
                     }
-                );
+                ).catch(serverUnreachable);
 
 
             const data =
-                await response.json();
+                await response.json().catch(() => ({}));
 
 
             if (
@@ -3351,11 +3359,11 @@ function initializeFrontDeskScanner() {
                                             : null,
                                 }),
                         }
-                    );
+                    ).catch(serverUnreachable);
 
 
                 const data =
-                    await response.json();
+                    await response.json().catch(() => ({}));
 
 
                 if (

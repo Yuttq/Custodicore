@@ -3,9 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isPassExpired,
+  isQrPassDay,
   isUpcomingVisit,
   pickNextVisit,
+  passValidUntilTime,
   pickQrVisit,
+  qrPassSelection,
   visitSessionsText,
   visitTimeText,
 } from './activeVisits.js';
@@ -140,4 +144,62 @@ test('a single-session visit keeps its own time line', () => {
   assert.equal(visitTimeText(single), '13:00 - 16:30');
   assert.equal(visitSessionsText(single.sessions), null);
   assert.equal(visitTimeText(null), '');
+});
+
+test('qrPassSelection hides the pass of a confirmed future visit', () => {
+  const future = visit(1, 'confirmed', '2026-10-10');
+  assert.deepEqual(qrPassSelection([future], NOW), { visit: future, passDay: false });
+});
+
+test('qrPassSelection shows the pass of a confirmed visit dated today (Manila)', () => {
+  const today = visit(1, 'confirmed', '2026-10-08', '09:00');
+  const later = visit(2, 'confirmed', '2026-10-10');
+  assert.deepEqual(qrPassSelection([later, today], NOW), { visit: today, passDay: true });
+});
+
+test('qrPassSelection shows no pass for ineligible statuses', () => {
+  for (const status of ['assigned', 'pending_confirmation', 'declined', 'cancelled', 'completed', 'no_show']) {
+    assert.equal(qrPassSelection([visit(1, status, '2026-10-08')], NOW), null, status);
+  }
+  assert.equal(qrPassSelection([visit(1, 'confirmed', '2026-10-07')], NOW), null);
+});
+
+test('isQrPassDay flips at Manila midnight, not UTC midnight', () => {
+  const oct9 = visit(1, 'confirmed', '2026-10-09');
+  // 23:59:59 Oct 8 in Manila (15:59:59Z): still hidden.
+  assert.equal(isQrPassDay(oct9, new Date('2026-10-08T15:59:59Z')), false);
+  // 00:00 Oct 9 in Manila (16:00Z, still Oct 8 in UTC): shown.
+  assert.equal(isQrPassDay(oct9, new Date('2026-10-08T16:00:00Z')), true);
+  // 23:59 Oct 9 in Manila: still shown; 00:00 Oct 10: gone.
+  assert.equal(isQrPassDay(oct9, new Date('2026-10-09T15:59:00Z')), true);
+  assert.equal(isQrPassDay(oct9, new Date('2026-10-09T16:00:00Z')), false);
+});
+
+test('isQrPassDay keeps a whole-day visit shown for both sessions', () => {
+  const wholeDay = { ...visit(1, 'confirmed', '2026-10-08', '09:00'), isWholeDay: true };
+  assert.equal(isQrPassDay(wholeDay, new Date('2026-10-08T01:00:00Z')), true); // 09:00 morning
+  assert.equal(isQrPassDay(wholeDay, new Date('2026-10-08T04:00:00Z')), true); // 12:00 midday break
+  assert.equal(isQrPassDay(wholeDay, new Date('2026-10-08T07:00:00Z')), true); // 15:00 afternoon
+});
+
+test('isQrPassDay is false without a visit date', () => {
+  assert.equal(isQrPassDay({ scheduledAt: null }, NOW), false);
+  assert.equal(isQrPassDay(null, NOW), false);
+});
+
+test('passValidUntilTime reads the Manila end time whatever the phone timezone', () => {
+  assert.equal(passValidUntilTime('2026-10-09T16:30:00+08:00'), '16:30');
+  assert.equal(passValidUntilTime('2026-10-09T11:30:00+08:00'), '11:30');
+  assert.equal(passValidUntilTime(null), null);
+  assert.equal(passValidUntilTime(''), null);
+});
+
+test('isPassExpired: a pass valid until 16:30 is not expired hours after it was issued', () => {
+  const expiresAt = '2026-10-09T16:30:00+08:00';
+  // Issued 08:00, still valid at 13:30 (5.5 h later) and 16:29.
+  assert.equal(isPassExpired(expiresAt, new Date('2026-10-09T05:30:00Z')), false);
+  assert.equal(isPassExpired(expiresAt, new Date('2026-10-09T08:29:00Z')), false);
+  // 16:30 Manila and later: expired.
+  assert.equal(isPassExpired(expiresAt, new Date('2026-10-09T08:30:00Z')), true);
+  assert.equal(isPassExpired(null, NOW), false);
 });

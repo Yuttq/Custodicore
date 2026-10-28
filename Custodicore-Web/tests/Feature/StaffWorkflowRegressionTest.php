@@ -125,7 +125,7 @@ class StaffWorkflowRegressionTest extends TestCase
         $qr = QrCode::where('visit_request_id', $visit->visit_request_id)->firstOrFail();
         $this->assertSame('used', $qr->status);
 
-        // Past the 180-minute expiry, still inside: the app gets the same
+        // Hours later, still inside: the app gets the same
         // pass back, and the QR row is left as it was.
         $this->travel(181)->minutes();
 

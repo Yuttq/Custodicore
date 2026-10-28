@@ -42,7 +42,7 @@ const FAQS = [
   {
     question: 'How do I use the QR pass at check-in?',
     answer:
-      'Your QR pass appears in the QR Pass tab once you have a confirmed visit. At the facility, show the QR code together with your valid ID. The pass is valid only for your visit window; once it is no longer valid, the app says so.',
+      'Your QR pass appears in the QR Pass tab on the day of your confirmed visit. At the facility, show the QR code together with your valid ID. The pass is valid only for your visit window; once it is no longer valid, the app says so.',
   },
 ];
 

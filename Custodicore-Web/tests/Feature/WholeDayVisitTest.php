@@ -410,7 +410,7 @@ class WholeDayVisitTest extends TestCase
         $this->assertNull($steps['visit_completed']['occurredAt']);
     }
 
-    public function test_refreshing_the_qr_does_not_move_the_timeline_qr_generated_event(): void
+    public function test_the_qr_is_not_rotated_during_the_visit_day(): void
     {
         $visit = $this->confirmedVisit();
         $this->at('08:45');
@@ -422,15 +422,14 @@ class WholeDayVisitTest extends TestCase
         $this->at('11:30');
         $this->checkOut($this->activeCheckin($visit))->assertRedirect();
 
-        // The 08:45 token has passed qr.expiry_minutes (180); the app fetches a fresh one.
+        // Over three hours later the app gets the same pass back.
         $this->at('12:30');
         $afternoonToken = $this->qrToken($visit);
-        $this->assertNotSame($morningToken, $afternoonToken, 'The token is still rotated.');
+        $this->assertSame($morningToken, $afternoonToken, 'One token for the whole visit day.');
 
         $qr = QrCode::where('visit_request_id', $visit->visit_request_id)->sole();
-        $this->assertSame($afternoonToken, $qr->qr_token);
         $this->assertSame('active', $qr->status);
-        $this->assertTrue($qr->expires_at->equalTo(now()->addMinutes(180)), 'The refreshed token gets a new expiry.');
+        $this->assertSame('2026-10-09 16:30:00', $qr->expires_at->format('Y-m-d H:i:s'), 'Valid until the afternoon session ends.');
         $this->assertSame($issuedAt, $qr->generated_at->toIso8601String());
 
         $steps = collect($this->getJson("/api/schedules/{$visit->visit_request_id}/timeline")->assertOk()->json('steps'))->keyBy('id');
@@ -471,7 +470,7 @@ class WholeDayVisitTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
 
-        // The 09:30 token has passed qr.expiry_minutes (180); the app fetches a fresh one.
+        // The app hands out the same 09:30 token; it is valid until 16:30.
         $this->at('12:59');
         $token = $this->qrToken($visit);
         $this->scan($token)
@@ -502,7 +501,7 @@ class WholeDayVisitTest extends TestCase
         $this->checkIn($token)->assertStatus(422);
         $this->assertSame(0, VisitCheckin::count());
 
-        // The 09:30 token has passed qr.expiry_minutes (180); the app fetches a fresh one.
+        // The app hands out the same 09:30 token; it is valid until 16:30.
         $this->at('12:59');
         $token = $this->qrToken($visit);
         $this->scan($token)
@@ -526,7 +525,8 @@ class WholeDayVisitTest extends TestCase
         $this->at('13:00');
         $this->scan($token)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'This visit\'s session has already ended for today.');
+            // The pass is valid until the session ends (11:30).
+            ->assertJsonPath('message', 'This QR code has expired.');
         $this->assertSame(0, VisitCheckin::count());
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -40,20 +41,33 @@ class QrCode extends Model
     }
 
     /**
-     * Generate (or re-generate) the gate QR for a visit request. Expiry
-     * defaults to 180 minutes — matches the `qr.expiry_minutes` system
-     * setting seeded in DatabaseSeeder; pass the real setting value in
-     * once SystemSetting lookups are wired into a request cycle that has
-     * access to it, if this ever needs to move off the hardcoded default.
+     * When a visit's pass stops being valid: the end of the visit's last
+     * session on its date (Manila time) — 11:30 for a morning visit, 16:30
+     * for an afternoon or whole-day one. The gate still checks the date,
+     * the session and the visit status on every scan.
      */
-    public static function generateFor(VisitRequest $visitRequest, int $expiryMinutes = 180): self
+    public static function validUntil(VisitRequest $visitRequest): Carbon
+    {
+        $last = $visitRequest->sessionSchedules()->get()->last() ?? $visitRequest->schedule;
+
+        // No schedule: the gate refuses the visit anyway.
+        return $last
+            ? Carbon::parse($last->schedule_date->toDateString().' '.$last->time_slot_end)
+            : now()->endOfDay();
+    }
+
+    /**
+     * Generate (or re-generate) the gate QR for a visit request, valid
+     * until the end of the visit (see validUntil).
+     */
+    public static function generateFor(VisitRequest $visitRequest): self
     {
         // A visit request has at most one QR (unique visit_request_id) —
         // re-generating replaces rather than duplicates.
         $qr = self::firstOrNew(['visit_request_id' => $visitRequest->visit_request_id]);
         $qr->fill([
             'qr_token' => Str::random(64),
-            'expires_at' => now()->addMinutes($expiryMinutes),
+            'expires_at' => self::validUntil($visitRequest),
             'status' => 'active',
         ]);
 
