@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\FacilityVisitationRule;
 use App\Models\QrCode;
+use App\Models\StaffProfile;
+use App\Models\SystemSetting;
 use App\Models\VisitCheckin;
 use App\Models\VisitorId;
 use App\Models\VisitRequest;
@@ -283,5 +285,23 @@ class QrPassValidityTest extends TestCase
         $this->scan(str_repeat('x', 64))->assertNotFound()->assertJsonPath('success', false);
         $this->checkIn(str_repeat('x', 64))->assertNotFound()->assertJsonPath('success', false);
         $this->assertSame(0, VisitCheckin::count());
+    }
+
+    public function test_the_unused_qr_expiry_setting_is_hidden_from_front_desk_but_kept(): void
+    {
+        SystemSetting::create([
+            'setting_key' => 'qr.expiry_minutes',
+            'setting_value' => '180',
+            'updated_by' => StaffProfile::first()->staff_id,
+        ]);
+
+        $this->actingAs($this->frontDeskAccount, 'web');
+        $this->get('/front-desk/settings')
+            ->assertOk()
+            ->assertDontSee('qr.expiry_minutes')
+            ->assertDontSee('Minutes a generated QR code stays valid')
+            ->assertSee('visit.confirmation_window_hours');
+
+        $this->assertSame('180', SystemSetting::value('qr.expiry_minutes'));
     }
 }
