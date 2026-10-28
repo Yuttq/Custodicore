@@ -16,6 +16,9 @@ return [
     'previous_keys' => [
         ...array_filter(explode(',', (string) env('APP_PREVIOUS_KEYS', ''))),
     ],
+    // Password for every DatabaseSeeder account. Required in production;
+    // local/testing fall back to "password".
+    'seed_password' => env('SEED_PASSWORD'),
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),

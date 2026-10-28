@@ -42,12 +42,24 @@ use Illuminate\Support\Str;
  * those controllers from fake session data to real Eloquent queries (see
  * that rewrite) doesn't change what's on screen, just where it comes from.
  *
- * Default password for every seeded account: "password"
+ * Password for every seeded account: SEED_PASSWORD from .env. Outside
+ * production it defaults to "password"; in production it must be set.
  */
 class DatabaseSeeder extends Seeder
 {
+    private string $passwordHash;
+
     public function run(): void
     {
+        $password = config('app.seed_password');
+        if (! $password) {
+            if (app()->isProduction()) {
+                throw new \RuntimeException('Set SEED_PASSWORD in .env before seeding in production.');
+            }
+            $password = 'password';
+        }
+        $this->passwordHash = Hash::make($password);
+
         $roles = $this->seedRoles();
         $modules = $this->seedModules();
         $this->seedRolePermissions($roles, $modules);
@@ -196,7 +208,7 @@ class DatabaseSeeder extends Seeder
                 [
                     'role_id' => $roles[$roleName]->role_id,
                     'username' => $username,
-                    'password_hash' => Hash::make('password'),
+                    'password_hash' => $this->passwordHash,
                     'status' => $status,
                 ]
             );
@@ -240,7 +252,7 @@ class DatabaseSeeder extends Seeder
                 [
                     'role_id' => $roles['Visitor']->role_id,
                     'username' => $username,
-                    'password_hash' => Hash::make('password'),
+                    'password_hash' => $this->passwordHash,
                     'status' => 'active',
                 ]
             );

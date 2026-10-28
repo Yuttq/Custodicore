@@ -86,7 +86,7 @@ All three dashboards require login now and are locked to their own role — a Fr
 | Record Officer | `r.salcedo@bjmp.gov.ph` or `g.manalo@bjmp.gov.ph` | `/dashboard` |
 | Front Desk Officer | `n.fernandez@bjmp.gov.ph` | `/front-desk` |
 
-Password for every seeded account is **`password`**. `j.reyes@bjmp.gov.ph` is seeded as *inactive* — useful for testing that the "account is inactive" message actually shows up.
+Password for every seeded account is **`password`** (or `SEED_PASSWORD` from `.env` if set — required on a production server). `j.reyes@bjmp.gov.ph` is seeded as *inactive* — useful for testing that the "account is inactive" message actually shows up.
 
 Visitor accounts (mobile app only, not the website): `maria.santos@example.com`, `carlo.ramos@example.com`, `liza.aquino@example.com`, `dante.cabrera@example.com`, `fe.lopez@example.com` — same password.
 
