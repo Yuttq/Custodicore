@@ -82,7 +82,7 @@
 
       @if ($flag = $visitor->longestActiveFlag())
         <div class="elig-note is-warn" style="margin:0 20px 14px;">
-          ⚑ {{ $flag->typeLabel() }}: {{ $flag->durationLabel() }}.
+          {{ $flag->typeLabel() }}: {{ $flag->durationLabel() }}.
           <a href="{{ route('visitor.show', $visitor->visitor_id) }}#flags" style="color:inherit;font-weight:700;">See flag</a>
         </div>
       @endif

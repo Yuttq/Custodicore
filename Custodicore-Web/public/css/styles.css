@@ -662,3 +662,18 @@ dialog.record-update form{padding:18px 20px;}
 .dorm-intent-note{margin-top:8px;padding:9px 12px;border-radius:10px;background:var(--amber-bg);color:var(--amber-text);font-size:12.5px;font-weight:600;}
 .dorm-card-intended{margin-top:6px;color:var(--muted);}
 html{scroll-behavior:smooth;}
+
+/* Cleaner table tags: inside tables the coloured pills become plain text with a small status dot
+   (the dot keeps the colour/meaning). Remove this block to get the coloured pills back. */
+table .badge.badge{background:none;padding:0;border-radius:0;color:var(--text);font-weight:600;gap:7px;}
+table .badge .dot{width:7px;height:7px;flex-shrink:0;}
+table .pill{background:none;padding:0;color:var(--muted);font-weight:600;}
+table .visit-never{background:none;padding:0;border-radius:0;color:var(--muted);font-weight:500;font-size:12.5px;}
+table .flag{background:none;border:none;padding:0;text-align:left;font-size:12.5px;font-weight:600;color:var(--amber-text);}
+
+/* Formal line icons (inline SVG, resources/views/partials/icon.blade.php) in place of emoji. */
+.icon-badge svg,.stat-icon svg{width:22px;height:22px;}
+.section-title .icon{display:inline-flex;align-items:center;}
+.section-title .icon svg{width:16px;height:16px;}
+.empty-icon svg{width:26px;height:26px;}
+

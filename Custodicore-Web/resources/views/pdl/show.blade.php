@@ -107,12 +107,12 @@
     @csrf
     @method('PUT')
 
-    <p class="section-title"><span class="icon">📷</span> Photo</p>
+    <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'camera'])</span> Photo</p>
     <div class="row">
       @include('pdl.partials.photo-field', ['pdl' => $pdl])
     </div>
 
-    <p class="section-title"><span class="icon">👤</span> Personal Details</p>
+    <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'user'])</span> Personal Details</p>
     @if ($pdl->first_name === null && $pdl->last_name === null)
       <p class="field-hint" style="margin:0 0 12px 0;">This record only has a full name on file. The name fields below are a best guess. Please check them before saving.</p>
     @endif
@@ -135,7 +135,7 @@
       <div class="field-m"><label>Date of Birth</label><input type="date" name="date_of_birth" value="{{ old('date_of_birth', optional($pdl->date_of_birth)->format('Y-m-d')) }}" required min="1900-01-02" max="{{ now()->subDay()->toDateString() }}"></div>
     </div>
 
-    <p class="section-title"><span class="icon">🏢</span> Custody Details</p>
+    <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'building'])</span> Custody Details</p>
     <div class="row cols-3">
       <div class="field-m">
         {{-- Drives the visiting-day rule (drug_related -> Thu/Sat, non_drug_related -> Fri/Sun).

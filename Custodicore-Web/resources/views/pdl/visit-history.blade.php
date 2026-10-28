@@ -44,7 +44,7 @@
 
   @if ($visitRequests->isEmpty())
     <div class="empty-state">
-      <div class="empty-icon">🕐</div>
+      <div class="empty-icon">@include('partials.icon', ['name' => 'clock'])</div>
       <div class="empty-title">No Registered Visits Found</div>
       <div class="empty-text">This PDL has not received any authorized visits since intake on {{ $pdl->admission_date->format('M d, Y') }}.</div>
     </div>

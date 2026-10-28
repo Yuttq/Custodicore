@@ -15,7 +15,7 @@
         data-confirm-title="Register PDL" data-confirm-ok="Register">
     @csrf
 
-    <p class="section-title"><span class="icon">👤</span> Personal Details</p>
+    <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'user'])</span> Personal Details</p>
     <div class="row">
       @include('pdl.partials.photo-field', ['required' => true])
     </div>
@@ -59,11 +59,11 @@
     </div>
 
     {{-- The case decides the classification (drug_related -> Thu/Sat visits, non_drug_related -> Fri/Sun). --}}
-    <p class="section-title" style="margin-top:26px;"><span class="icon">⚖️</span> Case Details</p>
+    <p class="section-title" style="margin-top:26px;"><span class="icon">@include('partials.icon', ['name' => 'scale'])</span> Case Details</p>
     @include('pdl.partials.case-fields', ['showClassification' => true])
     @include('pdl.partials.case-status-fields')
 
-    <p class="section-title" style="margin-top:26px;"><span class="icon">🏢</span> Custody Details</p>
+    <p class="section-title" style="margin-top:26px;"><span class="icon">@include('partials.icon', ['name' => 'building'])</span> Custody Details</p>
     <div class="row cols-2">
       <div class="field-m">
         <label>Admission Date</label>

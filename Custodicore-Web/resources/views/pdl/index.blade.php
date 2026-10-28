@@ -150,9 +150,9 @@
 </div>
 
 <div class="stat-strip">
-  <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">👥</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
-  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">⇄</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
-  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">⚠</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
-  <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">📋</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></a>
+  <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'users'])</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'transfer'])</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'user-minus'])</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
+  <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'unlock'])</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></a>
 </div>
 @endsection

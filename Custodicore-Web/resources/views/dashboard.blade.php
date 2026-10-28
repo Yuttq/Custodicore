@@ -28,28 +28,28 @@
 
 <section class="stats stats-5">
   <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">👥</div></div>
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'users'])</div></div>
     <div class="stat-label">Total PDLs</div>
     <div class="stat-value">{{ $stats['total_pdls'] }}</div>
     <div class="muted-cell">in custody now</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">⇄</div></div>
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'transfer'])</div></div>
     <div class="stat-label">Transferred</div>
     <div class="stat-value">{{ $stats['transferred'] }}</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">🔓</div></div>
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'unlock'])</div></div>
     <div class="stat-label">Released</div>
     <div class="stat-value">{{ $stats['released'] }}</div>
   </a>
   <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['visits' => 'never']) }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">🚫</div>@if($stats['no_visit_record'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'calendar-x'])</div>@if($stats['no_visit_record'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
     <div class="stat-label">No Visit Record</div>
     <div class="stat-value">{{ $stats['no_visit_record'] }}</div>
   </a>
   <a class="stat-card stat-link accent-teal" href="{{ route('eligibility.index') }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">📋</div>@if($stats['pending_visit_requests'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'clipboard'])</div>@if($stats['pending_visit_requests'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
     <div class="stat-label">Visit Requests Awaiting Review</div>
     <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
     <div class="muted-cell">open the Review Queue</div>
