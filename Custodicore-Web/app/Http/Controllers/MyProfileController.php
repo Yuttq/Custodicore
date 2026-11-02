@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\StaffProfile;
+use App\Services\Auth\StaffMfaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -25,14 +26,19 @@ class MyProfileController extends Controller
     private const PHOTO_RULES = ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:min_width=100,min_height=100'];
 
     /** GET account/profile */
-    public function show(): View
+    public function show(StaffMfaService $mfa): View
     {
         $account = auth()->user();
         $account->loadMissing(['staffProfile', 'role']);
 
+        $mfaEnabled = $mfa->isEnabled($account);
+
         return view('account.profile', [
             'account' => $account,
             'profile' => $account->staffProfile,
+            // Status only: the secret and the backup codes themselves never reach this page.
+            'mfaEnabled' => $mfaEnabled,
+            'backupCodesLeft' => $mfaEnabled ? $mfa->backupCodesLeft($account) : 0,
         ]);
     }
 

@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -46,6 +47,21 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(replace: [
             \Illuminate\Session\Middleware\StartSession::class => \App\Http\Middleware\StartSession::class,
         ]);
+
+        // Behind Azure: which proxies are trusted comes from TRUSTED_PROXIES
+        // (config/trustedproxy.php, read per request). From those, only the
+        // client IP, scheme and port are believed — not X-Forwarded-Host or
+        // -Prefix, so links (password reset, email verification) always use
+        // the real Host header, which App Service only accepts for bound domains.
+        $middleware->trustProxies(
+            headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO | Request::HEADER_X_FORWARDED_PORT
+        );
+
+        // Security headers on every response, web and API. Appended to the
+        // global stack: it runs inside TrustProxies (so isSecure() is right
+        // for HSTS) and CORS, and around sessions, auth and Sanctum, which
+        // are route middleware. It only adds response headers.
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

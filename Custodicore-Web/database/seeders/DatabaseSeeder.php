@@ -6,14 +6,11 @@ use App\Models\Account;
 use App\Models\CellBlock;
 use App\Models\AuditLog;
 use App\Models\EligibilityAssessment;
-use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Pdl;
 use App\Models\PdlLegalRecord;
 use App\Models\PdlRestriction;
 use App\Models\QrCode;
-use App\Models\Role;
-use App\Models\RolePermission;
 use App\Models\StaffProfile;
 use App\Models\SystemSetting;
 use App\Models\VisitCheckin;
@@ -42,8 +39,14 @@ use Illuminate\Support\Str;
  * those controllers from fake session data to real Eloquent queries (see
  * that rewrite) doesn't change what's on screen, just where it comes from.
  *
- * Password for every seeded account: SEED_PASSWORD from .env. Outside
- * production it defaults to "password"; in production it must be set.
+ * Reference data (roles, modules, permissions, base visiting rules) comes
+ * from ReferenceDataSeeder and is always seeded first. Everything else here
+ * is DEMO data with one shared password, so:
+ *   - production seeds reference data only, unless SEED_DEMO_DATA=true
+ *     (a demo server);
+ *   - the password is SEED_PASSWORD; only local and testing may fall back
+ *     to "password", every other environment must set SEED_PASSWORD.
+ * A real production Warden comes from `php artisan cc:create-first-warden`.
  */
 class DatabaseSeeder extends Seeder
 {
@@ -51,19 +54,24 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        $this->call(ReferenceDataSeeder::class);
+
+        if (app()->isProduction() && ! config('app.seed_demo_data')) {
+            $this->command?->info('Production: reference data only. Demo accounts are not seeded (set SEED_DEMO_DATA=true only on a demo server). Create the first Warden with `php artisan cc:create-first-warden`.');
+
+            return;
+        }
+
         $password = config('app.seed_password');
         if (! $password) {
-            if (app()->isProduction()) {
-                throw new \RuntimeException('Set SEED_PASSWORD in .env before seeding in production.');
+            if (! app()->environment('local', 'testing')) {
+                throw new \RuntimeException('Set SEED_PASSWORD in .env before seeding demo data outside local development.');
             }
             $password = 'password';
         }
         $this->passwordHash = Hash::make($password);
 
-        $roles = $this->seedRoles();
-        $modules = $this->seedModules();
-        $this->seedRolePermissions($roles, $modules);
-        $rules = $this->seedFacilityVisitationRules();
+        [$roles, $modules, $rules] = ReferenceDataSeeder::existing();
 
         [$staff, $staffAccounts] = $this->seedStaff($roles);
         [$visitors, $visitorAccounts] = $this->seedVisitors($roles, $staff);
@@ -80,111 +88,6 @@ class DatabaseSeeder extends Seeder
 
         $this->seedSystemSettings($staff);
         $this->seedSampleAuditTrail($staffAccounts, $modules, $pdls);
-    }
-
-    // -----------------------------------------------------------------
-    private function seedRoles(): array
-    {
-        $names = [
-            'System Administrator/Warden' => 'Full system access — the Warden dashboard.',
-            'Record Officer' => 'PDL, Visitor, Scheduling, Eligibility, Custody History and Visitation Tracking.',
-            'Front Desk Officer' => 'Gate operations — schedule lookup and QR check-in/out.',
-            'Visitor' => 'Mobile app only — own profile, own schedules and QR.',
-        ];
-
-        $roles = [];
-        foreach ($names as $name => $description) {
-            $roles[$name] = Role::firstOrCreate(['role_name' => $name], ['description' => $description]);
-        }
-
-        return $roles;
-    }
-
-    private function seedModules(): array
-    {
-        $names = [
-            Module::CODE_USER_MANAGEMENT => 'User Management',
-            Module::CODE_PDL_MANAGEMENT => 'PDL Management',
-            Module::CODE_VISITOR_MANAGEMENT => 'Visitor Management',
-            Module::CODE_VISIT_SCHEDULING => 'Visit Scheduling',
-            Module::CODE_CHECKIN_CHECKOUT => 'QR Check-In and Check-Out',
-            Module::CODE_ELIGIBILITY_ASSESSMENT => 'Visitor Eligibility Assessment',
-            Module::CODE_AUDIT_REPORTING => 'Audit Trail and Basic Reporting',
-            Module::CODE_CUSTODY_HISTORY => 'Custody History',
-            Module::CODE_VISITATION_TRACKING => 'Visitation Tracking',
-        ];
-
-        $modules = [];
-        foreach ($names as $code => $name) {
-            $modules[$code] = Module::firstOrCreate(['module_code' => $code], ['module_name' => $name]);
-        }
-
-        return $modules;
-    }
-
-    private function seedRolePermissions(array $roles, array $modules): void
-    {
-        // Warden: full view access everywhere, write access only on User
-        // Management — matches the Admin dashboard's deliberate read-only
-        // behavior everywhere except registering/editing officer accounts.
-        foreach ($modules as $code => $module) {
-            RolePermission::firstOrCreate(
-                ['role_id' => $roles['System Administrator/Warden']->role_id, 'module_id' => $module->module_id],
-                [
-                    'can_view' => true,
-                    'can_create' => $code === Module::CODE_USER_MANAGEMENT,
-                    'can_edit' => $code === Module::CODE_USER_MANAGEMENT,
-                    'can_delete' => false,
-                ]
-            );
-        }
-
-        $recordOfficerFull = [
-            Module::CODE_PDL_MANAGEMENT, Module::CODE_VISITOR_MANAGEMENT, Module::CODE_VISIT_SCHEDULING,
-            Module::CODE_ELIGIBILITY_ASSESSMENT, Module::CODE_CUSTODY_HISTORY, Module::CODE_VISITATION_TRACKING,
-        ];
-        foreach ($recordOfficerFull as $code) {
-            RolePermission::firstOrCreate(
-                ['role_id' => $roles['Record Officer']->role_id, 'module_id' => $modules[$code]->module_id],
-                ['can_view' => true, 'can_create' => true, 'can_edit' => true, 'can_delete' => false]
-            );
-        }
-        RolePermission::firstOrCreate(
-            ['role_id' => $roles['Record Officer']->role_id, 'module_id' => $modules[Module::CODE_AUDIT_REPORTING]->module_id],
-            ['can_view' => true, 'can_create' => false, 'can_edit' => false, 'can_delete' => false]
-        );
-
-        RolePermission::firstOrCreate(
-            ['role_id' => $roles['Front Desk Officer']->role_id, 'module_id' => $modules[Module::CODE_VISIT_SCHEDULING]->module_id],
-            ['can_view' => true, 'can_create' => false, 'can_edit' => false, 'can_delete' => false]
-        );
-        RolePermission::firstOrCreate(
-            ['role_id' => $roles['Front Desk Officer']->role_id, 'module_id' => $modules[Module::CODE_CHECKIN_CHECKOUT]->module_id],
-            ['can_view' => true, 'can_create' => true, 'can_edit' => true, 'can_delete' => false]
-        );
-    }
-
-    private function seedFacilityVisitationRules(): array
-    {
-        // section 3.4 of the brief: drug_related -> Thu/Sat, non_drug_related
-        // -> Fri/Sun; two slots each day; 30 visitors per slot.
-        $spec = [
-            ['drug_related', 'thu'], ['drug_related', 'sat'],
-            ['non_drug_related', 'fri'], ['non_drug_related', 'sun'],
-        ];
-        $slots = [['09:00:00', '11:30:00'], ['13:00:00', '16:30:00']];
-
-        $rules = [];
-        foreach ($spec as [$classification, $day]) {
-            foreach ($slots as [$start, $end]) {
-                $rules[] = FacilityVisitationRule::firstOrCreate(
-                    ['pdl_classification' => $classification, 'day_of_week' => $day, 'time_slot_start' => $start],
-                    ['time_slot_end' => $end, 'max_capacity' => 30, 'effective_from' => '2024-01-01']
-                );
-            }
-        }
-
-        return $rules;
     }
 
     // -----------------------------------------------------------------

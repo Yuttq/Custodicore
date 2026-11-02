@@ -102,6 +102,15 @@ return [
 
             'engine' => 'InnoDB',
 
+            // Session time zone, sent as SET time_zone on every connection.
+            // Columns defaulting to CURRENT_TIMESTAMP (useCurrent()) are filled
+            // by the database clock, and the app writes Asia/Manila times, so
+            // the session must be Philippine time too — a server left on UTC
+            // (Azure MySQL, a fresh Ubuntu install) would put them 8 hours off.
+            // Fixed offset on purpose: the Philippines has no daylight saving,
+            // and it needs no time zone tables loaded on the server.
+            'timezone' => '+08:00',
+
             /*
             |--------------------------------------------------------------------------
             | MySQL SSL Options

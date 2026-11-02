@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Services\Auth\StaffMfaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,7 +41,7 @@ class LoginController extends Controller
         return view('auth.login');
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, StaffMfaService $mfa): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'string'],
@@ -91,6 +92,15 @@ class LoginController extends Controller
         if ($account->status !== 'active') {
             return back()->withInput($request->only('email'))
                 ->withErrors(['email' => "This account is {$account->status}. Contact the Warden to restore access."]);
+        }
+
+        // Two-step verification: the password step is done, but no web
+        // session exists until the second proof is right (MfaController).
+        // Only a valid "trust this device" cookie skips straight to sign-in.
+        if ($mfa->gateApplies($account) && ! $mfa->trustedDeviceValid($request, $account)) {
+            $mfa->startPending($request, $account);
+
+            return redirect()->route('mfa.challenge');
         }
 
         if (! Auth::guard('web')->attempt(['account_id' => $account->account_id, 'password' => $credentials['password']])) {

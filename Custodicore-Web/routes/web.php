@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\VisitorController;
 
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\MfaController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\StaffSetupController;
 
@@ -42,6 +43,20 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:10,1,staff-login')->name('login.attempt');
+});
+
+/*
+| Staff two-step verification — the second step of the login above. The
+| officer is still a guest here: the session only holds `mfa_pending` until
+| the code is right. See App\Http\Controllers\Auth\MfaController.
+*/
+Route::middleware('guest')->prefix('login/mfa')->name('mfa.')->group(function () {
+    Route::get('/', [MfaController::class, 'challenge'])->name('challenge');
+    Route::post('/', [MfaController::class, 'verify'])->middleware('throttle:10,1,mfa-verify')->name('verify');
+    Route::post('/email', [MfaController::class, 'emailCode'])->middleware('throttle:6,1,mfa-email')->name('email');
+    Route::get('/setup', [MfaController::class, 'setup'])->name('setup');
+    Route::post('/setup', [MfaController::class, 'setupConfirm'])->middleware('throttle:10,1,mfa-setup')->name('setup.confirm');
+    Route::get('/cancel', [MfaController::class, 'cancel'])->name('cancel');
 });
 
 Route::post('/logout', [LoginController::class, 'logout'])
@@ -126,6 +141,13 @@ Route::prefix('account')
         Route::post('/profile/photo', [MyProfileController::class, 'update'])->name('photo.update');
         Route::delete('/profile/photo', [MyProfileController::class, 'destroy'])->name('photo.destroy');
         Route::get('/photo/{staff}', [MyProfileController::class, 'photo'])->name('photo.show');
+
+        // Two-step verification backup codes (shown once) and making new ones.
+        Route::get('/mfa/backup-codes', [MfaController::class, 'backupCodes'])->name('mfa.backup-codes');
+        Route::get('/mfa/continue', [MfaController::class, 'continue'])->name('mfa.continue');
+        Route::post('/mfa/regenerate', [MfaController::class, 'regenerate'])
+            ->middleware(['throttle:6,1,mfa-regenerate', 'reauth'])
+            ->name('mfa.regenerate');
     });
 
 // A visitor's own photo (taken in the mobile app): any staff role can view it

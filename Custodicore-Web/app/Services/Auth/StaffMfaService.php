@@ -288,9 +288,9 @@ class StaffMfaService
         try {
             Mail::to($to)->send(new StaffMfaCode($account, $code, $minutes));
         } catch (\Throwable $e) {
-            // Never log the code itself.
+            // Never the raw exception text: it can hold the code, the address or the SMTP sign-in name.
             Log::warning('Two-step verification email could not be sent for account #' . $account->getKey()
-                . ' (' . $e::class . '): ' . Str::limit(preg_replace('/\d{6}/', '[code]', $e->getMessage()), 200));
+                . ' (' . $e::class . '): ' . StaffInvitationService::explainMailFailure($e));
 
             return ['status' => 'failed', 'to' => $masked, 'problem' => 'the email could not be sent'];
         }

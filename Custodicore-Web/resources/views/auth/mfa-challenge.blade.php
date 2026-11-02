@@ -42,7 +42,7 @@
     </div>
 
     <p class="mt-lg text-center text-metadata text-text-secondary">
-        Lost your phone and your backup codes? Ask another Admin to reset your two-step verification.
+        Lost your phone and your backup codes? Ask the system administrator to reset your two-step verification.
     </p>
     <p class="mt-sm text-center text-metadata">
         <a href="{{ route('mfa.cancel') }}" class="text-primary-navy underline">Back to sign in</a>

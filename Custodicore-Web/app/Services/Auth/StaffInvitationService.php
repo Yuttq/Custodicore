@@ -6,6 +6,8 @@ use App\Mail\StaffAccountInvitation;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Module;
+use App\Models\Role;
+use App\Models\StaffProfile;
 use App\Services\SmsSender;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -49,6 +51,72 @@ class StaffInvitationService
     }
 
     /**
+     * Creates a staff account (Admin → Users, and cc:create-first-warden): a
+     * password nobody knows, `inactive` until the officer opens the setup link
+     * from send(). $data is StaffAccountRequest::validated().
+     */
+    public function createStaffAccount(array $data): Account
+    {
+        return DB::transaction(function () use ($data) {
+            $role = Role::where('role_name', $data['role_name'])->firstOrFail();
+
+            $account = Account::create([
+                'role_id' => $role->role_id,
+                // The officer's own email is also their sign-in email; the username is a
+                // suggestion they can change on the setup page (it must stay unique).
+                'username' => $this->uniqueUsername($data['personal_email']),
+                'email' => $data['personal_email'],
+                // Random and unknown to everyone: the officer chooses their own
+                // through the setup link, and the account stays inactive until then.
+                'password_hash' => self::unusablePasswordHash(),
+                'status' => 'inactive',
+            ]);
+
+            StaffProfile::create([
+                'account_id' => $account->account_id,
+                'employee_number' => $this->nextEmployeeNumber(),
+                'first_name' => $data['first_name'],
+                'middle_name' => $data['middle_name'] ?? null,
+                'last_name' => $data['last_name'],
+                'suffix' => $data['suffix'] ?? null,
+                'position' => $data['role_name'],
+                'contact_number' => $data['contact_number'],
+                'personal_email' => $data['personal_email'],
+                'assigned_facility' => 'BJMP Facility — Main',
+            ]);
+
+            return $account;
+        });
+    }
+
+    public function nextEmployeeNumber(): string
+    {
+        $maxId = StaffProfile::max('staff_id') ?? 0;
+
+        return 'EMP-' . str_pad((string) ($maxId + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    /** A free username from the part of the email before the "@", in the form the setup page accepts. */
+    private function uniqueUsername(string $email): string
+    {
+        // Setup page rule: 4-30 chars, lowercase letters / numbers / . - _, starting with a letter or number.
+        $base = preg_replace('/[^a-z0-9._-]/', '', mb_strtolower(Str::before($email, '@'))) ?? '';
+        $base = ltrim($base, '._-');
+        $base = Str::limit($base, 24, '');
+        if (strlen($base) < 4) {
+            $base .= 'staff';
+        }
+        $username = $base;
+        $suffix = 1;
+
+        while (Account::where('username', $username)->exists()) {
+            $username = $base . $suffix++;
+        }
+
+        return $username;
+    }
+
+    /**
      * Issues a fresh link (replacing any older one) and delivers it.
      *
      * @return array{email: bool, email_delivered: bool, email_problem: ?string, email_to: string, sms: string, url: string}
@@ -81,10 +149,10 @@ class StaffInvitationService
             $emailSent = false;
             $emailProblem = self::explainMailFailure($e);
 
-            // Logged without any link, so a log file never holds a usable setup link for a failed send.
-            $detail = preg_replace('#https?://\S+#i', '[url]', Str::limit($e->getMessage(), 300));
+            // Never the raw exception text: SMTP errors can carry the sign-in name, the
+            // recipient or the setup link. The class and a plain-English reason are enough.
             Log::warning('Staff setup email could not be sent for account #' . $account->account_id
-                . ' (' . $e::class . '): ' . $detail);
+                . ' (' . $e::class . '): ' . $emailProblem);
         }
 
         // 'log' / 'array' mailers accept the message but never deliver it.
@@ -124,20 +192,24 @@ class StaffInvitationService
         return in_array(config('mail.default'), ['log', 'array'], true);
     }
 
-    /** A plain-English reason for a failed send. Never repeats the raw exception text. */
-    private static function explainMailFailure(\Throwable $e): string
+    /**
+     * A plain-English reason for a failed send, safe to show staff and to log.
+     * Never repeats the raw exception text (it can hold the SMTP sign-in name,
+     * an address, a link or a code).
+     */
+    public static function explainMailFailure(\Throwable $e): string
     {
         $m = strtolower($e->getMessage());
 
         return match (true) {
             str_contains($m, '535') || str_contains($m, 'authenticat') || str_contains($m, 'username and password')
-                => 'the mail server rejected the login. Check MAIL_USERNAME and MAIL_PASSWORD (for Gmail, use an App Password)',
+                => 'the mail server rejected the login. Check MAIL_USERNAME and MAIL_PASSWORD (Gmail: an App Password; Azure Communication Services: the SMTP Username and a current Entra app client secret)',
             str_contains($m, 'could not be established') || str_contains($m, 'timed out') || str_contains($m, 'getaddrinfo')
                 || str_contains($m, 'connection refused') || str_contains($m, 'name or service')
                 => 'the mail server could not be reached. Check MAIL_HOST, MAIL_PORT and the internet connection',
             str_contains($m, '550') || str_contains($m, '553') || str_contains($m, '554') || str_contains($m, 'recipient')
                 => 'the mail server refused the recipient address',
-            default => 'an unexpected mail error happened. Details are in storage/logs/laravel.log',
+            default => 'an unexpected mail error happened. Run php artisan cc:mail-test on the server to see the full error',
         };
     }
 

@@ -38,8 +38,10 @@ return new class extends Migration
         DB::table('relationship_documents')->whereNull('relationship_id')->delete();
 
         Schema::table('relationship_documents', function (Blueprint $table) {
+            // MySQL backs the foreign key with this index, so the key goes first.
+            $table->dropForeign(['visitor_id']);
             $table->dropIndex(['visitor_id', 'requirement_key']);
-            $table->dropConstrainedForeignId('visitor_id');
+            $table->dropColumn('visitor_id');
             $table->unsignedBigInteger('relationship_id')->nullable(false)->change();
         });
     }

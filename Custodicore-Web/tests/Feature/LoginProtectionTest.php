@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\Support\PassesStaffMfa;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -13,10 +14,12 @@ use Tests\TestCase;
  * Group 1B: failed-login lockout (5 failures / 15 minutes per normalized
  * email-or-username + IP) for the visitor API login and the staff web
  * login, plus the staff route's per-IP throttle. Account details are only
- * revealed after the right password.
+ * revealed after the right password. The right staff password leads to the
+ * two-step verification step (StaffMfaTest), not straight to a session.
  */
 class LoginProtectionTest extends TestCase
 {
+    use PassesStaffMfa;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
@@ -147,8 +150,8 @@ class LoginProtectionTest extends TestCase
         }
 
         $this->staffLogin('unknown.user10', 'wrong-password')->assertStatus(429);
-        $this->staffLogin('r.salcedo', 'password', '10.0.0.2')->assertRedirect();
-        $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
+        $this->staffLogin('r.salcedo', 'password', '10.0.0.2')->assertRedirect(route('mfa.challenge'));
+        $this->assertWaitingForMfa($this->recordOfficerAccount);
     }
 
     public function test_wrong_password_and_unknown_account_get_the_same_generic_error(): void
@@ -191,25 +194,31 @@ class LoginProtectionTest extends TestCase
         $this->assertGuest('web');
 
         // A different IP has its own counter.
-        $this->staffLogin('r.salcedo', 'password', '10.0.0.2')->assertRedirect();
-        $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
+        $this->staffLogin('r.salcedo', 'password', '10.0.0.2')->assertRedirect(route('mfa.challenge'));
+        $this->assertWaitingForMfa($this->recordOfficerAccount);
     }
 
     public function test_successful_staff_login_clears_the_counter(): void
     {
+        $this->enrollStaffMfa($this->recordOfficerAccount);
+
         for ($i = 0; $i < 4; $i++) {
             $this->staffLogin('r.salcedo', 'wrong-password');
         }
 
-        $this->staffLogin('r.salcedo', 'password')->assertRedirect();
+        $this->staffLogin('r.salcedo', 'password')->assertRedirect(route('mfa.challenge'));
+        $this->assertWaitingForMfa($this->recordOfficerAccount);
+        $this->passMfaChallenge($this->recordOfficerAccount)->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
         $this->assertNotNull($this->recordOfficerAccount->fresh()->last_login_at);
 
+        // Four more failures after the right password do not lock: the counter was cleared.
         $this->post('/logout');
         for ($i = 0; $i < 4; $i++) {
             $this->staffLogin('r.salcedo', 'wrong-password');
         }
-        $this->staffLogin('r.salcedo', 'password')->assertRedirect();
+        $this->staffLogin('r.salcedo', 'password')->assertRedirect(route('mfa.challenge'));
+        $this->passMfaChallenge($this->recordOfficerAccount)->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
     }
 
@@ -242,7 +251,11 @@ class LoginProtectionTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->staffLogin('admin.warden@bjmp.gov.ph', 'password')->assertRedirect(route('admin.dashboard'));
+        $this->enrollStaffMfa($warden);
+
+        $this->staffLogin('admin.warden@bjmp.gov.ph', 'password')->assertRedirect(route('mfa.challenge'));
+        $this->assertWaitingForMfa($warden);
+        $this->passMfaChallenge($warden)->assertRedirect(route('admin.dashboard'));
         $this->assertAuthenticatedAs($warden, 'web');
     }
 }

@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class AdminDashboardTest extends TestCase
@@ -35,7 +36,6 @@ class AdminDashboardTest extends TestCase
             'admin.users.index',
             'admin.pdls.index',
             'admin.visitors.index',
-            'admin.schedules.index',
             'admin.checkins.index',
             'admin.audit.index',
             'admin.settings.index',
@@ -43,5 +43,8 @@ class AdminDashboardTest extends TestCase
             $response = $this->get(route($routeName));
             $response->assertOk();
         }
+
+        // The Admin schedules page was removed on purpose and must stay gone.
+        $this->assertFalse(Route::has('admin.schedules.index'));
     }
 }

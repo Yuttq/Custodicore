@@ -44,7 +44,7 @@ class Account extends Authenticatable
     // google_id (verified Google `sub`, see the 2026_10_05 migration) is
     // deliberately NOT fillable: it must only ever be set explicitly from a
     // server-verified Google ID token, never mass-assigned from request data.
-    protected $hidden = ['password_hash', 'google_id', 'invitation_token_hash'];
+    protected $hidden = ['password_hash', 'google_id', 'invitation_token_hash', 'mfa_secret', 'mfa_backup_codes'];
 
     // invitation_* and password_set_at are deliberately NOT fillable either:
     // only App\Services\Auth\StaffInvitationService sets them.

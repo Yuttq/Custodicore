@@ -1,16 +1,21 @@
 import { Platform, TurboModuleRegistry } from 'react-native';
 
+import { normalizeGoogleClientId } from '../utils/apiBaseUrl';
+
 /**
  * Authentication configuration — client IDs and feature flags.
- * Set via Expo public env vars (no secrets in the mobile app except client IDs).
+ * Set via Expo public env vars (no secrets in the mobile app except client IDs):
+ * `.env` in development, EAS environment variables for preview / production builds.
  *
  * `webClientId` is the Google Cloud **Web** OAuth client ID. Native Google
  * Sign-In requests ID tokens for this audience, so the backend's
- * GOOGLE_CLIENT_IDS must contain the same value.
+ * GOOGLE_CLIENT_IDS must contain the same value. Empty when unset, which
+ * hides the Google button.
  */
 export const authConfig = {
   google: {
-    webClientId: String(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '').trim(),
+    // Static `process.env.EXPO_PUBLIC_*` access: Expo only inlines that exact form at build time.
+    webClientId: normalizeGoogleClientId(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID),
   },
 };
 

@@ -16,9 +16,15 @@ return [
     'previous_keys' => [
         ...array_filter(explode(',', (string) env('APP_PREVIOUS_KEYS', ''))),
     ],
-    // Password for every DatabaseSeeder account. Required in production;
-    // local/testing fall back to "password".
+    // Password for every DatabaseSeeder demo account. Only local/testing fall
+    // back to "password"; every other environment must set it.
     'seed_password' => env('SEED_PASSWORD'),
+    // Production seeds reference data only; true also adds the demo accounts
+    // and records (a demo server, never a real facility).
+    'seed_demo_data' => (bool) env('SEED_DEMO_DATA', false),
+    // Strict-Transport-Security max-age in seconds; 0 = off. Sent on HTTPS
+    // requests only (App\Http\Middleware\SecurityHeaders).
+    'hsts_max_age' => (int) env('HSTS_MAX_AGE', 0),
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),

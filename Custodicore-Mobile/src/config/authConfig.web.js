@@ -7,9 +7,11 @@
  * the browser, so the backend's GOOGLE_CLIENT_IDS already accepts them. The
  * page's origin must be listed under the client's Authorized JavaScript origins.
  */
+import { normalizeGoogleClientId } from '../utils/apiBaseUrl';
+
 export const authConfig = {
   google: {
-    webClientId: String(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '').trim(),
+    webClientId: normalizeGoogleClientId(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID),
   },
 };
 

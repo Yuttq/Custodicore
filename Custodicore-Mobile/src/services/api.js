@@ -2,23 +2,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { isAxiosError } from 'axios';
 import { Platform } from 'react-native';
 
+import {
+  SERVER_NOT_CONFIGURED_CODE,
+  SERVER_NOT_CONFIGURED_MESSAGE,
+  resolveApiBaseUrl,
+} from '../utils/apiBaseUrl';
+
 /**
  * Visitor API base URL.
- * Set `EXPO_PUBLIC_API_URL` in `.env` to `http://YOUR-PC-LAN-IP:8000/api` (no trailing slash).
+ * Development: set `EXPO_PUBLIC_API_URL` in `.env` to `http://YOUR-PC-LAN-IP:8000/api` (no trailing slash).
+ * EAS preview / production builds: set it as an EAS environment variable for the
+ * build profile's environment (see eas.json); `.env` is not uploaded to EAS. It must be https.
  * The web build uses `EXPO_PUBLIC_WEB_API_URL` when set; otherwise `EXPO_PUBLIC_API_URL`
  * with the Android-emulator-only host `10.0.2.2` swapped for `127.0.0.1`, which a
  * browser on the same computer can reach.
  * Paths below are relative to that base (e.g. `/auth/login` → `…/api/auth/login`).
+ *
+ * Without a usable URL every request fails with SERVER_NOT_CONFIGURED_MESSAGE
+ * instead of being sent anywhere.
  */
-const NATIVE_API_URL =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL) ||
-  'https://api.custodicore.placeholder';
+// Static `process.env.EXPO_PUBLIC_*` access: Expo only inlines that exact form at build time.
+const API_CONFIG = resolveApiBaseUrl({
+  nativeUrl: process.env.EXPO_PUBLIC_API_URL,
+  webUrl: process.env.EXPO_PUBLIC_WEB_API_URL,
+  platform: Platform.OS,
+  isRelease: !__DEV__,
+});
 
-const WEB_API_URL =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_WEB_API_URL) ||
-  NATIVE_API_URL.replace('://10.0.2.2', '://127.0.0.1');
+const BASE_URL = API_CONFIG.baseUrl ?? '';
 
-const BASE_URL = (Platform.OS === 'web' ? WEB_API_URL : NATIVE_API_URL).replace(/\/$/, '');
+if (API_CONFIG.problem) {
+  console.error(`CustodiCore API URL is ${API_CONFIG.problem}: check EXPO_PUBLIC_API_URL for this build.`);
+}
 
 export const TOKEN_KEY = '@custodicore/auth_token';
 
@@ -35,8 +50,16 @@ const client = axios.create({
   validateStatus: (status) => status >= 200 && status < 300,
 });
 
-/** Attaches `Authorization: Bearer <token>` when a stored session exists. */
+/**
+ * Stops the request when the build has no usable API URL, and attaches
+ * `Authorization: Bearer <token>` when a stored session exists.
+ */
 client.interceptors.request.use(async (config) => {
+  if (!API_CONFIG.baseUrl) {
+    const err = new Error(SERVER_NOT_CONFIGURED_MESSAGE);
+    err.code = SERVER_NOT_CONFIGURED_CODE;
+    throw err;
+  }
   try {
     const token = await AsyncStorage.getItem(TOKEN_KEY);
     if (token) {

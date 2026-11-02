@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\PassesStaffMfa;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
@@ -30,6 +31,7 @@ use Tests\TestCase;
  */
 class DeactivatedAccountAccessTest extends TestCase
 {
+    use PassesStaffMfa;
     use RefreshDatabase;
     use SeedsVisitAssignmentFixtures;
 
@@ -190,9 +192,13 @@ class DeactivatedAccountAccessTest extends TestCase
         $this->post('/logout');
         $this->freshRequest();
 
+        // Signing in again still goes through two-step verification.
+        $this->enrollStaffMfa($this->recordOfficerAccount);
         $this->from('/login')
             ->post('/login', ['email' => 'r.salcedo@bjmp.gov.ph', 'password' => 'password'])
-            ->assertRedirect(route('dashboard'));
+            ->assertRedirect(route('mfa.challenge'));
+        $this->assertGuest('web');
+        $this->passMfaChallenge($this->recordOfficerAccount)->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($this->recordOfficerAccount->fresh(), 'web');
         $this->get('/dashboard')->assertOk();
     }

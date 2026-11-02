@@ -3,11 +3,16 @@
 namespace App\Providers;
 
 use App\Http\Middleware\StartSession;
+use App\Logging\RedactQueryBindings;
 use App\Services\Auth\GoogleIdTokenVerifier;
+use App\Support\MailDeliveryCheck;
 use Google\AccessToken\Verify;
 use GuzzleHttp\Client as GuzzleClient;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Session\SessionManager;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
@@ -46,5 +51,14 @@ class AppServiceProvider extends ServiceProvider
         Sanctum::authenticateAccessTokensUsing(
             fn (PersonalAccessToken $token, bool $isValid) => $isValid && $token->tokenable?->status === 'active'
         );
+
+        // Lets the log tap swap query values for ? placeholders when a failed
+        // query's message is logged as plain text (see RedactQueryBindings).
+        Event::listen(ConnectionEstablished::class, fn (ConnectionEstablished $event) => RedactQueryBindings::watch($event->connection));
+        foreach (DB::getConnections() as $connection) {
+            RedactQueryBindings::watch($connection);
+        }
+
+        MailDeliveryCheck::warnIfNotDelivering($this->app->isProduction());
     }
 }

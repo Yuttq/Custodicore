@@ -44,6 +44,9 @@ SEED_PASSWORD=$SEED_PASSWORD
 EOF
     umask 022
 fi
+# Root-only, also when the file was made by an earlier run.
+chown root:root "$CREDS_FILE"
+chmod 600 "$CREDS_FILE"
 
 # --- System packages --------------------------------------------------------
 step "Updating Ubuntu and installing packages (takes a few minutes)"
@@ -112,6 +115,8 @@ APP_TIMEZONE=Asia/Manila
 APP_URL=http://$DOMAIN
 
 SEED_PASSWORD=$SEED_PASSWORD
+# This Droplet is a DEMO server: production otherwise seeds reference data only.
+SEED_DEMO_DATA=true
 
 LOG_CHANNEL=stack
 LOG_STACK=daily
@@ -169,9 +174,6 @@ server {
     client_max_body_size 64M;
     server_tokens off;
 
-    add_header X-Frame-Options "SAMEORIGIN";
-    add_header X-Content-Type-Options "nosniff";
-
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
@@ -218,7 +220,6 @@ echo " CustodiCore is live:  $SCHEME://$DOMAIN"
 echo
 echo " Demo logins (fake data): a.domingo@bjmp.gov.ph (Warden),"
 echo " r.salcedo@bjmp.gov.ph, n.fernandez@bjmp.gov.ph, maria.santos@example.com"
-echo " Password for all of them: $SEED_PASSWORD"
-echo
-echo " Passwords are saved in $CREDS_FILE (root only)."
+echo " Their shared demo password is SEED_PASSWORD in $CREDS_FILE"
+echo " (root only; read it with: sudo cat $CREDS_FILE). It is not printed here."
 echo "============================================================"

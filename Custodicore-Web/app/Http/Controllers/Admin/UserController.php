@@ -92,36 +92,7 @@ class UserController extends Controller
     {
         $data = $request->validated();
 
-        $account = DB::transaction(function () use ($data) {
-            $role = Role::where('role_name', $data['role_name'])->firstOrFail();
-
-            $account = Account::create([
-                'role_id' => $role->role_id,
-                // The officer's own email is also their sign-in email; the username is a
-                // suggestion they can change on the setup page (it must stay unique).
-                'username' => $this->uniqueUsername($data['personal_email']),
-                'email' => $data['personal_email'],
-                // Random and unknown to everyone: the officer chooses their own
-                // through the setup link, and the account stays inactive until then.
-                'password_hash' => StaffInvitationService::unusablePasswordHash(),
-                'status' => 'inactive',
-            ]);
-
-            StaffProfile::create([
-                'account_id' => $account->account_id,
-                'employee_number' => $this->nextEmployeeNumber(),
-                'first_name' => $data['first_name'],
-                'middle_name' => $data['middle_name'] ?? null,
-                'last_name' => $data['last_name'],
-                'suffix' => $data['suffix'] ?? null,
-                'position' => $data['role_name'],
-                'contact_number' => $data['contact_number'],
-                'personal_email' => $data['personal_email'],
-                'assigned_facility' => 'BJMP Facility — Main',
-            ]);
-
-            return $account;
-        });
+        $account = $this->invitations->createStaffAccount($data);
 
         // Outside the transaction: a mail/SMS problem must not undo the account.
         $delivery = $this->deliverInvitation($account);
@@ -184,7 +155,7 @@ class UserController extends Controller
             } else {
                 StaffProfile::create($profile + [
                     'account_id' => $account->account_id,
-                    'employee_number' => $this->nextEmployeeNumber(),
+                    'employee_number' => $this->invitations->nextEmployeeNumber(),
                 ]);
             }
         });
@@ -380,32 +351,5 @@ class UserController extends Controller
                 ];
             })
             ->all();
-    }
-
-    private function nextEmployeeNumber(): string
-    {
-        $maxId = StaffProfile::max('staff_id') ?? 0;
-
-        return 'EMP-' . str_pad((string) ($maxId + 1), 3, '0', STR_PAD_LEFT);
-    }
-
-    /** A free username from the part of the email before the "@", in the form the setup page accepts. */
-    private function uniqueUsername(string $email): string
-    {
-        // Setup page rule: 4-30 chars, lowercase letters / numbers / . - _, starting with a letter or number.
-        $base = preg_replace('/[^a-z0-9._-]/', '', mb_strtolower(Str::before($email, '@'))) ?? '';
-        $base = ltrim($base, '._-');
-        $base = Str::limit($base, 24, '');
-        if (strlen($base) < 4) {
-            $base .= 'staff';
-        }
-        $username = $base;
-        $suffix = 1;
-
-        while (Account::where('username', $username)->exists()) {
-            $username = $base . $suffix++;
-        }
-
-        return $username;
     }
 }
