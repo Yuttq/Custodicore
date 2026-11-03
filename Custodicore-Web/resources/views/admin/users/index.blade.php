@@ -307,6 +307,17 @@
                     </button>
                 </div>
 
+                {{-- The admin's own password was rejected by the `reauth` middleware: nothing was saved.
+                     The typed changes are kept (old()) so they can retry; the notice is removed when
+                     the window is closed or the form is submitted again. Too-many-attempts keeps its own wording. --}}
+                @if ($mine && $errors->has('current_password'))
+                    @php $pwError = $errors->first('current_password'); @endphp
+                    <div class="mb-md rounded-sm border-l-4 border-l-danger bg-danger/5 p-sm text-metadata text-danger"
+                         role="alert" data-reauth-error>
+                        {{ str_starts_with($pwError, 'Too many') ? $pwError : 'Incorrect password. No changes were saved. Please try again.' }}
+                    </div>
+                @endif
+
                 @if ($mine && $errors->any() && ! $errors->has('current_password'))
                     <div class="mb-md rounded-sm border-l-4 border-l-danger bg-danger/5 p-sm text-metadata text-danger">
                         <ul class="list-disc pl-md">
@@ -380,7 +391,21 @@
 
     @if ($errors->any())
         @if (old('_edit_id'))
-            <script>document.getElementById('edit-account-modal-{{ old('_edit_id') }}').showModal();</script>
+            <script>
+                (function () {
+                    var dlg = document.getElementById('edit-account-modal-{{ (int) old('_edit_id') }}');
+                    if (!dlg) return;
+                    // Clear the "incorrect password" notice once the admin closes the window or retries.
+                    function clearReauthError() {
+                        dlg.querySelectorAll('[data-reauth-error]').forEach(function (el) { el.remove(); });
+                    }
+                    dlg.addEventListener('close', clearReauthError);
+                    // Click, not submit: partials/password-confirm stops the submit event (capture phase)
+                    // to ask for the password. Enter in a field also "clicks" the submit button.
+                    dlg.querySelector('button[type="submit"]').addEventListener('click', clearReauthError);
+                    dlg.showModal();
+                })();
+            </script>
         @elseif (! $errors->has('current_password'))
             {{-- A rejected password on Activate/Deactivate has no modal to reopen — the
                  banner from partials/password-confirm explains it instead. --}}
