@@ -1,0 +1,47 @@
+# EAS upload ignore list. When this file exists EAS ignores .gitignore, so it repeats
+# those rules. Most important: /android (old local build outputs made EAS ship a .tar.gz
+# with two APKs instead of one .apk) and .env (cloud builds use EAS environment variables).
+
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+# generated native folders
+/ios
+/android

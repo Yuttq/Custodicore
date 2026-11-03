@@ -59,6 +59,11 @@
                     Lost access to your account? Contact your Admin to reset it.
                 </p>
             </div>
+
+            {{-- Prototype notice: this demo is not hosted on an official government domain. --}}
+            <p class="mt-lg text-center text-metadata text-white/60">
+                Capstone project prototype. This is not an official BJMP website.
+            </p>
         </div>
     </div>
 </body>
