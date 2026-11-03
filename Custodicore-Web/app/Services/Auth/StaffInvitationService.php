@@ -135,7 +135,7 @@ class StaffInvitationService
             'invitation_expires_at' => now()->addHours($this->expireHours()),
         ])->save();
 
-        $url = route('staff-setup.show', ['token' => $token]);
+        $url = $this->setupUrl($token);
         $hours = $this->expireHours();
 
         // The officer's own inbox when one was recorded; older accounts fall back to the sign-in email.
@@ -176,6 +176,18 @@ class StaffInvitationService
             'sms' => $smsResult,
             'url' => $url,
         ];
+    }
+
+    /**
+     * Built on APP_URL, not the current request's host (same as
+     * EmailVerificationService / PasswordResetService): the link must point
+     * to the configured public domain whichever address the Warden is
+     * browsing on, and is the same from cc:create-first-warden on the CLI.
+     */
+    public function setupUrl(#[\SensitiveParameter] string $token): string
+    {
+        return rtrim((string) config('app.url'), '/')
+            . route('staff-setup.show', ['token' => $token], false);
     }
 
     /** Where the setup link is emailed: the personal email if recorded, otherwise the sign-in email. */
