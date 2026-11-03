@@ -82,6 +82,21 @@ data location and approvals, not the technical design.
 | Production mode | `APP_DEBUG=false`, security headers, trusted proxies, no demo accounts, reference data only |
 | Deployment | Repeatable GitHub Actions deploys (OIDC); no passwords in the repository |
 
+### Security review (2026-11-03)
+Checked against the code; summary for the defense.
+
+- **SQL injection:** all 22 hand-written SQL fragments use `?` placeholders (bound parameters); everything else goes through Laravel's query builder.
+- **XSS:** Blade `{{ }}` escapes output; the 8 unescaped spots print only fixed SVG icons or `json_encode`d numbers/dates, never user input.
+- **CSRF:** Laravel CSRF protection on, no excluded routes.
+- **Routes:** 155 total. 21 public, all intended (sign-in, registration, email/password/setup links, terms, privacy, health check). All 103 staff routes check the role (`role:` middleware), which also signs out deactivated accounts on the next request. Logout is the only signed-in route without a role check.
+- **Mobile API ownership:** every endpoint that takes an ID checks it belongs to the signed-in visitor (visits: confirm/decline/QR/timeline; relationship uploads; notifications). Someone else's ID returns 404. Lists (`/visits`, `/documents`, `/me`) only load the visitor's own records.
+- **Tokens:** API tokens only for active Visitor accounts; visitors cannot use the staff website.
+- **Profile edits:** role, status, verification status and email in the request body are ignored.
+- **Uploads:** images/PDF only, max 10 MB, private storage, never executable.
+- **Dependencies:** `npm audit --omit=dev`: 0 vulnerabilities. PHP packages not audited yet (turn on GitHub Dependabot).
+- **By design:** any Record Officer can see all visitors and PDLs of the facility.
+- **Not covered:** a line-by-line review of every controller, and penetration testing.
+
 ### Must be resolved before real data
 1. **Data location.** The server is in **Malaysia West**. The system holds sensitive personal information (PDL records, government IDs, family relationships, legal records). The Data Privacy Act of 2012 (RA 10173) allows processing abroad, but the agency stays accountable, and government policy may restrict it. **Needs a written answer from the facility / BJMP Data Protection Officer** on whether storage outside the Philippines is allowed.
 2. **Ownership and subscription.** Everything runs on an **Azure for Students** subscription under a student account: limited credit, stops when the credit runs out, not meant for production. Move to an Azure account **owned and paid for by BJMP**, so the system does not depend on the student team.
