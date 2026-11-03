@@ -25,6 +25,7 @@
                     <p class="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-secondary">BJMP Front Desk</p>
                 </div>
             </div>
+            @include('partials.menu-toggle', ['class' => 'cc-menu-toggle'])
 
             <nav class="mt-[6px] flex flex-col gap-[2px]">
                 @php
@@ -86,7 +87,7 @@
                 @endif
             </header>
 
-            <main class="relative flex-1 space-y-lg px-8 pb-[22px] {{ $isHome ? '-mt-[72px]' : '-mt-11' }}">
+            <main class="cc-main relative flex-1 space-y-lg px-8 pb-[22px] {{ $isHome ? '-mt-[72px]' : '-mt-11' }}">
                 @if ($errors->any())
                     <div class="cc-card border-l-4 border-l-danger" role="alert">
                         <p class="font-semibold">Please correct the following:</p>

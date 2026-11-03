@@ -102,6 +102,8 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 
 /* Dashboard content grid */
 .content{display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;}
+/* A wide table inside a column scrolls in its .table-scroll box instead of widening the column. */
+.content>*{min-width:0;}
 .panel{background:var(--card);border:1px solid rgba(229,231,235,.7);border-radius:20px;box-shadow:0 4px 16px rgba(15,61,122,.07);padding:18px 22px;}
 .panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
 .panel-header h2{font-size:14.5px;margin:0;font-weight:700;color:var(--navy);}
@@ -631,6 +633,22 @@ dialog.elig-docs::backdrop{background:rgba(15,23,42,.55);}
   .nav a{padding:6px 10px;}
   .sidebar-bottom{margin-top:0;margin-left:auto;flex-direction:row;flex-wrap:wrap;align-items:center;}
   .sidebar-footer{padding-top:0;border-top:none;}
+}
+
+/* Phones: the menu folds behind a ☰ button next to the logo (data-menu-toggle in
+   layouts/app.blade.php), and the page margins shrink. Desktop/tablet unchanged. */
+.menu-toggle{display:none;}
+@media (max-width:767.98px){
+  .sidebar{justify-content:space-between;gap:0;padding:10px 16px;}
+  .menu-toggle{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--navy);cursor:pointer;}
+  .sidebar .nav,.sidebar .sidebar-bottom{display:none;}
+  .sidebar.is-open .nav{display:flex;flex-direction:column;width:100%;margin-top:10px;}
+  .sidebar.is-open .nav a{padding:12px 10px;}
+  .sidebar.is-open .sidebar-bottom{display:flex;width:100%;margin:6px 0 0;padding-top:10px;justify-content:space-between;border-top:1px solid var(--border);}
+  .sidebar.is-open .sidebar-bottom form button{width:auto !important;}
+  .main{padding:0 16px 22px;}
+  .topbar{margin:0 -16px 18px;padding:20px 16px 26px;}
+  .to-top{right:16px;bottom:16px;}
 }
 
 /* Register / edit PDL: summary card under the Cell/Block dropdown */

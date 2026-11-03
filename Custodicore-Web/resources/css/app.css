@@ -189,3 +189,65 @@
         border-top-width: 0;
     }
 }
+
+/* Phones: the menu folds behind a ☰ button next to the logo (data-menu-toggle in
+   the Admin and Front Desk layouts), and the page margins shrink so content gets
+   the width. Desktop and tablet are unchanged. */
+.cc-menu-toggle {
+    display: none;
+}
+@media (max-width: 767.98px) {
+    .cc-sidebar {
+        justify-content: space-between;
+        gap: 0;
+        padding: 10px 16px;
+    }
+    .cc-menu-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #fff;
+        color: #0f3d7a;
+    }
+    .cc-sidebar > nav,
+    .cc-sidebar > div:last-child {
+        display: none;
+    }
+    .cc-sidebar.is-open > nav {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        margin-top: 10px;
+    }
+    .cc-sidebar.is-open .cc-nav-link {
+        padding: 12px 10px;
+    }
+    .cc-sidebar.is-open > div:last-child {
+        display: flex;
+        width: 100%;
+        margin: 6px 0 0;
+        padding-top: 10px;
+        justify-content: space-between;
+        border-top: 1px solid #e5e7eb;
+    }
+    .cc-sidebar.is-open > div:last-child button {
+        width: auto;
+    }
+    .cc-hero {
+        padding: 20px 16px 56px;
+    }
+    .cc-hero-home {
+        padding-bottom: 96px;
+    }
+    .cc-hero h1 {
+        font-size: 22px;
+    }
+    .cc-main {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+}

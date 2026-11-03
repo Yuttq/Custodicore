@@ -19,6 +19,7 @@
         <div class="subtitle">INSTITUTIONAL GUARDIAN</div>
       </div>
     </div>
+    @include('partials.menu-toggle', ['class' => 'menu-toggle'])
     <nav class="nav">
       <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
         Dashboard
