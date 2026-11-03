@@ -47,14 +47,15 @@ import the whole local database over the live one.
 
 ### Phase 6 — Production configuration and security ⏳
 - [x] Email: Gmail SMTP set in App settings; `php artisan cc:mail-test <email>` succeeded
-- [ ] **`APP_URL`** = `https://<app-name>.azurewebsites.net` (https, no trailing `/`). Until this is set, email links point to `http://localhost`.
-- [ ] First Warden uses the setup link, sets a password, signs in (and two-step verification)
+- [x] **`APP_URL`** = `https://<app-name>.malaysiawest-01.azurewebsites.net` (the **Default domain**, without `.scm`; https, no trailing `/`). Until this is set, email links point to `http://localhost`.
+- [x] First Warden signed in with two-step verification (phone authenticator). Keep `STAFF_MFA_REQUIRED` unset or `true` — never leave it `false` in production
 - [ ] Fix the first Warden's mobile number (it was created with the example `09171234567`)
 - [ ] Create a **second Warden** (Admin → Users) — staff cannot reset their own passwords
-- [ ] Storage: `LARAVEL_STORAGE_PATH=/home/custodicore/storage` so uploads survive restarts (anything outside `/home` is wiped)
-- [ ] Check sessions / cache settings
-- [ ] Production settings: `APP_ENV=production`, `APP_DEBUG=false`, `SEED_DEMO_DATA` **not** set
-- [ ] Security check: HTTPS only, security headers, trusted proxies (see `Custodicore-Web/README.md`)
+- [x] Storage: `LARAVEL_STORAGE_PATH=/home/custodicore/storage` so uploads survive restarts (anything outside `/home` is wiped). Check: `php artisan tinker --execute="echo storage_path();"`
+- [x] Sessions / cache: `file` driver, stored under `/home` — fine for one instance (switch to `database` if the app is ever scaled out)
+- [x] Production settings: `APP_ENV=production`, `APP_DEBUG=false` (App settings override the server `.env`), `SEED_DEMO_DATA` **not** set. Check: `php artisan about --only=environment,drivers`
+- [x] `TRUSTED_PROXIES=REMOTE_ADDR` + **HTTPS Only** on — without it Laravel thinks the site is http, so CSS is blocked and forms (login, setup) fail
+- [ ] Security check: security headers, `SESSION_SECURE_COOKIE=true`, `HSTS_MAX_AGE` (see `Custodicore-Web/README.md`)
 
 ### Phase 7 — Final testing and go-live ⏳
 - [ ] Staff sign-in, visitor registration (email verification link opens the Azure site), visit request → approval → QR → check-in
@@ -92,5 +93,8 @@ php artisan cc:mfa-reset              # remove a staff member's two-step verific
 | `SQLSTATE[HY000] [1045] Access denied for user 'custodicoreadmin'` | `DB_PASSWORD` was changed by mistake while editing the mail settings | MySQL server → Overview → **Reset password**, put the same value in `DB_PASSWORD`, `config:clear`, `migrate:status` |
 | Email link opens `localhost` (`ERR_CONNECTION_REFUSED`) | `APP_URL` still `http://localhost` | Set `APP_URL` in App settings. For a link already sent, replace `http://localhost` with the Azure address and keep the rest |
 | `Enter a valid Philippine mobile number` | Placeholder used | 11 digits starting with `09`, no spaces |
+| `php artisan about` shows URL `YOUR-APP.azurewebsites.net` | Placeholder pasted into `APP_URL` | Use the real **Default domain** from the App Service Overview |
+| Page has no styling; setup password not saved; "These credentials do not match" | `TRUSTED_PROXIES` missing → links and forms were `http://` on an `https://` page | Add `TRUSTED_PROXIES=REMOTE_ADDR`, turn on HTTPS Only, `config:clear`. Check: `curl -s https://<site>/login \| grep -oE 'action="[^"]*'` shows `https://` |
+| SSH page stuck on "loading" | App is restarting after Apply | Wait 1–2 min, refresh, or reopen SSH from the Portal |
 
 **Tip:** when editing App settings, change only the one setting you mean to. The password settings sit close together in the list.
