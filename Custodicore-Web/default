@@ -1,0 +1,61 @@
+server {
+    listen 8080;
+    listen [::]:8080;
+    server_name _;
+
+    root /home/site/wwwroot/public;
+    index index.php index.html;
+
+    # Never serve hidden files, except the standardized ACME challenge path.
+    location ~ /\.(?!well-known(?:/|$)) {
+        deny all;
+    }
+
+    # Keep application code and deployment metadata outside the web surface.
+    # /storage is intentionally not listed because public/storage may contain
+    # Laravel files that are meant to be served directly.
+    location ~* ^/(?:app|bootstrap|config|database|resources|routes|tests|vendor)(?:/|$) {
+        deny all;
+    }
+
+    location ~* ^/(?:artisan|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml|vite\.config\.[^/]+|server\.php)$ {
+        deny all;
+    }
+
+    location ~* ^/(?:\.env(?:\.[^/]*)?|\.git|\.htaccess|\.user\.ini)(?:/|$) {
+        deny all;
+    }
+
+    location ~* \.(?:bak|dist|ini|log|old|orig|save|sql|swp)$ {
+        deny all;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ ^/index\.php(?:/|$) {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        try_files $fastcgi_script_name =404;
+
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_index index.php;
+        fastcgi_intercept_errors on;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 3600;
+        fastcgi_read_timeout 3600;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+        fastcgi_temp_file_write_size 256k;
+    }
+
+    location ~ \.php(?:/|$) {
+        return 404;
+    }
+}
