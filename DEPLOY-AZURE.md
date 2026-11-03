@@ -60,7 +60,48 @@ import the whole local database over the live one.
 ### Phase 7 — Final testing and go-live ⏳
 - [ ] Staff sign-in, visitor registration (email verification link opens the Azure site), visit request → approval → QR → check-in
 - [ ] Upload a visitor ID, restart the app, confirm the file is still there
-- [ ] Mobile app pointed at the Azure URL
+- [x] Mobile app pointed at the Azure URL: EAS **preview** environment variable `EXPO_PUBLIC_API_URL=https://<app>.malaysiawest-01.azurewebsites.net/api` (cloud builds do not read the local `.env`); build with `eas build --profile preview --platform android` from `Custodicore-Mobile` on the laptop, not in Azure SSH
+- [ ] Install the preview APK on a phone and run the visitor tests above
+- [ ] Add `Custodicore-Mobile/.easignore` (the upload was 860 MB)
+- [ ] Google sign-in (optional): `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in EAS, `GOOGLE_CLIENT_IDS` in Azure App settings, EAS keystore SHA-1 in Google Cloud
+
+## Production readiness (for BJMP)
+
+**Status: secure cloud prototype — ready for the capstone demo and a pilot with
+fake data, not for real BJMP data yet.** The gaps below are about ownership,
+data location and approvals, not the technical design.
+
+### Already in place
+| Area | What we have |
+|---|---|
+| Database | MySQL reachable only inside the Azure private network (VNet, private DNS), not from the internet |
+| Encryption | HTTPS for users; TLS between the app and MySQL |
+| Staff sign-in | Required two-step verification, lockout after 5 failed attempts, deactivated accounts blocked |
+| Uploaded IDs and documents | Private storage under `/home`, served only to signed-in staff with the right role |
+| Accountability | Audit log of staff actions |
+| Production mode | `APP_DEBUG=false`, security headers, trusted proxies, no demo accounts, reference data only |
+| Deployment | Repeatable GitHub Actions deploys (OIDC); no passwords in the repository |
+
+### Must be resolved before real data
+1. **Data location.** The server is in **Malaysia West**. The system holds sensitive personal information (PDL records, government IDs, family relationships, legal records). The Data Privacy Act of 2012 (RA 10173) allows processing abroad, but the agency stays accountable, and government policy may restrict it. **Needs a written answer from the facility / BJMP Data Protection Officer** on whether storage outside the Philippines is allowed.
+2. **Ownership and subscription.** Everything runs on an **Azure for Students** subscription under a student account: limited credit, stops when the credit runs out, not meant for production. Move to an Azure account **owned and paid for by BJMP**, so the system does not depend on the student team.
+3. **Official email.** Setup links and verification emails currently come from a personal Gmail account. Use an official facility address (Azure Communication Services with a verified domain, see `Custodicore-Web/README.md` §6).
+4. **Privacy review.** Privacy impact assessment and DPO sign-off on what is collected, who can see it, and how long it is kept. This is BJMP's process.
+
+### Should be done for go-live
+- [ ] Own domain name instead of `*.azurewebsites.net`
+- [ ] Check MySQL backup retention and test a restore once
+- [ ] `SESSION_SECURE_COOKIE=true` and `HSTS_MAX_AGE` (start at 86400)
+- [ ] At least two Wardens; staff trained on two-step verification and backup codes
+- [ ] Mobile app published (Play Store or managed distribution) instead of a sideloaded APK
+- [ ] Note the limits: one small server (Burstable B1ms) with no automatic failover — fine for one facility, plan an upgrade for more
+
+### Suggested wording for the capstone defense
+> Custodicore is deployed as a secure cloud prototype with production-grade
+> security controls (private database network, encryption in transit,
+> two-step verification, role-based access, audit logging). Moving to live
+> operations requires BJMP-owned hosting, data-residency approval and a
+> Data Protection Officer review.
 
 ## Runbook: SSH console
 
