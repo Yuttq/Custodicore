@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>@yield('title', 'CustodiCore')</title>
-<link rel="stylesheet" href="{{ asset('css/styles.css') }}">
+{{-- ?v= changes whenever the file does, so browsers and caches fetch the new styles after a deploy. --}}
+<link rel="stylesheet" href="{{ asset('css/styles.css') }}?v={{ @filemtime(public_path('css/styles.css')) ?: '1' }}">
 </head>
 <body>
 <div class="app">
