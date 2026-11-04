@@ -9,11 +9,13 @@
 <body class="min-h-screen bg-primary-navy text-text-primary">
     <div class="flex min-h-screen items-center justify-center px-md py-xl">
         <div class="w-full max-w-md">
-            {{-- Brand mark. Public page: the "CC" badge, NOT the BJMP seal — an official seal on a
-                 public sign-in page outside a government domain looks like impersonation to Google
-                 Safe Browsing. The seal stays on the signed-in staff pages (layouts/*). --}}
+            {{-- Brand mark. The BJMP logo is the file public/images/bjmp-logo.png; until that file exists
+                 (or if it fails to load) the "CC" badge below is shown instead, so the page never breaks. --}}
             <div class="mb-lg flex flex-col items-center text-center">
-                <div id="login-badge" class="mb-sm flex h-14 w-14 items-center justify-center rounded-card bg-white/10 text-card-title font-bold text-white">CC</div>
+                <img src="{{ asset('images/bjmp-logo.png') }}" alt="Bureau of Jail Management and Penology logo"
+                     class="mb-sm h-24 w-24 object-contain"
+                     onerror="this.style.display='none'; document.getElementById('login-badge').style.display='flex';">
+                <div id="login-badge" style="display:none;" class="mb-sm h-14 w-14 items-center justify-center rounded-card bg-white/10 text-card-title font-bold text-white">CC</div>
                 <p class="text-page-title text-white">CustodiCore</p>
                 <p class="text-status-label uppercase tracking-wide text-white/60">BJMP Facility Management System</p>
             </div>
