@@ -155,6 +155,45 @@ trait SeedsVisitAssignmentFixtures
     }
 
     /**
+     * What a Record Officer does in Manage Visitor Slots: creates an open
+     * dated session (visit_schedules row, at the rule's default capacity)
+     * for every weekly rule session in effect on each date in [from, to].
+     * Visitors can only book published sessions, so tests that book on
+     * policy days call this first. Existing rows are left as they are.
+     */
+    protected function publishSessions(string $from, string $to, string $status = 'open'): void
+    {
+        $dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        $rules = FacilityVisitationRule::all();
+
+        for ($date = \Carbon\CarbonImmutable::parse($from); $date->toDateString() <= $to; $date = $date->addDay()) {
+            $day = $date->toDateString();
+            foreach ($rules->where('day_of_week', $dayKeys[$date->dayOfWeek]) as $rule) {
+                if (($rule->effective_from && $day < $rule->effective_from->toDateString())
+                    || ($rule->effective_to && $day > $rule->effective_to->toDateString())) {
+                    continue;
+                }
+
+                $exists = VisitSchedule::where('rule_id', $rule->rule_id)
+                    ->whereDate('schedule_date', $day)
+                    ->where('time_slot_start', $rule->time_slot_start)
+                    ->exists();
+                if (! $exists) {
+                    VisitSchedule::create([
+                        'rule_id' => $rule->rule_id,
+                        'schedule_date' => $day,
+                        'time_slot_start' => $rule->time_slot_start,
+                        'time_slot_end' => $rule->time_slot_end,
+                        'max_capacity' => $rule->max_capacity,
+                        'slots_taken' => 0,
+                        'status' => $status,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
      * The fixture visitor has no verified ID, so a submitted request is
      * assessed `flagged_for_review` and cannot be approved. This gives the
      * request's visitor a verified ID and re-runs the real assessment, which

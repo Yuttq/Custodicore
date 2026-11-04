@@ -116,20 +116,19 @@ return [
             | MySQL SSL Options
             |--------------------------------------------------------------------------
             |
-            | PHP 8.5 deprecated:
-            |
-            | PDO::MYSQL_ATTR_SSL_CA
-            |
-            | The replacement is:
+            | PHP 8.4+ uses:
             |
             | Pdo\Mysql::ATTR_SSL_CA
+            |
+            | PHP 8.3 uses:
+            |
+            | PDO::MYSQL_ATTR_SSL_CA
             |
             */
 
             'options' => extension_loaded('pdo_mysql')
                 ? array_filter([
-                    Pdo\Mysql::ATTR_SSL_CA =>
-                        env('MYSQL_ATTR_SSL_CA'),
+                    PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
                 ])
                 : [],
         ],

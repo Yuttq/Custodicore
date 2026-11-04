@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Manage Visitor Slots (Record Officer): the capacity of each dated visiting
- * session (visit_schedules row) and the default capacity of each weekly
- * session (facility_visitation_rules row).
+ * Manage Visitor Slots (Record Officer): creates the dated visiting sessions
+ * (visit_schedules rows) visitors can book, and sets their capacity and
+ * open/closed state. Dates without a session are not bookable.
  *
  * Which days and times visiting happens stays defined by the weekly rules;
  * a dated session is always one rule's session on one of its days. The
@@ -190,7 +190,7 @@ class VisitSlotService
                 return $schedule;
             });
         } catch (UniqueConstraintViolationException) {
-            // A visitor's booking created the row on demand in the meantime.
+            // Another officer (or a desk walk-in session) created the row in the meantime.
             throw ValidationException::withMessages($duplicate);
         }
 
@@ -319,42 +319,6 @@ class VisitSlotService
     public function setOpen(VisitSchedule $schedule, bool $open): VisitSchedule
     {
         return $this->update($schedule, null, $open);
-    }
-
-    /**
-     * Default capacity of a weekly session: used for every date of that
-     * session that has no dated session row yet (the visitor calendar shows
-     * it, and a booking creates the row with it). Rows that already exist
-     * keep their own capacity.
-     */
-    public function updateRuleCapacity(FacilityVisitationRule $rule, int $capacity): FacilityVisitationRule
-    {
-        $this->assertCapacityInRange($capacity);
-
-        return DB::transaction(function () use ($rule, $capacity) {
-            $locked = FacilityVisitationRule::whereKey($rule->rule_id)->lockForUpdate()->firstOrFail();
-            $before = (int) $locked->max_capacity;
-            $locked->update(['max_capacity' => $capacity]);
-
-            AuditLog::record(
-                'update',
-                'facility_visitation_rules',
-                $locked->rule_id,
-                'Updated default capacity of the '.self::ruleLabel($locked)." session: {$before} → {$capacity}",
-                Module::CODE_VISIT_SCHEDULING
-            );
-
-            return $locked;
-        });
-    }
-
-    /** "Fri morning (09:00–11:30), non-drug-related" */
-    public static function ruleLabel(FacilityVisitationRule $rule): string
-    {
-        $group = $rule->pdl_classification === 'drug_related' ? 'drug-related' : 'non-drug-related';
-
-        return ucfirst($rule->day_of_week).' '.self::sessionOf($rule->time_slot_start)
-            .' ('.substr((string) $rule->time_slot_start, 0, 5).'–'.substr((string) $rule->time_slot_end, 0, 5)."), {$group}";
     }
 
     /**

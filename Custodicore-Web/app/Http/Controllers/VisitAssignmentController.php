@@ -103,6 +103,7 @@ class VisitAssignmentController extends Controller
         ScheduleAvailabilityService::REASON_ENDED => 'Session has ended',
         ScheduleAvailabilityService::REASON_NOT_ELIGIBLE => 'No visits for this PDL on this day',
         ScheduleAvailabilityService::REASON_NOT_IN_EFFECT => 'Outside the visiting period',
+        ScheduleAvailabilityService::REASON_NOT_PUBLISHED => 'Session not created yet (Manage Visitor Slots)',
         ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => 'PDL not available for visits',
         ScheduleAvailabilityService::REASON_CLOSED => 'Session closed',
         ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => 'Already has a visit with this PDL that day',

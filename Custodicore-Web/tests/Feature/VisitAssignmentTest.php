@@ -381,6 +381,8 @@ class VisitAssignmentTest extends TestCase
             'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00',
             'max_capacity' => 2, 'slots_taken' => 0, 'status' => 'open',
         ]);
+        // The Record Officer also opened next week's afternoon session.
+        $this->publishSessions($nextWeek->schedule_date->toDateString(), $nextWeek->schedule_date->toDateString());
 
         return [$afternoon, $nextWeek];
     }
@@ -458,6 +460,8 @@ class VisitAssignmentTest extends TestCase
 
     public function test_assign_form_offers_next_week_when_todays_only_session_has_ended(): void
     {
+        $nextWeek = $this->schedule->schedule_date->copy()->addWeek()->toDateString();
+        $this->publishSessions($nextWeek, $nextWeek);
         $this->onScheduleDayAt('11:30:00');
 
         // Today's only session is over; the PDL's next visiting day is offered.
@@ -510,7 +514,7 @@ class VisitAssignmentTest extends TestCase
 
     public function test_record_officer_assigns_a_whole_day_visit_with_both_sessions(): void
     {
-        // Only the afternoon rule exists; its schedule is created on demand.
+        // The afternoon session is added and opened by the Record Officer.
         \App\Models\FacilityVisitationRule::create([
             'pdl_classification' => 'non_drug_related', 'day_of_week' => 'fri',
             'time_slot_start' => '13:00:00', 'time_slot_end' => '16:30:00',
@@ -518,6 +522,7 @@ class VisitAssignmentTest extends TestCase
         ]);
         $this->onScheduleDayAt('08:00:00');
         $day = $this->schedule->schedule_date->toDateString();
+        $this->publishSessions($day, $day);
 
         // The form offers both sessions of the day and a "Whole day" option, like the mobile app.
         $this->assertSame([$this->sessionKey('09:00'), $this->sessionKey('13:00')], array_slice($this->assignFormSessions(), 0, 2));

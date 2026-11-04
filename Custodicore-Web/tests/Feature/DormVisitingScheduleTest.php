@@ -95,6 +95,8 @@ class DormVisitingScheduleTest extends TestCase
             ->assertJsonPath('relationships.0.visitingDays', ['thu', 'sat']);
 
         // Friday (classification day) is refused; Thursday 08:00 (dorm day) books.
+        // (The Record Officer has opened Thursday's dorm session.)
+        $this->publishSessions('2026-10-15', '2026-10-15');
         $this->book('2026-10-09', '09:00')->assertStatus(422);
         $this->book('2026-10-15', '08:00')->assertCreated();
     }
@@ -129,6 +131,7 @@ class DormVisitingScheduleTest extends TestCase
     {
         $this->addHours(['thu'], '08:00', '11:30');
         $rule = FacilityVisitationRule::where('cell_block_id', $this->dorm->cell_block_id)->sole();
+        $this->publishSessions('2026-10-15', '2026-10-15');
         $this->book('2026-10-15', '08:00')->assertCreated();
 
         $this->actingAs($this->recordOfficerAccount, 'web');

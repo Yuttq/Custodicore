@@ -58,6 +58,9 @@ class ScheduleAvailabilityApiTest extends TestCase
                 'effective_from' => '2024-01-01',
             ]);
         }
+
+        // The Record Officer has opened every policy session over the tested weeks.
+        $this->publishSessions('2026-10-01', '2026-11-30');
     }
 
     private function availability(array $query = []): \Illuminate\Testing\TestResponse

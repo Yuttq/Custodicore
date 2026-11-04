@@ -67,6 +67,9 @@ class WholeDayVisitTest extends TestCase
             'file_path' => 'x.png',
             'verification_status' => 'verified',
         ]);
+
+        // The Record Officer has opened every policy session over the tested weeks.
+        $this->publishSessions('2026-10-01', '2026-11-30');
     }
 
     // ------------------------------------------------------------ Helpers
@@ -259,7 +262,8 @@ class WholeDayVisitTest extends TestCase
 
         $this->request(['09:00', '13:00'])->assertUnprocessable();
         $this->assertSame(0, VisitRequest::count());
-        $this->assertSame(0, VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '13:00:00')->count());
+        // The published afternoon session kept its seat.
+        $this->assertSame(0, (int) VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '13:00:00')->value('slots_taken'));
     }
 
     public function test_rejected_whole_day_visit_releases_both_seats_and_stops_counting(): void

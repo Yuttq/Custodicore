@@ -55,6 +55,7 @@ import the whole local database over the live one.
 - [x] Sessions / cache: `file` driver, stored under `/home` — fine for one instance (switch to `database` if the app is ever scaled out)
 - [x] Production settings: `APP_ENV=production`, `APP_DEBUG=false` (App settings override the server `.env`), `SEED_DEMO_DATA` **not** set. Check: `php artisan about --only=environment,drivers`
 - [x] `TRUSTED_PROXIES=REMOTE_ADDR` + **HTTPS Only** on — without it Laravel thinks the site is http, so CSS is blocked and forms (login, setup) fail
+- [ ] **Scheduler is not running on Azure.** `routes/console.php` schedules `visits:expire` daily at 00:05, but App Service has no cron and `deploy/azure-startup.sh` does not start `php artisan schedule:work`, so old visit requests do not expire automatically. Until fixed, run `php artisan visits:expire` by hand in SSH. Fix options: start `schedule:work` in the background from the startup script, or an Azure WebJob / Logic App calling it daily
 - [ ] Security check: security headers, `SESSION_SECURE_COOKIE=true`, `HSTS_MAX_AGE` (see `Custodicore-Web/README.md`)
 
 ### Phase 7 — Final testing and go-live ⏳

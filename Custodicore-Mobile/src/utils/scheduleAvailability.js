@@ -21,6 +21,7 @@ export const SLOT_REASON_LABELS = {
   ended: 'Past',
   not_eligible: 'Not available for your schedule',
   not_in_effect: 'Not available for your schedule',
+  not_published: 'Not open for visits',
   pdl_unavailable: 'Not available for this PDL',
   closed: 'Closed',
   already_scheduled: 'Already scheduled',

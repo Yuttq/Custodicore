@@ -24,7 +24,7 @@ use Tests\TestCase;
 
 /**
  * Manage Visitor Slots (Record Officer): dated session capacity, open/close,
- * bookings, weekly default capacity — and that booking respects it.
+ * bookings — and that booking respects it (only created sessions are bookable).
  *
  * "Now" is pinned to Wednesday 2026-10-07 10:00 Asia/Manila. The fixture PDL
  * is non_drug_related (Fri/Sun). Fri 2026-10-09 09:00 has a visit_schedules
@@ -191,7 +191,6 @@ class ManageVisitorSlotsTest extends TestCase
             ->get(route('visitor-slots.index'))
             ->assertOk()
             ->assertSee('Manage Visitor Slots')
-            ->assertSee('Default Capacity per Weekly Session')
             ->assertSee('Fri, Oct 9, 2026');
 
         $this->actingAs($this->recordOfficerAccount)
@@ -213,7 +212,6 @@ class ManageVisitorSlotsTest extends TestCase
             ['post', $store, $body],
             ['put', route('visitor-slots.update', $this->schedule->schedule_id), ['max_capacity' => 99, 'is_open' => '1']],
             ['patch', route('visitor-slots.status', $this->schedule->schedule_id), ['is_open' => '0']],
-            ['put', route('visitor-slots.rules.update', $this->rule->rule_id), ['max_capacity' => 99]],
         ];
 
         foreach ($calls as [$method, $url, $data]) {
@@ -300,14 +298,10 @@ class ManageVisitorSlotsTest extends TestCase
         foreach ([0, -5, 1001, 'abc', '2.5', ''] as $capacity) {
             $this->createSession(['max_capacity' => $capacity])->assertSessionHasErrors('max_capacity');
             $this->updateSession($this->schedule, $capacity)->assertSessionHasErrors('max_capacity');
-            $this->actingAs($this->recordOfficerAccount)
-                ->put(route('visitor-slots.rules.update', $this->rule->rule_id), ['max_capacity' => $capacity])
-                ->assertSessionHasErrors('max_capacity');
         }
 
         $this->assertSame(1, VisitSchedule::count());
         $this->assertSame(2, (int) $this->schedule->fresh()->max_capacity);
-        $this->assertSame(2, (int) $this->rule->fresh()->max_capacity);
     }
 
     public function test_invalid_dates_and_sessions_are_rejected(): void
@@ -801,33 +795,30 @@ class ManageVisitorSlotsTest extends TestCase
         $this->assertSame(5, (int) $this->schedule->fresh()->max_capacity);
     }
 
-    // ----------------------------------------------------- Default capacity
+    // ------------------------------------------ No weekly default capacity
 
-    public function test_default_rule_capacity_applies_to_new_sessions_only(): void
+    public function test_weekly_default_capacity_is_no_longer_offered(): void
     {
+        // Visitors only book sessions created here, so there is no weekly
+        // default capacity to manage any more.
         $this->actingAs($this->recordOfficerAccount)
-            ->put(route('visitor-slots.rules.update', $this->afternoonRule->rule_id), ['max_capacity' => 7])
-            ->assertRedirect(route('visitor-slots.index'))
-            ->assertSessionHasNoErrors();
+            ->get(route('visitor-slots.index'))
+            ->assertOk()
+            ->assertDontSee('Default Capacity per Weekly Session')
+            ->assertDontSee('weekly-defaults');
         $this->actingAs($this->recordOfficerAccount)
-            ->put(route('visitor-slots.rules.update', $this->rule->rule_id), ['max_capacity' => 40])
-            ->assertSessionHasNoErrors();
+            ->put('/visitor-slots/rules/'.$this->afternoonRule->rule_id, ['max_capacity' => 7]);
+        $this->assertSame(30, (int) $this->afternoonRule->fresh()->max_capacity);
 
-        $this->assertSame(7, (int) $this->afternoonRule->fresh()->max_capacity);
-        $this->assertSame(2, (int) $this->schedule->fresh()->max_capacity, 'The existing Friday morning session keeps its capacity.');
-
-        // A date with no session row yet shows, and books at, the new default.
+        // A date with no session row stays closed to visitors.
         $slot = $this->availabilitySlot(self::FRIDAY, '13:00');
-        $this->assertSame(7, $slot['capacity']);
+        $this->assertFalse($slot['available']);
+        $this->assertSame('not_published', $slot['reason']);
+        $this->assertSame(0, $slot['capacity']);
         $this->assertNull($slot['scheduleId']);
 
-        $this->book($this->visitorAccount, $this->relationship, ['startTime' => '13:00'])->assertCreated();
-        $this->assertSame(7, (int) VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->sole()->max_capacity);
-
-        $this->assertTrue(AuditLog::where('record_type', 'facility_visitation_rules')
-            ->where('record_id', $this->afternoonRule->rule_id)
-            ->where('description', 'like', '%30 → 7%')
-            ->exists());
+        $this->book($this->visitorAccount, $this->relationship, ['startTime' => '13:00'])->assertUnprocessable();
+        $this->assertFalse(VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->exists());
     }
 
     // ------------------------------------------- Unchanged existing rules
@@ -891,13 +882,11 @@ class ManageVisitorSlotsTest extends TestCase
             ->get(route('visitor-slots.index', ['classification' => 'drug_related']))
             ->assertOk()
             ->assertSee('href="#sessions"', false)
-            ->assertSee('href="#weekly-defaults"', false)
             ->assertSee('href="' . route('upcoming-visits.index', ['range' => 'month']) . '"', false)
             // Remaining Slots keeps the current filters and shows only open sessions.
             ->assertSee('status=open', false)
             ->assertSee('classification=drug_related', false)
-            ->assertSee('id="sessions"', false)
-            ->assertSee('id="weekly-defaults"', false);
+            ->assertSee('id="sessions"', false);
     }
 
     public function test_whole_day_creates_the_morning_and_afternoon_sessions(): void

@@ -152,21 +152,60 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame($visit->visit_request_id, $notification->related_record_id);
     }
 
-    public function test_schedule_row_is_created_when_missing(): void
+    public function test_session_not_published_by_the_record_officer_is_rejected_and_creates_nothing(): void
     {
+        // The weekly rule allows Friday 13:00, but no Record Officer created
+        // that session: a hand-made API request must not open it.
         Sanctum::actingAs($this->visitorAccount);
         $this->assertFalse(VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->exists());
 
+        $this->submit(['startTime' => '13:00'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'startTime' => 'This visiting session has not been opened by the facility. Choose an available date.',
+            ]);
+
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertFalse(VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->exists(), 'No session row is created for the visitor.');
+    }
+
+    public function test_future_date_without_a_published_session_is_rejected(): void
+    {
+        // A Friday weeks ahead: a rule day, but nothing published.
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->submit(['date' => '2026-11-27', 'startTime' => '09:00'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['startTime']);
+
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertFalse(VisitSchedule::whereDate('schedule_date', '2026-11-27')->exists());
+    }
+
+    public function test_published_session_is_booked_on_its_own_row(): void
+    {
+        $schedule = $this->publishAfternoon();
+        Sanctum::actingAs($this->visitorAccount);
+
         $response = $this->submit(['startTime' => '13:00'])->assertCreated();
 
-        $schedule = VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->sole();
-        $this->assertSame(self::FRIDAY, $schedule->schedule_date->toDateString());
-        $this->assertSame('13:00', substr($schedule->time_slot_start, 0, 5));
-        $this->assertSame('16:30', substr($schedule->time_slot_end, 0, 5));
-        $this->assertSame(30, (int) $schedule->max_capacity);
-        $this->assertSame(1, (int) $schedule->slots_taken);
-        $this->assertSame('open', $schedule->status);
         $this->assertSame($schedule->schedule_id, VisitRequest::findOrFail($response->json('id'))->schedule_id);
+        $this->assertSame(1, (int) $schedule->fresh()->slots_taken);
+        $this->assertSame(1, VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->count());
+    }
+
+    /** The Record Officer creates and opens the Friday 13:00 session. */
+    private function publishAfternoon(int $capacity = 30, int $taken = 0, string $status = 'open'): VisitSchedule
+    {
+        return VisitSchedule::create([
+            'rule_id' => $this->afternoonRule->rule_id,
+            'schedule_date' => self::FRIDAY,
+            'time_slot_start' => '13:00:00',
+            'time_slot_end' => '16:30:00',
+            'max_capacity' => $capacity,
+            'slots_taken' => $taken,
+            'status' => $status,
+        ]);
     }
 
     public function test_unverified_relationship_is_rejected(): void
@@ -307,44 +346,25 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame(0, VisitRequest::count());
     }
 
-    public function test_schedule_row_created_concurrently_by_another_request_is_reused(): void
+    public function test_session_closed_after_availability_was_read_is_rejected(): void
     {
-        // Another request creates the 13:00 row after this request read
-        // availability (which saw no row) but before it inserts its own.
-        $this->bindAvailabilityRace(function () {
-            VisitSchedule::create([
-                'rule_id' => $this->afternoonRule->rule_id,
-                'schedule_date' => self::FRIDAY,
-                'time_slot_start' => '13:00:00',
-                'time_slot_end' => '16:30:00',
-                'max_capacity' => 30,
-                'slots_taken' => 1,
-                'status' => 'open',
-            ]);
-        });
+        // The Record Officer closes the published 13:00 session after this
+        // request read availability (open) but before it books the seat.
+        $schedule = $this->publishAfternoon();
+        $this->bindAvailabilityRace(fn () => $schedule->update(['status' => 'closed']));
         Sanctum::actingAs($this->visitorAccount);
 
-        $response = $this->submit(['startTime' => '13:00'])->assertCreated();
+        $this->submit(['startTime' => '13:00'])->assertUnprocessable();
 
-        $schedule = VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->sole();
-        $this->assertSame($schedule->schedule_id, VisitRequest::findOrFail($response->json('id'))->schedule_id);
-        $this->assertSame(2, (int) $schedule->slots_taken);
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertSame(0, (int) $schedule->fresh()->slots_taken);
     }
 
     public function test_slot_filled_concurrently_is_rejected_without_side_effects(): void
     {
-        // Another request fills the slot after availability was read.
-        $this->bindAvailabilityRace(function () {
-            VisitSchedule::create([
-                'rule_id' => $this->afternoonRule->rule_id,
-                'schedule_date' => self::FRIDAY,
-                'time_slot_start' => '13:00:00',
-                'time_slot_end' => '16:30:00',
-                'max_capacity' => 30,
-                'slots_taken' => 30,
-                'status' => 'full',
-            ]);
-        });
+        // Another request fills the published slot after availability was read.
+        $schedule = $this->publishAfternoon();
+        $this->bindAvailabilityRace(fn () => $schedule->update(['slots_taken' => 30, 'status' => 'full']));
         Sanctum::actingAs($this->visitorAccount);
 
         $this->submit(['startTime' => '13:00'])->assertUnprocessable();
@@ -356,6 +376,7 @@ class VisitorVisitRequestTest extends TestCase
 
     public function test_weekly_limit_reached_after_availability_was_read_is_rejected_without_side_effects(): void
     {
+        $afternoon = $this->publishAfternoon();
         Sanctum::actingAs($this->visitorAccount);
 
         // Availability shows the Friday afternoon slot as open.
@@ -402,7 +423,7 @@ class VisitorVisitRequestTest extends TestCase
             ]);
 
         $this->assertSame(2, VisitRequest::count(), 'Only the two racing visits exist.');
-        $this->assertSame(0, VisitSchedule::where('rule_id', $this->afternoonRule->rule_id)->count(), 'The on-demand row is rolled back.');
+        $this->assertSame(0, (int) $afternoon->fresh()->slots_taken, 'The seat reservation is rolled back.');
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
     }
 

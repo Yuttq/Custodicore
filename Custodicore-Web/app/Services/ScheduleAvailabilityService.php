@@ -15,12 +15,12 @@ use Illuminate\Support\Collection;
 /**
  * Read-only visit-slot availability for the mobile visitor calendar.
  *
- * Availability is calculated from the facility_visitation_rules policy for
- * every date in the range — visit_schedules rows are only seeded for a few
- * dates, so they are used as an overlay (capacity taken, full, closed) when
- * one exists for that date + slot, never as the list of possible slots.
- * Nothing is written: viewing availability creates no visit_schedules rows
- * (VisitAssignmentService::submitVisitorRequest creates one on demand).
+ * The facility_visitation_rules policy says which sessions a PDL can have
+ * on each day; a session is bookable only once the Record Officer has
+ * created (published) it as a visit_schedules row in Manage Visitor Slots,
+ * left it open, and it still has seats. A rule session with no row is
+ * `not_published`: dates are never open by default, and neither this
+ * service nor booking creates visit_schedules rows for visitors.
  *
  * Slots are the sessions of a visiting day (morning, afternoon). A visit is
  * one day: the visitor picks one or more of that day's available sessions
@@ -33,6 +33,7 @@ use Illuminate\Support\Collection;
  *   ended            — today, but the slot's end time has passed
  *   not_eligible     — the PDL's classification has no visiting rule that day
  *   not_in_effect    — a rule exists for that day but is outside effective_from/to
+ *   not_published    — the Record Officer has not created this session for the date
  *   pdl_unavailable  — PDL not in active custody, or has an active restriction
  *   closed           — the overlaid visit_schedules row is closed
  *   already_scheduled — this visitor already has an active visit for this PDL on this date
@@ -45,6 +46,7 @@ class ScheduleAvailabilityService
     public const REASON_ENDED = 'ended';
     public const REASON_NOT_ELIGIBLE = 'not_eligible';
     public const REASON_NOT_IN_EFFECT = 'not_in_effect';
+    public const REASON_NOT_PUBLISHED = 'not_published';
     public const REASON_PDL_UNAVAILABLE = 'pdl_unavailable';
     public const REASON_CLOSED = 'closed';
     public const REASON_ALREADY_SCHEDULED = 'already_scheduled';
@@ -324,13 +326,17 @@ class ScheduleAvailabilityService
     ): array {
         $schedule = $schedules->get($this->scheduleKey($date->toDateString(), $rule->time_slot_start, $rule->rule_id));
 
-        $capacity = (int) ($schedule?->max_capacity ?? $rule->max_capacity);
+        // Only a session the Record Officer created has seats to offer.
+        $capacity = (int) ($schedule?->max_capacity ?? 0);
         $taken = $schedule
             ? max((int) $schedule->slots_taken, $occupied[$schedule->schedule_id] ?? 0)
             : 0;
         $remaining = max($capacity - $taken, 0);
 
         $reason = $this->timeReason($date, $rule, $now);
+        if (! $reason && ! $schedule) {
+            $reason = self::REASON_NOT_PUBLISHED;
+        }
         if (! $reason && ! $pdlAvailable) {
             $reason = self::REASON_PDL_UNAVAILABLE;
         }

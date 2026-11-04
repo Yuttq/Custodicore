@@ -80,6 +80,9 @@ class VisitBookingConcurrencyTest extends TestCase
             'slots_taken' => 0,
             'status' => 'open',
         ]);
+
+        // The Record Officer has opened every policy session over the tested weeks.
+        $this->publishSessions('2026-10-01', '2026-11-30');
     }
 
     // ------------------------------------------------------------ Helpers

@@ -58,6 +58,9 @@ class QrPassValidityTest extends TestCase
             'file_path' => 'x.png',
             'verification_status' => 'verified',
         ]);
+
+        // The Record Officer has opened every policy session over the tested weeks.
+        $this->publishSessions('2026-10-01', '2026-11-30');
     }
 
     // ------------------------------------------------------------ Helpers

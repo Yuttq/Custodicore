@@ -16,7 +16,6 @@ use App\Models\VisitSchedule;
 use App\Models\VisitSession;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -148,8 +147,8 @@ class VisitAssignmentService
      * sessions ($startTimes, e.g. ['09:00', '13:00'] for the whole day). The
      * sessions form ONE visit — one weekly-limit count, one review, one QR —
      * and each reserves a seat on its own schedule. Every session must be
-     * available exactly as GET /api/schedules/availability reports it; the
-     * visit_schedules rows are created on demand. Creates the request as
+     * available exactly as GET /api/schedules/availability reports it — a
+     * session the Record Officer created and left open with seats. Creates the request as
      * `assigned` (awaiting Record Officer review).
      *
      * @param  string|array<int, string>  $startTimes
@@ -187,8 +186,8 @@ class VisitAssignmentService
 
     /**
      * Record Officer assigns one visit on one day with one or more sessions
-     * (both = whole day), the staff twin of submitVisitorRequest. Slots come
-     * from the PDL's visiting hours and are created on demand. The visit is
+     * (both = whole day), the staff twin of submitVisitorRequest. Sessions must
+     * already be created and open in Manage Visitor Slots. The visit is
      * `pending_confirmation` until the visitor confirms it in the app.
      *
      * @param  array<int, string>  $startTimes
@@ -229,7 +228,7 @@ class VisitAssignmentService
     /**
      * Shared core of a visit on one day with one or more sessions: every
      * session must be available as the availability service reports it,
-     * each reserves a seat on its own (created-on-demand) schedule, and the
+     * each reserves a seat on its own (staff-created) schedule, and the
      * sessions form ONE visit request with $status.
      *
      * @param  string|array<int, string>  $startTimes
@@ -286,10 +285,16 @@ class VisitAssignmentService
 
             $schedules = [];
             foreach ($slots as $slot) {
-                $scheduleId = $slot['scheduleId']
-                    ?? $this->createScheduleRow(FacilityVisitationRule::findOrFail($slot['ruleId']), $date);
-
-                $schedule = VisitSchedule::with('rule')->whereKey($scheduleId)->lockForUpdate()->first();
+                // Only a session the Record Officer created can be booked;
+                // a request never creates one (availability already reports
+                // such a slot as not_published — this is the backstop).
+                $schedule = $slot['scheduleId']
+                    ? VisitSchedule::with('rule')->whereKey($slot['scheduleId'])->lockForUpdate()->first()
+                    : null;
+                if (! $schedule) {
+                    [$field, $message] = $this->unavailableSlotError(ScheduleAvailabilityService::REASON_NOT_PUBLISHED);
+                    throw ValidationException::withMessages([$field => $message]);
+                }
 
                 // Re-checked under the lock: the slot may have filled or
                 // closed since availability was read.
@@ -1035,33 +1040,6 @@ class VisitAssignmentService
         return $locked;
     }
 
-    /**
-     * Creates the visit_schedules row for a rule's slot on $date. If another
-     * request created it first (unique schedule_date + time_slot_start +
-     * rule_id), uses that row instead. The insert runs in a savepoint so the
-     * failed attempt does not abort the surrounding transaction.
-     */
-    private function createScheduleRow(FacilityVisitationRule $rule, CarbonImmutable $date): int
-    {
-        try {
-            return DB::transaction(fn () => VisitSchedule::create([
-                'rule_id' => $rule->rule_id,
-                'schedule_date' => $date->toDateString(),
-                'time_slot_start' => $rule->time_slot_start,
-                'time_slot_end' => $rule->time_slot_end,
-                'max_capacity' => $rule->max_capacity,
-                'slots_taken' => 0,
-                'status' => 'open',
-            ])->schedule_id);
-        } catch (UniqueConstraintViolationException) {
-            return (int) VisitSchedule::where('rule_id', $rule->rule_id)
-                ->whereDate('schedule_date', $date->toDateString())
-                ->where('time_slot_start', $rule->time_slot_start)
-                ->lockForUpdate()
-                ->value('schedule_id');
-        }
-    }
-
     /** @return array{0:string,1:string} field + visitor-facing message for an unavailable slot */
     private function unavailableSlotError(?string $reason): array
     {
@@ -1070,6 +1048,7 @@ class VisitAssignmentService
             ScheduleAvailabilityService::REASON_ENDED => ['startTime', 'This visiting slot has already ended today. Choose a later slot.'],
             ScheduleAvailabilityService::REASON_NOT_ELIGIBLE => ['date', 'Visits with this PDL are not held on the selected day.'],
             ScheduleAvailabilityService::REASON_NOT_IN_EFFECT => ['date', 'The selected date is outside the allowed visitation period.'],
+            ScheduleAvailabilityService::REASON_NOT_PUBLISHED => ['startTime', 'This visiting session has not been opened by the facility. Choose an available date.'],
             ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => ['relationshipId', 'Visits with this PDL are not available at this time. Please contact the facility for details.'],
             ScheduleAvailabilityService::REASON_CLOSED => ['startTime', 'This visiting slot is closed. Choose another available slot.'],
             ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit with this PDL on this date.'],

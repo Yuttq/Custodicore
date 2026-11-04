@@ -16,14 +16,14 @@
 </div>
 
 <div class="stat-strip" style="margin-bottom:20px;">
-  {{-- Each card leads somewhere: the list, the default capacities, who booked, and the sessions still open. --}}
+  {{-- Each card leads somewhere: the list, who booked, and the sessions still open. --}}
   <a class="stat-card stat-link" href="#sessions" title="Go to the sessions list">
     <div class="stat-label">Sessions Listed</div><div class="stat-value">{{ $stats['sessions'] }}</div>
     <div class="muted-cell">view list ↓</div>
   </a>
-  <a class="stat-card stat-link" href="#weekly-defaults" title="Go to the default capacity per weekly session">
+  <a class="stat-card stat-link" href="#sessions" title="Go to each session's capacity">
     <div class="stat-label">Total Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div>
-    <div class="muted-cell">default capacities ↓</div>
+    <div class="muted-cell">per session ↓</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('upcoming-visits.index', ['range' => 'month']) }}" title="See who booked in Upcoming Visits">
     <div class="stat-label">Booked Slots</div><div class="stat-value">{{ $stats['booked'] }}</div>
@@ -121,49 +121,6 @@
 </div>
 
 <p class="muted-cell">Booked counts visits that hold a seat: awaiting review, awaiting visitor confirmation, confirmed, completed and no-show. Cancelled and declined visits free their seat. Closing a session stops new bookings but keeps existing ones.</p>
-
-<div class="topbar" style="margin-top:28px;" id="weekly-defaults">
-  <h1 style="font-size:16px;">Default Capacity per Weekly Session</h1>
-</div>
-<p class="muted-cell" style="margin-top:-12px;">Used for every date of a weekly session that has no session listed above yet — the visitor app shows it, and the first booking creates the session with it. Sessions that already exist keep their own capacity.</p>
-
-<div class="panel-table">
-  @if ($rules->isEmpty())
-    <p class="empty-note" style="padding:24px;">No weekly visitation rules are configured.</p>
-  @else
-  <div class="scroll-box">
-  <table>
-    <thead><tr><th>Visiting Group</th><th>Day</th><th>Session</th><th>Effective</th><th style="width:260px;">Default Capacity</th></tr></thead>
-    <tbody>
-      @foreach ($rules as $rule)
-        <tr>
-          <td class="muted-cell">{{ $groupLabel($rule) }}</td>
-          <td><strong>{{ ucfirst($rule->day_of_week) }}</strong></td>
-          <td>
-            {{ ucfirst(\App\Services\VisitSlotService::sessionOf($rule->time_slot_start)) }}
-            <span class="muted-cell">{{ substr($rule->time_slot_start, 0, 5) }}–{{ substr($rule->time_slot_end, 0, 5) }}</span>
-          </td>
-          <td class="muted-cell">
-            {{ $rule->effective_from?->format('M j, Y') ?? '—' }} – {{ $rule->effective_to?->format('M j, Y') ?? 'ongoing' }}
-          </td>
-          <td>
-            <form method="POST" action="{{ route('visitor-slots.rules.update', $rule->rule_id) }}" style="display:flex;gap:8px;align-items:center;"
-                  data-confirm="Change the default capacity of this weekly session? Existing sessions keep their own capacity."
-                  data-confirm-title="Default capacity" data-confirm-ok="Save">
-              @csrf
-              @method('PUT')
-              <input type="number" name="max_capacity" value="{{ $rule->max_capacity }}" min="{{ \App\Services\VisitSlotService::MIN_CAPACITY }}" max="{{ \App\Services\VisitSlotService::MAX_CAPACITY }}" required
-                     aria-label="Default capacity" style="width:90px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:13px;">
-              <button type="submit" class="row-action">Save</button>
-            </form>
-          </td>
-        </tr>
-      @endforeach
-    </tbody>
-  </table>
-  </div>
-  @endif
-</div>
 
 {{-- Create session modal --}}
 <div class="modal-overlay" id="slotModal" onclick="if (event.target === this) closeSlotModal()">

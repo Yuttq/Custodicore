@@ -17,8 +17,8 @@ use Illuminate\View\View;
 
 /**
  * Record Officer — Manage Visitor Slots: create dated visiting sessions, set
- * their capacity, open/close them to new bookings, see their bookings, and
- * set each weekly session's default capacity. The rules live in
+ * their capacity, open/close them to new bookings, and see their bookings.
+ * Visitors can only book sessions created here. The rules live in
  * VisitSlotService; this controller only validates input shape.
  */
 class VisitSlotController extends Controller
@@ -214,24 +214,6 @@ class VisitSlotController extends Controller
         return back()->with('success', $schedule->status === 'closed'
             ? 'Session closed. Existing bookings are kept; no new bookings will be accepted.'
             : 'Session reopened to new bookings.');
-    }
-
-    public function updateRule(Request $request, FacilityVisitationRule $rule): RedirectResponse
-    {
-        $validated = $request->validate([
-            'max_capacity' => $this->capacityRules(),
-        ], $this->messages());
-
-        try {
-            $rule = $this->slots->updateRuleCapacity($rule, (int) $validated['max_capacity']);
-        } catch (ValidationException $e) {
-            return back()->withErrors($e->errors())->withInput();
-        }
-
-        return redirect()
-            ->route('visitor-slots.index')
-            ->with('success', 'Default capacity for '.VisitSlotService::ruleLabel($rule)." set to {$rule->max_capacity}. "
-                .'Sessions that already exist keep their own capacity.');
     }
 
     private function capacityRules(): array

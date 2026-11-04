@@ -64,6 +64,7 @@ test('unavailable reasons map to visitor-facing labels', () => {
   assert.equal(slotReasonLabel('ended'), 'Past');
   assert.equal(slotReasonLabel('not_eligible'), 'Not available for your schedule');
   assert.equal(slotReasonLabel('weekly_limit'), 'Weekly limit reached');
+  assert.equal(slotReasonLabel('not_published'), 'Not open for visits');
   assert.equal(slotReasonLabel('something_new'), 'Unavailable');
 });
 

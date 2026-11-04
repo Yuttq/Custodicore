@@ -466,11 +466,6 @@ Route::middleware([
         [\App\Http\Controllers\VisitSlotController::class, 'store']
     )->name('visitor-slots.store');
 
-    Route::put(
-        '/visitor-slots/rules/{rule}',
-        [\App\Http\Controllers\VisitSlotController::class, 'updateRule']
-    )->whereNumber('rule')->name('visitor-slots.rules.update');
-
     Route::get(
         '/visitor-slots/{visitSchedule}',
         [\App\Http\Controllers\VisitSlotController::class, 'show']
