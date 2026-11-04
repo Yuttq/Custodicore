@@ -44,6 +44,12 @@ class VisitSlotService
 
     public const SESSIONS = ['morning', 'afternoon'];
 
+    /** Both sessions of a day, created together from the Create Session form. */
+    public const WHOLE_DAY = 'whole_day';
+
+    /** The facility's visiting days. Sessions cannot be created Monday to Wednesday. */
+    public const VISITING_DAYS = ['thu', 'fri', 'sat', 'sun'];
+
     private const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     private const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -139,6 +145,8 @@ class VisitSlotService
             ]);
         }
 
+        $this->assertVisitingDay($date);
+
         $rule = $this->ruleFor($classification, $date, $session);
         if (! $rule) {
             throw ValidationException::withMessages([
@@ -187,6 +195,55 @@ class VisitSlotService
         }
 
         return $schedule->fresh('rule');
+    }
+
+    /**
+     * Whole day: the morning and afternoon sessions of one date, with the
+     * same capacity. Both sessions must exist in the weekly rules for that
+     * day. A session that already exists, or today's morning once it has
+     * ended, is skipped and the other one is still created.
+     *
+     * @return array<int, VisitSchedule> the sessions created, in time order
+     */
+    public function createWholeDay(string $classification, CarbonImmutable $date, int $capacity, bool $open): array
+    {
+        $this->assertCapacityInRange($capacity);
+        $this->assertVisitingDay($date);
+
+        $toCreate = [];
+        foreach (self::SESSIONS as $session) {
+            $rule = $this->ruleFor($classification, $date, $session);
+            if (! $rule) {
+                throw ValidationException::withMessages([
+                    'session' => 'A whole day needs both sessions. '.$this->noRuleMessage($classification, $date, $session),
+                ]);
+            }
+            if ($this->findRow($rule, $date) || $this->availability->sessionHasEnded($date->toDateString(), $rule->time_slot_end)) {
+                continue;
+            }
+            $toCreate[] = $session;
+        }
+
+        if ($toCreate === []) {
+            throw ValidationException::withMessages([
+                'schedule_date' => "Both sessions on {$date->format('M j, Y')} already exist (or today's have ended). Edit them instead.",
+            ]);
+        }
+
+        return DB::transaction(fn () => array_map(
+            fn (string $session) => $this->create($classification, $date, $session, $capacity, $open),
+            $toCreate
+        ));
+    }
+
+    /** Sessions are only held Thursday to Sunday. */
+    private function assertVisitingDay(CarbonImmutable $date): void
+    {
+        if (! in_array(self::DAY_KEYS[$date->dayOfWeek], self::VISITING_DAYS, true)) {
+            throw ValidationException::withMessages([
+                'schedule_date' => "{$date->format('l')} is not a visiting day. Sessions can only be created Thursday to Sunday.",
+            ]);
+        }
     }
 
     /**

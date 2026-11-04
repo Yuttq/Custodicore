@@ -319,7 +319,7 @@ class ManageVisitorSlotsTest extends TestCase
             [['schedule_date' => '2026-02-30'], 'schedule_date'],                       // not a real date
             [['schedule_date' => ''], 'schedule_date'],
             [['schedule_date' => '2027-10-15'], 'schedule_date'],                       // beyond the 365-day horizon
-            [['schedule_date' => '2026-10-14'], 'session'],                             // Wednesday: no visiting rule
+            [['schedule_date' => '2026-10-14'], 'schedule_date'],                       // Wednesday: not a visiting day (Thu–Sun only)
             [['pdl_classification' => 'drug_related'], 'session'],                      // Friday is not a drug-related day
             [['session' => 'evening'], 'session'],
             [['pdl_classification' => 'everyone'], 'pdl_classification'],
@@ -898,5 +898,89 @@ class ManageVisitorSlotsTest extends TestCase
             ->assertSee('classification=drug_related', false)
             ->assertSee('id="sessions"', false)
             ->assertSee('id="weekly-defaults"', false);
+    }
+
+    public function test_whole_day_creates_the_morning_and_afternoon_sessions(): void
+    {
+        $this->createSession(['session' => 'whole_day', 'max_capacity' => 15])
+            ->assertRedirect(route('visitor-slots.index', ['from' => self::NEXT_FRIDAY, 'to' => self::NEXT_FRIDAY]))
+            ->assertSessionHas('success', 'Morning and afternoon sessions created for Fri, Oct 16, 2026 with 15 slots each.');
+
+        $sessions = VisitSchedule::whereDate('schedule_date', self::NEXT_FRIDAY)->orderBy('time_slot_start')->get();
+        $this->assertSame(['09:00', '13:00'], $sessions->map(fn ($s) => substr($s->time_slot_start, 0, 5))->all());
+        $this->assertSame([15, 15], $sessions->pluck('max_capacity')->map(fn ($c) => (int) $c)->all());
+        $this->assertSame(2, \App\Models\AuditLog::where('record_type', 'visit_schedules')->where('action_type', 'create')->count());
+
+        // Again: both exist now.
+        $this->createSession(['session' => 'whole_day'])->assertSessionHasErrors('schedule_date');
+    }
+
+    public function test_whole_day_creates_only_the_missing_session(): void
+    {
+        $this->createSession(['session' => 'morning'])->assertSessionHasNoErrors();
+
+        $this->createSession(['session' => 'whole_day', 'max_capacity' => 10])
+            ->assertSessionHas('success', fn ($m) => str_starts_with($m, 'Afternoon sessions created') && str_contains($m, 'already existed'));
+        $this->assertSame(2, VisitSchedule::whereDate('schedule_date', self::NEXT_FRIDAY)->count());
+    }
+
+    public function test_whole_day_needs_both_sessions_on_that_day(): void
+    {
+        // Sundays only have a morning session.
+        $this->createSession(['session' => 'whole_day', 'schedule_date' => self::SUNDAY])
+            ->assertSessionHasErrors(['session' => 'A whole day needs both sessions. There is no afternoon visiting session for non-drug-related PDLs on Sundays. Sessions configured that day: morning.']);
+        $this->assertSame(0, VisitSchedule::whereDate('schedule_date', self::SUNDAY)->count());
+    }
+
+    public function test_sessions_cannot_be_created_monday_to_wednesday(): void
+    {
+        // Even with a weekly rule for Wednesday (e.g. a dorm's own hours), the day is refused.
+        FacilityVisitationRule::create([
+            'pdl_classification' => 'non_drug_related', 'day_of_week' => 'wed',
+            'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00',
+            'max_capacity' => 30, 'effective_from' => '2024-01-01',
+        ]);
+        $before = VisitSchedule::count();
+
+        foreach (['2026-10-12' => 'Monday', '2026-10-13' => 'Tuesday', '2026-10-14' => 'Wednesday'] as $date => $day) {
+            foreach (['morning', 'whole_day'] as $session) {
+                $this->createSession(['schedule_date' => $date, 'session' => $session])
+                    ->assertSessionHasErrors(['schedule_date' => "{$day} is not a visiting day. Sessions can only be created Thursday to Sunday."]);
+            }
+        }
+        $this->assertSame($before, VisitSchedule::count());
+
+        $this->actingAs($this->recordOfficerAccount)->get(route('visitor-slots.index'))
+            ->assertSee('Whole day (morning + afternoon)')
+            ->assertSee('id="slotCalendar"', false)               // calendar greys out non-visiting days
+            ->assertSee('Monday to Wednesday are not visiting days', false);
+    }
+
+    public function test_create_form_knows_each_groups_visiting_days_and_sessions(): void
+    {
+        // A Wednesday rule (not a visiting day) and an ended rule are left out.
+        FacilityVisitationRule::create([
+            'pdl_classification' => 'non_drug_related', 'day_of_week' => 'wed',
+            'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00', 'max_capacity' => 30, 'effective_from' => '2024-01-01',
+        ]);
+        FacilityVisitationRule::create([
+            'pdl_classification' => 'drug_related', 'day_of_week' => 'thu',
+            'time_slot_start' => '09:00:00', 'time_slot_end' => '11:30:00', 'max_capacity' => 30,
+            'effective_from' => '2024-01-01', 'effective_to' => '2025-12-31',
+        ]);
+        FacilityVisitationRule::create([
+            'pdl_classification' => 'drug_related', 'day_of_week' => 'sat',
+            'time_slot_start' => '13:00:00', 'time_slot_end' => '16:30:00', 'max_capacity' => 30, 'effective_from' => '2024-01-01',
+        ]);
+
+        $html = $this->actingAs($this->recordOfficerAccount)->get(route('visitor-slots.index'))->assertOk()->getContent();
+        $this->assertSame(1, preg_match('#<script type="application/json" id="slotGroupDays">(.*?)</script>#s', $html, $m));
+        $days = json_decode(html_entity_decode($m[1]), true);
+
+        $this->assertEquals(['fri' => ['morning', 'afternoon'], 'sun' => ['morning']], $days['non_drug_related']);
+        $this->assertEquals(['sat' => ['afternoon']], $days['drug_related']);
+
+        // The server agrees: a Friday is refused for drug-related PDLs.
+        $this->createSession(['pdl_classification' => 'drug_related'])->assertSessionHasErrors('session');
     }
 }

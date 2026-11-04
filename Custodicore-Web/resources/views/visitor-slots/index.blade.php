@@ -181,19 +181,6 @@
       <div class="modal-body">
         <div class="row cols-2">
           <div class="field-m">
-            <label for="slot_date">Visiting Date</label>
-            <input id="slot_date" type="date" name="schedule_date" min="{{ $today }}" value="{{ old('schedule_date') }}" required>
-          </div>
-          <div class="field-m">
-            <label for="slot_session">Session</label>
-            <select id="slot_session" name="session" required>
-              <option value="morning" @selected(old('session') === 'morning')>Morning</option>
-              <option value="afternoon" @selected(old('session') === 'afternoon')>Afternoon</option>
-            </select>
-          </div>
-        </div>
-        <div class="row cols-2">
-          <div class="field-m">
             <label for="slot_classification">Visiting Group</label>
             <select id="slot_classification" name="pdl_classification" required>
               @foreach ($groups as $key => $label)
@@ -204,6 +191,26 @@
           <div class="field-m">
             <label for="slot_capacity">Maximum Bookings</label>
             <input id="slot_capacity" type="number" name="max_capacity" min="{{ \App\Services\VisitSlotService::MIN_CAPACITY }}" max="{{ \App\Services\VisitSlotService::MAX_CAPACITY }}" value="{{ old('max_capacity') }}" required>
+          </div>
+        </div>
+        <div class="row cols-2">
+          <div class="field-m" style="position:relative;">
+            <label for="slot_date">Visiting Date</label>
+            {{-- The calendar below fills this in; it stays a required field so the form can't be sent without a date. --}}
+            <input id="slot_date" class="cal-value" type="text" name="schedule_date" value="{{ old('schedule_date') }}" required tabindex="-1" autocomplete="off">
+            <div class="mini-cal" id="slotCalendar"
+                 data-today="{{ $today }}"
+                 data-max="{{ \Carbon\Carbon::parse($today)->addDays((int) config('visitation.slot_management_horizon_days', 365))->toDateString() }}"></div>
+            <p class="field-hint" id="slot_date_hint"></p>
+          </div>
+          <div class="field-m">
+            <label for="slot_session">Session</label>
+            <select id="slot_session" name="session" required>
+              <option value="morning" @selected(old('session') === 'morning')>Morning</option>
+              <option value="afternoon" @selected(old('session') === 'afternoon')>Afternoon</option>
+              <option value="{{ \App\Services\VisitSlotService::WHOLE_DAY }}" @selected(old('session') === \App\Services\VisitSlotService::WHOLE_DAY)>Whole day (morning + afternoon)</option>
+            </select>
+            <p class="field-hint">Whole day creates both sessions for the date, each with the maximum below.</p>
           </div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;font-size:13px;">
@@ -220,11 +227,121 @@
   </div>
 </div>
 
+@php
+  // Each visiting group's days and sessions from the weekly sessions still in
+  // effect (Thursday to Sunday only), so the form can block the other days.
+  $groupDays = $rules
+    ->filter(fn ($r) => ! $r->effective_to || $r->effective_to->toDateString() >= $today)
+    ->filter(fn ($r) => in_array($r->day_of_week, \App\Services\VisitSlotService::VISITING_DAYS, true))
+    ->groupBy(fn ($r) => $r->groupKey())
+    ->map(fn ($groupRules) => $groupRules->groupBy('day_of_week')
+      ->map(fn ($dayRules) => $dayRules->map(fn ($r) => \App\Services\VisitSlotService::sessionOf($r->time_slot_start))->unique()->values()));
+@endphp
+<script type="application/json" id="slotGroupDays">@json($groupDays)</script>
 <script>
   function openSlotModal() {
     document.getElementById('slotModal').classList.add('open');
-    document.getElementById('slot_date').focus();
+    document.getElementById('slot_classification').focus();
   }
+
+  // Calendar for the visiting date: only the chosen group's visiting days
+  // (drug-related, non-drug-related or a dorm's own, all within Thursday to
+  // Sunday), from today to the booking horizon, are highlighted and can be
+  // picked; every other day is greyed out. The Session list then offers only
+  // that day's sessions. The server checks the same rules.
+  (function () {
+    var group = document.getElementById('slot_classification');
+    var input = document.getElementById('slot_date');
+    var session = document.getElementById('slot_session');
+    var hint = document.getElementById('slot_date_hint');
+    var cal = document.getElementById('slotCalendar');
+    var groupDays = JSON.parse(document.getElementById('slotGroupDays').textContent || '{}');
+    var keys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    var names = { thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+    var order = ['thu', 'fri', 'sat', 'sun'];
+    var monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var today = cal.dataset.today, max = cal.dataset.max;
+    var view = (input.value || today).slice(0, 7).split('-').map(Number); // [year, month 1-12]
+
+    function iso(y, m, d) { return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+    function dayKeyOf(value) { return keys[new Date(value + 'T00:00:00').getDay()]; }
+    function list(items) { return items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]; }
+    function groupName() { return group.options[group.selectedIndex].text; }
+    function days() { return groupDays[group.value] || {}; }
+
+    // Why a date can't be picked, or '' when it can.
+    function blockedReason(value) {
+      if (value < today) return 'Past date';
+      if (value > max) return 'Too far ahead';
+      var key = dayKeyOf(value);
+      if (order.indexOf(key) === -1) return 'Monday to Wednesday are not visiting days';
+      if (!days()[key]) return 'Not a visiting day for ' + groupName();
+      return '';
+    }
+
+    function render() {
+      var y = view[0], m = view[1];
+      var first = new Date(y, m - 1, 1).getDay();
+      var count = new Date(y, m, 0).getDate();
+      var html = '<div class="mini-cal-head">'
+        + '<button type="button" class="mini-cal-nav" data-step="-1" aria-label="Previous month"' + (iso(y, m, 1) <= today.slice(0, 8) + '01' ? ' disabled' : '') + '>‹</button>'
+        + '<strong>' + monthNames[m - 1] + ' ' + y + '</strong>'
+        + '<button type="button" class="mini-cal-nav" data-step="1" aria-label="Next month"' + (iso(y, m, count) >= max ? ' disabled' : '') + '>›</button>'
+        + '</div><div class="mini-cal-grid">';
+      ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].forEach(function (d) { html += '<span class="mini-cal-dow">' + d + '</span>'; });
+      for (var i = 0; i < first; i++) html += '<span></span>';
+      for (var d = 1; d <= count; d++) {
+        var value = iso(y, m, d), reason = blockedReason(value);
+        var cls = 'mini-cal-day' + (reason ? ' is-blocked' : ' is-allowed') + (value === input.value ? ' is-selected' : '') + (value === today ? ' is-today' : '');
+        html += '<button type="button" class="' + cls + '" data-date="' + value + '"' + (reason ? ' disabled title="' + reason + '"' : ' title="Pick ' + value + '"') + '>' + d + '</button>';
+      }
+      cal.innerHTML = html + '</div>';
+    }
+
+    function update() {
+      // A date that no longer fits the group (e.g. after switching group) is cleared.
+      if (input.value && blockedReason(input.value)) input.value = '';
+      var allowed = order.filter(function (d) { return days()[d]; }).map(function (d) { return names[d]; });
+
+      input.setCustomValidity(input.value ? '' : 'Pick a highlighted day on the calendar.');
+      hint.style.color = allowed.length ? '' : 'var(--red-text)';
+      hint.textContent = !allowed.length
+        ? 'No visiting days are set up for ' + groupName() + '.'
+        : (input.value ? 'Selected: ' + new Date(input.value + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }) + '. ' : '')
+          + 'Visiting days for ' + groupName() + ': ' + list(allowed) + '.';
+
+      // Sessions held that day; whole day needs both.
+      var held = input.value ? days()[dayKeyOf(input.value)] : ['morning', 'afternoon'];
+      Array.prototype.forEach.call(session.options, function (opt) {
+        opt.disabled = opt.value === 'whole_day'
+          ? !(held.indexOf('morning') !== -1 && held.indexOf('afternoon') !== -1)
+          : held.indexOf(opt.value) === -1;
+      });
+      if (session.selectedOptions[0] && session.selectedOptions[0].disabled) {
+        var firstOk = Array.prototype.find.call(session.options, function (o) { return !o.disabled; });
+        if (firstOk) session.value = firstOk.value;
+      }
+      render();
+    }
+
+    cal.addEventListener('click', function (e) {
+      var nav = e.target.closest('[data-step]');
+      if (nav && !nav.disabled) {
+        view[1] += +nav.dataset.step;
+        if (view[1] < 1) { view[1] = 12; view[0]--; }
+        if (view[1] > 12) { view[1] = 1; view[0]++; }
+        render();
+        return;
+      }
+      var day = e.target.closest('[data-date]');
+      if (day && !day.disabled) {
+        input.value = day.dataset.date;
+        update();
+      }
+    });
+    group.addEventListener('change', update);
+    update();
+  })();
   function closeSlotModal() {
     document.getElementById('slotModal').classList.remove('open');
   }

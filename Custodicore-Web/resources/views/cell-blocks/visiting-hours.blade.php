@@ -59,14 +59,16 @@
     @csrf
     <div class="field-m" style="margin-bottom:16px;">
       <label>Days</label>
+      {{-- Thursday to Sunday only: Monday to Wednesday are not visiting days. --}}
       <div class="day-picks">
-        @foreach (R::DAY_LABELS as $key => $label)
+        @foreach (array_intersect_key(R::DAY_LABELS, array_flip(\App\Services\VisitSlotService::VISITING_DAYS)) as $key => $label)
           <label class="day-pick">
             <input type="checkbox" name="days[]" value="{{ $key }}" data-label="Day: {{ $label }}" @checked(in_array($key, old('days', []), true))>
             {{ substr($label, 0, 3) }}
           </label>
         @endforeach
       </div>
+      <p class="field-hint">Visiting days are Thursday to Sunday.</p>
     </div>
     <div class="row cols-3">
       <div class="field-m">

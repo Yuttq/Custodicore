@@ -59,7 +59,7 @@ class DormVisitingScheduleTest extends TestCase
 
     public function test_officer_sets_dorm_hours_in_24_hour_time(): void
     {
-        $this->addHours(['mon', 'thu'], '08:00', '11:30')->assertSessionHasNoErrors();
+        $this->addHours(['thu', 'sat'], '08:00', '11:30')->assertSessionHasNoErrors();
 
         $rules = FacilityVisitationRule::where('cell_block_id', $this->dorm->cell_block_id)->get();
         $this->assertCount(2, $rules);
@@ -67,41 +67,41 @@ class DormVisitingScheduleTest extends TestCase
         $this->assertSame('08:00–11:30', $rules->first()->hoursLabel());
 
         $this->get("/cell-blocks/{$this->dorm->cell_block_id}/visiting-hours")->assertOk()->assertSee('08:00–11:30')->assertSee('15 visitors / session');
-        $this->get('/cell-blocks')->assertSee('Mon, Thu 08:00–11:30');
+        $this->get('/cell-blocks')->assertSee('Thu, Sat 08:00–11:30');
     }
 
     public function test_hours_are_validated(): void
     {
-        $this->addHours(['mon'], '8:00 AM', '11:30')->assertSessionHasErrors('start');   // not 24-hour
-        $this->addHours(['mon'], '11:30', '08:00')->assertSessionHasErrors('end');       // end before start
+        $this->addHours(['thu'], '8:00 AM', '11:30')->assertSessionHasErrors('start');   // not 24-hour
+        $this->addHours(['thu'], '11:30', '08:00')->assertSessionHasErrors('end');       // end before start
         $this->addHours([], '08:00', '11:30')->assertSessionHasErrors('days');
 
-        $this->addHours(['mon'], '08:00', '11:30')->assertSessionHasNoErrors();
-        $this->addHours(['mon'], '10:00', '12:00')->assertSessionHasErrors('start');     // overlaps
-        $this->addHours(['mon'], '11:45', '11:55')->assertSessionHasErrors('start');     // second morning session
-        $this->addHours(['mon'], '13:00', '16:30')->assertSessionHasNoErrors();          // afternoon is fine
+        $this->addHours(['thu'], '08:00', '11:30')->assertSessionHasNoErrors();
+        $this->addHours(['thu'], '10:00', '12:00')->assertSessionHasErrors('start');     // overlaps
+        $this->addHours(['thu'], '11:45', '11:55')->assertSessionHasErrors('start');     // second morning session
+        $this->addHours(['thu'], '13:00', '16:30')->assertSessionHasNoErrors();          // afternoon is fine
     }
 
     public function test_pdl_follows_dorm_schedule_instead_of_classification_days(): void
     {
         $this->assertSame('non_drug_related', FacilityVisitationRule::groupKeyForPdl($this->pdl));
 
-        $this->addHours(['mon', 'thu'], '08:00', '11:30');
+        $this->addHours(['thu', 'sat'], '08:00', '11:30');
         $this->assertSame('dorm:' . $this->dorm->cell_block_id, FacilityVisitationRule::groupKeyForPdl($this->pdl->fresh()));
 
         // The app's availability now shows the dorm days, not Friday.
         Sanctum::actingAs($this->visitorAccount);
         $this->getJson('/api/schedules/availability')->assertOk()
-            ->assertJsonPath('relationships.0.visitingDays', ['mon', 'thu']);
+            ->assertJsonPath('relationships.0.visitingDays', ['thu', 'sat']);
 
-        // Friday (classification day) is refused; Monday 08:00 (dorm day) books.
+        // Friday (classification day) is refused; Thursday 08:00 (dorm day) books.
         $this->book('2026-10-09', '09:00')->assertStatus(422);
-        $this->book('2026-10-12', '08:00')->assertCreated();
+        $this->book('2026-10-15', '08:00')->assertCreated();
     }
 
     public function test_staff_cannot_assign_a_classification_slot_to_a_pdl_on_a_dorm_schedule(): void
     {
-        $this->addHours(['mon'], '08:00', '11:30');
+        $this->addHours(['thu'], '08:00', '11:30');
 
         $this->expectException(ValidationException::class);
         app(VisitAssignmentService::class)->assign([
@@ -116,7 +116,7 @@ class DormVisitingScheduleTest extends TestCase
     {
         $other = CellBlock::create(['name' => 'Dorm 2', 'capacity' => 10, 'designation' => 'any']);
         FacilityVisitationRule::create([
-            'cell_block_id' => $other->cell_block_id, 'day_of_week' => 'mon',
+            'cell_block_id' => $other->cell_block_id, 'day_of_week' => 'thu',
             'time_slot_start' => '08:00:00', 'time_slot_end' => '11:30:00', 'max_capacity' => 10, 'effective_from' => '2026-01-01',
         ]);
 
@@ -127,9 +127,9 @@ class DormVisitingScheduleTest extends TestCase
 
     public function test_removing_hours_is_blocked_while_visits_are_booked_then_falls_back(): void
     {
-        $this->addHours(['mon'], '08:00', '11:30');
+        $this->addHours(['thu'], '08:00', '11:30');
         $rule = FacilityVisitationRule::where('cell_block_id', $this->dorm->cell_block_id)->sole();
-        $this->book('2026-10-12', '08:00')->assertCreated();
+        $this->book('2026-10-15', '08:00')->assertCreated();
 
         $this->actingAs($this->recordOfficerAccount, 'web');
         $url = "/cell-blocks/{$this->dorm->cell_block_id}/visiting-hours/{$rule->rule_id}";
@@ -143,14 +143,15 @@ class DormVisitingScheduleTest extends TestCase
 
     public function test_availability_label_for_the_pdl(): void
     {
-        $this->addHours(['wed'], '08:00', '11:30');
-        $this->addHours(['thu'], '13:00', '16:30');
+        $this->addHours(['thu'], '08:00', '11:30');
+        $this->addHours(['fri'], '13:00', '16:30');
         $pdl = $this->pdl->fresh();
         $at = fn (string $t) => CarbonImmutable::parse($t, 'Asia/Manila');
 
-        $this->assertSame('Available now · until 11:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-07 10:00'))['label']);
-        $this->assertSame('Today 08:00–11:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-07 07:00'))['label']);
-        $this->assertSame('Next: Tomorrow 13:00–16:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-07 12:00'))['label']);
+        // Thursday Oct 8: the morning session is today, Friday's afternoon tomorrow.
+        $this->assertSame('Available now · until 11:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-08 10:00'))['label']);
+        $this->assertSame('Today 08:00–11:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-08 07:00'))['label']);
+        $this->assertSame('Next: Tomorrow 13:00–16:30', PdlVisitingAvailability::for($pdl, null, $at('2026-10-08 12:00'))['label']);
         $this->assertSame('Dorm 1 schedule', PdlVisitingAvailability::for($pdl)['source']);
 
         PdlRestriction::create([
@@ -159,21 +160,32 @@ class DormVisitingScheduleTest extends TestCase
         ]);
         $this->assertSame('Restricted: Quarantine', PdlVisitingAvailability::for($pdl->fresh())['label']);
 
-        $this->get("/pdls/{$pdl->pdl_id}")->assertOk()->assertSee('Restricted: Quarantine')->assertSee('Wed 08:00–11:30');
+        $this->get("/pdls/{$pdl->pdl_id}")->assertOk()->assertSee('Restricted: Quarantine')->assertSee('Thu 08:00–11:30');
         $this->get('/pdls')->assertOk()->assertSee('Restricted: Quarantine');
     }
 
     public function test_slot_page_offers_the_dorm_as_a_group(): void
     {
-        $this->addHours(['mon'], '08:00', '11:30');
+        $this->addHours(['thu'], '08:00', '11:30');
         $group = 'dorm:' . $this->dorm->cell_block_id;
 
         $this->get('/visitor-slots')->assertOk()->assertSee('Dorm: Dorm 1');
 
-        $this->post('/visitor-slots', ['schedule_date' => '2026-10-12', 'pdl_classification' => $group, 'session' => 'morning', 'max_capacity' => 12, 'is_open' => '1'])
+        $this->post('/visitor-slots', ['schedule_date' => '2026-10-15', 'pdl_classification' => $group, 'session' => 'morning', 'max_capacity' => 12, 'is_open' => '1'])
             ->assertSessionHasNoErrors();
         $this->post('/visitor-slots', ['schedule_date' => '2026-10-09', 'pdl_classification' => $group, 'session' => 'morning', 'max_capacity' => 12, 'is_open' => '1'])
             ->assertSessionHasErrors();
         $this->assertStringContainsString('Dorm 1 has no visiting on Fridays', collect(session('errors')->all())->join(' '));
+    }
+
+    public function test_dorm_hours_can_only_be_set_thursday_to_sunday(): void
+    {
+        $this->addHours(['mon'], '08:00', '11:30')->assertSessionHasErrors(['days.0' => 'Visiting days are Thursday to Sunday only.']);
+        $this->addHours(['thu', 'wed'], '08:00', '11:30')->assertSessionHasErrors('days.1');
+        $this->assertSame(0, FacilityVisitationRule::where('cell_block_id', $this->dorm->cell_block_id)->count());
+
+        $this->get("/cell-blocks/{$this->dorm->cell_block_id}/visiting-hours")->assertOk()
+            ->assertSee('name="days[]" value="sun"', false)
+            ->assertDontSee('name="days[]" value="mon"', false);
     }
 }

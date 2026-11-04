@@ -140,10 +140,28 @@ class VisitSlotController extends Controller
             'schedule_date' => ['required', 'date_format:Y-m-d'],
             // A classification, or "dorm:{id}" for a dorm with its own visiting schedule.
             'pdl_classification' => ['required', Rule::in(array_keys(self::groups()))],
-            'session' => ['required', Rule::in(VisitSlotService::SESSIONS)],
+            'session' => ['required', Rule::in([...VisitSlotService::SESSIONS, VisitSlotService::WHOLE_DAY])],
             'max_capacity' => $this->capacityRules(),
             'is_open' => ['nullable', 'boolean'],
         ], $this->messages());
+
+        $date = CarbonImmutable::createFromFormat('Y-m-d', $validated['schedule_date'], $this->availability->timezone())->startOfDay();
+
+        // Whole day: morning + afternoon together, then back to that day's list.
+        if ($validated['session'] === VisitSlotService::WHOLE_DAY) {
+            try {
+                $created = $this->slots->createWholeDay($validated['pdl_classification'], $date, (int) $validated['max_capacity'], $request->boolean('is_open'));
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors())->withInput();
+            }
+
+            $names = collect($created)->map(fn ($s) => VisitSlotService::sessionOf($s->time_slot_start))->join(' and ');
+
+            return redirect()
+                ->route('visitor-slots.index', ['from' => $date->toDateString(), 'to' => $date->toDateString()])
+                ->with('success', ucfirst($names) . " sessions created for {$date->format('D, M j, Y')} with {$validated['max_capacity']} slots each."
+                    . (count($created) === 1 ? ' The other session already existed or has ended.' : ''));
+        }
 
         try {
             $schedule = $this->slots->create(

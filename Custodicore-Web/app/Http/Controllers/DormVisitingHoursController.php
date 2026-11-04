@@ -34,12 +34,14 @@ class DormVisitingHoursController extends Controller
     {
         $data = $request->validate([
             'days' => ['required', 'array', 'min:1'],
-            'days.*' => [Rule::in(array_keys(FacilityVisitationRule::DAY_LABELS))],
+            // Visiting days are Thursday to Sunday (see VisitSlotService::VISITING_DAYS).
+            'days.*' => [Rule::in(VisitSlotService::VISITING_DAYS)],
             'start' => ['required', 'regex:' . self::TIME],
             'end' => ['required', 'regex:' . self::TIME],
             'max_capacity' => ['required', 'integer', 'min:' . VisitSlotService::MIN_CAPACITY, 'max:' . VisitSlotService::MAX_CAPACITY],
         ], [
             'days.required' => 'Choose at least one visiting day.',
+            'days.*.in' => 'Visiting days are Thursday to Sunday only.',
             'start.regex' => 'Use 24-hour time for the start, e.g. 08:00 or 13:30.',
             'end.regex' => 'Use 24-hour time for the end, e.g. 11:30 or 16:30.',
         ]);
