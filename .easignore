@@ -1,0 +1,31 @@
+# EAS archives from the Git root (this monorepo), so only ship the mobile app.
+# While this file exists EAS ignores every .gitignore, so the mobile rules are repeated below.
+# Write folder rules WITHOUT a trailing slash: eas-cli checks folder paths without one.
+/*
+!/Custodicore-Mobile
+
+# Mobile rules
+/Custodicore-Mobile/android
+/Custodicore-Mobile/ios
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env
+.env*.local
+*.tsbuildinfo
+app-example
