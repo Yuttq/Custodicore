@@ -227,6 +227,11 @@ tbody tr:last-child td{border-bottom:none;}
 .modal-header .sub{font-size:12px;color:var(--muted);}
 .modal-header .close{border:none;background:none;font-size:18px;color:var(--muted);cursor:pointer;line-height:1;}
 .modal-body{padding:22px 24px;overflow-y:auto;}
+/* A form wrapping header/body/footer passes the height limit on, so the body
+   scrolls and the header and buttons stay in view on short screens. */
+.modal{overflow:hidden;}
+.modal>form{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;}
+.modal-body{min-height:0;}
 .modal-footer{display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid var(--border);}
 .modal-footer.space-between{justify-content:space-between;}
 
@@ -698,14 +703,14 @@ table .flag{background:none;border:none;padding:0;text-align:left;font-size:12.5
 
 /* Create Session: calendar where only the allowed visiting days can be picked */
 .cal-value{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
-.mini-cal{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card);max-width:300px;}
-.mini-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:13.5px;}
+.mini-cal{border:1px solid var(--border);border-radius:12px;padding:8px 10px;background:var(--card);max-width:300px;}
+.mini-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:13.5px;}
 .mini-cal-nav{border:none;background:none;font-size:20px;line-height:1;padding:2px 8px;border-radius:8px;color:var(--text);cursor:pointer;}
 .mini-cal-nav:hover:not(:disabled){background:var(--gray-bg);}
 .mini-cal-nav:disabled{opacity:.3;cursor:default;}
-.mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
 .mini-cal-dow{text-align:center;font-size:10.5px;font-weight:700;color:var(--muted);padding:2px 0;}
-.mini-cal-day{aspect-ratio:1;border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;}
+.mini-cal-day{height:30px;border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;}
 .mini-cal-day.is-allowed{background:var(--teal-bg);color:var(--teal);}
 .mini-cal-day.is-allowed:hover{background:var(--teal);color:#fff;}
 .mini-cal-day.is-blocked{background:none;color:var(--muted);opacity:.4;cursor:not-allowed;text-decoration:line-through;}
