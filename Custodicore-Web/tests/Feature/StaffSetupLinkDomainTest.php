@@ -177,7 +177,7 @@ class StaffSetupLinkDomainTest extends TestCase
         $this->get('/login')
             ->assertOk()
             ->assertDontSee('bjmp-logo', false)
-            ->assertSee('Capstone project prototype. This is not an official BJMP website.');
+            ->assertDontSee('Capstone project prototype. This is not an official BJMP website.');
     }
 
     public function test_public_setup_page_does_not_show_the_bjmp_seal(): void
