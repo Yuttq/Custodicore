@@ -63,10 +63,10 @@
           <div class="req-actions">
             @if ($item['kind'] === 'document' && $item['status'] === 'pending_review')
               <form method="POST" action="{{ route('relationship-documents.verify', $item['document']->document_id) }}"
-                    data-confirm="Mark the {{ $item['label'] }} as verified? Only do this after checking the file is genuine and readable."
-                    data-confirm-title="Verify document" data-confirm-ok="Verify">
+                    data-confirm="Approve the {{ $item['label'] }}? Only do this after checking the file is genuine and readable."
+                    data-confirm-title="Approve document" data-confirm-ok="Approve">
                 @csrf
-                <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
               </form>
               <details class="req-inline">
                 <summary class="row-action" style="color:var(--red);">Reject</summary>
@@ -145,7 +145,7 @@
       <button type="submit" class="btn btn-outline-neutral" style="padding:7px 12px;">Save details</button>
     </form>
     @if ($locked)
-      <p class="muted-cell" style="margin:6px 0 0 0;font-size:12px;">This relationship is verified. Changing its details sends it back to pending.</p>
+      <p class="muted-cell" style="margin:6px 0 0 0;font-size:12px;">This relationship is approved. Changing its details sends it back to pending.</p>
     @endif
   </details>
 </div>

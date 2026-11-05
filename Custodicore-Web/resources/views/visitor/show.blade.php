@@ -95,7 +95,7 @@
             @elseif ($checks['matches']->count() === 1)
               @php $match = $checks['matches']->first(); @endphp
               Matches {{ $match->full_name }} ({{ $match->pdl_number }}, {{ ucfirst($match->custody_status) }}).
-              Linked automatically as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? 'the given relationship' }} once every document is verified.
+              Linked automatically as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? 'the given relationship' }} once every document is approved.
             @elseif ($checks['matches']->isNotEmpty())
               Several PDLs match the name or number given. Link the right one:
             @else
@@ -133,11 +133,11 @@
           <td><span class="badge {{ $tone($auto('authorized_visitor')) }}"><span class="dot"></span>{{ $options['authorized_visitor'][$auto('authorized_visitor')] ?? '—' }}</span></td>
           <td class="muted-cell">
             @if ($auto('authorized_visitor') === 'yes')
-              Relationship to {{ $linkedNames }} verified: every requirement was checked.
+              Relationship to {{ $linkedNames }} approved: every requirement was checked.
             @elseif ($auto('authorized_visitor') === 'no')
               The relationship was rejected.
             @else
-              Not verified yet. It is verified automatically once every document and the valid ID are verified.
+              Not approved yet. It is approved automatically once every document and the valid ID are approved.
             @endif
           </td>
         </tr>
@@ -187,10 +187,10 @@
                 @endif
                 @if (! $locked && $doc->verification_status === 'pending')
                   <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                        data-confirm="Mark this {{ $doc->typeLabel() }} as verified? Only do this after checking it matches the visitor."
-                        data-confirm-title="Verify ID" data-confirm-ok="Verify">
+                        data-confirm="Approve this {{ $doc->typeLabel() }}? Only do this after checking it matches the visitor."
+                        data-confirm-title="Approve ID" data-confirm-ok="Approve">
                     @csrf
-                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                   </form>
                   <details class="acct-reject">
                     <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
@@ -221,10 +221,10 @@
                 <a class="row-action" href="{{ route('relationship-documents.file', $doc->document_id) }}" target="_blank" rel="noopener">View</a>
                 @if (! $locked && $doc->status === 'pending' && $doc->relationship?->verification_status !== 'verified')
                   <form method="POST" action="{{ route('visitor.walk-in-documents.verify', [$visitor->visitor_id, $doc->document_id]) }}"
-                        data-confirm="Mark the {{ $doc->label() }} as verified? Only do this after checking the names match the visitor and the PDL."
-                        data-confirm-title="Verify Document" data-confirm-ok="Verify">
+                        data-confirm="Approve the {{ $doc->label() }}? Only do this after checking the names match the visitor and the PDL."
+                        data-confirm-title="Approve Document" data-confirm-ok="Approve">
                     @csrf
-                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                   </form>
                   <details class="acct-reject">
                     <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
@@ -324,14 +324,22 @@
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
     @if ($visitor->verification_status !== 'verified')
       <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}"
-            data-confirm="Approve {{ $visitor->full_name }}'s account? They will be notified and can start using visitor services in the app."
+            data-confirm="Approve {{ $visitor->full_name }}? This approves their ID, documents, account and PDL relationship together."
             data-confirm-title="Approve visitor" data-confirm-ok="Approve">
         @csrf
-        @if ($visitor->hasVerifiedId())
-          <button class="btn btn-blue" type="submit">Approve Visitor</button>
+        @php
+          $usableId = $visitor->idDocuments->whereIn('verification_status', ['pending', 'verified'])->isNotEmpty();
+          $hasLink = $visitor->isWalkIn() || $visitor->relationships->contains(fn ($r) => $r->verification_status !== 'rejected');
+        @endphp
+        @if (! $usableId)
+          <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="The visitor has to upload a government ID first">Approve Visitor</button>
+          <div class="field-hint" style="margin-top:6px;">Waiting for the visitor to upload a government ID.</div>
+        @elseif (! $hasLink)
+          <a class="btn btn-blue" href="{{ route('account-reviews.index') }}">Approve in the Review Queue</a>
+          <div class="field-hint" style="margin-top:6px;">Confirm the PDL they will visit on their Review Queue card, or add the PDL relationship below, then approve.</div>
         @else
-          <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="Verify a government ID first">Approve Visitor</button>
-          <div class="field-hint" style="margin-top:6px;">Verify one of their government IDs below before approving.</div>
+          <button class="btn btn-blue" type="submit">Approve Visitor</button>
+          <div class="field-hint" style="margin-top:6px;">Approves the ID, documents and PDL relationship together with the account.</div>
         @endif
       </form>
     @endif
@@ -364,7 +372,7 @@
   @else
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Verified By</th><th></th></tr></thead>
+      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Approved By</th><th></th></tr></thead>
       <tbody>
         @foreach ($visitor->idDocuments as $doc)
         <tr>
@@ -372,7 +380,7 @@
           <td class="muted-cell">{{ $doc->id_number }}</td>
           <td>
             <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
-              <span class="dot"></span>{{ strtoupper($doc->verification_status) }}
+              <span class="dot"></span>{{ strtoupper($doc->verification_status === 'verified' ? 'approved' : $doc->verification_status) }}
             </span>
           </td>
           <td class="muted-cell">{{ $doc->verifiedBy?->full_name ?? '—' }}</td>
@@ -383,10 +391,10 @@
               @endif
               @if ($doc->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                      data-confirm="Mark this {{ $doc->typeLabel() }} as verified? Only do this after checking it matches the visitor."
-                      data-confirm-title="Verify ID" data-confirm-ok="Verify">
+                      data-confirm="Approve this {{ $doc->typeLabel() }}? Only do this after checking it matches the visitor."
+                      data-confirm-title="Approve ID" data-confirm-ok="Approve">
                   @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                  <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                 </form>
               @endif
               @if ($doc->verification_status !== 'rejected')
@@ -444,25 +452,25 @@
             @if ($rel->isHighPriority())
               <span class="pill" style="background:var(--blue-bg);color:var(--blue);">HIGH PRIORITY</span>
             @else
-              <span class="muted-cell">Requires Verification</span>
+              <span class="muted-cell">Needs approval</span>
             @endif
           </td>
           <td>
             <span class="badge {{ $rel->verification_status === 'verified' ? 'active' : ($rel->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
-              <span class="dot"></span>{{ strtoupper($rel->verification_status) }}
+              <span class="dot"></span>{{ strtoupper($rel->verification_status === 'verified' ? 'approved' : $rel->verification_status) }}
             </span>
           </td>
           <td>
             <div style="display:flex;gap:8px;">
               @if ($rel->verification_status !== 'verified')
                 <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}"
-                      data-confirm="Verify {{ $visitor->full_name }} as {{ $rel->relationshipLabel() }} of {{ $rel->pdl?->full_name ?? 'this PDL' }}? Its requirements will be locked."
-                      data-confirm-title="Verify relationship" data-confirm-ok="Verify">
+                      data-confirm="Approve {{ $visitor->full_name }} as {{ $rel->relationshipLabel() }} of {{ $rel->pdl?->full_name ?? 'this PDL' }}? Its requirements will be locked."
+                      data-confirm-title="Approve relationship" data-confirm-ok="Approve">
                   @csrf
                   @if ($relReady)
-                    <button type="submit" class="row-action" style="color:var(--green);">Verify</button>
+                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                   @else
-                    <button type="submit" class="row-action" style="color:var(--green);opacity:.45;cursor:not-allowed;" disabled title="Complete all requirements below first">Verify</button>
+                    <button type="submit" class="row-action" style="color:var(--green);opacity:.45;cursor:not-allowed;" disabled title="Complete all requirements below first">Approve</button>
                   @endif
                 </form>
               @endif
@@ -545,128 +553,7 @@
   </details>
 </div>
 
-<script>
-  // PDL search box for "Add PDL Relationship" (replaces the long dropdown).
-  (function () {
-    var box = document.querySelector('[data-pdl-search]');
-    if (!box) return;
-    var input = box.querySelector('input[type="text"]');
-    var hidden = box.querySelector('[data-pdl-id]');
-    var list = box.querySelector('[role="listbox"]');
-    var hint = box.querySelector('[data-pdl-hint]');
-    var statusLabels = { active: 'Active', released: 'Released', transferred: 'Transferred', deceased: 'Deceased' };
-    var items = [], active = -1, timer = null, lastQuery = null, request = 0;
-
-    function requireChoice() {
-      input.setCustomValidity(hidden.value ? '' : 'Choose a PDL from the search results.');
-    }
-
-    function close() {
-      list.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-      active = -1;
-    }
-
-    function highlight(i) {
-      var rows = list.querySelectorAll('[role="option"]');
-      rows.forEach(function (r, n) { r.classList.toggle('is-active', n === i); r.setAttribute('aria-selected', n === i ? 'true' : 'false'); });
-      active = i;
-      if (rows[i]) rows[i].scrollIntoView({ block: 'nearest' });
-    }
-
-    function choose(pdl) {
-      hidden.value = pdl.id;
-      input.value = pdl.name + ' (' + pdl.number + ')';
-      hint.textContent = 'Selected: ' + pdl.name + ' · ' + pdl.number + ' · ' + (statusLabels[pdl.status] || pdl.status);
-      requireChoice();
-      close();
-    }
-
-    function render(results, q) {
-      list.innerHTML = '';
-      items = results;
-      if (!results.length) {
-        var none = document.createElement('li');
-        none.className = 'pdl-search-empty';
-        none.textContent = 'No PDL found for "' + q + '". PDLs already linked to this visitor are not shown.';
-        list.appendChild(none);
-      }
-      results.forEach(function (pdl, i) {
-        var li = document.createElement('li');
-        li.setAttribute('role', 'option');
-        li.id = 'pdl-opt-' + pdl.id;
-
-        var avatar;
-        if (pdl.photo) {
-          avatar = document.createElement('img');
-          avatar.src = pdl.photo;
-          avatar.alt = '';
-          avatar.className = 'thumb pdl-photo-img';
-        } else {
-          avatar = document.createElement('div');
-          avatar.className = 'thumb';
-          avatar.textContent = pdl.initials;
-        }
-
-        var text = document.createElement('div');
-        var name = document.createElement('div');
-        name.className = 'pdl-search-name';
-        name.textContent = pdl.name + (pdl.alias ? ' "' + pdl.alias + '"' : '');
-        var meta = document.createElement('div');
-        meta.className = 'muted-cell';
-        meta.textContent = pdl.number + ' · ID ' + pdl.id;
-        text.appendChild(name);
-        text.appendChild(meta);
-
-        var badge = document.createElement('span');
-        badge.className = 'badge ' + pdl.status;
-        badge.textContent = statusLabels[pdl.status] || pdl.status;
-
-        li.appendChild(avatar);
-        li.appendChild(text);
-        li.appendChild(badge);
-        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(pdl); });
-        li.addEventListener('mousemove', function () { if (active !== i) highlight(i); });
-        list.appendChild(li);
-      });
-      list.hidden = false;
-      input.setAttribute('aria-expanded', 'true');
-      if (results.length) highlight(0);
-    }
-
-    function search() {
-      var q = input.value.trim();
-      if (q === lastQuery && !list.hidden) return;
-      lastQuery = q;
-      if (!q) { close(); return; }
-      var mine = ++request;
-      fetch(box.dataset.url + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : { results: [] }; })
-        .then(function (data) { if (mine === request) render(data.results || [], q); })
-        .catch(function () { if (mine === request) render([], q); });
-    }
-
-    input.addEventListener('input', function () {
-      // Typing again means the earlier choice no longer applies.
-      hidden.value = '';
-      hint.textContent = 'Type at least 1 character, then pick the PDL from the list.';
-      requireChoice();
-      clearTimeout(timer);
-      timer = setTimeout(search, 200);
-    });
-    input.addEventListener('focus', function () { if (input.value.trim() && !hidden.value) search(); });
-    input.addEventListener('blur', function () { setTimeout(close, 120); });
-    input.addEventListener('keydown', function (e) {
-      if (list.hidden) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(active + 1, items.length - 1)); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(active - 1, 0)); }
-      else if (e.key === 'Enter') { if (items[active]) { e.preventDefault(); choose(items[active]); } }
-      else if (e.key === 'Escape') { close(); }
-    });
-
-    requireChoice();
-  })();
-</script>
+@include('partials.pdl-search-script')
 
 {{-- ================= VISIT REQUESTS AWAITING REVIEW ================= --}}
 @if ($pendingVisitRequests->isNotEmpty())
@@ -684,7 +571,7 @@
   @elseif ($visitor->account && $visitor->account->status !== 'active')
     <p class="empty-note">This visitor account is not active and cannot be assigned a visit.</p>
   @elseif ($assignableRelationships->isEmpty())
-    <p class="empty-note">Register and verify a visitor↔PDL relationship before assigning a visit.</p>
+    <p class="empty-note">Add and approve a visitor↔PDL relationship before assigning a visit.</p>
   @else
     <form method="POST" action="{{ route('visitor.visits.assign', $visitor->visitor_id) }}" id="assignVisitForm"
           data-confirm="Assign this visit to {{ $visitor->full_name }}? They will be asked to confirm it in the app."

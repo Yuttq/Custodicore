@@ -149,7 +149,7 @@ class StaffAttributionTest extends TestCase
 
                     return $visitor;
                 },
-                'send' => fn (VisitorProfile $v) => $this->post(route('visitor.approve', $v->visitor_id)),
+                'send' => fn (VisitorProfile $v) => $this->post(route('visitor.approve', $v->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent']),
                 'attributed' => fn (VisitorProfile $v) => [$v->fresh()->verified_by],
                 'state' => fn (VisitorProfile $v) => $v->fresh()->only(['verification_status', 'verified_by', 'verified_at']),
             ],
@@ -324,7 +324,7 @@ class StaffAttributionTest extends TestCase
         $relationship = $this->pendingRelationship($this->newVisitor('verified'));
 
         $this->actingAs($this->officerAccount);
-        $this->post(route('visitor.approve', $visitor->visitor_id))->assertSessionHas('success');
+        $this->post(route('visitor.approve', $visitor->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])->assertSessionHas('success');
         $this->post(route('visitor.relationships.reject', [$relationship->visitor_id, $relationship->relationship_id]))->assertSessionHas('success');
 
         foreach ([['visitor_profiles', $visitor->visitor_id], ['visitor_pdl_relationships', $relationship->relationship_id]] as [$type, $id]) {
@@ -382,7 +382,8 @@ class StaffAttributionTest extends TestCase
 
         $visitor = $this->newVisitor();
         $this->idDocument($visitor, 'verified');
-        $this->post(route('visitor.approve', $visitor->visitor_id))->assertSessionHas('success', 'Visitor approved. The visitor has been notified.');
+        $this->post(route('visitor.approve', $visitor->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
+            ->assertSessionHas('success', fn ($m) => str_starts_with($m, 'Visitor approved. The visitor has been notified.'));
         $this->assertSame('verified', $visitor->fresh()->verification_status);
         $this->assertNotNull($visitor->fresh()->verified_at);
 

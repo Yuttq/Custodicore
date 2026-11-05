@@ -228,4 +228,13 @@ class VisitorPhotoTest extends TestCase
         $this->assertSame(0, Account::where('email', 'photo.visitor@example.com')->count());
         $this->assertNoPhotoFiles();
     }
+
+    public function test_registration_saves_the_relationship_the_visitor_picked(): void
+    {
+        Mail::fake();
+
+        $this->post('/api/auth/register', $this->registration(['relationshipType' => 'spouse']), ['Accept' => 'application/json'])->assertCreated();
+
+        $this->assertSame('spouse', Account::where('email', 'photo.visitor@example.com')->first()->visitorProfile->intended_relationship_type);
+    }
 }

@@ -132,7 +132,7 @@
           <option value="other" {{ old('gender', $pdl->gender) === 'other' ? 'selected' : '' }}>Other</option>
         </select>
       </div>
-      <div class="field-m"><label>Date of Birth</label><input type="date" name="date_of_birth" value="{{ old('date_of_birth', optional($pdl->date_of_birth)->format('Y-m-d')) }}" required min="1900-01-02" max="{{ now()->subDay()->toDateString() }}"></div>
+      <div class="field-m"><label>Date of Birth</label><input type="date" name="date_of_birth" value="{{ old('date_of_birth', optional($pdl->date_of_birth)->format('Y-m-d')) }}" required min="1900-01-02" max="{{ now()->subYears(18)->toDateString() }}" title="The PDL must be at least 18 years old"></div>
     </div>
 
     <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'building'])</span> Custody Details</p>

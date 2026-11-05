@@ -601,6 +601,9 @@ class AuthController extends Controller
             'relationship_hint' => $request->input('relationshipHint'),
             // Unverified search hint for staff; never matched automatically.
             'intended_pdl_name' => $request->input('intendedPdlName') ?: null,
+            // The relationship picked in the app; Account Review pre-fills it.
+            'intended_relationship_type' => in_array($request->input('relationshipType'), RelationshipRequirements::registrationTypes(), true)
+                ? $request->input('relationshipType') : null,
             'guardian_full_name' => $this->trimmedOrNull($request->input('guardianFullName')),
             'guardian_relationship' => $this->trimmedOrNull($request->input('guardianRelationship')),
             'guardian_contact_number' => $this->trimmedOrNull($request->input('guardianContactNumber')),

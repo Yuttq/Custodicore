@@ -650,7 +650,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->bearer($token)->getJson('/api/visits')->assertForbidden();
 
         $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.approve', $profile->visitor_id))
+            ->post(route('visitor.approve', $profile->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -710,7 +710,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->giveVerifiedId($account);
 
         $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.approve', $account->visitorProfile->visitor_id))
+            ->post(route('visitor.approve', $account->visitorProfile->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
             ->assertRedirect();
 
         $profile = $account->visitorProfile->fresh();
@@ -730,7 +730,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
             ->assertJsonPath('rejectionReason', 'The ID photo is unreadable.');
 
         $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.approve', $account->visitorProfile->visitor_id))
+            ->post(route('visitor.approve', $account->visitorProfile->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
             ->assertSessionHas('success');
 
         $this->app['auth']->forgetGuards();

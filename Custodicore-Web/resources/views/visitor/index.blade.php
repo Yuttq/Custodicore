@@ -70,7 +70,8 @@
         <tr>
           <td>
             <div class="name-cell">
-              <div class="thumb">{{ strtoupper(substr($visitor->full_name, 0, 2)) }}</div>
+              {{-- The photo taken in the app, or their initial when there is none yet. --}}
+              @include('partials.visitor-avatar', ['visitor' => $visitor])
               <a class="full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a>
             </div>
           </td>

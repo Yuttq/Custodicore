@@ -42,9 +42,10 @@ class VisitRequestReviewController extends Controller
         // The automatic-expiry reason is reserved: the visitor timeline uses
         // it to tell an expired request from a staff rejection.
         $data = $request->validate([
-            'cancellation_reason' => ['required', 'string', 'max:255', Rule::notIn([VisitAssignmentService::REVIEW_EXPIRED_REASON])],
+            'cancellation_reason' => ['required', 'string', 'min:5', 'max:255', Rule::notIn([VisitAssignmentService::REVIEW_EXPIRED_REASON])],
         ], [
             'cancellation_reason.required' => 'Enter a reason for rejecting this visit request.',
+            'cancellation_reason.min' => 'The reason must be at least 5 characters, so the visitor understands why.',
             'cancellation_reason.not_in' => 'Enter your own reason for rejecting this visit request.',
         ]);
 

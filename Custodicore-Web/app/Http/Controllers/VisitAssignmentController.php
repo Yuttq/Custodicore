@@ -37,6 +37,12 @@ class VisitAssignmentController extends Controller
             'confirmation_deadline' => ['nullable', 'date', 'after:now'],
         ]);
 
+        $schedule = VisitSchedule::find($validated['schedule_id']);
+        if ($error = $this->deadlineError($validated['confirmation_deadline'] ?? null,
+            $schedule->schedule_date->toDateString() . ' ' . substr((string) $schedule->time_slot_start, 0, 5))) {
+            return back()->withErrors(['confirmation_deadline' => $error])->withInput();
+        }
+
         try {
             $visitRequest = $this->assignments->assign([
                 'visitor_id' => $visitor->visitor_id,
@@ -57,6 +63,24 @@ class VisitAssignmentController extends Controller
             );
     }
 
+    /**
+     * A confirmation deadline the officer typed must fall before the visit
+     * starts; a deadline after the visit could never be met. Left blank, the
+     * facility's default window applies.
+     */
+    private function deadlineError(?string $deadline, string $visitStart): ?string
+    {
+        if (! $deadline) {
+            return null;
+        }
+        $tz = app(ScheduleAvailabilityService::class)->timezone();
+        $start = CarbonImmutable::parse($visitStart, $tz);
+
+        return CarbonImmutable::parse($deadline, $tz)->gte($start)
+            ? 'The confirmation deadline must be before the visit starts (' . $start->format('M j, Y H:i') . ').'
+            : null;
+    }
+
     private function storeSessions(Request $request, VisitorProfile $visitor)
     {
         $validated = $request->validate([
@@ -75,6 +99,11 @@ class VisitAssignmentController extends Controller
             ->first();
         if (! $relationship) {
             return back()->withErrors(['relationship_id' => 'Choose one of this visitor\'s relationships.'])->withInput();
+        }
+
+        $firstStart = collect($validated['start_times'])->sort()->first();
+        if ($error = $this->deadlineError($validated['confirmation_deadline'] ?? null, $validated['date'] . ' ' . $firstStart)) {
+            return back()->withErrors(['confirmation_deadline' => $error])->withInput();
         }
 
         $availability = app(ScheduleAvailabilityService::class);

@@ -124,6 +124,7 @@ class PdlController extends Controller
         'case_status.in' => 'Choose the case status from the list.',
         'date_filed.before_or_equal' => 'The date filed cannot be in the future.',
         'next_hearing_at.after_or_equal' => 'The next hearing must be today or later.',
+        'next_hearing_at.before' => 'The next hearing must be within the next 5 years. Check the year.',
         'convicted_on.required' => 'Enter the date of conviction.',
         'convicted_on.before_or_equal' => 'The date of conviction cannot be in the future.',
         'sentence_years.max' => 'Sentence years must be 99 or less.',
@@ -184,7 +185,7 @@ class PdlController extends Controller
             // Missing means a new case: Pending trial (the forms always send one).
             'case_status' => ['nullable', Rule::in(PdlLegalRecord::STATUSES)],
             'date_filed' => ['nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
-            'next_hearing_at' => ['nullable', 'date', 'after_or_equal:today'],
+            'next_hearing_at' => ['nullable', 'date', 'after_or_equal:today', 'before:' . now()->addYears(5)->toDateString()],
             'hearing_notes' => ['nullable', 'string', 'max:255'],
             'convicted_on' => [Rule::requiredIf($convicted), 'nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
             'sentence_years' => ['nullable', 'integer', 'min:0', 'max:99'],
@@ -194,8 +195,14 @@ class PdlController extends Controller
     }
 
     /** Checks that need more than one field: a conviction needs a sentence and can't precede the filing. */
-    private function checkCaseDetails(array $validated): void
+    private function checkCaseDetails(array $validated, ?string $bornOn = null): void
     {
+        // A case can't be filed before the PDL was born.
+        if ($bornOn && ! empty($validated['date_filed']) && $validated['date_filed'] < $bornOn) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'date_filed' => 'The date filed cannot be before the date of birth of the PDL.',
+            ]);
+        }
         if (! in_array($validated['case_status'] ?? null, PdlLegalRecord::CONVICTED_STATUSES, true)) {
             return;
         }
@@ -275,7 +282,7 @@ class PdlController extends Controller
             ...$this->caseRules(),
             ...$this->caseDetailRules($request),
         ]);
-        $this->checkCaseDetails($validated);
+        $this->checkCaseDetails($validated, $validated['date_of_birth'] ?? null);
         $case = [...$this->caseAttributes($validated), ...$this->caseDetailAttributes($validated)];
         $caseInput = $validated;
         $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court',
@@ -479,7 +486,7 @@ class PdlController extends Controller
             ...$this->caseDetailRules($request),
             'remarks' => ['nullable', 'string', 'max:2000'],
         ], self::CASE_MESSAGES);
-        $this->checkCaseDetails($validated);
+        $this->checkCaseDetails($validated, $pdl->date_of_birth?->toDateString());
 
         $previousClassification = $pdl->classification;
 
@@ -537,7 +544,7 @@ class PdlController extends Controller
             ...$this->caseDetailRules($request),
             'remarks' => ['nullable', 'string', 'max:2000'],
         ], self::CASE_MESSAGES);
-        $this->checkCaseDetails($validated);
+        $this->checkCaseDetails($validated, $pdl->date_of_birth?->toDateString());
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {

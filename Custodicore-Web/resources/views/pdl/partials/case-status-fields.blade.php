@@ -29,7 +29,7 @@
     </div>
     <div class="field-m" data-hearing-field>
       <label>Next Court Hearing (optional)</label>
-      <input type="datetime-local" name="next_hearing_at" value="{{ $value('next_hearing_at') }}" min="{{ now()->startOfDay()->format('Y-m-d\TH:i') }}">
+      <input type="datetime-local" name="next_hearing_at" value="{{ $value('next_hearing_at') }}" min="{{ now()->startOfDay()->format('Y-m-d\TH:i') }}" max="{{ now()->addYears(5)->subDay()->format('Y-m-d\T23:59') }}">
       @if ($next)
         <p class="field-hint">Currently set: {{ $next->hearing_at->format('D, M j, Y H:i') }}. Enter a new date to add the next one.</p>
       @endif

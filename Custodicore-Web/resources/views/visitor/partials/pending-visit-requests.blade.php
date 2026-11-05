@@ -120,7 +120,7 @@
                   @csrf
                   <div class="field-m">
                     <label>Reason (shown to the visitor)</label>
-                    <textarea name="cancellation_reason" maxlength="255" required placeholder="e.g. The facility is not accepting visits for this PDL on that day."></textarea>
+                    <textarea name="cancellation_reason" minlength="5" maxlength="255" required placeholder="e.g. The facility is not accepting visits for this PDL on that day."></textarea>
                   </div>
                   <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);margin-top:8px;">Confirm Rejection</button>
                 </form>

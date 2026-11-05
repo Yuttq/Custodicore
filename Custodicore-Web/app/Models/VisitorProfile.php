@@ -19,6 +19,7 @@ class VisitorProfile extends Model
         'address',
         'relationship_hint',
         'intended_pdl_name',
+        'intended_relationship_type',
         'intended_pdl_number',
         'guardian_full_name',
         'guardian_relationship',

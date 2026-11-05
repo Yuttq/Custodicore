@@ -58,20 +58,26 @@ class AccountReviewTest extends TestCase
         ]);
     }
 
-    public function test_approval_needs_a_verified_id(): void
+    public function test_one_approve_needs_an_id_and_the_pdl(): void
     {
         $visitor = $this->pendingVisitor();
+        $link = ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'];
 
         // No ID at all.
-        $this->post("/visitors/{$visitor->visitor_id}/approve")->assertSessionHas('error');
-        // Uploaded but not checked yet.
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link)
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'has not uploaded a government ID'));
+        // An ID, but no PDL chosen.
         $id = $this->id($visitor, 'pending');
-        $this->post("/visitors/{$visitor->visitor_id}/approve")->assertSessionHas('error');
+        $this->post("/visitors/{$visitor->visitor_id}/approve")
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Choose the PDL'));
         $this->assertSame('pending', $visitor->fresh()->verification_status);
+        $this->assertSame('pending', $id->fresh()->verification_status);
 
-        $this->post("/visitors/{$visitor->visitor_id}/ids/{$id->visitor_id_doc_id}/verify");
-        $this->post("/visitors/{$visitor->visitor_id}/approve")->assertSessionHas('success');
+        // One Approve: ID, account and PDL link together.
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link)->assertSessionHas('success');
         $this->assertSame('verified', $visitor->fresh()->verification_status);
+        $this->assertSame('verified', $id->fresh()->verification_status);
+        $this->assertSame($this->pdl->pdl_id, $visitor->relationships()->sole()->pdl_id);
     }
 
     public function test_queue_lists_pending_accounts_with_their_ids(): void
@@ -83,8 +89,9 @@ class AccountReviewTest extends TestCase
             ->assertOk()
             ->assertSee('Ana Reyes')
             ->assertSee('View ID')
-            ->assertSee('Open and verify the ID before approving.')
-            ->assertSee('title="Verify a government ID first"', false);
+            ->assertSee('One-step approval')->assertSee('Approve will')
+            ->assertSee('Check the ID and documents, confirm the PDL, then approve.')
+            ->assertDontSee('>Verify<', false);
 
         // Sidebar shows how many are waiting.
         $this->get('/dashboard')->assertSee('Review Queue')->assertSee('class="nav-count"', false);
@@ -113,5 +120,41 @@ class AccountReviewTest extends TestCase
         $this->get("/visitors/{$other->visitor_id}/ids/{$id->visitor_id_doc_id}/file")->assertNotFound();
         $this->actingAs($this->frontDeskAccount, 'web')
             ->get("/visitors/{$visitor->visitor_id}/ids/{$id->visitor_id_doc_id}/file")->assertForbidden();
+    }
+
+    public function test_one_approve_leaves_nothing_to_verify_afterwards(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $visitor->update(['intended_pdl_name' => $this->pdl->full_name, 'intended_relationship_type' => 'parent']);
+        $id = $this->id($visitor, 'pending');
+        // The PDL birth certificate a parent uploads at registration (not linked yet).
+        $document = \App\Models\RelationshipDocument::create([
+            'visitor_id' => $visitor->visitor_id, 'relationship_id' => null, 'requirement_key' => 'pdl_birth_certificate',
+            'file_path' => 'docs/birth.png', 'original_name' => 'birth.png', 'status' => 'pending', 'uploaded_at' => now(),
+        ]);
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
+            ->assertSessionHas('success', fn ($m) => str_contains($m, 'Linked to') && str_contains($m, 'Relationship approved'));
+
+        $relationship = $visitor->relationships()->sole();
+        $this->assertSame('verified', $visitor->fresh()->verification_status);
+        $this->assertSame('verified', $id->fresh()->verification_status);
+        $this->assertSame($relationship->relationship_id, $document->fresh()->relationship_id);
+        $this->assertSame('verified', $document->fresh()->status);
+        $this->assertSame('verified', $relationship->verification_status);
+        $this->assertSame('Parent', $relationship->relationshipLabel());
+    }
+
+    public function test_card_prefills_the_pdl_and_relationship_the_visitor_gave(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $visitor->update(['intended_pdl_name' => $this->pdl->full_name, 'intended_relationship_type' => 'spouse']);
+        $this->id($visitor, 'pending');
+
+        $this->get('/account-reviews')->assertOk()
+            ->assertSee('name="pdl_id" value="' . $this->pdl->pdl_id . '"', false)
+            ->assertSee('Matches the name they gave')
+            ->assertSee('<option value="spouse" selected', false)
+            ->assertSee('As picked by the visitor in the app.');
     }
 }

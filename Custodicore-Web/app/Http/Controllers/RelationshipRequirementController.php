@@ -91,7 +91,7 @@ class RelationshipRequirementController extends Controller
         $label = RelationshipRequirements::DOCUMENTS[$document->requirement_key][0] ?? $document->requirement_key;
         $this->logAudit('relationship_documents', $document->document_id, "Verified {$label} for relationship #{$document->relationship_id}");
 
-        return back()->with('success', "{$label} verified.");
+        return back()->with('success', "{$label} approved.");
     }
 
     public function rejectDocument(Request $request, RelationshipDocument $document)

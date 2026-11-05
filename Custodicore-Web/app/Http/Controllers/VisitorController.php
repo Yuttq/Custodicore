@@ -136,28 +136,35 @@ class VisitorController extends Controller
             return back()->with('success', 'This visitor is already approved.');
         }
 
-        // Identity first: only visitors with a staff-verified government ID can be approved.
-        if (! $visitor->hasVerifiedId()) {
-            return back()->with('error', 'This visitor can\'t be approved yet: verify one of their government IDs first. '
-                . ($visitor->idDocuments()->exists() ? 'Open the ID, check it matches the visitor, then click Verify.' : 'They haven\'t uploaded an ID yet.'));
-        }
+        // The PDL and relationship confirmed on the Account Review card.
+        $validated = $request->validate([
+            'pdl_id' => ['nullable', 'integer', Rule::exists('pdl_profiles', 'pdl_id')],
+            'relationship_type' => ['nullable', Rule::in(VisitorPdlRelationship::RELATIONSHIP_TYPES)],
+            'has_children_together' => ['nullable', 'boolean'],
+        ]);
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
+        // One Approve: pending IDs, the account, the PDL link and its
+        // documents, and the relationship once complete (see AccountApproval).
         try {
-            $visitor->update([
-                'verification_status' => 'verified',
-                'verified_by' => $staffId,
-                'verified_at' => now(),
-                'rejection_reason' => null,
-            ]);
+            $result = app(\App\Services\AccountApproval::class)->approve(
+                $visitor,
+                $staffId,
+                isset($validated['pdl_id']) ? (int) $validated['pdl_id'] : null,
+                $validated['relationship_type'] ?? null,
+                $request->filled('has_children_together') ? $request->boolean('has_children_together') : null
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->with('error', 'This visitor cannot be approved yet. ' . collect($e->errors())->flatten()->first());
         } catch (\Throwable $e) {
             Log::error('Visitor approval failed: ' . $e->getMessage());
             return back()->with('error', 'Could not approve this visitor. ' . $e->getMessage());
         }
+        $approvalNotes = implode(' ', $result['notes']);
 
         Notification::notify(
             $visitor->account_id,
@@ -185,10 +192,10 @@ class VisitorController extends Controller
         if ($visitor->isWalkIn()) {
             $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
 
-            return back()->with('success', trim('Walk-in visitor approved. '.($note ?? '')));
+            return back()->with('success', trim('Walk-in visitor approved. '.$approvalNotes.' '.($note ?? '')));
         }
 
-        return back()->with('success', 'Visitor approved. The visitor has been notified.');
+        return back()->with('success', trim('Visitor approved. The visitor has been notified. '.$approvalNotes));
     }
 
     public function reject(Request $request, VisitorProfile $visitor)
@@ -249,7 +256,7 @@ class VisitorController extends Controller
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
 
         if ($idDocument->verification_status === 'verified') {
-            return back()->with('error', 'This ID document is already verified.');
+            return back()->with('error', 'This ID is already approved.');
         }
 
         $staffId = $this->actingStaffId();
@@ -275,7 +282,7 @@ class VisitorController extends Controller
         // A walk-in's relationship may now meet every requirement.
         $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
 
-        return back()->with('success', trim('ID document verified. '.($note ?? '')));
+        return back()->with('success', trim('ID approved. '.($note ?? '')));
     }
 
     /** The visitor's own photo (from the mobile app), for staff. */
@@ -428,7 +435,7 @@ class VisitorController extends Controller
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
 
         if ($relationship->verification_status === 'verified') {
-            return back()->with('error', 'This relationship is already verified.');
+            return back()->with('error', 'This relationship is already approved.');
         }
 
         $requirements = RelationshipRequirements::for($relationship);
@@ -456,7 +463,7 @@ class VisitorController extends Controller
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
             "Verified relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}");
 
-        return back()->with('success', 'Relationship verified.');
+        return back()->with('success', 'Relationship approved.');
     }
 
     public function rejectRelationship(VisitorProfile $visitor, VisitorPdlRelationship $relationship)
