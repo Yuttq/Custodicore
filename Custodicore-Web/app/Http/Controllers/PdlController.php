@@ -358,7 +358,27 @@ class PdlController extends Controller
 
         $custodyHistory = \App\Services\ActivityLog::forPdl($pdl);
 
-        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visiting', 'custodyHistory'));
+        // Who is linked to this PDL (the reverse of the visitor page's
+        // "Relationships to PDLs"), with each visitor's next and last visit.
+        $pdl->load(['visitorRelationships' => fn ($q) => $q->with('visitor.account')
+            ->orderByRaw("CASE verification_status WHEN 'verified' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")]);
+        $visits = \App\Models\VisitRequest::query()
+            ->where('pdl_id', $pdl->pdl_id)
+            ->whereIn('visitor_id', $pdl->visitorRelationships->pluck('visitor_id'))
+            ->with('schedule')
+            ->get()
+            ->groupBy('visitor_id');
+        $today = now()->toDateString();
+        $visitorVisits = $visits->map(fn ($list) => [
+            'next' => $list->whereIn('status', ['assigned', 'pending_confirmation', 'confirmed'])
+                ->filter(fn ($v) => $v->schedule && $v->schedule->schedule_date->toDateString() >= $today)
+                ->sortBy(fn ($v) => $v->schedule->schedule_date->toDateString() . $v->schedule->time_slot_start)->first(),
+            'last' => $list->where('status', 'completed')
+                ->sortByDesc(fn ($v) => $v->schedule?->schedule_date?->toDateString())->first(),
+            'completed' => $list->where('status', 'completed')->count(),
+        ]);
+
+        return view('pdl.show', compact('pdl', 'eligibilityStatus', 'cellBlocks', 'visiting', 'custodyHistory', 'visitorVisits'));
     }
 
     private function computeEligibilityStatus(Pdl $pdl): array

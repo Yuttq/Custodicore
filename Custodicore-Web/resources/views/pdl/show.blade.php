@@ -165,6 +165,93 @@
   </form>
 </div>
 
+{{-- ================= VISITORS (linked to this PDL) ================= --}}
+@php
+  $rels = $pdl->visitorRelationships;
+  $relCounts = $rels->countBy('verification_status');
+  $relBadge = ['verified' => ['active', 'Approved'], 'pending' => ['transferred', 'Pending'], 'rejected' => ['rejected', 'Rejected']];
+@endphp
+<div class="panel" style="margin-bottom:20px;" id="visitors">
+  <div class="panel-header">
+    <h2>Visitors <span class="count-chip">{{ $rels->count() }}</span></h2>
+    @if ($rels->isNotEmpty())
+      <span class="muted-cell">
+        {{ $relCounts['verified'] ?? 0 }} approved · {{ $relCounts['pending'] ?? 0 }} pending
+        @if ($relCounts['rejected'] ?? 0) · {{ $relCounts['rejected'] }} rejected @endif
+      </span>
+    @endif
+  </div>
+
+  @if ($rels->isEmpty())
+    <p class="empty-note">No visitors are linked to {{ $pdl->full_name }} yet. Visitors are linked when their account is approved in the Review Queue.</p>
+  @else
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Visitor</th><th>Relationship</th><th>Status</th><th>Next Visit</th><th>Last Visit</th><th></th></tr></thead>
+      <tbody>
+        @foreach ($rels as $rel)
+          @php
+            $visitor = $rel->visitor;
+            [$badgeClass, $badgeText] = $relBadge[$rel->verification_status] ?? ['released', ucfirst($rel->verification_status)];
+            $vv = $visitorVisits[$rel->visitor_id] ?? null;
+            $next = $vv['next'] ?? null;
+            $last = $vv['last'] ?? null;
+          @endphp
+          <tr>
+            <td>
+              <div class="name-cell">
+                @include('partials.visitor-avatar', ['visitor' => $visitor])
+                <div>
+                  @if ($visitor)
+                    <a class="full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">{{ $visitor->full_name }}</a>
+                    <div class="muted-cell" style="font-size:12px;">
+                      Account {{ $visitor->verification_status === 'verified' ? 'approved' : ($visitor->verification_status === 'rejected' ? 'returned' : 'pending') }}
+                      @if ($visitor->contact_number && $visitor->contact_number !== 'N/A') · {{ $visitor->contact_number }} @endif
+                    </div>
+                  @else
+                    <span class="muted-cell">Visitor not found</span>
+                  @endif
+                </div>
+              </div>
+            </td>
+            <td>
+              {{ $rel->relationshipLabel() }}
+              @if ($rel->isHighPriority())
+                <div><span class="pill" style="background:var(--blue-bg);color:var(--blue);font-size:10.5px;">HIGH PRIORITY</span></div>
+              @endif
+            </td>
+            <td><span class="badge {{ $badgeClass }}"><span class="dot"></span>{{ $badgeText }}</span></td>
+            <td>
+              @if ($next)
+                <strong>{{ $next->schedule->schedule_date->format('M j, Y') }}</strong>
+                <div class="muted-cell" style="font-size:12px;">
+                  {{ substr((string) $next->schedule->time_slot_start, 0, 5) }} · {{ $next->status === 'confirmed' ? 'confirmed' : 'waiting for review/confirmation' }}
+                </div>
+              @else
+                <span class="muted-cell">None booked</span>
+              @endif
+            </td>
+            <td>
+              @if ($last)
+                {{ $last->schedule?->schedule_date?->format('M j, Y') }}
+                <div class="muted-cell" style="font-size:12px;">{{ $vv['completed'] }} {{ $vv['completed'] === 1 ? 'visit' : 'visits' }} in total</div>
+              @else
+                <span class="muted-cell">No visits yet</span>
+              @endif
+            </td>
+            <td style="text-align:right;">
+              @if ($visitor)
+                <a class="row-action" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">Open</a>
+              @endif
+            </td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+    </div>
+  @endif
+</div>
+
 {{-- ================= CUSTODY HISTORY (was its own page) ================= --}}
 <div class="panel" style="margin-bottom:20px;" id="custody-history">
   <div class="panel-header">

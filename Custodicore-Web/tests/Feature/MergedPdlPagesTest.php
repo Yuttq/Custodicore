@@ -112,4 +112,18 @@ class MergedPdlPagesTest extends TestCase
         $this->get('/pdls?visits=stale')->assertSee($this->pdl->full_name);
         $this->get('/pdls?visits=never')->assertDontSee($this->pdl->full_name);
     }
+
+    public function test_pdl_page_lists_the_visitors_linked_to_the_pdl(): void
+    {
+        $this->get("/pdls/{$this->pdl->pdl_id}")->assertOk()
+            ->assertSee('id="visitors"', false)
+            ->assertSee($this->visitor->full_name)
+            ->assertSee(route('visitor.show', $this->visitor->visitor_id) . '#relationships', false)
+            ->assertSee('1 approved · 0 pending')
+            ->assertSee('None booked');
+
+        // A PDL nobody is linked to says so.
+        $this->get("/pdls/{$this->otherPdl()->pdl_id}")->assertOk()
+            ->assertSee('No visitors are linked to Never Visited yet.');
+    }
 }
