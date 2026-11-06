@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Button,
   Card,
   StatusChip,
   colors,
@@ -22,6 +21,7 @@ import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
+import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
 import {
   combineAvailableDays,
@@ -29,10 +29,7 @@ import {
   relationshipsAvailableOn,
 } from '../utils/scheduleAvailability';
 import { buildVisitDateMarkers } from '../utils/visitCalendarMarkers';
-import {
-  RELATIONSHIP_NOT_VERIFIED_SCHEDULE,
-  getNoUpcomingVisitState,
-} from '../utils/visitGuidance';
+import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
@@ -153,6 +150,94 @@ function TextLink({ label, onPress, accessibilityLabel }) {
 }
 
 /**
+ * Home's "Upcoming Visit": the next visit only, as one compact row — date,
+ * time and PDL with its status. Tapping the row opens Visit Details; "View My
+ * Visits" opens the My Visits tab. Home hides it when there is no next visit.
+ * @param {object} props
+ * @param {{ id: string; dateDisplay?: string; pdlName?: string; status?: string; timeLabel?: string | null; isWholeDay?: boolean }} props.visit
+ * @param {() => void} props.onViewVisit
+ * @param {() => void} props.onViewMyVisits
+ */
+function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
+  const time = visitTimeText(visit);
+  const when = [visit.dateDisplay, time].filter(Boolean).join(' · ');
+
+  return (
+    <View style={styles.upcomingSection}>
+      <View style={styles.upcomingHeader}>
+        <Text style={[styles.sectionLabel, styles.upcomingLabel]}>Upcoming Visit</Text>
+        <TextLink
+          label="View My Visits"
+          onPress={onViewMyVisits}
+          accessibilityLabel="View all your visits in My Visits"
+        />
+      </View>
+      <Pressable
+        onPress={onViewVisit}
+        style={({ pressed }) => [styles.upcomingRow, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Next visit: ${when}${visit.pdlName ? `, ${visit.pdlName}` : ''}. Tap for visit details.`}
+      >
+        <Ionicons name="calendar-outline" size={20} color={colors.primaryNavy} />
+        <View style={styles.upcomingText}>
+          <Text style={styles.upcomingWhen} numberOfLines={1}>
+            {when}
+          </Text>
+          {visit.pdlName ? (
+            <Text style={styles.upcomingPdl} numberOfLines={1}>
+              {visit.pdlName}
+            </Text>
+          ) : null}
+        </View>
+        <StatusChip status={resolveVisitStatusChip(visit.status)} />
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * The visitor's verified PDLs as chips above the Home calendar, plus the
+ * circular (+) that opens the Phase 5B "Add Another PDL" request form. The
+ * chips only name the PDLs: the calendar stays date-first, so the PDL for a
+ * visit is still chosen after the date.
+ * @param {object} props
+ * @param {{ relationshipId: string; pdlName: string | null }[]} props.relationships
+ * @param {boolean} props.canAdd — approved account without an open request
+ * @param {() => void} props.onAdd
+ */
+function HomePdlChips({ relationships, canAdd, onAdd }) {
+  if (relationships.length === 0 && !canAdd) return null;
+
+  return (
+    <View style={styles.pdlChipRow}>
+      {relationships.map((r) => (
+        <View key={r.relationshipId} style={styles.pdlChip}>
+          <Text style={styles.pdlChipText} numberOfLines={1}>
+            {r.pdlName ?? 'PDL'}
+          </Text>
+        </View>
+      ))}
+      {canAdd ? (
+        <View style={styles.addPdlWrap}>
+          <Pressable
+            onPress={onAdd}
+            hitSlop={8}
+            style={({ pressed }) => [styles.addPdlButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Add another PDL. Ask facility staff to add another PDL to your account"
+          >
+            <Ionicons name="add" size={20} color={colors.primaryTeal} />
+          </Pressable>
+          {relationships.length === 0 ? (
+            <Text style={styles.addPdlHint}>Add Another PDL</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
  * Visitation calendar for Home, date first: one calendar across all verified
  * relationships (GET /api/schedules/availability), with the visitor's own
  * pending / confirmed visits marked. Tapping an available date opens My
@@ -163,8 +248,10 @@ function TextLink({ label, onPress, accessibilityLabel }) {
  * @param {ReturnType<typeof useScheduleAvailability>} props.schedule
  * @param {Record<string, 'pending' | 'confirmed'>} props.markedDates
  * @param {(date: string, relationshipId: string) => void} props.onOpenDate
+ * @param {boolean} props.canAddPdl — show the (+) Add Another PDL button
+ * @param {() => void} props.onAddPdl
  */
-function HomeVisitCalendar({ schedule, markedDates, onOpenDate }) {
+function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAddPdl }) {
   const { loading, error, reload, today, from, to, relationships, relationship } = schedule;
   const daysByDate = useMemo(() => combineAvailableDays(relationships), [relationships]);
   const hasAvailableDate = useMemo(
@@ -223,14 +310,17 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate }) {
   } else if (!relationship) {
     // The API's top-level `message` only covers this case (no verified
     // relationship); the app's wording keeps Home and Schedule consistent.
-    content = <Text style={styles.noVisit}>{RELATIONSHIP_NOT_VERIFIED_SCHEDULE}</Text>;
+    content = (
+      <>
+        <HomePdlChips relationships={[]} canAdd={canAddPdl} onAdd={onAddPdl} />
+        <Text style={styles.noVisit}>{RELATIONSHIP_NOT_VERIFIED_SCHEDULE}</Text>
+      </>
+    );
   } else {
     content = (
       <>
-        {/* One PDL: name it, as before. Several: the PDL is chosen after the date. */}
-        {!multiplePdls && relationship.pdlName ? (
-          <Text style={styles.visitPdl}>{relationship.pdlName}</Text>
-        ) : null}
+        {/* The verified PDLs (display only) and the (+) Add Another PDL button. */}
+        <HomePdlChips relationships={relationships} canAdd={canAddPdl} onAdd={onAddPdl} />
         {pdlMessages.map((message) => (
           <Text key={message} style={styles.calendarWarning}>
             {message}
@@ -260,7 +350,6 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate }) {
           onSelectDate={onSelectDate}
           markedDates={markedDates}
           showSelection={false}
-          compact
         />
         {choiceDate && choices.length > 0 ? (
           <View style={styles.pdlChoice}>
@@ -451,11 +540,18 @@ export default function DashboardScreen({ navigation }) {
 
   const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
 
+  // Phase 5B "Add Another PDL": approved accounts without an open request
+  // (AddPdlRequest is only registered for approved visitors; the backend
+  // checks both rules again). The verification hook reloads on focus, so the
+  // (+) hides once a request is sent.
+  const canAddPdl =
+    isApprovedVisitor && canAddAnotherPdl(verification?.backendStatus, verification?.pdlRequest);
+  const onAddPdl = useCallback(() => navigation.navigate('AddPdlRequest'), [navigation]);
+
   const { relationship, today: availabilityToday } = schedule;
   // Visits can be requested only for a staff-verified relationship, which
   // is exactly what availability returns.
   const hasVerifiedRelationship = isApprovedVisitor && Boolean(relationship);
-  const noVisitState = getNoUpcomingVisitState({ canRequestVisit: hasVerifiedRelationship });
   // Date-first calendar: the visitor's upcoming visits with every PDL.
   const markedDates = useMemo(
     () =>
@@ -483,6 +579,11 @@ export default function DashboardScreen({ navigation }) {
     if (!nextVisit) return;
     navigation.navigate('VisitDetails', { visitId: nextVisit.id });
   }, [navigation, nextVisit]);
+
+  // My Visits tab, on its Upcoming list.
+  const onViewMyVisits = useCallback(() => {
+    navigation.navigate('Schedule', { tab: 'upcoming' });
+  }, [navigation]);
 
   // "View Visitation Schedule" opens the Schedule tab on the first verified
   // relationship, as before; the Schedule tab itself stays PDL-first.
@@ -532,39 +633,14 @@ export default function DashboardScreen({ navigation }) {
           />
         ) : null}
 
-        <Text style={styles.sectionLabel}>Upcoming Visit</Text>
+        {/* Only the next visit, as one compact row; hidden when there is none. */}
         {nextVisit ? (
-          <Card style={styles.visitCard}>
-            <View style={styles.visitPrimaryRow}>
-              <View style={styles.visitDateCol}>
-                <Text style={styles.visitDate}>{nextVisit.dateDisplay}</Text>
-                <Text style={styles.visitTime}>{visitTimeText(nextVisit)}</Text>
-              </View>
-              <StatusChip status={resolveVisitStatusChip(nextVisit.status)} />
-            </View>
-            <Text style={styles.visitPdl}>{nextVisit.pdlName}</Text>
-            <Button
-              title="View Visit"
-              onPress={onViewVisit}
-              accessibilityLabel="View visit details"
-            />
-          </Card>
-        ) : (
-          <Card style={styles.visitCard}>
-            <Text style={styles.visitPdl}>{noVisitState.title}</Text>
-            <Text style={styles.noVisit}>{noVisitState.message}</Text>
-            {noVisitState.showRequestAction ? (
-              <View style={styles.noVisitAction}>
-                <Button
-                  title="Request a Visit"
-                  variant="secondary"
-                  onPress={onOpenSchedule}
-                  accessibilityLabel="Request a visit from the visitation schedule"
-                />
-              </View>
-            ) : null}
-          </Card>
-        )}
+          <CompactUpcomingVisit
+            visit={nextVisit}
+            onViewVisit={onViewVisit}
+            onViewMyVisits={onViewMyVisits}
+          />
+        ) : null}
 
         {isApprovedVisitor ? (
           <>
@@ -572,6 +648,8 @@ export default function DashboardScreen({ navigation }) {
               schedule={schedule}
               markedDates={markedDates}
               onOpenDate={onOpenCalendarDate}
+              canAddPdl={canAddPdl}
+              onAddPdl={onAddPdl}
             />
             {/* The Schedule tab only repeats the "not verified" notice until then. */}
             {hasVerifiedRelationship ? (
@@ -681,39 +759,48 @@ const styles = StyleSheet.create({
     borderRadius: layout.cardRadius,
     marginBottom: layout.cardGap,
   },
-  visitPrimaryRow: {
+  // Compact "Upcoming Visit": header with "View My Visits", then one row.
+  upcomingSection: {
+    marginBottom: spacing.md,
+  },
+  upcomingHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  visitDateCol: {
+  upcomingLabel: {
+    marginBottom: 0,
+  },
+  upcomingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  upcomingText: {
     flex: 1,
   },
-  visitDate: {
-    ...typography.cardTitle,
-    color: colors.primaryNavy,
-  },
-  visitTime: {
-    ...typography.metadata,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: spacing.xs,
-  },
-  visitPdl: {
+  upcomingWhen: {
     ...typography.body,
     fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
+    color: colors.primaryNavy,
+  },
+  upcomingPdl: {
+    ...typography.metadata,
+    color: colors.textSecondary,
   },
   noVisit: {
     ...typography.metadata,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
-  },
-  noVisitAction: {
-    marginTop: spacing.xs,
   },
   textLink: {
     flexDirection: 'row',
@@ -739,6 +826,48 @@ const styles = StyleSheet.create({
     color: colors.warningText,
     fontWeight: '600',
     marginBottom: spacing.sm,
+  },
+  // Verified PDLs (display only) + the circular (+) Add Another PDL button.
+  pdlChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  pdlChip: {
+    maxWidth: '100%',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: layout.chipRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  pdlChipText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  addPdlWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  addPdlButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primaryTeal,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPdlHint: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.primaryTeal,
   },
   // "Who will you visit on …?" — the PDLs available on the tapped date.
   pdlChoice: {

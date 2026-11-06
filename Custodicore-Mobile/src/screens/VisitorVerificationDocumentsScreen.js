@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -11,140 +12,15 @@ import {
   typography,
 } from '../designSystem';
 import { EmptyState, LoadingSpinner } from '../components';
+import MyPdlsList from '../components/MyPdlsList';
 import RegistrationPhotoCamera from '../components/RegistrationPhotoCamera';
 import VerificationProgressCard from '../components/VerificationProgressCard';
+import useMyPdlActions from '../hooks/useMyPdlActions';
 import useVisitorVerification from '../hooks/useVisitorVerification';
-import { cancelPdlRequest, replaceRegistrationPhoto } from '../repositories/verificationRepository';
+import { replaceRegistrationPhoto } from '../repositories/verificationRepository';
 import { BASE_URL, getStoredToken } from '../services/api';
-import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
-import {
-  VERIFICATION_STATUS_COLORS,
-  getDocumentStatusDisplay,
-} from '../utils/verificationDocumentUi';
-
-/** My PDLs status → the same colours the document statuses use. */
-const PDL_STATUS_COLORS = {
-  approved: VERIFICATION_STATUS_COLORS.verified,
-  pending: VERIFICATION_STATUS_COLORS.underReview,
-  rejected: VERIFICATION_STATUS_COLORS.rejected,
-};
-
-/**
- * "My PDLs": each PDL relationship on the account and its status (staff
- * link, approve or reject PDLs), plus the visitor's own "Add Another PDL"
- * request and the button to send one.
- * @param {object} props
- * @param {ReturnType<typeof import('../utils/relationshipRequirementDocuments').buildPdlRelationshipList>} props.pdls
- * @param {import('../utils/pdlLinkRequest').PdlRequestStatus | null} props.pdlRequest — open or rejected request, else null
- * @param {boolean} props.canAdd — show "Add Another PDL"
- * @param {() => void} props.onAdd
- * @param {() => void} props.onCancelRequest
- * @param {boolean} props.cancelling
- */
-function MyPdlsSection({ pdls, pdlRequest, canAdd, onAdd, onCancelRequest, cancelling }) {
-  return (
-    <>
-      <Text style={styles.sectionEyebrow}>My PDLs</Text>
-      {pdlRequest ? (
-        <PdlRequestCard request={pdlRequest} onCancel={onCancelRequest} cancelling={cancelling} />
-      ) : null}
-      {pdls.length > 0 ? (
-        <View style={[styles.docList, styles.pdlList]}>
-          {pdls.map((pdl, index) => (
-            <View
-              key={pdl.id}
-              style={[styles.docRow, index < pdls.length - 1 && styles.docRowBorder]}
-              accessible
-              accessibilityLabel={`${pdl.pdlName}${pdl.relationshipLabel ? `, ${pdl.relationshipLabel}` : ''}, ${pdl.statusLabel}`}
-            >
-              <View style={styles.pdlText}>
-                <Text style={styles.docRowLabel} numberOfLines={2}>
-                  {pdl.pdlName}
-                </Text>
-                {pdl.relationshipLabel ? (
-                  <Text style={styles.pdlMeta}>{pdl.relationshipLabel}</Text>
-                ) : null}
-              </View>
-              <Text style={[styles.docStatusLabel, { color: PDL_STATUS_COLORS[pdl.status] }]}>
-                {pdl.statusLabel}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {canAdd ? (
-        <View style={styles.addPdl}>
-          <Button
-            title="Add Another PDL"
-            variant="secondary"
-            onPress={onAdd}
-            accessibilityLabel="Ask facility staff to add another PDL to your account"
-          />
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * Phase 5B: the visitor's "Add Another PDL" request — open (Pending Review,
- * can be cancelled) or rejected (Not Accepted, with the staff reason).
- * @param {object} props
- * @param {import('../utils/pdlLinkRequest').PdlRequestStatus} props.request
- * @param {() => void} props.onCancel
- * @param {boolean} props.cancelling
- */
-function PdlRequestCard({ request, onCancel, cancelling }) {
-  const open = request.status === 'open';
-  const color = open ? VERIFICATION_STATUS_COLORS.underReview : VERIFICATION_STATUS_COLORS.rejected;
-
-  return (
-    <View style={[styles.docList, styles.pdlList, styles.requestCard]}>
-      <View style={styles.requestHead}>
-        <View style={styles.pdlText}>
-          <Text style={styles.docRowLabel} numberOfLines={2}>
-            {request.pdlName}
-          </Text>
-          <Text style={styles.pdlMeta}>{request.relationshipLabel} · requested PDL</Text>
-        </View>
-        <Text style={[styles.docStatusLabel, { color }]}>{request.statusLabel}</Text>
-      </View>
-      {open ? (
-        <>
-          <Text style={styles.requestText}>
-            Facility staff must find this PDL in their records before the relationship can be added to
-            your account. You will be notified when they review it.
-          </Text>
-          {request.documents.length > 0 ? (
-            <Text style={styles.requestText}>
-              Documents sent: {request.documents.map((d) => d.label).join(', ')}
-            </Text>
-          ) : null}
-          <Button
-            title="Cancel Request"
-            variant="destructive"
-            onPress={onCancel}
-            loading={cancelling}
-            disabled={cancelling}
-            accessibilityLabel={`Cancel the request to add ${request.pdlName}`}
-          />
-        </>
-      ) : (
-        <>
-          {request.rejectionReason ? (
-            <View style={styles.requestReason}>
-              <Text style={styles.reasonLabel}>Reason</Text>
-              <Text style={styles.reasonText}>{request.rejectionReason}</Text>
-            </View>
-          ) : null}
-          <Text style={styles.requestText}>
-            Facility staff did not accept this request. You can send a new one with the correct details.
-          </Text>
-        </>
-      )}
-    </View>
-  );
-}
+import { summarizeMyPdls } from '../utils/myPdls';
+import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 
 /**
  * @param {object} props
@@ -287,8 +163,6 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
   const { verification, loading, error, reload } = useVisitorVerification();
   const documents = verification?.documents ?? [];
 
-  const [cancelling, setCancelling] = useState(false);
-
   const openDocument = useCallback(
     (doc) => {
       navigation.navigate('VerificationDocumentDetail', { documentKey: doc.key });
@@ -296,44 +170,20 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
     [navigation],
   );
 
+  const pdls = useMemo(() => verification?.pdlRelationships ?? [], [verification]);
   const pdlRequest = verification?.pdlRequest ?? null;
-  // The add screen is only registered for approved visitors (AppNavigator).
-  const canAdd =
-    canAddAnotherPdl(verification?.backendStatus, pdlRequest) &&
-    Boolean(navigation.getState?.()?.routeNames?.includes('AddPdlRequest'));
+  const hasPdlInfo = pdls.length > 0 || Boolean(pdlRequest);
+  const pdlSummary = useMemo(() => summarizeMyPdls(pdls, pdlRequest), [pdls, pdlRequest]);
+  const { cancelling, cancelRequest, requestAgain } = useMyPdlActions({
+    navigation,
+    verification,
+    reload,
+  });
 
-  const openAddPdl = useCallback(() => navigation.navigate('AddPdlRequest'), [navigation]);
-
-  // Cancelling works whatever the account status (the backend allows it).
-  const cancelRequest = useCallback(() => {
-    if (!pdlRequest || cancelling) return;
-    Alert.alert(
-      'Cancel request?',
-      `Your request to add ${pdlRequest.pdlName} and the documents you sent with it will be removed.`,
-      [
-        { text: 'Keep Request', style: 'cancel' },
-        {
-          text: 'Cancel Request',
-          style: 'destructive',
-          onPress: async () => {
-            setCancelling(true);
-            try {
-              await cancelPdlRequest(pdlRequest.id);
-            } catch (e) {
-              // e.g. 409: staff already linked or reviewed it — the refresh shows the outcome.
-              Alert.alert(
-                'Could not cancel',
-                e instanceof Error && e.message ? e.message : 'Please try again.',
-              );
-            } finally {
-              setCancelling(false);
-              reload();
-            }
-          },
-        },
-      ],
-    );
-  }, [pdlRequest, cancelling, reload]);
+  // Approved visitors have Profile → My PDLs, so this screen links there.
+  // Pending / returned visitors (review stack, no Profile tab) keep the list here.
+  const hasMyPdlsScreen = Boolean(navigation.getState?.()?.routeNames?.includes('MyPdls'));
+  const openMyPdls = useCallback(() => navigation.navigate('MyPdls'), [navigation]);
 
   return (
     <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
@@ -393,14 +243,34 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               </Text>
             ) : null}
 
-            {verification.pdlRelationships?.length || pdlRequest || canAdd ? (
-              <MyPdlsSection
-                pdls={verification.pdlRelationships ?? []}
+            {hasPdlInfo && hasMyPdlsScreen ? (
+              <Pressable
+                onPress={openMyPdls}
+                style={({ pressed }) => [
+                  styles.docList,
+                  styles.docRow,
+                  styles.myPdlsLink,
+                  pressed && styles.docRowPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`My PDLs${pdlSummary.full ? `, ${pdlSummary.full}` : ''}. Opens My PDLs.`}
+              >
+                <View style={styles.pdlText}>
+                  <Text style={styles.docRowLabel}>My PDLs</Text>
+                  {pdlSummary.full ? (
+                    <Text style={styles.docRowMeta}>{pdlSummary.full}</Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+              </Pressable>
+            ) : hasPdlInfo ? (
+              <MyPdlsList
+                variant="inline"
+                pdls={pdls}
                 pdlRequest={pdlRequest}
-                canAdd={canAdd}
-                onAdd={openAddPdl}
                 onCancelRequest={cancelRequest}
                 cancelling={cancelling}
+                onRequestAgain={requestAgain}
               />
             ) : null}
             {verification.canReplacePhoto ? (
@@ -513,36 +383,19 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: colors.background,
   },
-  pdlList: {
+  // One compact row linking to Profile → My PDLs (approved visitors).
+  myPdlsLink: {
     marginBottom: spacing.lg,
   },
-  addPdl: {
-    marginTop: -spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  requestCard: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  requestHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  docRowMeta: {
+    ...typography.metadata,
+    color: colors.textSecondary,
   },
   requestText: {
     ...typography.metadata,
     color: colors.textSecondary,
   },
-  requestReason: {
-    borderRadius: layout.cardRadius,
-    backgroundColor: colors.background,
-    padding: spacing.sm,
-  },
   pdlText: {
     flex: 1,
-  },
-  pdlMeta: {
-    ...typography.metadata,
-    color: colors.textSecondary,
   },
 });

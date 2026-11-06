@@ -69,6 +69,8 @@ export function inferNotificationCategory(raw) {
     if (category.startsWith('verification') || category.startsWith('document')) return 'updates';
     // Phase 5B "Add Another PDL" request decisions (e.g. `pdl_request_rejected`).
     if (category.startsWith('pdl_request')) return 'updates';
+    // Account and PDL relationship decisions (approved, returned, linked…).
+    if (category.startsWith('account_') || category.startsWith('relationship_')) return 'updates';
   }
   if (typeof raw.type === 'string') {
     const type = raw.type.toLowerCase();
@@ -108,12 +110,17 @@ export function inferNotificationTone(raw) {
       return type;
     }
   }
-  // A not-accepted PDL request is a warning, although its title
-  // ("PDL Request Not Approved") contains "approved". So is a rejected ID or
-  // document ("Document Not Accepted").
+  // A not-accepted PDL request or relationship is a warning, although its
+  // title ("… Not Approved") contains "approved". So is a rejected ID or
+  // document ("Document Not Accepted") and a returned account.
   if (
     typeof raw.category === 'string' &&
-    ['pdl_request_rejected', 'document_rejected'].includes(raw.category.toLowerCase())
+    [
+      'pdl_request_rejected',
+      'document_rejected',
+      'relationship_rejected',
+      'account_rejected',
+    ].includes(raw.category.toLowerCase())
   ) {
     return 'warning';
   }

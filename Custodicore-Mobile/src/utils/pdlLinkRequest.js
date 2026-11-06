@@ -144,6 +144,7 @@ export function toPdlRequestFields({ pdlName, relationship, hasChildrenTogether 
  * @property {'open' | 'rejected'} status
  * @property {string} statusLabel — "Pending Review" / "Not Accepted"
  * @property {string} pdlName
+ * @property {string | null} relationshipType — registration relationship id, when valid
  * @property {string} relationshipLabel
  * @property {boolean | null} hasChildrenTogether
  * @property {string | null} rejectionReason
@@ -173,6 +174,7 @@ export function normalizePdlRequest(raw) {
     status: r.status,
     statusLabel: r.status === 'open' ? 'Pending Review' : 'Not Accepted',
     pdlName: typeof r.pdlName === 'string' && r.pdlName.trim() ? r.pdlName.trim() : 'PDL',
+    relationshipType: isRegistrationRelationship(r.relationshipType) ? r.relationshipType : null,
     relationshipLabel,
     hasChildrenTogether: typeof r.hasChildrenTogether === 'boolean' ? r.hasChildrenTogether : null,
     rejectionReason:
@@ -195,4 +197,37 @@ export function normalizePdlRequest(raw) {
  */
 export function canAddAnotherPdl(backendStatus, pdlRequest) {
   return backendStatus === 'verified' && pdlRequest?.status !== 'open';
+}
+
+/**
+ * @typedef {object} PdlRequestPrefill
+ * @property {string} pdlName
+ * @property {string | null} relationship — registration relationship id
+ * @property {boolean | null} hasChildrenTogether
+ * @property {string | null} rejectionReason — shown while correcting
+ */
+
+/**
+ * Phase 4 "Request Again": the rejected request's details to start a new
+ * request from, or null for anything but a rejected request. Only the typed
+ * details are reused — documents must be attached again (the backend takes
+ * files with each new request), and the new request goes to staff review
+ * like any other.
+ * @param {PdlRequestStatus | null | undefined} pdlRequest — normalizePdlRequest()
+ * @returns {PdlRequestPrefill | null}
+ */
+export function pdlRequestPrefill(pdlRequest) {
+  if (!pdlRequest || pdlRequest.status !== 'rejected') return null;
+  const relationship = isRegistrationRelationship(pdlRequest.relationshipType)
+    ? /** @type {string} */ (pdlRequest.relationshipType)
+    : null;
+  return {
+    pdlName: pdlRequest.pdlName === 'PDL' ? '' : pdlRequest.pdlName,
+    relationship,
+    hasChildrenTogether:
+      relationship && asksChildrenTogether(relationship) && typeof pdlRequest.hasChildrenTogether === 'boolean'
+        ? pdlRequest.hasChildrenTogether
+        : null,
+    rejectionReason: pdlRequest.rejectionReason ?? null,
+  };
 }

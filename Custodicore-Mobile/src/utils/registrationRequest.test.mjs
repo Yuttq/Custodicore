@@ -109,11 +109,12 @@ test('relationship documents: only the keys the relationship asks for are sent',
         government_id: { uri: 'file:///id.jpg' },
         cenomar_visitor: { uri: 'file:///c1.jpg' },
         cenomar_pdl: { uri: 'file:///c2.jpg' },
-        // Left over from an earlier "children together" answer.
+        // Left over from an earlier "children together" answer, and a
+        // witness statement, which is no longer required.
         child_birth_certificate: { uri: 'file:///old.jpg' },
         witness_statement: { uri: 'file:///w.jpg' },
       },
-      relationshipDocumentKeys: ['cenomar_visitor', 'cenomar_pdl', 'witness_statement'],
+      relationshipDocumentKeys: ['cenomar_visitor', 'cenomar_pdl'],
     }),
   );
   assert.deepEqual(
@@ -121,7 +122,6 @@ test('relationship documents: only the keys the relationship asks for are sent',
     [
       ['cenomar_visitor', 'file:///c1.jpg'],
       ['cenomar_pdl', 'file:///c2.jpg'],
-      ['witness_statement', 'file:///w.jpg'],
     ],
   );
   // The government ID goes in its own governmentId field, never here.

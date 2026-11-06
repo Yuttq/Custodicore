@@ -10,6 +10,7 @@ import {
   getPdlRequestStepErrors,
   mapPdlRequestServerErrors,
   normalizePdlRequest,
+  pdlRequestPrefill,
   toPdlRequestFields,
 } from './pdlLinkRequest.js';
 import { REGISTRATION_RELATIONSHIPS } from './registrationRequirements.js';
@@ -42,7 +43,7 @@ test('live-in partners: the children answer decides the extra document', () => {
   );
   assert.deepEqual(
     keys(getPdlRequestDocuments('live_in_partner', { hasChildrenTogether: false })),
-    ['cenomar_visitor', 'cenomar_pdl', 'witness_statement'],
+    ['cenomar_visitor', 'cenomar_pdl'],
   );
 });
 
@@ -154,4 +155,44 @@ test('Add Another PDL: approved accounts without an open request', () => {
   assert.equal(canAddAnotherPdl('verified', open), false);
   assert.equal(canAddAnotherPdl('pending', null), false);
   assert.equal(canAddAnotherPdl('rejected', null), false);
+});
+
+test('a rejected request keeps its relationship type for Request Again', () => {
+  const r = normalizePdlRequest({
+    id: 9,
+    status: 'rejected',
+    pdlName: 'Maria Santos',
+    relationshipType: 'live_in_partner',
+    hasChildrenTogether: true,
+    rejectionReason: 'Name does not match our records.',
+  });
+  assert.equal(r?.relationshipType, 'live_in_partner');
+  assert.deepEqual(pdlRequestPrefill(r), {
+    pdlName: 'Maria Santos',
+    relationship: 'live_in_partner',
+    hasChildrenTogether: true,
+    rejectionReason: 'Name does not match our records.',
+  });
+});
+
+test('Request Again prefill: only rejected requests, only valid values', () => {
+  const open = normalizePdlRequest({ id: 1, status: 'open', pdlName: 'A B', relationshipType: 'parent' });
+  assert.equal(pdlRequestPrefill(open), null);
+  assert.equal(pdlRequestPrefill(null), null);
+
+  const odd = normalizePdlRequest({
+    id: 2,
+    status: 'rejected',
+    pdlName: '',
+    relationshipType: 'cousin',
+    hasChildrenTogether: true,
+  });
+  assert.equal(odd?.relationshipType, null);
+  assert.deepEqual(pdlRequestPrefill(odd), {
+    pdlName: '',
+    relationship: null,
+    // The children answer only belongs to a live-in partner request.
+    hasChildrenTogether: null,
+    rejectionReason: null,
+  });
 });

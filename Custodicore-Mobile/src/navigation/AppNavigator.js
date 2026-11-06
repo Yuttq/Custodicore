@@ -24,6 +24,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import QRCodeScreen from '../screens/QRCodeScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import MyAssignedVisitsScreen from '../screens/MyAssignedVisitsScreen';
+import MyPdlsScreen from '../screens/MyPdlsScreen';
 import SplashScreen from '../screens/SplashScreen';
 import TimelineScreen from '../screens/TimelineScreen';
 import UploadIDScreen from '../screens/UploadIDScreen';
@@ -213,6 +214,9 @@ function AuthenticatedStack() {
       />
       {/* Phase 5B: approved visitors only (the backend checks again). */}
       <AppStack.Screen name="AddPdlRequest" component={AddPdlRequestScreen} />
+      {/* Profile → My PDLs. Not in the review stack: there Verification
+          Documents keeps the list inline (no Profile tab). */}
+      <AppStack.Screen name="MyPdls" component={MyPdlsScreen} />
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
       <AppStack.Screen name="VisitHistoryDetail" component={VisitHistoryDetailScreen} />
       <AppStack.Screen name="PersonalInformation" component={PersonalInformationScreen} />

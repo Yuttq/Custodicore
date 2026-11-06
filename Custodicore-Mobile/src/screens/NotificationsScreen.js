@@ -13,12 +13,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EmptyState, LoadingSpinner, NotificationRow } from '../components';
 import { Button, colors, commonStyles, layout, spacing, typography } from '../designSystem';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
+import useVisitorVerification from '../hooks/useVisitorVerification';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
 import {
   fetchNotificationsList,
   markNotificationReadById,
 } from '../repositories/notificationsRepository';
 import { formatDate } from '../utils';
+import {
+  collapseDuplicateNotifications,
+  extractNotificationReason,
+  notificationIconName,
+  resolveNotificationAction,
+} from '../utils/notificationActions';
 import {
   NOTIFICATION_FILTERS,
   filterNotificationsByCategory,
@@ -67,8 +74,11 @@ function normalizeNotification(raw, index) {
     null;
   const category = inferNotificationCategory(raw);
   const tone = inferNotificationTone(raw);
+  // The backend notification_type (e.g. `document_rejected`), before it is
+  // folded into a filter category — drives the reason, action and icon.
+  const rawCategory = typeof raw.category === 'string' ? raw.category : null;
 
-  return { id, title, body, read, createdAt, category, tone };
+  return { id, title, body, read, createdAt, category, tone, rawCategory };
 }
 
 /**
@@ -128,9 +138,12 @@ function NotificationFilterBar({ activeFilter, onFilterChange }) {
   );
 }
 
-export default function NotificationsScreen() {
+export default function NotificationsScreen({ navigation }) {
   const tabBarInset = useTabBarScrollInset();
   const { refreshUnreadCount } = useNotificationBadge();
+  // Current document / PDL request state (reloads on focus), so a shortcut
+  // only shows while there is still something to replace or request again.
+  const { verification } = useVisitorVerification();
   const [items, setItems] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -143,7 +156,7 @@ export default function NotificationsScreen() {
     setError(null);
     try {
       const data = await fetchNotificationsList();
-      setItems(normalizeList(data));
+      setItems(collapseDuplicateNotifications(normalizeList(data)));
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not load notifications.';
       setError(message);
@@ -177,7 +190,8 @@ export default function NotificationsScreen() {
       );
 
       try {
-        await markNotificationReadById(item.id);
+        // A collapsed duplicate marks every copy read.
+        await Promise.all((item.ids ?? [item.id]).map((id) => markNotificationReadById(id)));
         refreshUnreadCount();
       } catch (e) {
         setItems((prev) =>
@@ -205,10 +219,25 @@ export default function NotificationsScreen() {
     [markRead],
   );
 
+  // Inline shortcut: opens an existing screen. It counts as opening the
+  // notification, so it is marked read the same way a row tap does.
+  const handleAction = useCallback(
+    (item, action) => {
+      if (!item.read) markRead(item);
+      navigation.navigate(action.route, action.params);
+    },
+    [markRead, navigation],
+  );
+
   const renderItem = useCallback(
     ({ item }) => {
       const dateLabel = item.createdAt ? formatDate(item.createdAt) : '';
       const preview = shortDescription(item.body);
+      const reason = extractNotificationReason(item.rawCategory, item.body);
+      const action = resolveNotificationAction(
+        { category: item.rawCategory, body: item.body },
+        verification,
+      );
 
       return (
         <NotificationRow
@@ -218,10 +247,13 @@ export default function NotificationsScreen() {
           tone={item.tone}
           read={item.read}
           onPress={() => handleRowPress(item)}
+          iconName={notificationIconName(item.rawCategory)}
+          reason={reason}
+          action={action ? { label: action.label, onPress: () => handleAction(item, action) } : null}
         />
       );
     },
-    [handleRowPress],
+    [handleRowPress, handleAction, verification],
   );
 
   const renderSectionHeader = useCallback(

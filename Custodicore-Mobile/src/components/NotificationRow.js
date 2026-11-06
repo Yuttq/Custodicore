@@ -26,7 +26,9 @@ const TONE_CONFIG = {
 };
 
 /**
- * Compact notification list row — entire row opens details on tap.
+ * Compact notification list row — entire row opens details on tap. A
+ * rejection shows the staff reason in place of the preview, and an optional
+ * small inline action (e.g. "Replace Document") under it.
  *
  * @param {object} props
  * @param {string} props.title
@@ -35,6 +37,9 @@ const TONE_CONFIG = {
  * @param {NotificationTone} props.tone
  * @param {boolean} props.read
  * @param {() => void} props.onPress
+ * @param {string | null} [props.iconName] — type icon; defaults to the tone icon
+ * @param {string | null} [props.reason] — staff reason (rejections)
+ * @param {{ label: string; onPress: () => void } | null} [props.action]
  */
 export default function NotificationRow({
   title,
@@ -43,24 +48,26 @@ export default function NotificationRow({
   tone,
   read,
   onPress,
+  iconName = null,
+  reason = null,
+  action = null,
 }) {
   const toneStyle = TONE_CONFIG[tone] ?? TONE_CONFIG.information;
+  const summary = reason ? `Reason: ${reason}` : description;
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={
-        read
-          ? `${title}. ${description}${dateLabel ? ` ${dateLabel}` : ''}. Tap for details.`
-          : `Unread. ${title}. ${description}${dateLabel ? ` ${dateLabel}` : ''}. Tap for details.`
-      }
+      accessibilityLabel={`${read ? '' : 'Unread. '}${title}. ${summary}${
+        dateLabel ? ` ${dateLabel}` : ''
+      }. Tap for details.`}
     >
       {!read ? <View style={styles.unreadBar} accessibilityLabel="Unread" /> : null}
 
       <View style={[styles.iconWrap, { backgroundColor: toneStyle.bg }]}>
-        <Ionicons name={toneStyle.icon} size={18} color={toneStyle.color} />
+        <Ionicons name={iconName || toneStyle.icon} size={18} color={toneStyle.color} />
       </View>
 
       <View style={styles.content}>
@@ -74,9 +81,28 @@ export default function NotificationRow({
             </Text>
           ) : null}
         </View>
-        <Text style={styles.description} numberOfLines={1}>
-          {description}
-        </Text>
+        {reason ? (
+          <Text style={styles.description} numberOfLines={2}>
+            <Text style={styles.reasonLabel}>Reason: </Text>
+            {reason}
+          </Text>
+        ) : (
+          <Text style={styles.description} numberOfLines={1}>
+            {description}
+          </Text>
+        )}
+        {action ? (
+          <Pressable
+            onPress={action.onPress}
+            hitSlop={8}
+            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`${action.label}: ${title}`}
+          >
+            <Text style={styles.actionLabel}>{action.label}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.primaryTeal} />
+          </Pressable>
+        ) : null}
       </View>
 
       {!read ? <View style={styles.unreadDot} /> : null}
@@ -143,6 +169,26 @@ const styles = StyleSheet.create({
   description: {
     ...typography.metadata,
     color: colors.textSecondary,
+  },
+  reasonLabel: {
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    marginTop: spacing.xs,
+    paddingVertical: 2,
+  },
+  actionPressed: {
+    opacity: 0.7,
+  },
+  actionLabel: {
+    ...typography.metadata,
+    fontWeight: '700',
+    color: colors.primaryTeal,
   },
   unreadDot: {
     width: 8,

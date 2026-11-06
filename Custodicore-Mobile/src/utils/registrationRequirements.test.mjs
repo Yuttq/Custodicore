@@ -83,7 +83,7 @@ test('relationship documents carry the backend requirement key', () => {
   assert.equal(docs.find((d) => d.key === 'marriage_certificate').label, 'Marriage Certificate');
 });
 
-test('live-in partners: CENOMARs, then the child or witness document by their answer', () => {
+test('live-in partners: CENOMARs, plus the child birth certificate with children; no witness statement', () => {
   assert.equal(asksChildrenTogether('live_in_partner'), true);
   assert.equal(asksChildrenTogether('spouse'), false);
   assert.deepEqual(keys('live_in_partner'), ['government_id', 'cenomar_visitor', 'cenomar_pdl']);
@@ -91,7 +91,7 @@ test('live-in partners: CENOMARs, then the child or witness document by their an
     'government_id', 'cenomar_visitor', 'cenomar_pdl', 'child_birth_certificate',
   ]);
   assert.deepEqual(keys('live_in_partner', { hasChildrenTogether: false }), [
-    'government_id', 'cenomar_visitor', 'cenomar_pdl', 'witness_statement',
+    'government_id', 'cenomar_visitor', 'cenomar_pdl',
   ]);
   // The answer only matters for live-in partners.
   assert.deepEqual(keys('spouse', { hasChildrenTogether: true }), ['government_id', 'marriage_certificate']);

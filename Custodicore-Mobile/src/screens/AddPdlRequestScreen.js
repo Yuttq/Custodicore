@@ -46,6 +46,7 @@ import {
   REGISTRATION_RELATIONSHIPS,
   asksChildrenTogether,
   getRelationshipLabel,
+  isRegistrationRelationship,
 } from '../utils/registrationRequirements';
 import { ageFromBirthdate, normalizeName } from '../utils/registrationValidation';
 
@@ -57,21 +58,54 @@ const CHILDREN_OPTIONS = [
 ];
 
 /**
+ * "Request Again" details (route param `prefill`, from pdlRequestPrefill()),
+ * checked again here since route params are untyped. Null for a new request.
+ * @param {unknown} raw
+ * @returns {{ pdlName: string; relationship: string | null; hasChildrenTogether: boolean | null; rejectionReason: string | null } | null}
+ */
+function readPrefill(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = /** @type {Record<string, unknown>} */ (raw);
+  const relationship = isRegistrationRelationship(p.relationship) ? String(p.relationship) : null;
+  return {
+    pdlName: typeof p.pdlName === 'string' ? filterIntendedPdlName(p.pdlName) : '',
+    relationship,
+    hasChildrenTogether:
+      relationship && asksChildrenTogether(relationship) && typeof p.hasChildrenTogether === 'boolean'
+        ? p.hasChildrenTogether
+        : null,
+    rejectionReason:
+      typeof p.rejectionReason === 'string' && p.rejectionReason.trim() ? p.rejectionReason.trim() : null,
+  };
+}
+
+/**
  * Phase 5B: an approved visitor asks facility staff to add another PDL
- * (Profile → Verification Documents → My PDLs → Add Another PDL). Same order
+ * (the (+) beside the PDL chips on Home → Visitation Calendar). Same order
  * and documents as registration — PDL name, relationship, the relationship's
  * documents, review — without the account details, photo or Government ID.
  * Sends POST /api/pdl-requests; staff then identify the PDL and link it.
+ *
+ * Phase 4 "Request Again" (My PDLs or a rejected-request notification) opens
+ * the same form with the rejected request's name and relationship filled in
+ * and its staff reason shown; the visitor edits them, attaches the documents
+ * again and sends a new request, which staff review like any other.
  */
-export default function AddPdlRequestScreen({ navigation }) {
+export default function AddPdlRequestScreen({ navigation, route }) {
   const { user } = useAuth();
   const age = ageFromBirthdate(user?.dateOfBirth ?? '');
   const isMinor = age !== null && age < ADULT_AGE;
+  // Read once: later param changes must not overwrite what the visitor typed.
+  const [prefill] = useState(() => readPrefill(route?.params?.prefill));
 
   const [step, setStep] = useState(1);
-  const [pdlName, setPdlName] = useState('');
-  const [relationship, setRelationship] = useState(/** @type {string | null} */ (null));
-  const [hasChildrenTogether, setHasChildrenTogether] = useState(/** @type {boolean | null} */ (null));
+  const [pdlName, setPdlName] = useState(prefill?.pdlName ?? '');
+  const [relationship, setRelationship] = useState(
+    /** @type {string | null} */ (prefill?.relationship ?? null),
+  );
+  const [hasChildrenTogether, setHasChildrenTogether] = useState(
+    /** @type {boolean | null} */ (prefill?.hasChildrenTogether ?? null),
+  );
   const [files, setFiles] = useState(/** @type {Record<string, any>} */ ({}));
   const [chooserKey, setChooserKey] = useState(/** @type {string | null} */ (null));
   const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
@@ -184,7 +218,7 @@ export default function AddPdlRequestScreen({ navigation }) {
       });
       Alert.alert(
         'Request sent',
-        'Facility staff will find the PDL in their records and review your documents. You can follow the request under My PDLs.',
+        'Facility staff will find the PDL in their records and review your documents. You can follow the request under Profile → My PDLs.',
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
     } catch (e) {
@@ -202,7 +236,7 @@ export default function AddPdlRequestScreen({ navigation }) {
       } else if (err?.timedOut) {
         Alert.alert(
           'Taking too long',
-          'The request took too long to send. Check My PDLs before sending it again: it may already be waiting for staff.',
+          'The request took too long to send. Check Profile → My PDLs before sending it again: it may already be waiting for staff.',
         );
       } else {
         Alert.alert('Could not send request', err?.message || 'Please try again.');
@@ -216,9 +250,22 @@ export default function AddPdlRequestScreen({ navigation }) {
 
   // ----------------------------------------------------------------- steps
 
+  // Previous request's staff reason, next to the details it is about.
+  const renderReasonNotice = () =>
+    prefill?.rejectionReason ? (
+      <View style={styles.reasonNotice} accessibilityRole="text">
+        <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+        <Text style={styles.reasonNoticeText}>
+          <Text style={styles.reasonNoticeLabel}>Previous request not accepted: </Text>
+          {prefill.rejectionReason}
+        </Text>
+      </View>
+    ) : null;
+
   const renderNameStep = () => (
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>PDL You Want To Visit</Text>
+      {renderReasonNotice()}
       <View style={formStyles.field}>
         <Text style={formStyles.label}>PDL Name</Text>
         <TextInput
@@ -280,7 +327,7 @@ export default function AddPdlRequestScreen({ navigation }) {
         <Card style={[styles.card, styles.cardStacked]}>
           <Text style={styles.docTitle}>Do you and the PDL have children together?</Text>
           <Text style={styles.hint}>
-            With children, upload a child&apos;s PSA birth certificate. Without, upload a witness statement.
+            With children, also upload a child&apos;s PSA birth certificate.
           </Text>
           {errors.children_together ? (
             <Text style={styles.stepError}>{errors.children_together}</Text>
@@ -363,6 +410,9 @@ export default function AddPdlRequestScreen({ navigation }) {
       {errors.documents ? <Text style={styles.stepError}>{errors.documents}</Text> : null}
       <Card style={styles.card}>
         <Text style={styles.sectionTitle}>Documents for {getRelationshipLabel(relationship)}</Text>
+        {prefill ? (
+          <Text style={styles.hint}>Attach the documents again for this new request.</Text>
+        ) : null}
         {requiredDocs.map(renderDocumentCard)}
       </Card>
       <View style={styles.noticeBox}>
@@ -401,8 +451,8 @@ export default function AddPdlRequestScreen({ navigation }) {
       ))}
       {errors.form ? <Text style={[formStyles.error, styles.formError]}>{errors.form}</Text> : null}
       <Text style={[styles.hint, styles.reviewHint]}>
-        You can have one request waiting at a time. You can cancel it under My PDLs while staff have not
-        reviewed it yet.
+        You can have one request waiting at a time. You can cancel it under Profile → My PDLs while staff
+        have not reviewed it yet.
       </Text>
     </Card>
   );
@@ -478,6 +528,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   formError: { marginBottom: spacing.sm },
+  // Small inline notice: the staff reason a resubmission should correct.
+  reasonNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+  },
+  reasonNoticeText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  reasonNoticeLabel: {
+    fontWeight: '600',
+  },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',

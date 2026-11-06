@@ -345,8 +345,8 @@ export default function RegisterScreen({ navigation, route }) {
   const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
   // The camera opens by itself only the first time step 4 is reached.
   const photoCameraAutoOpened = useRef(false);
-  // Live-in partners only: decides whether a child's birth certificate or a
-  // witness statement is asked for (null = not answered yet).
+  // Live-in partners only: with children, a child's birth certificate is also
+  // asked for (null = not answered yet).
   const [hasChildrenTogether, setHasChildrenTogether] = useState(null);
   const [certified, setCertified] = useState(false);
 
@@ -1217,8 +1217,7 @@ export default function RegisterScreen({ navigation, route }) {
     <Card style={[styles.card, styles.cardStacked]}>
       <Text style={styles.docTitle}>Do you and the PDL have children together?</Text>
       <Text style={fieldStyles.hint}>
-        With children, upload a child&apos;s PSA birth certificate. Without, upload a witness
-        statement.
+        With children, also upload a child&apos;s PSA birth certificate.
       </Text>
       {errors.children_together ? (
         <Text style={styles.stepError}>{errors.children_together}</Text>

@@ -534,6 +534,17 @@ export default function UploadIDScreen({ navigation, route }) {
           <>
             <DocTypeBadge label={activeDoc?.label ?? 'Document'} />
 
+            {/* Replacing a rejected file: what staff asked to correct, above the upload area. */}
+            {activeDoc?.uploadStatus === 'rejected' && activeDoc.rejectionReason ? (
+              <View style={styles.reasonNotice} accessibilityRole="text">
+                <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+                <Text style={styles.reasonNoticeText}>
+                  <Text style={styles.reasonNoticeLabel}>Not accepted: </Text>
+                  {activeDoc.rejectionReason}
+                </Text>
+              </View>
+            ) : null}
+
             <UploadDocumentCard
               uri={entry.uri}
               fileName={entry.fileName}
@@ -588,6 +599,24 @@ export default function UploadIDScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
+  // Small inline notice: the staff reason the replacement should correct.
+  reasonNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+  },
+  reasonNoticeText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  reasonNoticeLabel: {
+    fontWeight: '600',
+  },
   scrollContentWithFooter: {
     paddingBottom: spacing.md,
   },

@@ -238,11 +238,16 @@ export default function VerificationReviewScreen({ navigation }) {
             accessibilityLabel="Check review status"
           />
           <View style={styles.secondaryWrap}>
+            {/* A returned account corrects its documents and retakes its photo there. */}
             <Button
               variant="secondary"
-              title="Verification Documents"
+              title={isRejected ? 'Correct Documents or Photo' : 'Verification Documents'}
               onPress={() => navigation.navigate('VisitorVerificationDocuments')}
-              accessibilityLabel="View verification documents"
+              accessibilityLabel={
+                isRejected
+                  ? 'Correct your documents or retake your photo'
+                  : 'View verification documents'
+              }
             />
           </View>
           <View style={styles.secondaryWrap}>

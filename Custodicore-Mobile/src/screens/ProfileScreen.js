@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -25,6 +25,8 @@ import { useAuth } from '../hooks/useAuth';
 import { loadLocalProfile, persistLocalProfile } from '../services/localProfileStorage';
 import { getVerificationBadge } from '../utils/verificationStatusUi';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
+import useVisitorVerification from '../hooks/useVisitorVerification';
+import { summarizeMyPdls } from '../utils/myPdls';
 
 /** Only the profile photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
@@ -34,6 +36,11 @@ const MENU_ITEMS = [
     key: 'personal',
     label: 'Personal Information',
     icon: 'person-outline',
+  },
+  {
+    key: 'pdls',
+    label: 'My PDLs',
+    icon: 'people-outline',
   },
   {
     key: 'documents',
@@ -112,9 +119,10 @@ function ProfileAvatar({ photoUri, initials, onPress }) {
  * @param {string} props.label
  * @param {boolean} [props.destructive]
  * @param {boolean} [props.isLast]
+ * @param {string} [props.meta] — small status text before the chevron
  * @param {() => void} props.onPress
  */
-function MenuRow({ icon, label, destructive, isLast, onPress }) {
+function MenuRow({ icon, label, destructive, isLast, meta, onPress }) {
   const iconColor = destructive ? colors.danger : colors.primaryTeal;
 
   return (
@@ -126,12 +134,17 @@ function MenuRow({ icon, label, destructive, isLast, onPress }) {
         pressed && styles.menuRowPressed,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={meta ? `${label}, ${meta}` : label}
     >
       <View style={[styles.menuIconWrap, destructive && styles.menuIconWrapDanger]}>
         <Ionicons name={icon} size={20} color={iconColor} />
       </View>
       <Text style={[styles.menuLabel, destructive && styles.menuLabelDanger]}>{label}</Text>
+      {meta ? (
+        <Text style={styles.menuMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+      ) : null}
       {!destructive ? (
         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
       ) : null}
@@ -152,6 +165,12 @@ export default function ProfileScreen({ navigation }) {
   // Backend value (pending | verified | rejected) from GET /api/me is the source of truth.
   const verificationBadge = getVerificationBadge(user?.verificationStatus);
   const tabBarInset = useTabBarScrollInset();
+  // My PDLs row summary ("1 pending"), from GET /api/documents (reloads on focus).
+  const { verification } = useVisitorVerification();
+  const pdlSummary = useMemo(
+    () => summarizeMyPdls(verification?.pdlRelationships, verification?.pdlRequest).short,
+    [verification],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -238,6 +257,10 @@ export default function ProfileScreen({ navigation }) {
         navigation.navigate('PersonalInformation');
         return;
       }
+      if (key === 'pdls') {
+        navigation.navigate('MyPdls');
+        return;
+      }
       if (key === 'documents') {
         navigation.navigate('VisitorVerificationDocuments');
         return;
@@ -305,6 +328,7 @@ export default function ProfileScreen({ navigation }) {
               label={item.label}
               destructive={item.destructive}
               isLast={index === MENU_ITEMS.length - 1}
+              meta={item.key === 'pdls' ? pdlSummary : undefined}
               onPress={() => onMenuPress(item.key)}
             />
           ))}
@@ -450,6 +474,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,
+  },
+  menuMeta: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    flexShrink: 0,
   },
   menuLabelDanger: {
     color: colors.danger,

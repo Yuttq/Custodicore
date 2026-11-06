@@ -62,6 +62,8 @@ const RELATIONSHIP_DOCUMENT_LABELS = {
   cenomar_visitor: "Visitor's CENOMAR",
   cenomar_pdl: "PDL's CENOMAR",
   child_birth_certificate: "Child's PSA Birth Certificate",
+  // No longer required (live-in partners without children); kept so files
+  // already sent still show their name.
   witness_statement: 'Witness Statement',
   guardianship_authorization: 'Proof of Guardianship / Authorization',
   proof_of_counsel: 'Proof of Legal Representation',
@@ -76,8 +78,12 @@ const RELATIONSHIP_DOCUMENT_KEYS = {
   legal_counsel: ['proof_of_counsel'],
 };
 
-/** Live-in partners: the extra document depends on whether they have children together. */
-const CHILDREN_TOGETHER_DOCUMENT = { true: 'child_birth_certificate', false: 'witness_statement' };
+/**
+ * Live-in partners: with children together, the child's birth certificate is
+ * also needed; without, no extra document (the witness statement is no
+ * longer required). Mirrors the backend's RELATIONSHIP_RULES.
+ */
+const CHILDREN_TOGETHER_DOCUMENT = { true: 'child_birth_certificate', false: null };
 
 /** A minor's own birth certificate stands in for the Government ID. */
 const MINOR_DOCUMENT = 'visitor_birth_certificate';
@@ -130,7 +136,8 @@ export function getRequiredDocuments(relationshipId, { isMinor = false, hasChild
 
   const keys = [...(RELATIONSHIP_DOCUMENT_KEYS[relationshipId] ?? [])];
   if (asksChildrenTogether(relationshipId) && typeof hasChildrenTogether === 'boolean') {
-    keys.push(CHILDREN_TOGETHER_DOCUMENT[String(hasChildrenTogether)]);
+    const extra = CHILDREN_TOGETHER_DOCUMENT[String(hasChildrenTogether)];
+    if (extra) keys.push(extra);
   }
   if (isMinor && relationshipId in RELATIONSHIP_DOCUMENT_KEYS && !keys.includes(MINOR_DOCUMENT)) {
     keys.push(MINOR_DOCUMENT);
