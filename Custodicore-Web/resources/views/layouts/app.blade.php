@@ -6,6 +6,7 @@
 <title>@yield('title', 'CustodiCore')</title>
 {{-- ?v= changes whenever the file does, so browsers and caches fetch the new styles after a deploy. --}}
 <link rel="stylesheet" href="{{ asset('css/styles.css') }}?v={{ @filemtime(public_path('css/styles.css')) ?: '1' }}">
+@include('partials.favicon')
 </head>
 <body>
 <div class="app">

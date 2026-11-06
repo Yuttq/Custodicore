@@ -20,6 +20,7 @@
         nav { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 14px; }
         a { color: #2563EB; font-weight: 600; }
     </style>
+@include('partials.favicon')
 </head>
 <body>
     <header>CustodiCore</header>

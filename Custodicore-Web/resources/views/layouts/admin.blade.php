@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', 'Dashboard') · CustodiCore Admin</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.favicon')
 </head>
 <body class="min-h-screen bg-background text-text-primary">
     <div class="flex min-h-screen flex-col lg:flex-row">

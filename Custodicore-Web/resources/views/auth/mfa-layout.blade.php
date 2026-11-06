@@ -6,6 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <title>@yield('title') · CustodiCore</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.favicon')
 </head>
 <body class="min-h-screen bg-primary-navy text-text-primary">
     <div class="flex min-h-screen items-center justify-center px-md py-xl">

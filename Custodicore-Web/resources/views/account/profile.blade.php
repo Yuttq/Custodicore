@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>My Profile · CustodiCore</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.favicon')
 </head>
 @php
     $photo = $profile?->photoUrl();

@@ -10,6 +10,7 @@
     <title>@yield('title', 'Dashboard') · CustodiCore Front Desk</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.favicon')
 </head>
 
 <body class="min-h-screen bg-background text-text-primary">

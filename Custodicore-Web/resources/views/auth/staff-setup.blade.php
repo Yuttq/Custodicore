@@ -31,6 +31,7 @@
         .badge { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; color: #fff; }
         .badge.warn { background: var(--amber); } .badge.err { background: var(--red); }
     </style>
+@include('partials.favicon')
 </head>
 <body>
     <header>CustodiCore</header>

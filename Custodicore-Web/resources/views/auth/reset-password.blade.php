@@ -35,6 +35,7 @@
         .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
         @media (max-width: 480px) { main { margin: 24px auto; } .card { padding: 24px 20px; } }
     </style>
+@include('partials.favicon')
 </head>
 <body>
     <header>CustodiCore</header>

@@ -26,6 +26,7 @@
         .btn { display: inline-block; border: 0; cursor: pointer; background: var(--teal); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 10px; }
         .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
     </style>
+@include('partials.favicon')
 </head>
 <body>
     <header>CustodiCore</header>
