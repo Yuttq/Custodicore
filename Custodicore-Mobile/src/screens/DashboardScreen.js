@@ -23,12 +23,8 @@ import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
-import {
-  combineAvailableDays,
-  formatDateLong,
-  relationshipsAvailableOn,
-} from '../utils/scheduleAvailability';
-import { buildVisitDateMarkers } from '../utils/visitCalendarMarkers';
+import { calendarDateHandoff } from '../utils/scheduleAvailability';
+import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
 
@@ -161,6 +157,10 @@ function TextLink({ label, onPress, accessibilityLabel }) {
 function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
   const time = visitTimeText(visit);
   const when = [visit.dateDisplay, time].filter(Boolean).join(' · ');
+  // Date and time each get their own line so neither is cut off beside the
+  // status chip (e.g. "November 12, 2026" / "09:00 - 16:30 · Whole day").
+  const dateLine = visit.dateDisplay || time;
+  const timeLine = visit.dateDisplay ? time : '';
 
   return (
     <View style={styles.upcomingSection}>
@@ -180,14 +180,9 @@ function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
       >
         <Ionicons name="calendar-outline" size={20} color={colors.primaryNavy} />
         <View style={styles.upcomingText}>
-          <Text style={styles.upcomingWhen} numberOfLines={1}>
-            {when}
-          </Text>
-          {visit.pdlName ? (
-            <Text style={styles.upcomingPdl} numberOfLines={1}>
-              {visit.pdlName}
-            </Text>
-          ) : null}
+          {dateLine ? <Text style={styles.upcomingWhen}>{dateLine}</Text> : null}
+          {timeLine ? <Text style={styles.upcomingTime}>{timeLine}</Text> : null}
+          {visit.pdlName ? <Text style={styles.upcomingPdl}>{visit.pdlName}</Text> : null}
         </View>
         <StatusChip status={resolveVisitStatusChip(visit.status)} />
       </Pressable>
@@ -197,26 +192,42 @@ function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
 
 /**
  * The visitor's verified PDLs as chips above the Home calendar, plus the
- * circular (+) that opens the Phase 5B "Add Another PDL" request form. The
- * chips only name the PDLs: the calendar stays date-first, so the PDL for a
- * visit is still chosen after the date.
+ * circular (+) that opens the Phase 5B "Add Another PDL" request form. One
+ * chip is selected at a time and the calendar shows that PDL's dates;
+ * tapping a chip stays on Home.
  * @param {object} props
  * @param {{ relationshipId: string; pdlName: string | null }[]} props.relationships
+ * @param {string | null} [props.selectedId]
+ * @param {(relationshipId: string) => void} [props.onSelect]
  * @param {boolean} props.canAdd — approved account without an open request
  * @param {() => void} props.onAdd
  */
-function HomePdlChips({ relationships, canAdd, onAdd }) {
+function HomePdlChips({ relationships, selectedId, onSelect, canAdd, onAdd }) {
   if (relationships.length === 0 && !canAdd) return null;
 
   return (
     <View style={styles.pdlChipRow}>
-      {relationships.map((r) => (
-        <View key={r.relationshipId} style={styles.pdlChip}>
-          <Text style={styles.pdlChipText} numberOfLines={1}>
-            {r.pdlName ?? 'PDL'}
-          </Text>
-        </View>
-      ))}
+      {relationships.map((r) => {
+        const active = r.relationshipId === selectedId;
+        return (
+          <Pressable
+            key={r.relationshipId}
+            onPress={() => onSelect?.(r.relationshipId)}
+            style={({ pressed }) => [
+              styles.pdlChip,
+              active && styles.pdlChipActive,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Show visit dates for ${r.pdlName ?? 'PDL'}`}
+          >
+            <Text style={[styles.pdlChipText, active && styles.pdlChipTextActive]} numberOfLines={1}>
+              {r.pdlName ?? 'PDL'}
+            </Text>
+          </Pressable>
+        );
+      })}
       {canAdd ? (
         <View style={styles.addPdlWrap}>
           <Pressable
@@ -238,64 +249,44 @@ function HomePdlChips({ relationships, canAdd, onAdd }) {
 }
 
 /**
- * Visitation calendar for Home, date first: one calendar across all verified
- * relationships (GET /api/schedules/availability), with the visitor's own
- * pending / confirmed visits marked. Tapping an available date opens My
- * Visits → Schedule with that date and the PDL — asked here only when more
- * than one PDL is available that day. Slots are chosen and requested on the
- * Schedule tab, never here.
+ * Visitation calendar for Home, PDL first: the chips pick one verified
+ * relationship (GET /api/schedules/availability) and the calendar shows only
+ * that PDL's dates, with the visitor's own pending / confirmed visits with
+ * that PDL marked. Tapping an available date opens My Visits → Schedule with
+ * that PDL and date already selected; slots are chosen and requested there.
  * @param {object} props
  * @param {ReturnType<typeof useScheduleAvailability>} props.schedule
- * @param {Record<string, 'pending' | 'confirmed'>} props.markedDates
- * @param {(date: string, relationshipId: string) => void} props.onOpenDate
+ * @param {Record<string, 'pending' | 'confirmed'>} props.markedDates — the selected PDL's visits
+ * @param {(params: { tab: 'schedule'; date: string; relationshipId: string }) => void} props.onOpenDate
  * @param {boolean} props.canAddPdl — show the (+) Add Another PDL button
  * @param {() => void} props.onAddPdl
  */
 function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAddPdl }) {
-  const { loading, error, reload, today, from, to, relationships, relationship } = schedule;
-  const daysByDate = useMemo(() => combineAvailableDays(relationships), [relationships]);
+  const {
+    loading,
+    error,
+    reload,
+    today,
+    from,
+    to,
+    relationships,
+    relationship,
+    selectRelationship,
+    daysByDate,
+  } = schedule;
   const hasAvailableDate = useMemo(
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
   );
-  const multiplePdls = relationships.length > 1;
 
-  // The date whose "Who will you visit?" list is open (more than one PDL).
-  const [choiceDate, setChoiceDate] = useState(/** @type {string | null} */ (null));
-  // Recomputed on every reload, so a PDL that closed meanwhile drops out.
-  const choices = useMemo(
-    () => relationshipsAvailableOn(relationships, choiceDate),
-    [relationships, choiceDate],
-  );
-
+  // Only a date the selected PDL has an available session on opens Schedule.
   const onSelectDate = useCallback(
     (date) => {
-      const available = relationshipsAvailableOn(relationships, date);
-      if (available.length === 0) return;
-      if (available.length === 1) {
-        setChoiceDate(null);
-        onOpenDate(date, available[0].relationshipId);
-        return;
-      }
-      setChoiceDate(date);
+      const params = calendarDateHandoff(relationship, date);
+      if (params) onOpenDate(params);
     },
-    [relationships, onOpenDate],
+    [relationship, onOpenDate],
   );
-
-  const onChoosePdl = useCallback(
-    (relationshipId) => {
-      const date = choiceDate;
-      setChoiceDate(null);
-      if (date) onOpenDate(date, relationshipId);
-    },
-    [choiceDate, onOpenDate],
-  );
-
-  // A PDL's own notice (e.g. not available for visits). With several PDLs
-  // each one names its PDL, since the calendar no longer shows one.
-  const pdlMessages = relationships
-    .filter((r) => r.message)
-    .map((r) => (multiplePdls && r.pdlName ? `${r.pdlName}: ${r.message}` : r.message));
 
   let content;
   if (loading && !relationship) {
@@ -319,67 +310,35 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
   } else {
     content = (
       <>
-        {/* The verified PDLs (display only) and the (+) Add Another PDL button. */}
-        <HomePdlChips relationships={relationships} canAdd={canAddPdl} onAdd={onAddPdl} />
-        {pdlMessages.map((message) => (
-          <Text key={message} style={styles.calendarWarning}>
-            {message}
+        {/* The verified PDLs (one selected) and the (+) Add Another PDL button. */}
+        <HomePdlChips
+          relationships={relationships}
+          selectedId={relationship.relationshipId}
+          onSelect={selectRelationship}
+          canAdd={canAddPdl}
+          onAdd={onAddPdl}
+        />
+        {relationship.message ? (
+          <Text style={styles.calendarWarning}>{relationship.message}</Text>
+        ) : !hasAvailableDate && !loading ? (
+          <Text style={styles.calendarWarning}>
+            No visit dates are available in the coming weeks. Please check again later.
           </Text>
-        ))}
-        {!hasAvailableDate && !loading ? (
-          pdlMessages.length === 0 ? (
-            <Text style={styles.calendarWarning}>
-              No visit dates are available in the coming weeks. Please check again later.
-            </Text>
-          ) : null
         ) : (
-          <Text style={styles.noVisit}>
-            {multiplePdls
-              ? 'Tap an available date, then choose the PDL you will visit.'
-              : 'Tap an available date to choose a time slot and request a visit.'}
-          </Text>
+          <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>
         )}
-        {/* selectedDate highlights the date whose PDL list is open; the
+        {/* Tapping a date leaves Home, so no date stays selected here and the
             Selected legend stays hidden (showSelection={false}). */}
         <VisitCalendar
           daysByDate={daysByDate}
           today={today}
           minDate={from}
           maxDate={to}
-          selectedDate={choices.length > 0 ? choiceDate : null}
+          selectedDate={null}
           onSelectDate={onSelectDate}
           markedDates={markedDates}
           showSelection={false}
         />
-        {choiceDate && choices.length > 0 ? (
-          <View style={styles.pdlChoice}>
-            <Text style={styles.pdlChoiceTitle} accessibilityRole="header">
-              Who will you visit on {formatDateLong(choiceDate)}?
-            </Text>
-            {choices.map((r) => (
-              <Pressable
-                key={r.relationshipId}
-                onPress={() => onChoosePdl(r.relationshipId)}
-                style={({ pressed }) => [styles.pdlChoiceRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`Visit ${r.pdlName ?? 'PDL'} on ${formatDateLong(choiceDate)}`}
-              >
-                <View style={styles.pdlChoiceText}>
-                  <Text style={styles.pdlChoiceName}>{r.pdlName ?? 'PDL'}</Text>
-                  {r.relationshipLabel ? (
-                    <Text style={styles.pdlChoiceMeta}>{r.relationshipLabel}</Text>
-                  ) : null}
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.primaryTeal} />
-              </Pressable>
-            ))}
-            <TextLink
-              label="Choose another date"
-              onPress={() => setChoiceDate(null)}
-              accessibilityLabel="Close the PDL list and choose another date"
-            />
-          </View>
-        ) : null}
       </>
     );
   }
@@ -548,15 +507,21 @@ export default function DashboardScreen({ navigation }) {
     isApprovedVisitor && canAddAnotherPdl(verification?.backendStatus, verification?.pdlRequest);
   const onAddPdl = useCallback(() => navigation.navigate('AddPdlRequest'), [navigation]);
 
-  const { relationship, today: availabilityToday } = schedule;
+  const { relationship, relationships, today: availabilityToday } = schedule;
   // Visits can be requested only for a staff-verified relationship, which
   // is exactly what availability returns.
   const hasVerifiedRelationship = isApprovedVisitor && Boolean(relationship);
-  // Date-first calendar: the visitor's upcoming visits with every PDL.
+  // The selected PDL's upcoming visits only (matched by PDL name; none when
+  // the name is missing or shared, never guessed).
   const markedDates = useMemo(
     () =>
-      relationship && availabilityToday ? buildVisitDateMarkers(visits, availabilityToday) : {},
-    [visits, relationship, availabilityToday],
+      relationship && availabilityToday
+        ? buildVisitDateMarkers(
+            visitsForRelationship(visits, relationship, relationships),
+            availabilityToday,
+          )
+        : {},
+    [visits, relationship, relationships, availabilityToday],
   );
 
   const tabBarInset = useTabBarScrollInset();
@@ -585,8 +550,8 @@ export default function DashboardScreen({ navigation }) {
     navigation.navigate('Schedule', { tab: 'upcoming' });
   }, [navigation]);
 
-  // "View Visitation Schedule" opens the Schedule tab on the first verified
-  // relationship, as before; the Schedule tab itself stays PDL-first.
+  // "View Visitation Schedule" opens the Schedule tab on the PDL selected on
+  // Home (the first verified relationship until a chip is tapped).
   const relationshipId = relationship?.relationshipId ?? null;
   const onOpenSchedule = useCallback(() => {
     navigation.navigate(
@@ -595,17 +560,10 @@ export default function DashboardScreen({ navigation }) {
     );
   }, [navigation, relationshipId]);
 
-  // A date, then the PDL chosen for it on the Home calendar: the Schedule tab
+  // The selected PDL, then a date on the Home calendar: the Schedule tab
   // opens with both selected (existing handoff); slots are picked there.
   const onOpenCalendarDate = useCallback(
-    (date, chosenRelationshipId) => {
-      if (!chosenRelationshipId) return;
-      navigation.navigate('Schedule', {
-        tab: 'schedule',
-        date,
-        relationshipId: chosenRelationshipId,
-      });
-    },
+    (params) => navigation.navigate('Schedule', params),
     [navigation],
   );
 
@@ -793,6 +751,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryNavy,
   },
+  upcomingTime: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
   upcomingPdl: {
     ...typography.metadata,
     color: colors.textSecondary,
@@ -844,10 +807,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.background,
   },
+  // Selected PDL: same look as RelationshipPicker's active chip.
+  pdlChipActive: {
+    borderColor: colors.primaryNavy,
+    backgroundColor: colors.primaryNavy,
+  },
   pdlChipText: {
     ...typography.metadata,
     fontWeight: '600',
     color: colors.textPrimary,
+  },
+  pdlChipTextActive: {
+    color: colors.white,
   },
   addPdlWrap: {
     flexDirection: 'row',
@@ -868,40 +839,6 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontWeight: '600',
     color: colors.primaryTeal,
-  },
-  // "Who will you visit on …?" — the PDLs available on the tapped date.
-  pdlChoice: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  pdlChoiceTitle: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  pdlChoiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: layout.buttonRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  pdlChoiceText: {
-    flex: 1,
-  },
-  pdlChoiceName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  pdlChoiceMeta: {
-    ...typography.metadata,
-    color: colors.textSecondary,
   },
   announcementMeta: {
     flexDirection: 'row',

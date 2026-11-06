@@ -108,3 +108,27 @@ test('no markers when the PDL name is shared or missing', () => {
   assert.deepEqual(visitsForRelationship(visits, null, [a]), []);
   assert.deepEqual(visitsForRelationship(undefined, a, [a]), []);
 });
+
+test('Home calendar markers follow the selected PDL only', () => {
+  const dogie = { pdlName: 'Dogie Dawg' };
+  const other = { pdlName: 'Other PDL' };
+  const visits = [
+    visit(1, 'assigned', '2026-10-10', 'Dogie Dawg'),
+    visit(2, 'confirmed', '2026-10-12', 'Other PDL'),
+    visit(3, 'confirmed', '2026-10-14', 'Dogie Dawg'),
+  ];
+  const markersFor = (r, all) => buildVisitDateMarkers(visitsForRelationship(visits, r, all), TODAY);
+
+  assert.deepEqual(markersFor(dogie, [dogie, other]), {
+    '2026-10-10': 'pending',
+    '2026-10-14': 'confirmed',
+  });
+  assert.deepEqual(markersFor(other, [dogie, other]), { '2026-10-12': 'confirmed' });
+  // Single-PDL visitor: their own visits are still marked.
+  assert.deepEqual(markersFor(dogie, [dogie]), {
+    '2026-10-10': 'pending',
+    '2026-10-14': 'confirmed',
+  });
+  // Two PDLs sharing a name: the owner can't be told apart, so no markers.
+  assert.deepEqual(markersFor(dogie, [dogie, { pdlName: 'Dogie Dawg' }]), {});
+});

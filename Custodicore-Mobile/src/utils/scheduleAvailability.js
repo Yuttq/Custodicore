@@ -322,6 +322,21 @@ export function relationshipsAvailableOn(relationships, date) {
   return relationships.filter((r) => r?.daysByDate?.[/** @type {string} */ (date)]?.available === true);
 }
 
+/**
+ * Home calendar → Schedule handoff params for a tapped date, or null when the
+ * date has no available session for the selected relationship (PDL). Only
+ * that relationship's own days count — never another PDL's.
+ * @param {{ relationshipId?: string | null; daysByDate?: Record<string, { available: boolean }> } | null | undefined} relationship
+ * @param {string | null | undefined} date YYYY-MM-DD
+ * @returns {{ tab: 'schedule'; date: string; relationshipId: string } | null}
+ */
+export function calendarDateHandoff(relationship, date) {
+  if (!relationship?.relationshipId || !parseIsoDate(date)) return null;
+  const iso = /** @type {string} */ (date);
+  if (relationship.daysByDate?.[iso]?.available !== true) return null;
+  return { tab: 'schedule', date: iso, relationshipId: String(relationship.relationshipId) };
+}
+
 /** Distinct "start–end" windows across a relationship's days, e.g. Morning + Afternoon. */
 export function visitingWindows(relationship) {
   const seen = new Map();

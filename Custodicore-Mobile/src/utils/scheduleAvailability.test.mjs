@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   addDaysIso,
   buildMonthGrid,
+  calendarDateHandoff,
   combineAvailableDays,
   dayOfWeekIso,
   formatDateLong,
@@ -256,4 +257,56 @@ test('PDLs available on a date: only those with an available session, in order',
   assert.deepEqual(relationshipsAvailableOn([ana, ben, cy], '2026-11-12'), []);
   assert.deepEqual(relationshipsAvailableOn([ana], 'not-a-date'), []);
   assert.deepEqual(relationshipsAvailableOn(null, '2026-11-10'), []);
+});
+
+test('Home calendar: each PDL shows only its own dates, and only they open Schedule', () => {
+  const slot = (date, available) => ({ startTime: '09:00', endTime: '11:30', available, reason: available ? null : 'full' });
+  const { relationships } = normalizeAvailabilityResponse({
+    today: '2026-11-05',
+    relationships: [
+      {
+        relationshipId: 7,
+        pdlName: 'Dogie Dawg',
+        days: [
+          { date: '2026-11-06', slots: [slot('2026-11-06', true)] },
+          { date: '2026-11-07', slots: [slot('2026-11-07', false)] },
+        ],
+      },
+      {
+        relationshipId: 9,
+        pdlName: 'Other PDL',
+        days: [
+          { date: '2026-11-06', slots: [slot('2026-11-06', false)] },
+          { date: '2026-11-07', slots: [slot('2026-11-07', true)] },
+        ],
+      },
+    ],
+  });
+  const [dogie, other] = relationships;
+
+  // Switching PDL switches the dates: no date leaks from the other PDL.
+  assert.equal(dogie.daysByDate['2026-11-06'].available, true);
+  assert.equal(dogie.daysByDate['2026-11-07'].available, false);
+  assert.equal(other.daysByDate['2026-11-06'].available, false);
+  assert.equal(other.daysByDate['2026-11-07'].available, true);
+
+  assert.deepEqual(calendarDateHandoff(dogie, '2026-11-06'), {
+    tab: 'schedule',
+    date: '2026-11-06',
+    relationshipId: '7',
+  });
+  assert.deepEqual(calendarDateHandoff(other, '2026-11-07'), {
+    tab: 'schedule',
+    date: '2026-11-07',
+    relationshipId: '9',
+  });
+  // Unavailable for the selected PDL (even if another PDL is free that day).
+  assert.equal(calendarDateHandoff(dogie, '2026-11-07'), null);
+  assert.equal(calendarDateHandoff(other, '2026-11-06'), null);
+  // Dates outside the data, bad input, no relationship.
+  assert.equal(calendarDateHandoff(dogie, '2026-11-20'), null);
+  assert.equal(calendarDateHandoff(dogie, 'not-a-date'), null);
+  assert.equal(calendarDateHandoff(dogie, null), null);
+  assert.equal(calendarDateHandoff(null, '2026-11-06'), null);
+  assert.equal(calendarDateHandoff({ daysByDate: dogie.daysByDate }, '2026-11-06'), null);
 });
