@@ -161,7 +161,8 @@ class AccountReviewTest extends TestCase
     {
         $visitor = $this->pendingVisitor();
         $id = $this->id($visitor, 'pending');
-        foreach (['cenomar_visitor', 'cenomar_pdl', 'witness_statement'] as $key) {
+        // Both CENOMARs only: no witness statement is needed without children.
+        foreach (['cenomar_visitor', 'cenomar_pdl'] as $key) {
             $this->registrationDocument($visitor, $key);
         }
         $link = ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'live_in_partner'];

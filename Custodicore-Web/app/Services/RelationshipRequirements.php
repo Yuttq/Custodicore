@@ -11,7 +11,8 @@ use App\Models\VisitorPdlRelationship;
  *   Married            → marriage certificate + valid ID
  *   Child of the PDL   → PSA birth certificate + valid ID
  *   Live-in partner    → CENOMAR of both; with children: the child's PSA
- *                        birth certificate; without: a witness statement
+ *                        birth certificate; without: no extra document
+ *                        (the witness statement is no longer required)
  *   Minor visitor      → at least 3 years old, birth certificate,
  *                        accompanied by a parent/guardian
  *   Legal guardian     → proper authorization, only if no immediate family
@@ -91,7 +92,8 @@ class RelationshipRequirements
             'documents' => ['cenomar_visitor', 'cenomar_pdl'],
             'children_together' => [
                 'with_children' => ['child_birth_certificate'],
-                'without_children' => ['witness_statement'],
+                // The witness statement is no longer required.
+                'without_children' => [],
             ],
             'document_policy' => self::POLICY_CONFIRMED,
             'valid_id_policy' => self::POLICY_PENDING,
@@ -169,6 +171,8 @@ class RelationshipRequirements
         'cenomar_visitor' => ["Visitor's CENOMAR", 'Certificate of No Marriage (PSA) of the visitor.'],
         'cenomar_pdl' => ["PDL's CENOMAR", 'Certificate of No Marriage (PSA) of the PDL.'],
         'child_birth_certificate' => ["Child's PSA Birth Certificate", 'PSA birth certificate of the child the visitor and the PDL have together.'],
+        // No longer required by any relationship; kept so witness statements
+        // already on file keep their label.
         'witness_statement' => ['Witness Statement', 'Signed statement from a witness (e.g. a parent) confirming the relationship, with the witness\'s valid ID.'],
         'guardianship_authorization' => ['Proof of Guardianship / Authorization', 'Proof that the visitor is the PDL\'s legal guardian (e.g. court order or notarized authorization). The facility has not yet confirmed which document it accepts.'],
         'official_authorization' => ['Official Authorization', 'Written authorization from the facility allowing this extended relative to visit.'],
@@ -258,7 +262,7 @@ class RelationshipRequirements
 
     /**
      * Document keys a relationship type needs. For live-in partners the
-     * child/witness document is added once has_children_together is known.
+     * child's birth certificate is added once has_children_together is true.
      */
     public static function documentKeysFor(string $type, ?bool $hasChildrenTogether = null): array
     {
@@ -404,7 +408,7 @@ class RelationshipRequirements
         ];
     }
 
-    private const CHILDREN_TOGETHER_DESCRIPTION = 'Record whether the visitor and the PDL have children together. With children, a child\'s PSA birth certificate is required; without, a witness statement.';
+    private const CHILDREN_TOGETHER_DESCRIPTION = 'Record whether the visitor and the PDL have children together. With children, a child\'s PSA birth certificate is also required.';
 
     private static function guideDocument(string $key, string $policy, ?array $condition = null): array
     {

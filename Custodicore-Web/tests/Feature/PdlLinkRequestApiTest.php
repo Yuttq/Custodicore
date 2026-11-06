@@ -112,22 +112,29 @@ class PdlLinkRequestApiTest extends TestCase
             'documents' => [
                 'cenomar_visitor' => $this->file(),
                 'cenomar_pdl' => $this->file(),
-                'witness_statement' => $this->file(),
             ],
         ];
 
         $this->submit($base)->assertStatus(422)->assertJsonValidationErrors('hasChildrenTogether');
 
-        // "Has children" needs the child's birth certificate, not the witness statement.
+        // "Has children" also needs the child's birth certificate.
         $this->submit($base + ['hasChildrenTogether' => 'true'])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['documents', 'documents.child_birth_certificate']);
+            ->assertJsonValidationErrors(['documents.child_birth_certificate']);
+
+        // The witness statement is no longer required, so it is not accepted either.
+        $withWitness = $base;
+        $withWitness['documents']['witness_statement'] = $this->file();
+        $this->submit($withWitness + ['hasChildrenTogether' => 'false'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['documents']);
         $this->assertSame(0, PdlLinkRequest::count());
         $this->assertSame([], $this->storedFiles());
 
+        // Without children: both CENOMARs are enough.
         $this->submit($base + ['hasChildrenTogether' => 'false'])->assertCreated();
         $this->assertFalse(PdlLinkRequest::sole()->has_children_together);
-        $this->assertSame(3, RelationshipDocument::count());
+        $this->assertSame(2, RelationshipDocument::count());
     }
 
     public function test_invalid_requests_are_refused_and_store_nothing(): void

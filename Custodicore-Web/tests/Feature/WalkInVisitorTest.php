@@ -149,11 +149,22 @@ class WalkInVisitorTest extends TestCase
 
         $this->register([
             'relationship_type' => 'live_in_partner',
-            'has_children_together' => '0',
+            'has_children_together' => '1',
             'documents' => ['cenomar_visitor' => UploadedFile::fake()->image('c1.jpg'), 'cenomar_pdl' => UploadedFile::fake()->image('c2.jpg')],
-        ])->assertSessionHasErrors(['documents.witness_statement']);
+        ])->assertSessionHasErrors(['documents.child_birth_certificate']);
 
         $this->assertSame(0, VisitorProfile::where('registered_via', 'walk_in')->count());
+    }
+
+    public function test_a_live_in_partner_without_children_needs_no_witness_statement(): void
+    {
+        $this->register([
+            'relationship_type' => 'live_in_partner',
+            'has_children_together' => '0',
+            'documents' => ['cenomar_visitor' => UploadedFile::fake()->image('c1.jpg'), 'cenomar_pdl' => UploadedFile::fake()->image('c2.jpg')],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, VisitorProfile::where('registered_via', 'walk_in')->count());
     }
 
     public function test_a_minor_needs_a_guardian_and_birth_certificate_but_no_id(): void

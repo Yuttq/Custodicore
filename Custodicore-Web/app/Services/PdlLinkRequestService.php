@@ -45,7 +45,8 @@ class PdlLinkRequestService
     /**
      * The documents a request must carry: the same files registration asks
      * for that relationship (the minor's birth certificate included), with
-     * the live-in partner's child / witness document decided by the answer.
+     * the live-in partner's child birth certificate added when they have
+     * children together (no witness statement).
      * Facility-issued documents are never sent by the visitor.
      *
      * @return array<int, string>

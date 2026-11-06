@@ -235,7 +235,6 @@ class RegistrationRelationshipDocumentsTest extends TestCase
             'relationshipDocuments' => [
                 'cenomar_visitor' => $this->file('c1.jpg'),
                 'cenomar_pdl' => $this->file('c2.jpg'),
-                'witness_statement' => $this->file('w.jpg'),
             ],
         ])->assertCreated();
         $visitor = $this->profile();
@@ -243,10 +242,9 @@ class RegistrationRelationshipDocumentsTest extends TestCase
         // Linked under another type first: nothing of theirs applies.
         $this->link($visitor, 'parent');
         $relationship = VisitorPdlRelationship::where('visitor_id', $visitor->visitor_id)->sole();
-        $this->assertSame(3, RelationshipDocument::whereNull('relationship_id')->count());
+        $this->assertSame(2, RelationshipDocument::whereNull('relationship_id')->count());
 
-        // Corrected to live-in partner: both CENOMARs; the witness statement
-        // waits until staff record that there are no children together.
+        // Corrected to live-in partner: both CENOMARs follow.
         $this->patch(route('visitor.relationships.update', [$visitor->visitor_id, $relationship->relationship_id]), [
             'relationship_type' => 'live_in_partner',
         ])->assertSessionHas('success');
@@ -261,13 +259,36 @@ class RegistrationRelationshipDocumentsTest extends TestCase
         ])->assertSessionHas('success');
         $this->assertSame(0, RelationshipDocument::whereNull('relationship_id')->count());
 
+        // No children together: nothing more is needed (no witness statement).
         $statuses = collect(\App\Services\RelationshipRequirements::for($relationship->fresh()))
             ->where('kind', 'document')->pluck('status', 'key')->all();
         $this->assertSame([
             'cenomar_visitor' => 'pending_review',
             'cenomar_pdl' => 'pending_review',
-            'witness_statement' => 'pending_review',
         ], $statuses);
+    }
+
+    public function test_a_live_in_partner_registers_without_a_witness_statement(): void
+    {
+        // A witness statement is no longer required, so it is refused as extra.
+        $this->register([
+            'relationshipType' => 'live_in_partner',
+            'relationshipDocuments' => [
+                'cenomar_visitor' => $this->file('c1.jpg'),
+                'cenomar_pdl' => $this->file('c2.jpg'),
+                'witness_statement' => $this->file('w.jpg'),
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('relationshipDocuments');
+        $this->assertSame(0, RelationshipDocument::count());
+
+        $this->register([
+            'relationshipType' => 'live_in_partner',
+            'relationshipDocuments' => [
+                'cenomar_visitor' => $this->file('c1.jpg'),
+                'cenomar_pdl' => $this->file('c2.jpg'),
+            ],
+        ])->assertCreated();
+        $this->assertSame(2, RelationshipDocument::count());
     }
 
     public function test_google_registration_accepts_the_documents_too(): void

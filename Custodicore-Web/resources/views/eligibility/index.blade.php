@@ -295,7 +295,7 @@
   <div class="req-guide" style="margin-top:12px;">
     <div><strong>Spouse</strong>: marriage certificate + valid ID</div>
     <div><strong>Child of the PDL</strong>: PSA birth certificate + valid ID</div>
-    <div><strong>Live-in partner</strong>: CENOMAR of both; with children, the child's PSA birth certificate; without, a witness statement</div>
+    <div><strong>Live-in partner</strong>: CENOMAR of both; with children, also the child's PSA birth certificate</div>
     <div><strong>Minor visitor</strong>: at least 3 years old, birth certificate, accompanied by a parent/guardian</div>
     <div><strong>Legal guardian</strong>: proof of authorization, only if the PDL has no immediate family available</div>
     <div><strong>Extended relative</strong>: only with official authorization</div>

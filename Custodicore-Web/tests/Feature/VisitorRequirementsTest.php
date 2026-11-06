@@ -89,8 +89,9 @@ class VisitorRequirementsTest extends TestCase
         $this->relationship->update(['has_children_together' => true]);
         $this->assertSame(['valid_id', 'cenomar_visitor', 'cenomar_pdl', 'child_birth_certificate'], $this->keys($this->relationship));
 
+        // Without children: no witness statement (no longer required).
         $this->relationship->update(['has_children_together' => false]);
-        $this->assertSame(['valid_id', 'cenomar_visitor', 'cenomar_pdl', 'witness_statement'], $this->keys($this->relationship));
+        $this->assertSame(['valid_id', 'cenomar_visitor', 'cenomar_pdl'], $this->keys($this->relationship));
     }
 
     public function test_minor_needs_birth_certificate_and_guardian_and_must_be_at_least_three(): void

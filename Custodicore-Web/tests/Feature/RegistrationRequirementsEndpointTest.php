@@ -151,7 +151,7 @@ class RegistrationRequirementsEndpointTest extends TestCase
             ['cenomar_visitor', null],
             ['cenomar_pdl', null],
             ['child_birth_certificate', ['detail' => 'has_children_together', 'equals' => true]],
-            ['witness_statement', ['detail' => 'has_children_together', 'equals' => false]],
+            // No witness statement without children (no longer required).
         ], array_map(fn ($d) => [$d['key'], $d['condition']], $partner['documents']));
         $this->assertSame('has_children_together', $partner['details'][0]['key']);
         $this->assertSame('facility', $partner['details'][0]['providedBy']);
