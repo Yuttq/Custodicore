@@ -14,10 +14,32 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, layout, spacing, typography } from '../designSystem';
 import { ensureRegistrationPhotoPermission } from '../services/mediaPermissions';
+// Native: on-device ML Kit quality check. Web resolves photoQuality.web.js
+// (no ML Kit; always 'unknown'), so web keeps manual capture only.
+import {
+  checkPhotoQuality,
+  discardPhoto,
+  PHOTO_QUALITY_SUPPORTED,
+} from '../services/photoQuality';
+import {
+  AUTO_CAPTURE_CONFIG,
+  AUTO_CAPTURE_MESSAGES,
+  createAutoCaptureLoop,
+  finalPhotoDecision,
+} from '../utils/autoCapture';
 import { hasVideoInputDevice, validateRegistrationPhoto } from '../utils/documentImageRules';
 
 /** JPEG at this quality keeps a front-camera photo well under the 5 MB limit. */
 const PICTURE_OPTIONS = { quality: 0.6, imageType: 'jpg' };
+
+/** Preview snapshots for the automatic check only: small, silent, always deleted. */
+const SNAPSHOT_OPTIONS = { quality: 0.3, imageType: 'jpg', shutterSound: false };
+
+/** ML Kit runs on a copy this wide (faster than the full-size photo). */
+const DETECTION_WIDTH = 480;
+
+/** Automatic capture: phones only, when the quality check is available. */
+const AUTO_CAPTURE_ENABLED = PHOTO_QUALITY_SUPPORTED && Platform.OS !== 'web';
 
 /**
  * Portrait 3:4 (width:height), the shape of a front-camera photo held
@@ -82,6 +104,14 @@ async function isWebCameraAvailable() {
  * a browser without camera access gets a message instead of a file picker.
  * `onConfirm` runs only after "Use Photo"; closing at any point (including
  * during a retake) leaves the previously confirmed photo untouched.
+ *
+ * On phones the photo is taken automatically (Phase 2): silent preview
+ * snapshots are checked on-device one at a time (utils/autoCapture +
+ * services/photoQuality) and, once the face has passed several checks in a
+ * row and stayed put, one full-quality photo is taken and checked again
+ * before review. "Take Photo" appears as a fallback after a short wait or
+ * when the check cannot run. This judges photo quality only — staff still
+ * review every photo. Web keeps manual capture.
  * @param {object} props
  * @param {boolean} props.visible
  * @param {() => void} props.onClose
@@ -97,6 +127,31 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
   const [frameArea, setFrameArea] = useState(/** @type {{ width: number, height: number } | null} */ (null));
   const cameraRef = useRef(/** @type {CameraView | null} */ (null));
   const frame = frameSizeFor(frameArea);
+
+  // Automatic capture (phones). One short status line, the guide turns teal
+  // while the checks pass, and "Take Photo" once the fallback is available.
+  const [cameraReady, setCameraReady] = useState(false);
+  const [status, setStatus] = useState(AUTO_CAPTURE_MESSAGES.start);
+  const [passing, setPassing] = useState(false);
+  const [manualAvailable, setManualAvailable] = useState(!AUTO_CAPTURE_ENABLED);
+  // A failed-check hint carried onto the review of a manual photo.
+  const [reviewNote, setReviewNote] = useState(/** @type {string | null} */ (null));
+  const mountedRef = useRef(true);
+  const loopRef = useRef(/** @type {ReturnType<typeof createAutoCaptureLoop> | null} */ (null));
+  const captureBusyRef = useRef(false);
+  const manualFailuresRef = useRef(0);
+  // Manual fallback deadline for this camera session (kept across retries).
+  const manualDeadlineRef = useRef(/** @type {number | null} */ (null));
+  const nextStartDelayRef = useRef(AUTO_CAPTURE_CONFIG.firstSnapshotDelayMs);
+  const captureRef = useRef(/** @type {((options: { manual: boolean }) => void) | null} */ (null));
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loopRef.current?.stop();
+    };
+  }, []);
   const onFrameAreaLayout = useCallback((event) => {
     const { width, height } = event.nativeEvent.layout;
     setFrameArea((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
@@ -121,36 +176,151 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
       setPhase('idle');
       setDraft(null);
       setError(null);
+      setStatus(AUTO_CAPTURE_MESSAGES.start);
+      setPassing(false);
+      setManualAvailable(!AUTO_CAPTURE_ENABLED);
+      setReviewNote(null);
+      manualFailuresRef.current = 0;
+      manualDeadlineRef.current = null;
+      nextStartDelayRef.current = AUTO_CAPTURE_CONFIG.firstSnapshotDelayMs;
     }
   }, [visible]);
 
-  const capture = useCallback(async () => {
-    if (!cameraRef.current || phase !== 'ready') return;
+  const showCamera = phase === 'ready' || phase === 'capturing';
+
+  // The preview remounts after review; wait for it to be ready again.
+  useEffect(() => {
+    if (!showCamera) setCameraReady(false);
+  }, [showCamera]);
+
+  /**
+   * Takes the full-quality photo (automatic or "Take Photo"), checks it, and
+   * opens review or returns to the camera with a short hint. Never runs
+   * twice at once, and waits for any preview snapshot in progress.
+   */
+  const capture = useCallback(async ({ manual }) => {
+    if (captureBusyRef.current || !cameraRef.current) return;
+    captureBusyRef.current = true;
     setPhase('capturing');
     setError(null);
+    setStatus(AUTO_CAPTURE_MESSAGES.capturing);
+    let photo = null;
     try {
-      const picture = await cameraRef.current.takePictureAsync(PICTURE_OPTIONS);
+      // The camera takes one picture at a time: let a snapshot finish first.
+      await loopRef.current?.stop();
+      if (!mountedRef.current) return;
+      const camera = cameraRef.current;
+      if (!camera) throw new Error('Camera closed');
+      const picture = await camera.takePictureAsync(PICTURE_OPTIONS);
       if (!picture?.uri) throw new Error('No picture');
-      const photo = await toRegistrationPhoto(picture);
+      photo = await toRegistrationPhoto(picture);
       const invalid = validateRegistrationPhoto(photo);
       if (invalid) {
+        discardPhoto(photo.uri);
+        if (!mountedRef.current) return;
         setError(invalid);
+        setStatus(AUTO_CAPTURE_MESSAGES.start);
         setPhase('ready');
         return;
       }
+
+      // Final check of the photo itself (phones only). An error is 'unknown'
+      // and never blocks review.
+      const quality = AUTO_CAPTURE_ENABLED
+        ? await checkPhotoQuality(photo.uri, { detectionWidth: DETECTION_WIDTH })
+        : null;
+      if (!mountedRef.current) {
+        discardPhoto(photo.uri);
+        return;
+      }
+      const decision = finalPhotoDecision(quality, {
+        manual,
+        manualFailures: manualFailuresRef.current,
+      });
+      manualFailuresRef.current = decision.manualFailures;
+      if (decision.action === 'retry') {
+        discardPhoto(photo.uri);
+        setStatus(decision.message ?? AUTO_CAPTURE_MESSAGES.start);
+        setPassing(false);
+        nextStartDelayRef.current = AUTO_CAPTURE_CONFIG.retryDelayMs;
+        setPhase('ready');
+        return;
+      }
+      setReviewNote(decision.message);
       setDraft(photo);
       setPhase('review');
     } catch {
+      if (photo) discardPhoto(photo.uri);
+      if (!mountedRef.current) return;
       setError('Could not take the photo. Please try again.');
+      setStatus(AUTO_CAPTURE_MESSAGES.start);
+      // Something went wrong: never leave the visitor without a button.
+      setManualAvailable(true);
       setPhase('ready');
+    } finally {
+      captureBusyRef.current = false;
     }
-  }, [phase]);
+  }, []);
+  // The loop calls the latest capture through this ref (set outside render).
+  useEffect(() => {
+    captureRef.current = capture;
+  }, [capture]);
+
+  // The snapshot loop runs only while the live camera is showing and ready;
+  // leaving 'ready' (capturing, review, closing) or unmounting stops it.
+  useEffect(() => {
+    if (!AUTO_CAPTURE_ENABLED || !visible || phase !== 'ready' || !cameraReady) return undefined;
+    if (manualDeadlineRef.current == null) {
+      manualDeadlineRef.current = Date.now() + AUTO_CAPTURE_CONFIG.manualFallbackMs;
+    }
+    const loop = createAutoCaptureLoop({
+      snapshot: async () => {
+        const camera = cameraRef.current;
+        if (!camera) return null;
+        const shot = await camera.takePictureAsync(SNAPSHOT_OPTIONS);
+        return shot?.uri ? shot : null;
+      },
+      assess: (shot) => checkPhotoQuality(shot.uri, { detectionWidth: DETECTION_WIDTH }),
+      discard: (shot) => discardPhoto(shot.uri),
+      onUpdate: ({ message, passing: isPassing }) => {
+        if (!mountedRef.current) return;
+        setStatus(message);
+        setPassing(isPassing);
+      },
+      onCapture: () => {
+        captureRef.current?.({ manual: false });
+      },
+      onManualAvailable: () => {
+        if (mountedRef.current) setManualAvailable(true);
+      },
+      config: {
+        ...AUTO_CAPTURE_CONFIG,
+        manualFallbackMs: Math.max(0, manualDeadlineRef.current - Date.now()),
+      },
+    });
+    loopRef.current = loop;
+    loop.start(nextStartDelayRef.current);
+    nextStartDelayRef.current = AUTO_CAPTURE_CONFIG.firstSnapshotDelayMs;
+    return () => {
+      loop.stop();
+    };
+  }, [visible, phase, cameraReady]);
 
   const retake = useCallback(() => {
+    // The rejected draft was never handed over: its file can go.
+    if (draft) discardPhoto(draft.uri);
     setDraft(null);
     setError(null);
+    setReviewNote(null);
+    setStatus(AUTO_CAPTURE_MESSAGES.start);
+    setPassing(false);
     setPhase('ready');
-  }, []);
+  }, [draft]);
+
+  const takePhotoManually = useCallback(() => {
+    if (phase !== 'ready') return;
+    capture({ manual: true });
+  }, [phase, capture]);
 
   const confirmDraft = useCallback(() => {
     if (!draft) return;
@@ -158,7 +328,8 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
     onClose();
   }, [draft, onConfirm, onClose]);
 
-  const showCamera = phase === 'ready' || phase === 'capturing';
+  // "Take Photo": always on web; on phones once the fallback is available.
+  const showManualButton = manualAvailable || !AUTO_CAPTURE_ENABLED;
 
   return (
     <Modal
@@ -225,13 +396,18 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
                     ref={cameraRef}
                     style={styles.fill}
                     facing="front"
+                    onCameraReady={() => setCameraReady(true)}
+                    // No flash on the preview for each silent check snapshot.
+                    animateShutter={!AUTO_CAPTURE_ENABLED}
                     onMountError={() => setPhase('unavailable')}
                   />
-                  {/* Oval face guide; never blocks touches or the controls below. */}
+                  {/* Oval face guide; never blocks touches or the controls below.
+                      Teal while the automatic checks pass. */}
                   <View style={styles.guideLayer}>
                     <View
                       style={[
                         styles.faceGuide,
+                        passing && styles.faceGuidePassing,
                         {
                           width: frame.width * FACE_GUIDE_WIDTH,
                           height: frame.width * FACE_GUIDE_WIDTH,
@@ -243,24 +419,40 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
                 </View>
               ) : null}
             </View>
-            <Text style={styles.hint}>
-              Center your face in the oval. Use good light, without a hat or sunglasses.
-            </Text>
+            {AUTO_CAPTURE_ENABLED ? (
+              // One short status line, announced by screen readers as it changes.
+              <Text
+                style={[styles.status, passing && styles.statusPassing]}
+                accessibilityLiveRegion="polite"
+                accessibilityRole="text"
+              >
+                {status}
+              </Text>
+            ) : (
+              <Text style={styles.hint}>
+                Center your face in the oval. Use good light, without a hat or sunglasses.
+              </Text>
+            )}
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable
-              style={[styles.primaryBtn, phase === 'capturing' && styles.btnDisabled]}
-              onPress={capture}
-              disabled={phase === 'capturing'}
-              accessibilityRole="button"
-              accessibilityLabel="Take photo"
-              accessibilityState={{ disabled: phase === 'capturing', busy: phase === 'capturing' }}
-            >
-              {phase === 'capturing' ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.primaryBtnText}>Take Photo</Text>
-              )}
-            </Pressable>
+            {showManualButton ? (
+              <Pressable
+                style={[styles.primaryBtn, phase === 'capturing' && styles.btnDisabled]}
+                onPress={takePhotoManually}
+                disabled={phase === 'capturing'}
+                accessibilityRole="button"
+                accessibilityLabel="Take photo"
+                accessibilityState={{ disabled: phase === 'capturing', busy: phase === 'capturing' }}
+              >
+                {phase === 'capturing' ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Take Photo</Text>
+                )}
+              </Pressable>
+            ) : (
+              // Keeps the layout steady until the fallback button appears.
+              <View style={styles.buttonPlaceholder} />
+            )}
           </View>
         ) : null}
 
@@ -280,7 +472,14 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
                 </View>
               ) : null}
             </View>
-            <Text style={styles.hint}>Check that your face is clear before using this photo.</Text>
+            {reviewNote ? (
+              // A manual photo that did not pass the check: say why, still allow it.
+              <Text style={styles.status} accessibilityLiveRegion="polite">
+                {reviewNote}
+              </Text>
+            ) : (
+              <Text style={styles.hint}>Check that your face is clear before using this photo.</Text>
+            )}
             <Text style={styles.hint}>This is how your saved photo will look.</Text>
             <View style={styles.row}>
               <Pressable
@@ -368,6 +567,24 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.75)',
     transform: [{ translateY: -12 }, { scaleY: 1.3 }],
+  },
+  faceGuidePassing: {
+    borderWidth: 3,
+    borderColor: colors.primaryTeal,
+  },
+  // The one status line under the camera (automatic capture).
+  status: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  statusPassing: {
+    color: colors.primaryTeal,
+  },
+  // Same height as the Take Photo button, so nothing jumps when it appears.
+  buttonPlaceholder: {
+    minHeight: 48,
   },
   hint: {
     ...typography.metadata,
