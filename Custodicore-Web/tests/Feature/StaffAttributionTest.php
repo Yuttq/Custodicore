@@ -108,6 +108,19 @@ class StaffAttributionTest extends TestCase
         ]);
     }
 
+    /** The PDL birth certificate a parent sends with the registration; approving a parent link needs it. */
+    private function parentProof(VisitorProfile $visitor): RelationshipDocument
+    {
+        return RelationshipDocument::create([
+            'visitor_id' => $visitor->visitor_id,
+            'relationship_id' => null,
+            'requirement_key' => 'pdl_birth_certificate',
+            'file_path' => 'relationship-documents/pdl_birth_certificate.png',
+            'status' => 'pending',
+            'uploaded_at' => now(),
+        ]);
+    }
+
     private function pendingRelationship(VisitorProfile $visitor): VisitorPdlRelationship
     {
         return VisitorPdlRelationship::create([
@@ -146,6 +159,7 @@ class StaffAttributionTest extends TestCase
                 'setup' => function () {
                     $visitor = $this->newVisitor();
                     $this->idDocument($visitor, 'verified');
+                    $this->parentProof($visitor);
 
                     return $visitor;
                 },
@@ -321,6 +335,7 @@ class StaffAttributionTest extends TestCase
     {
         $visitor = $this->newVisitor();
         $this->idDocument($visitor, 'verified');
+        $this->parentProof($visitor);
         $relationship = $this->pendingRelationship($this->newVisitor('verified'));
 
         $this->actingAs($this->officerAccount);
@@ -382,6 +397,7 @@ class StaffAttributionTest extends TestCase
 
         $visitor = $this->newVisitor();
         $this->idDocument($visitor, 'verified');
+        $this->parentProof($visitor);
         $this->post(route('visitor.approve', $visitor->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
             ->assertSessionHas('success', fn ($m) => str_starts_with($m, 'Visitor approved. The visitor has been notified.'));
         $this->assertSame('verified', $visitor->fresh()->verification_status);

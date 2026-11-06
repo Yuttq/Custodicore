@@ -64,5 +64,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Mobile API: the database cannot be reached (stopped, unreachable,
+        // refusing connections) → 503 with a code the app recognises, instead
+        // of a generic 500. Covers failures in middleware too (Sanctum token
+        // lookup, database-backed rate limiting). Ordinary query errors and
+        // all web pages keep the default handling (returning null falls
+        // through). The exception is still reported to the log as usual.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (! $request->is('api/*') || ! \App\Support\DatabaseConnectionFailure::matches($e)) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Service temporarily unavailable. Please try again later.',
+                'code' => 'service_unavailable',
+            ], 503);
+        });
     })->create();

@@ -141,6 +141,10 @@ class VisitorController extends Controller
             'pdl_id' => ['nullable', 'integer', Rule::exists('pdl_profiles', 'pdl_id')],
             'relationship_type' => ['nullable', Rule::in(VisitorPdlRelationship::RELATIONSHIP_TYPES)],
             'has_children_together' => ['nullable', 'boolean'],
+            // Officer confirmations ticked on the card, and the adult accompanying a minor.
+            'confirmations' => ['nullable', 'array'],
+            'confirmations.*' => ['string', Rule::in(array_keys(\App\Services\RelationshipRequirements::CONFIRMATIONS))],
+            'accompanying_adult' => ['nullable', 'string', 'max:150'],
         ]);
 
         $staffId = $this->actingStaffId();
@@ -148,15 +152,18 @@ class VisitorController extends Controller
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
-        // One Approve: pending IDs, the account, the PDL link and its
-        // documents, and the relationship once complete (see AccountApproval).
+        // One Approve: pending IDs, the account, the PDL link, its documents
+        // and confirmations, and the relationship. Refused as a whole while
+        // any requirement is incomplete (see AccountApproval).
         try {
             $result = app(\App\Services\AccountApproval::class)->approve(
                 $visitor,
                 $staffId,
                 isset($validated['pdl_id']) ? (int) $validated['pdl_id'] : null,
                 $validated['relationship_type'] ?? null,
-                $request->filled('has_children_together') ? $request->boolean('has_children_together') : null
+                $request->filled('has_children_together') ? $request->boolean('has_children_together') : null,
+                array_values($validated['confirmations'] ?? []),
+                $validated['accompanying_adult'] ?? null
             );
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->withInput()->with('error', 'This visitor cannot be approved yet. ' . collect($e->errors())->flatten()->first());
@@ -340,6 +347,9 @@ class VisitorController extends Controller
         $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
             "Rejected {$idDocument->typeLabel()} for {$visitor->full_name}: {$reason}");
 
+        \App\Support\DocumentRejectionNotice::send($visitor, $idDocument->typeLabel(), $reason,
+            'visitor_ids', $idDocument->visitor_id_doc_id);
+
         return back()->with('success', 'ID document rejected.');
     }
 
@@ -348,6 +358,9 @@ class VisitorController extends Controller
     // -----------------------------------------------------------------
     // Search box on the "Add PDL Relationship" form: PDLs this visitor isn't
     // related to yet, matched by name, alias, PDL number or ID.
+    // include_related=1 (Phase 5B request matching) also returns PDLs the
+    // visitor already has a relationship with, each with that relationship's
+    // status, so a pending one can be reused or a rejected one reopened.
     public function searchRelatablePdls(Request $request, VisitorProfile $visitor)
     {
         $q = \App\Support\Sanitizer::text((string) $request->query('q', '')) ?? '';
@@ -355,8 +368,12 @@ class VisitorController extends Controller
             return response()->json(['results' => []]);
         }
 
+        $includeRelated = $request->boolean('include_related');
+        $related = $visitor->relationships()->pluck('verification_status', 'pdl_id');
+
         $like = \App\Support\Sanitizer::like($q);
-        $pdls = Pdl::whereNotIn('pdl_id', $visitor->relationships()->pluck('pdl_id'))
+        $pdls = Pdl::query()
+            ->when(! $includeRelated, fn ($w) => $w->whereNotIn('pdl_id', $related->keys()))
             ->where(function ($w) use ($q, $like) {
                 $w->where('full_name', 'like', $like)
                     ->orWhere('alias', 'like', $like)
@@ -381,7 +398,7 @@ class VisitorController extends Controller
                 'status' => $p->custody_status,
                 'photo' => $p->photoUrl(),
                 'initials' => $p->initials(),
-            ])->values(),
+            ] + ($includeRelated ? ['relationshipStatus' => $related[$p->pdl_id] ?? null] : []))->values(),
         ]);
     }
 
@@ -426,6 +443,11 @@ class VisitorController extends Controller
         $this->logAudit('create', 'visitor_pdl_relationships', $relationship->relationship_id,
             "Added relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id} (pending verification)");
 
+        $pdlName = $relationship->pdl?->full_name ?? 'a PDL';
+        $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_linked', 'PDL Added To Your Account',
+            "Facility staff linked {$pdlName} to your account as your {$relationship->relationshipLabel()}. "
+            . 'Upload the required documents under Verification Documents. Staff will review them before you can request visits with this PDL.');
+
         return redirect()->route('visitor.show', $visitor->visitor_id)
             ->with('success', 'Relationship added. It is pending verification.');
     }
@@ -463,6 +485,11 @@ class VisitorController extends Controller
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
             "Verified relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}");
 
+        $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
+        $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_approved', 'PDL Relationship Approved',
+            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) has been approved. "
+            . 'You can now request visits with this PDL.');
+
         return back()->with('success', 'Relationship approved.');
     }
 
@@ -493,7 +520,35 @@ class VisitorController extends Controller
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
             "Rejected relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}");
 
+        $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
+        $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_rejected', 'PDL Relationship Not Approved',
+            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) was not approved by facility staff. "
+            . 'You cannot request visits with this PDL. Contact the facility if you have questions.');
+
         return back()->with('success', 'Relationship rejected.');
+    }
+
+    /**
+     * Notifies the visitor about an additional PDL relationship (linked,
+     * approved or rejected). Only for an already-approved account: a pending
+     * account's first PDL is approved with the account, and that approval
+     * already sends its own notification. Each action runs once per change
+     * (the actions refuse a repeat), so no duplicate is sent.
+     */
+    public static function notifyAdditionalPdl(VisitorProfile $visitor, VisitorPdlRelationship $relationship, string $type, string $title, string $message): void
+    {
+        if ($visitor->verification_status !== 'verified' || ! $visitor->account_id) {
+            return;
+        }
+
+        try {
+            Notification::notify($visitor->account_id, $type, $title, $message,
+                'visitor_pdl_relationships', $relationship->relationship_id);
+        } catch (\Throwable $e) {
+            // The relationship change itself is already saved; a failed
+            // notification must not turn it into an error for the officer.
+            Log::warning("Relationship notification ({$type}) failed for visitor #{$visitor->visitor_id}: " . $e->getMessage());
+        }
     }
 
     // -----------------------------------------------------------------

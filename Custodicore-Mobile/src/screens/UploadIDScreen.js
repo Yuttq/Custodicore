@@ -30,9 +30,11 @@ import useVisitorVerification from '../hooks/useVisitorVerification';
 import {
   GOVERNMENT_ID_TYPES,
   uploadGovernmentId,
+  uploadRegistrationDocument,
   uploadRelationshipRequirementDocument,
 } from '../repositories/verificationRepository';
 import { validateDocumentImage } from '../utils/documentImageRules';
+import { isRegistrationDocumentKey } from '../utils/relationshipRequirementDocuments';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 import { goBackOr } from '../utils/safeNavigation';
 import { GOVERNMENT_ID_KEY, isDocumentUploaded } from '../utils/visitorVerificationDocuments';
@@ -418,6 +420,15 @@ export default function UploadIDScreen({ navigation, route }) {
           mimeType: entry.mimeType,
           fileSize: entry.fileSize,
           documentType: idType,
+        });
+      } else if (isRegistrationDocumentKey(activeDoc.key)) {
+        // A rejected file sent with the registration (account not approved yet).
+        await uploadRegistrationDocument({
+          requirementKey: activeDoc.requirementKey,
+          uri: entry.uri,
+          fileName: entry.fileName,
+          mimeType: entry.mimeType,
+          fileSize: entry.fileSize,
         });
       } else {
         await uploadRelationshipRequirementDocument({

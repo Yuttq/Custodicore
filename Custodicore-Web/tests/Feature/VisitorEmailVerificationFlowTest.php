@@ -7,6 +7,7 @@ use App\Mail\VisitorAccountApproved;
 use App\Models\Account;
 use App\Models\EmailVerificationToken;
 use App\Models\Notification;
+use App\Models\RelationshipDocument;
 use App\Models\Role;
 use App\Models\VisitorId;
 use App\Models\VisitorProfile;
@@ -133,6 +134,19 @@ class VisitorEmailVerificationFlowTest extends TestCase
         ], $profile));
 
         return $account;
+    }
+
+    /** The PDL birth certificate a parent sends with the registration; approving a parent link needs it. */
+    private function giveParentProof(Account $account): void
+    {
+        RelationshipDocument::create([
+            'visitor_id' => $account->visitorProfile->visitor_id,
+            'relationship_id' => null,
+            'requirement_key' => 'pdl_birth_certificate',
+            'file_path' => 'relationship-documents/pdl_birth_certificate.png',
+            'status' => 'pending',
+            'uploaded_at' => now(),
+        ]);
     }
 
     /** Accounts can only be approved once staff have verified a government ID. */
@@ -646,6 +660,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $account = $this->makeVisitor('pending@example.com', 'pending');
         $profile = $account->visitorProfile;
         $this->giveVerifiedId($account);
+        $this->giveParentProof($account);
         $token = $this->login('pending@example.com')->json('token');
         $this->bearer($token)->getJson('/api/visits')->assertForbidden();
 
@@ -708,6 +723,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
     {
         $account = $this->makeVisitor('rejected@example.com', 'rejected', ['rejection_reason' => 'Unreadable ID.']);
         $this->giveVerifiedId($account);
+        $this->giveParentProof($account);
 
         $this->actingAs($this->recordOfficerAccount)
             ->post(route('visitor.approve', $account->visitorProfile->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
@@ -722,6 +738,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
     {
         $account = $this->makeVisitor('rejected@example.com', 'rejected', ['rejection_reason' => 'The ID photo is unreadable.']);
         $this->giveVerifiedId($account);
+        $this->giveParentProof($account);
 
         $token = $this->login('rejected@example.com')->json('token');
         $this->bearer($token)->getJson('/api/documents')

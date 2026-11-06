@@ -92,7 +92,8 @@ class VisitorPdlRelationship extends Model
             return;
         }
 
-        $attached = RelationshipDocument::whereNull('relationship_id')
+        // Registration files only — never a PDL-link request's files.
+        $attached = RelationshipDocument::registrationUploads()
             ->where('visitor_id', $this->visitor_id)
             ->whereIn('requirement_key', $keys)
             ->update(['relationship_id' => $this->relationship_id]);
@@ -138,6 +139,12 @@ class VisitorPdlRelationship extends Model
     public function pdl()
     {
         return $this->belongsTo(Pdl::class, 'pdl_id', 'pdl_id');
+    }
+
+    /** Add-another-PDL requests that were linked to this relationship. */
+    public function pdlLinkRequests()
+    {
+        return $this->hasMany(PdlLinkRequest::class, 'relationship_id', 'relationship_id');
     }
 
     public function isVerified(): bool

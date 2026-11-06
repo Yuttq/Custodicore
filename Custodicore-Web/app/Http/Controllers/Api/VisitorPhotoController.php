@@ -44,6 +44,9 @@ class VisitorPhotoController extends Controller
 
         self::storeFor($visitor, $request->file('photo'));
 
+        // A returned account goes back to Account Review with the new photo.
+        $visitor->resubmitIfReturned('new photo');
+
         return response()->json([
             'message' => 'Photo saved.',
             'hasPhoto' => true,

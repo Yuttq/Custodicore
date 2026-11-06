@@ -80,13 +80,14 @@ import {
   validateRegistrationPassword,
 } from '../utils/registrationValidation';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 const STEP_TITLES = {
   1: 'Account Information',
-  2: 'Relationship To PDL',
-  3: 'Verification Details',
-  4: 'Review & Submit',
+  2: 'PDL To Visit',
+  3: 'Relationship & Documents',
+  4: 'Visitor Photo',
+  5: 'Review & Submit',
 };
 
 function ProgressStepper({ step }) {
@@ -99,7 +100,7 @@ function ProgressStepper({ step }) {
       accessibilityValue={{ min: 1, max: TOTAL_STEPS, now: step }}
     >
       <View style={stepperStyles.row}>
-        {[1, 2, 3, 4].map((n, index) => {
+        {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((n, index) => {
           const done = n < step;
           const active = n === step;
           return (
@@ -124,7 +125,7 @@ function ProgressStepper({ step }) {
                   </Text>
                 )}
               </View>
-              {index < 3 ? (
+              {index < TOTAL_STEPS - 1 ? (
                 <View
                   style={[
                     stepperStyles.line,
@@ -233,25 +234,31 @@ const SERVER_FIELD_ERRORS = {
   // The government ID is sent with the registration (step 3 fields).
   governmentId: 'government_id',
   governmentIdType: 'government_id_type',
-  // The relationship chosen in step 2 (decides the step-3 documents).
+  // The relationship chosen in step 3 (decides the step-3 documents).
   relationshipType: 'relationship',
   relationshipDocuments: 'relationship_documents',
   // The required name of the PDL to visit (step 2).
   intendedPdlName: 'intendedPdlName',
-  // The visitor's own photo (step 3).
+  // The visitor's own photo (step 4).
   photo: 'photo',
 };
 
-/** Step-3 (documents) form fields among SERVER_FIELD_ERRORS targets. */
-const DOCUMENT_STEP_FIELDS = new Set([
+/** Step-2 (PDL to visit) form fields among SERVER_FIELD_ERRORS targets. */
+const PDL_STEP_FIELDS = new Set(['intendedPdlName']);
+
+/**
+ * Step-3 (relationship & documents) form fields among SERVER_FIELD_ERRORS
+ * targets. Each relationship document's own card key counts too.
+ */
+const RELATIONSHIP_STEP_FIELDS = new Set([
+  'relationship',
   'government_id',
   'government_id_type',
   'relationship_documents',
-  'photo',
 ]);
 
-/** Step-2 (relationship) form fields among SERVER_FIELD_ERRORS targets. */
-const RELATIONSHIP_STEP_FIELDS = new Set(['intendedPdlName', 'relationship']);
+/** Step-4 (visitor photo) form fields among SERVER_FIELD_ERRORS targets. */
+const PHOTO_STEP_FIELDS = new Set(['photo']);
 
 /**
  * Best-effort prefill of First/Last Name from the Google display name (the
@@ -336,6 +343,8 @@ export default function RegisterScreen({ navigation, route }) {
   // The visitor's own photo: set only by "Use Photo" in RegistrationPhotoCamera.
   const [photo, setPhoto] = useState(null);
   const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
+  // The camera opens by itself only the first time step 4 is reached.
+  const photoCameraAutoOpened = useRef(false);
   // Live-in partners only: decides whether a child's birth certificate or a
   // witness statement is asked for (null = not answered yet).
   const [hasChildrenTogether, setHasChildrenTogether] = useState(null);
@@ -512,17 +521,20 @@ export default function RegisterScreen({ navigation, route }) {
     return nameError ? { intendedPdlName: nameError } : {};
   }, [intendedPdlName]);
 
-  const validateStep2 = useCallback(() => {
+  /** Step 2: the name of the PDL to visit. */
+  const validatePdlStep = useCallback(() => {
+    const nameErrors = getIntendedPdlFieldErrors();
+    setErrors(nameErrors);
+    return Object.keys(nameErrors).length === 0;
+  }, [getIntendedPdlFieldErrors]);
+
+  /** Step 3: the relationship and the documents it asks for. */
+  const validateRelationshipStep = useCallback(() => {
+    // The documents only appear once a relationship is chosen.
     if (!isRegistrationRelationship(relationship)) {
       setErrors({ relationship: 'Select your relationship to the PDL' });
       return false;
     }
-    const nameErrors = getIntendedPdlFieldErrors();
-    setErrors(nameErrors);
-    return Object.keys(nameErrors).length === 0;
-  }, [relationship, getIntendedPdlFieldErrors]);
-
-  const validateStep3 = useCallback(() => {
     const next = {};
     if (asksChildrenTogether(relationship) && typeof hasChildrenTogether !== 'boolean') {
       next.children_together = 'Tell us whether you and the PDL have children together';
@@ -534,11 +546,25 @@ export default function RegisterScreen({ navigation, route }) {
         next[`${doc.key}_type`] = 'Select ID type';
       }
     }
-    const photoError = validateRegistrationPhoto(photo);
-    if (photoError) next.photo = photoError;
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [requiredDocs, documents, relationship, hasChildrenTogether, photo]);
+  }, [requiredDocs, documents, relationship, hasChildrenTogether]);
+
+  /** Step 4: the visitor's own photo. */
+  const validatePhotoStep = useCallback(() => {
+    const photoError = validateRegistrationPhoto(photo);
+    setErrors(photoError ? { photo: photoError } : {});
+    return !photoError;
+  }, [photo]);
+
+  // Step 4 (Visitor Photo): open the front camera the first time the visitor
+  // arrives without a photo. Closing it, or coming back later, shows the
+  // page with its Take Photo button instead of reopening the camera.
+  useEffect(() => {
+    if (step !== 4 || photo || photoCameraAutoOpened.current) return;
+    photoCameraAutoOpened.current = true;
+    setPhotoCameraOpen(true);
+  }, [step, photo]);
 
   /** "Use Photo" in the camera; cancelling it never reaches here. */
   const confirmPhoto = useCallback((captured) => {
@@ -550,7 +576,8 @@ export default function RegisterScreen({ navigation, route }) {
     });
   }, []);
 
-  const validateStep4 = useCallback(() => {
+  /** Step 5: the certification checkbox. */
+  const validateReviewStep = useCallback(() => {
     if (!certified) {
       setErrors({ certified: 'You must certify the information is true and correct' });
       return false;
@@ -561,9 +588,10 @@ export default function RegisterScreen({ navigation, route }) {
 
   const onContinue = useCallback(() => {
     if (step === 1 && validateStep1()) setStep(2);
-    else if (step === 2 && validateStep2()) setStep(3);
-    else if (step === 3 && validateStep3()) setStep(4);
-  }, [step, validateStep1, validateStep2, validateStep3]);
+    else if (step === 2 && validatePdlStep()) setStep(3);
+    else if (step === 3 && validateRelationshipStep()) setStep(4);
+    else if (step === 4 && validatePhotoStep()) setStep(5);
+  }, [step, validateStep1, validatePdlStep, validateRelationshipStep, validatePhotoStep]);
 
   /**
    * Camera or gallery pick for a document card. Cancelling, a denied
@@ -651,9 +679,15 @@ export default function RegisterScreen({ navigation, route }) {
     const keys = Object.keys(fieldErrors);
     if (keys.length) {
       setErrors(fieldErrors);
-      if (keys.every((key) => DOCUMENT_STEP_FIELDS.has(key) || documentCardKeys.has(key))) setStep(3);
-      else if (keys.every((key) => RELATIONSHIP_STEP_FIELDS.has(key))) setStep(2);
-      else setStep(1);
+      // The earliest step with an error: account details (1), PDL to visit
+      // (2), relationship & documents (3), then the visitor photo (4).
+      const stepOf = (key) => {
+        if (PDL_STEP_FIELDS.has(key)) return 2;
+        if (RELATIONSHIP_STEP_FIELDS.has(key) || documentCardKeys.has(key)) return 3;
+        if (PHOTO_STEP_FIELDS.has(key)) return 4;
+        return 1;
+      };
+      setStep(Math.min(...keys.map(stepOf)));
     }
   }, [loadLegal]);
 
@@ -690,30 +724,28 @@ export default function RegisterScreen({ navigation, route }) {
 
   const onSubmit = useCallback(async () => {
     // Ref guard: a fast double tap can fire twice before `submitting` re-renders.
-    if (submittingRef.current || !validateStep4()) return;
+    if (submittingRef.current || !validateReviewStep()) return;
 
-    // Never send a request the client already knows is invalid.
+    // Never send a request the client already knows is invalid: steps 1–4
+    // in order, stopping at the earliest step with an error.
     const accountErrors = getStep1Errors();
     if (Object.keys(accountErrors).length) {
       setErrors(accountErrors);
       setStep(1);
       return;
     }
-    if (!isRegistrationRelationship(relationship)) {
-      setErrors({ relationship: 'Select your relationship to the PDL' });
-      setStep(2);
-      return;
-    }
-    const nameErrors = getIntendedPdlFieldErrors();
-    if (Object.keys(nameErrors).length) {
-      setErrors(nameErrors);
+    if (!validatePdlStep()) {
       setStep(2);
       return;
     }
     // The documents depend on the birthdate (minor) too, which can change
     // after step 3 was completed.
-    if (!validateStep3()) {
+    if (!validateRelationshipStep()) {
       setStep(3);
+      return;
+    }
+    if (!validatePhotoStep()) {
+      setStep(4);
       return;
     }
 
@@ -804,7 +836,7 @@ export default function RegisterScreen({ navigation, route }) {
       setSubmitting(false);
     }
   }, [
-    validateStep4,
+    validateReviewStep,
     getStep1Errors,
     register,
     registerWithGoogle,
@@ -822,8 +854,9 @@ export default function RegisterScreen({ navigation, route }) {
     passwordConfirmation,
     relationship,
     intendedPdlName,
-    getIntendedPdlFieldErrors,
-    validateStep3,
+    validatePdlStep,
+    validateRelationshipStep,
+    validatePhotoStep,
     documents,
     photo,
     certified,
@@ -1026,8 +1059,8 @@ export default function RegisterScreen({ navigation, route }) {
     </Card>
   );
 
-  const renderStep2 = () => (
-    <Card style={styles.card}>
+  const renderRelationshipCard = () => (
+    <Card style={[styles.card, relationship ? styles.cardStacked : null]}>
       {errors.relationship ? (
         <Text style={styles.stepError}>{errors.relationship}</Text>
       ) : null}
@@ -1062,7 +1095,13 @@ export default function RegisterScreen({ navigation, route }) {
           </Pressable>
         );
       })}
-      <Text style={[styles.reviewSectionTitle, { marginTop: 16 }]}>PDL You Want To Visit (required)</Text>
+    </Card>
+  );
+
+  /** Step 2: the required name of the PDL to visit. */
+  const renderPdlStep = () => (
+    <Card style={styles.card}>
+      <Text style={styles.reviewSectionTitle}>PDL You Want To Visit (required)</Text>
       <WizardField
         label="PDL Name"
         value={intendedPdlName}
@@ -1213,35 +1252,58 @@ export default function RegisterScreen({ navigation, route }) {
   );
 
   /** Required photo of the visitor, taken with the front camera only (no gallery). */
-  const renderPhotoCard = () => (
+  /**
+   * Step 4: the visitor's own photo, taken with the front camera only (no
+   * gallery). The camera opens by itself on the first visit (see the effect
+   * above); this page shows the saved photo and Take / Retake.
+   */
+  const renderPhotoStep = () => (
     <Card style={styles.card}>
-      <View style={styles.docHeader}>
-        <Text style={styles.docTitle}>Take Your Photo</Text>
-        <Pressable
-          onPress={() => setPhotoCameraOpen(true)}
-          style={styles.uploadBtn}
-          accessibilityRole="button"
-          accessibilityLabel={photo ? 'Retake your photo' : 'Take your photo'}
-        >
-          <Text style={styles.uploadBtnText}>{photo ? 'Retake Photo' : 'Take Photo'}</Text>
-        </Pressable>
-      </View>
       <Text style={fieldStyles.hint}>
         Use the front camera. Facility staff compare this photo with your government ID.
       </Text>
       {photo ? (
-        <Image
-          source={{ uri: photo.uri }}
-          style={styles.photoPreview}
-          resizeMode="cover"
-          accessibilityLabel="Preview of your photo"
-        />
-      ) : null}
+        <>
+          <Image
+            source={{ uri: photo.uri }}
+            style={styles.photoStepPreview}
+            resizeMode="cover"
+            accessibilityLabel="Your saved photo"
+          />
+          <Text style={[fieldStyles.hint, styles.centeredHint]}>
+            This is your saved photo, as facility staff will see it.
+          </Text>
+        </>
+      ) : (
+        <View style={styles.photoStepEmpty}>
+          <Ionicons name="person-circle-outline" size={64} color={colors.textSecondary} />
+          <Text style={[fieldStyles.hint, styles.centeredHint]}>No photo taken yet.</Text>
+        </View>
+      )}
       {errors.photo ? <Text style={fieldStyles.error}>{errors.photo}</Text> : null}
+      <View style={styles.photoStepButton}>
+        <Button
+          title={photo ? 'Retake Photo' : 'Take Photo'}
+          variant={photo ? 'secondary' : 'primary'}
+          onPress={() => setPhotoCameraOpen(true)}
+          accessibilityLabel={photo ? 'Retake your photo' : 'Take your photo'}
+        />
+      </View>
     </Card>
   );
 
-  const renderStep3 = () => (
+  /**
+   * Step 3: the relationship, then — once one is chosen — the documents it
+   * asks for, on the same page.
+   */
+  const renderRelationshipStep = () => (
+    <>
+      {renderRelationshipCard()}
+      {relationship ? renderRelationshipDocuments() : null}
+    </>
+  );
+
+  const renderRelationshipDocuments = () => (
     <>
       {requiredDocs.some((doc) => doc.requiresIdType) ? (
         <Text style={styles.acceptedIds}>
@@ -1255,7 +1317,6 @@ export default function RegisterScreen({ navigation, route }) {
       <Card style={styles.card}>
         {requiredDocs.map(renderDocumentCard)}
       </Card>
-      {renderPhotoCard()}
       {renderRelationshipDocumentsNotice()}
     </>
   );
@@ -1267,7 +1328,8 @@ export default function RegisterScreen({ navigation, route }) {
     </View>
   );
 
-  const renderStep4 = () => (
+  /** Step 5: the full summary, in the order of the steps above. */
+  const renderReviewStep = () => (
     <>
       <Card style={styles.card}>
         <Text style={styles.reviewSectionTitle}>Personal Information</Text>
@@ -1285,11 +1347,13 @@ export default function RegisterScreen({ navigation, route }) {
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>
+        <Text style={styles.reviewSectionTitle}>PDL To Visit</Text>
+        {renderReviewRow('PDL You Want To Visit', normalizeName(intendedPdlName))}
+      </Card>
+
+      <Card style={[styles.card, styles.cardSpaced]}>
         <Text style={styles.reviewSectionTitle}>Relationship</Text>
         {renderReviewRow('Relationship To PDL', getRelationshipLabel(relationship))}
-        {normalizeName(intendedPdlName)
-          ? renderReviewRow('PDL You Want To Visit', normalizeName(intendedPdlName))
-          : null}
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>
@@ -1303,10 +1367,39 @@ export default function RegisterScreen({ navigation, route }) {
                 ? `${doc.label} (${entry.idType}) — ${entry.fileName ?? 'attached'}`
                 : entry.fileName ?? 'Attached';
             }
-            return renderReviewRow(doc.label, value);
+            return (
+              <View style={styles.reviewRow} key={doc.key}>
+                <Text style={styles.reviewLabel}>{doc.label}</Text>
+                <View style={styles.reviewThumbRow}>
+                  {entry?.uri ? (
+                    <Image
+                      source={{ uri: entry.uri }}
+                      style={styles.uploadedThumb}
+                      resizeMode="cover"
+                      accessibilityLabel={`Preview of ${doc.label}`}
+                    />
+                  ) : null}
+                  <Text style={[styles.reviewValue, styles.reviewThumbText]}>{value}</Text>
+                </View>
+              </View>
+            );
           })
         ) : (
           <Text style={styles.reviewValue}>No documents are submitted with this registration.</Text>
+        )}
+      </Card>
+
+      <Card style={[styles.card, styles.cardSpaced]}>
+        <Text style={styles.reviewSectionTitle}>Visitor Photo</Text>
+        {photo?.uri ? (
+          <Image
+            source={{ uri: photo.uri }}
+            style={styles.photoPreview}
+            resizeMode="cover"
+            accessibilityLabel="Your saved photo"
+          />
+        ) : (
+          <Text style={styles.reviewValue}>—</Text>
         )}
       </Card>
 
@@ -1524,12 +1617,13 @@ export default function RegisterScreen({ navigation, route }) {
           <ProgressStepper step={step} />
 
           {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-          {step === 4 && renderStep4()}
+          {step === 2 && renderPdlStep()}
+          {step === 3 && renderRelationshipStep()}
+          {step === 4 && renderPhotoStep()}
+          {step === 5 && renderReviewStep()}
 
           <View style={styles.footerBtn}>
-            {step < 4 ? (
+            {step < TOTAL_STEPS ? (
               <Button title="Continue" onPress={onContinue} accessibilityLabel="Continue" />
             ) : (
               <Button
@@ -1963,9 +2057,39 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
+  // Step 4: the saved photo in the camera's 3:4 portrait frame.
+  photoStepPreview: {
+    alignSelf: 'center',
+    width: 180,
+    aspectRatio: 3 / 4,
+    marginTop: spacing.md,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  photoStepEmpty: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.lg,
+  },
+  photoStepButton: {
+    marginTop: spacing.md,
+  },
+  centeredHint: {
+    textAlign: 'center',
+  },
+  reviewThumbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  reviewThumbText: {
+    flex: 1,
+  },
   photoPreview: {
     width: 120,
-    height: 120,
+    height: 160,
     marginTop: spacing.sm,
     borderRadius: layout.borderRadiusSm,
     borderWidth: 1,

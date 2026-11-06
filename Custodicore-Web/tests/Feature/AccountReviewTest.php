@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\RelationshipDocument;
 use App\Models\VisitorId;
 use App\Models\VisitorProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +59,22 @@ class AccountReviewTest extends TestCase
         ]);
     }
 
+    /** A document the visitor sent with the registration (not linked to a PDL yet). */
+    private function registrationDocument(VisitorProfile $visitor, string $key): RelationshipDocument
+    {
+        return RelationshipDocument::create([
+            'visitor_id' => $visitor->visitor_id, 'relationship_id' => null, 'requirement_key' => $key,
+            'file_path' => "docs/{$key}.png", 'original_name' => "{$key}.png", 'status' => 'pending', 'uploaded_at' => now(),
+        ]);
+    }
+
+    private function assertNothingApproved(VisitorProfile $visitor, VisitorId $id): void
+    {
+        $this->assertSame('pending', $visitor->fresh()->verification_status);
+        $this->assertSame('pending', $id->fresh()->verification_status);
+        $this->assertSame(0, $visitor->relationships()->count());
+    }
+
     public function test_one_approve_needs_an_id_and_the_pdl(): void
     {
         $visitor = $this->pendingVisitor();
@@ -70,14 +87,124 @@ class AccountReviewTest extends TestCase
         $id = $this->id($visitor, 'pending');
         $this->post("/visitors/{$visitor->visitor_id}/approve")
             ->assertSessionHas('error', fn ($m) => str_contains($m, 'Choose the PDL'));
-        $this->assertSame('pending', $visitor->fresh()->verification_status);
-        $this->assertSame('pending', $id->fresh()->verification_status);
+        $this->assertNothingApproved($visitor, $id);
 
-        // One Approve: ID, account and PDL link together.
+        // The PDL, but the parent's proof is missing: refused as a whole.
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link)
+            ->assertSessionHas('error', fn ($m) => str_contains($m, "PDL's PSA Birth Certificate") && str_contains($m, 'Nothing was approved'));
+        $this->assertNothingApproved($visitor, $id);
+
+        // One Approve: ID, account, PDL link and relationship together.
+        $this->registrationDocument($visitor, 'pdl_birth_certificate');
         $this->post("/visitors/{$visitor->visitor_id}/approve", $link)->assertSessionHas('success');
         $this->assertSame('verified', $visitor->fresh()->verification_status);
         $this->assertSame('verified', $id->fresh()->verification_status);
         $this->assertSame($this->pdl->pdl_id, $visitor->relationships()->sole()->pdl_id);
+        $this->assertSame('verified', $visitor->relationships()->sole()->verification_status);
+    }
+
+    public function test_an_unticked_confirmation_refuses_and_rolls_back_the_whole_approval(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $id = $this->id($visitor, 'pending');
+        $document = $this->registrationDocument($visitor, 'guardianship_authorization');
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'legal_guardian'])
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'No immediate family available') && str_contains($m, 'Nothing was approved'));
+
+        // The link, the document review and the ID approval were all rolled back.
+        $this->assertNothingApproved($visitor, $id);
+        $this->assertNull($document->fresh()->relationship_id);
+        $this->assertSame('pending', $document->fresh()->status);
+    }
+
+    public function test_confirmations_ticked_on_the_card_approve_the_relationship_in_the_same_step(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $this->id($visitor, 'pending');
+        $this->registrationDocument($visitor, 'guardianship_authorization');
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", [
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_type' => 'legal_guardian',
+            'confirmations' => ['no_immediate_family'],
+        ])->assertSessionHas('success', fn ($m) => str_contains($m, 'Relationship approved'));
+
+        $relationship = $visitor->relationships()->sole();
+        $this->assertSame('verified', $visitor->fresh()->verification_status);
+        $this->assertSame('verified', $relationship->verification_status);
+        $staffId = \App\Models\StaffProfile::where('account_id', $this->recordOfficerAccount->account_id)->value('staff_id');
+        $this->assertSame($staffId, $relationship->confirmation('no_immediate_family')['by']);
+    }
+
+    public function test_a_minor_needs_the_accompanying_adults_name(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $visitor->update(['date_of_birth' => now()->subYears(10)->toDateString()]);
+        $id = $this->id($visitor, 'pending');
+        $this->registrationDocument($visitor, 'visitor_birth_certificate');
+        $link = ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'child', 'confirmations' => ['accompanying_guardian']];
+
+        // Ticked, but no name: refused.
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link)
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'name of the parent or guardian'));
+        $this->assertNothingApproved($visitor, $id);
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link + ['accompanying_adult' => 'Maria Reyes'])
+            ->assertSessionHas('success');
+        $relationship = $visitor->relationships()->sole();
+        $this->assertSame('verified', $relationship->verification_status);
+        $this->assertSame('Maria Reyes', $relationship->confirmation('accompanying_guardian')['note']);
+    }
+
+    public function test_a_live_in_partner_needs_the_children_together_answer(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $id = $this->id($visitor, 'pending');
+        foreach (['cenomar_visitor', 'cenomar_pdl', 'witness_statement'] as $key) {
+            $this->registrationDocument($visitor, $key);
+        }
+        $link = ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'live_in_partner'];
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link)
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'children together'));
+        $this->assertNothingApproved($visitor, $id);
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", $link + ['has_children_together' => '0'])
+            ->assertSessionHas('success');
+        $relationship = $visitor->relationships()->sole();
+        $this->assertFalse($relationship->has_children_together);
+        $this->assertSame('verified', $relationship->verification_status);
+    }
+
+    public function test_confirmations_complete_a_link_already_on_file(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $id = $this->id($visitor, 'pending');
+        $relationship = \App\Models\VisitorPdlRelationship::create([
+            'visitor_id' => $visitor->visitor_id, 'pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'legal_guardian',
+            'priority_tier' => \App\Models\VisitorPdlRelationship::priorityTierFor('legal_guardian'), 'verification_status' => 'pending',
+        ]);
+        RelationshipDocument::create([
+            'visitor_id' => $visitor->visitor_id, 'relationship_id' => $relationship->relationship_id, 'requirement_key' => 'guardianship_authorization',
+            'file_path' => 'docs/g.png', 'original_name' => 'g.png', 'status' => 'pending', 'uploaded_at' => now(),
+        ]);
+
+        // The card lists the confirmation to tick for this link.
+        $this->get('/account-reviews')->assertOk()
+            ->assertSee('Officer confirmations')
+            ->assertSee('name="confirmations[]" value="no_immediate_family"', false)
+            ->assertSee('"state":"confirm"', false);
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve")
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'No immediate family available'));
+        $this->assertSame('pending', $visitor->fresh()->verification_status);
+        $this->assertSame('pending', $id->fresh()->verification_status);
+        $this->assertNull($relationship->fresh()->officer_confirmations);
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", ['confirmations' => ['no_immediate_family']])
+            ->assertSessionHas('success');
+        $this->assertSame('verified', $relationship->fresh()->verification_status);
     }
 
     public function test_queue_lists_pending_accounts_with_their_ids(): void
@@ -128,7 +255,7 @@ class AccountReviewTest extends TestCase
         $visitor->update(['intended_pdl_name' => $this->pdl->full_name, 'intended_relationship_type' => 'parent']);
         $id = $this->id($visitor, 'pending');
         // The PDL birth certificate a parent uploads at registration (not linked yet).
-        $document = \App\Models\RelationshipDocument::create([
+        $document = RelationshipDocument::create([
             'visitor_id' => $visitor->visitor_id, 'relationship_id' => null, 'requirement_key' => 'pdl_birth_certificate',
             'file_path' => 'docs/birth.png', 'original_name' => 'birth.png', 'status' => 'pending', 'uploaded_at' => now(),
         ]);

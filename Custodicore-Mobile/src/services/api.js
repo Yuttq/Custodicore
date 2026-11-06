@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios, { isAxiosError } from 'axios';
+import axios from 'axios';
 import { Platform } from 'react-native';
 
 import {
@@ -7,6 +7,7 @@ import {
   SERVER_NOT_CONFIGURED_MESSAGE,
   resolveApiBaseUrl,
 } from '../utils/apiBaseUrl';
+import { toRequestError } from '../utils/requestError';
 
 /**
  * Visitor API base URL.
@@ -70,84 +71,6 @@ client.interceptors.request.use(async (config) => {
   }
   return config;
 });
-
-/**
- * Flatten Laravel `{ errors: { field: ["msg"] } }` into a single message.
- * @param {unknown} body
- * @returns {string|null}
- */
-function formatLaravelErrors(body) {
-  if (!body || typeof body !== 'object') return null;
-  if (typeof body.message === 'string' && body.message.trim() && !body.errors) {
-    return body.message.trim();
-  }
-  const errors = body.errors;
-  if (errors && typeof errors === 'object' && !Array.isArray(errors)) {
-    const parts = Object.values(errors)
-      .flat()
-      .map((x) => (typeof x === 'string' ? x : null))
-      .filter(Boolean);
-    if (parts.length) return parts.join(' ');
-  }
-  if (typeof body.message === 'string' && body.message.trim()) {
-    return body.message.trim();
-  }
-  if (typeof body.error === 'string' && body.error.trim()) {
-    return body.error.trim();
-  }
-  return null;
-}
-
-/**
- * Normalizes axios failures into a plain `Error` for alerts and logging.
- * @param {unknown} error
- * @returns {Error & { status?: number; code?: string; errors?: Record<string, string[]>; timedOut?: boolean }}
- */
-function toRequestError(error) {
-  if (isAxiosError(error)) {
-    const status = error.response?.status;
-    const body = error.response?.data;
-    // Never surface raw server exception text (Laravel debug messages) to visitors.
-    let message =
-      status >= 500
-        ? 'The server ran into a problem. Please try again in a moment.'
-        : formatLaravelErrors(body);
-
-    if (!message) {
-      if (status === 401) message = 'Your session has expired. Please sign in again.';
-      else if (status === 403) message = 'You do not have access to this resource.';
-      else if (status === 404) message = 'The requested visit or resource was not found.';
-      else if (status === 409) message = 'This visit can no longer be updated.';
-      else if (!error.response) {
-        message =
-          'Unable to reach the server. Check that your phone and PC are on the same Wi‑Fi and the API URL is correct.';
-      } else {
-        message = error.message || 'Request failed';
-      }
-    }
-
-    const err = new Error(String(message).trim());
-    err.status = status;
-    // Timed out waiting for a response: the server may still have processed it.
-    if (!error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
-      err.timedOut = true;
-    }
-    // Machine-readable backend code (e.g. Google auth `link_required`).
-    if (typeof body?.code === 'string' && body.code) {
-      err.code = body.code;
-    }
-    if (body?.errors && typeof body.errors === 'object') {
-      err.errors = body.errors;
-    }
-    // Seconds until a rate-limited (429) request may be retried, when the backend says.
-    if (Number.isFinite(body?.retryAfter)) {
-      err.retryAfter = body.retryAfter;
-    }
-    return err;
-  }
-  if (error instanceof Error) return error;
-  return new Error('Request failed');
-}
 
 export async function persistToken(token) {
   if (token) {
@@ -388,6 +311,80 @@ export async function uploadRelationshipRequirementDocument(relationshipId, requ
         timeout: UPLOAD_TIMEOUT_MS,
       },
     );
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Replaces a rejected document sent with the registration — POST
+ * /api/registration-documents/{requirementKey} (multipart: file). Pending or
+ * returned accounts only; the new file waits for staff review.
+ * @param {string} requirementKey — e.g. marriage_certificate
+ * @param {FormData} formData
+ */
+export async function uploadRegistrationDocument(requirementKey, formData) {
+  try {
+    const { data } = await client.post(
+      `/registration-documents/${encodeURIComponent(requirementKey)}`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: UPLOAD_TIMEOUT_MS,
+      },
+    );
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Takes or retakes the visitor's own photo — POST /api/me/photo (multipart:
+ * photo). Refused (409) once the account is approved.
+ * @param {FormData} formData
+ */
+export async function uploadVisitorPhoto(formData) {
+  try {
+    const { data } = await client.post('/me/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: UPLOAD_TIMEOUT_MS,
+    });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Phase 5B: ask facility staff to add another PDL — POST /api/pdl-requests
+ * (multipart: pdlName, relationshipType, hasChildrenTogether?, documents[key]).
+ * Approved visitors only; 409 `open_request_exists` while one is open.
+ * @param {FormData} formData
+ * @returns {Promise<{ pdlRequest: object }>}
+ */
+export async function createPdlRequest(formData) {
+  try {
+    const { data } = await client.post('/pdl-requests', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: UPLOAD_TIMEOUT_MS,
+    });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
+ * Cancels the visitor's own open PDL request — POST /api/pdl-requests/{id}/cancel.
+ * 409 when staff already linked or rejected it.
+ * @param {string} requestId
+ * @returns {Promise<{ pdlRequest: object }>}
+ */
+export async function cancelPdlRequest(requestId) {
+  try {
+    const { data } = await client.post(`/pdl-requests/${encodeURIComponent(requestId)}/cancel`);
     return data;
   } catch (error) {
     throw toRequestError(error);

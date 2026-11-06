@@ -8,11 +8,13 @@ import {
 } from '../utils/documentImageRules';
 import { RELATIONSHIPS, getRelationshipLabel } from '../utils/registrationRequirements';
 import {
+  buildPdlRelationshipList,
   buildRegistrationDocuments,
   buildRelationshipRequirementDocuments,
   hasAnyRelationshipUpload,
   isAwaitingRelationshipLink,
 } from '../utils/relationshipRequirementDocuments';
+import { normalizePdlRequest, toPdlRequestFields } from '../utils/pdlLinkRequest';
 import { visibleRejectionReason } from '../utils/verificationStatusUi';
 import { GOVERNMENT_ID_KEY } from '../utils/visitorVerificationDocuments';
 
@@ -187,6 +189,14 @@ export function normalizeVerification(data, relationshipKey) {
     relationshipLabel: getRelationshipLabel(relationshipKey),
     awaitingRelationshipLink: isAwaitingRelationshipLink(relationships),
     documents,
+    // "My PDLs": every PDL relationship and its status (read-only).
+    pdlRelationships: buildPdlRelationshipList(relationships),
+    // Phase 5B: the open or recently rejected "Add Another PDL" request, or null.
+    pdlRequest: normalizePdlRequest(o.pdlRequest),
+    // The visitor's own photo (GET /api/me/photo); retakeable until approval.
+    hasPhoto: o.hasPhoto === true,
+    photoUploadedAt: typeof o.photoUploadedAt === 'string' ? o.photoUploadedAt : null,
+    canReplacePhoto: o.canReplacePhoto === true,
   };
 }
 
@@ -259,6 +269,57 @@ export function appendRegistrationPhoto(form, photo) {
   if (invalid || !photo) throw new Error(invalid ?? 'Please take a photo of yourself.');
   const part = photo.webFile ?? { uri: photo.uri, name: 'photo.jpg', type: photo.mimeType || 'image/jpeg' };
   form.append('photo', /** @type {any} */ (part));
+}
+
+/**
+ * Retakes the visitor's own photo before approval (POST /api/me/photo), with
+ * the same checks as registration (appendRegistrationPhoto). A returned
+ * account goes back to staff review once it is saved.
+ * @param {DocumentFile & { webFile?: File }} photo — from RegistrationPhotoCamera
+ */
+export async function replaceRegistrationPhoto(photo) {
+  const form = new FormData();
+  appendRegistrationPhoto(form, photo);
+  return api.uploadVisitorPhoto(form);
+}
+
+/**
+ * Replaces a rejected document sent with the registration (pending or
+ * returned accounts). Same image checks as every other upload (toFilePart).
+ * @param {DocumentFile & { requirementKey: string | null }} input
+ */
+export async function uploadRegistrationDocument({ requirementKey, uri, fileName, mimeType, fileSize }) {
+  if (!requirementKey) throw new Error('This document cannot be replaced right now.');
+  const filePart = toFilePart({ uri, fileName, mimeType, fileSize });
+  const form = new FormData();
+  form.append('file', /** @type {any} */ (filePart));
+  return api.uploadRegistrationDocument(requirementKey, form);
+}
+
+/**
+ * Phase 5B: sends the request to add another PDL with its documents
+ * (POST /api/pdl-requests). Each file goes through the same image checks as
+ * every other upload (toFilePart).
+ * @param {{ pdlName: string; relationship: string; hasChildrenTogether: boolean | null; files: [string, DocumentFile][] }} input
+ *   files — [requirementKey, file] for each getPdlRequestDocuments() item
+ */
+export async function submitPdlRequest({ pdlName, relationship, hasChildrenTogether, files }) {
+  const form = new FormData();
+  toPdlRequestFields({ pdlName, relationship, hasChildrenTogether }).forEach(([name, value]) =>
+    form.append(name, value),
+  );
+  files.forEach(([requirementKey, file]) => {
+    form.append(`documents[${requirementKey}]`, /** @type {any} */ (toFilePart(file)));
+  });
+  return api.createPdlRequest(form);
+}
+
+/**
+ * Cancels the visitor's own open request (POST /api/pdl-requests/{id}/cancel).
+ * @param {string} requestId
+ */
+export async function cancelPdlRequest(requestId) {
+  return api.cancelPdlRequest(requestId);
 }
 
 /**

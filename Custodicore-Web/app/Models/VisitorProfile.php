@@ -97,14 +97,23 @@ class VisitorProfile extends Model
 
     /**
      * Relationship documents sent with the registration that are not attached
-     * to a staff-linked relationship yet (newest first).
+     * to a staff-linked relationship yet (newest first). Files sent with a
+     * request to add another PDL are not included (see pdlLinkRequests).
      */
     public function registrationDocuments()
     {
         return $this->hasMany(RelationshipDocument::class, 'visitor_id', 'visitor_id')
-            ->whereNull('relationship_id')
+            ->registrationUploads()
             ->orderByDesc('uploaded_at')
             ->orderByDesc('document_id');
+    }
+
+    /** The visitor's requests to add another PDL (Phase 5B), newest first. */
+    public function pdlLinkRequests()
+    {
+        return $this->hasMany(PdlLinkRequest::class, 'visitor_id', 'visitor_id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('request_id');
     }
 
     public function flags()
@@ -145,6 +154,42 @@ class VisitorProfile extends Model
     public function isVerified(): bool
     {
         return $this->verification_status === 'verified';
+    }
+
+    /**
+     * A returned account (stored as 'rejected') goes back to Account Review
+     * ('pending') once the visitor has saved a correction: changed profile
+     * details, a new government ID, photo or document. Call it only after
+     * the correction is saved. Nothing is approved here; the officer reviews
+     * the account again. rejection_reason is kept so the officer can see what
+     * was asked for; approving clears it, as before.
+     *
+     * Conditional update, so two corrections at once log it only once.
+     * Returns whether the account was moved back.
+     */
+    public function resubmitIfReturned(string $correction): bool
+    {
+        if ($this->verification_status !== 'rejected') {
+            return false;
+        }
+
+        $moved = static::whereKey($this->visitor_id)
+            ->where('verification_status', 'rejected')
+            ->update(['verification_status' => 'pending', 'updated_at' => now()]) > 0;
+
+        if ($moved) {
+            $this->verification_status = 'pending';
+            $this->syncOriginalAttribute('verification_status');
+            try {
+                AuditLog::record('update', 'visitor_profiles', $this->visitor_id,
+                    "Visitor corrected their returned account via mobile app ({$correction}); back in Account Review",
+                    Module::CODE_VISITOR_MANAGEMENT);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Audit log write failed: ' . $e->getMessage());
+            }
+        }
+
+        return $moved;
     }
 
     /** At least one government ID checked and verified by staff. Required before approving the account. */

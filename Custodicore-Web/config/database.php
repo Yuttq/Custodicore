@@ -126,9 +126,17 @@ return [
             |
             */
 
+            // PDO::ATTR_TIMEOUT is pdo_mysql's connect timeout, in seconds
+            // (DB_CONNECT_TIMEOUT, default 5). Without it a stopped or
+            // unreachable database keeps a request waiting for PHP's socket
+            // timeout (often 60 s), longer than the mobile app's 20 s, so the
+            // app saw a dropped request instead of the API's 503. It does not
+            // limit how long a query may run once connected. 0 or empty
+            // falls back to PHP's default.
             'options' => extension_loaded('pdo_mysql')
                 ? array_filter([
                     PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                    PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
                 ])
                 : [],
         ],

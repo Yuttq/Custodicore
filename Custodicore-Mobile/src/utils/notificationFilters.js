@@ -67,6 +67,8 @@ export function inferNotificationCategory(raw) {
     // map visit-related types onto the Visits filter.
     if (category.startsWith('visit')) return 'visits';
     if (category.startsWith('verification') || category.startsWith('document')) return 'updates';
+    // Phase 5B "Add Another PDL" request decisions (e.g. `pdl_request_rejected`).
+    if (category.startsWith('pdl_request')) return 'updates';
   }
   if (typeof raw.type === 'string') {
     const type = raw.type.toLowerCase();
@@ -105,6 +107,15 @@ export function inferNotificationTone(raw) {
     if (type === 'success' || type === 'warning' || type === 'information') {
       return type;
     }
+  }
+  // A not-accepted PDL request is a warning, although its title
+  // ("PDL Request Not Approved") contains "approved". So is a rejected ID or
+  // document ("Document Not Accepted").
+  if (
+    typeof raw.category === 'string' &&
+    ['pdl_request_rejected', 'document_rejected'].includes(raw.category.toLowerCase())
+  ) {
+    return 'warning';
   }
 
   const title = String(raw.title ?? raw.subject ?? '').toLowerCase();

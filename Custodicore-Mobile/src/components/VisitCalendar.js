@@ -15,6 +15,10 @@ import {
 const GRAY_INACTIVE = '#C4C9D2';
 const CELL_SIZE = 40;
 const CELL_SIZE_COMPACT = 34;
+/** Legend labels may shrink to this share of their size on narrow screens. */
+const LEGEND_MIN_FONT_SCALE = 0.85;
+/** Caps how far large system font sizes enlarge the one-line legend labels. */
+const LEGEND_MAX_FONT_MULTIPLIER = 1.3;
 
 const MARKER_LABELS = {
   pending: 'pending visit',
@@ -140,6 +144,25 @@ export default function VisitCalendar({
     );
   };
 
+  /**
+   * One legend column: the status colour above its label. The label stays on
+   * one line and shrinks a little (to 85%) when a narrow screen needs it.
+   */
+  const renderLegendItem = (swatchStyle, label) => (
+    <View key={label} style={styles.legendItem}>
+      <View style={[styles.legendSwatch, swatchStyle]} />
+      <Text
+        style={styles.legendText}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={LEGEND_MIN_FONT_SCALE}
+        maxFontSizeMultiplier={LEGEND_MAX_FONT_MULTIPLIER}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+
   return (
     <View>
       <View style={styles.header}>
@@ -190,33 +213,13 @@ export default function VisitCalendar({
         </View>
       ))}
 
+      {/* One row of equal-width columns (dot above label); never wraps. */}
       <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendSwatch, styles.dayAvailable]} />
-          <Text style={styles.legendText}>Available</Text>
-        </View>
-        {markedDates ? (
-          <>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, styles.dayPending]} />
-              <Text style={styles.legendText}>Pending</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendSwatch, styles.dayConfirmed]} />
-              <Text style={styles.legendText}>Confirmed</Text>
-            </View>
-          </>
-        ) : null}
-        {showSelection ? (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendSwatch, styles.daySelected]} />
-            <Text style={styles.legendText}>Selected</Text>
-          </View>
-        ) : null}
-        <View style={styles.legendItem}>
-          <View style={[styles.legendSwatch, styles.legendInactive]} />
-          <Text style={styles.legendText}>Unavailable</Text>
-        </View>
+        {renderLegendItem(styles.dayAvailable, 'Available')}
+        {markedDates ? renderLegendItem(styles.dayPending, 'Pending') : null}
+        {markedDates ? renderLegendItem(styles.dayConfirmed, 'Confirmed') : null}
+        {showSelection ? renderLegendItem(styles.daySelected, 'Selected') : null}
+        {renderLegendItem(styles.legendInactive, 'Unavailable')}
       </View>
     </View>
   );
@@ -313,15 +316,17 @@ const styles = StyleSheet.create({
   todayDotSelected: {
     backgroundColor: colors.white,
   },
+  // No gap: the equal, centred columns already space the labels, and the
+  // full width goes to the columns (Unavailable is the longest label).
   legend: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.md,
     marginTop: spacing.sm,
   },
+  // Equal-width column; minWidth 0 lets a long label shrink instead of
+  // pushing the row wider than the screen.
   legendItem: {
-    flexDirection: 'row',
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: spacing.xs,
   },
@@ -338,6 +343,7 @@ const styles = StyleSheet.create({
   legendText: {
     ...typography.statusLabel,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   pressed: { opacity: 0.88 },
 });

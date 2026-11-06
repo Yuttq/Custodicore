@@ -73,6 +73,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/documents', [VisitorApiController::class, 'documents']);
     Route::post('/documents', [VisitorApiController::class, 'storeDocument']);
     Route::post('/relationships/{relationship}/supporting-document', [VisitorApiController::class, 'storeSupportingDocument']);
+    // Pending or returned visitors: replace a rejected document sent with the registration.
+    Route::post('/registration-documents/{requirementKey}', [VisitorApiController::class, 'replaceRegistrationDocument'])
+        ->middleware('throttle:10,1');
     // One file per BJMP requirement (marriage certificate, CENOMAR, ...).
     Route::post('/relationships/{relationship}/requirements/{requirementKey}', [VisitorApiController::class, 'storeRequirementDocument'])
         ->where('requirementKey', '[a-z_]+');
@@ -93,11 +96,24 @@ Route::middleware('auth:sanctum')->group(function () {
         // (awaiting Record Officer review) — see VisitAssignmentService.
         Route::post('/visit-requests', [VisitorApiController::class, 'storeVisitRequest'])->middleware('throttle:10,1');
 
+        // Phase 5B: ask to add another PDL (one open request at a time; staff
+        // identify the PDL later). Cancelling is outside this group (below).
+        Route::post('/pdl-requests', [\App\Http\Controllers\Api\PdlLinkRequestController::class, 'store'])
+            ->middleware('throttle:5,1');
+
         Route::post('/schedules/{visitRequest}/confirm', [VisitorApiController::class, 'confirm']);
         Route::post('/schedules/{visitRequest}/decline', [VisitorApiController::class, 'decline']);
         Route::get('/schedules/{visitRequest}/qr', [VisitorApiController::class, 'qr']);
         Route::get('/schedules/{visitRequest}/timeline', [VisitorApiController::class, 'timeline']);
     });
+
+    // Phase 5B: cancel the own open PDL request. Signed-in visitor only (the
+    // controller checks ownership, the service that it is still open), but
+    // not visitor.approved: a visitor whose account was returned or is no
+    // longer approved can still withdraw a request sent while approved.
+    Route::post('/pdl-requests/{pdlLinkRequest}/cancel', [\App\Http\Controllers\Api\PdlLinkRequestController::class, 'cancel'])
+        ->whereNumber('pdlLinkRequest')
+        ->middleware('throttle:10,1');
 
     // Facility announcements (config/visitation.php) — any signed-in visitor.
     Route::get('/announcements', [AnnouncementApiController::class, 'index']);

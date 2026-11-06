@@ -419,6 +419,8 @@ class VisitorApiController extends Controller
             $visitor, $request->file('file'), $data['documentType'], $data['idNumber'] ?? null
         );
 
+        $visitor->resubmitIfReturned("new {$document->typeLabel()}");
+
         return response()->json($this->governmentIdPayload($document->fresh()), 201);
     }
 
@@ -502,7 +504,21 @@ class VisitorApiController extends Controller
                     'label' => $d->label(),
                     'status' => $d->status,
                     'uploadedAt' => $d->uploaded_at?->toIso8601String(),
+                    // Only the visitor-facing reason staff entered, only when rejected.
+                    'rejectionReason' => $d->status === 'rejected' ? $d->rejection_reason : null,
+                    // A rejected file can be replaced while the account is not approved
+                    // (POST /registration-documents/{key}).
+                    'canReplace' => $d->status === 'rejected' && $visitor->verification_status !== 'verified',
                 ])->values(),
+            // The visitor's own photo (GET /me/photo); it can be retaken until approval.
+            'hasPhoto' => (bool) $visitor->photo_path,
+            'photoUploadedAt' => $visitor->photo_uploaded_at?->toIso8601String(),
+            'canReplacePhoto' => $visitor->verification_status !== 'verified',
+            // Phase 5B: the open request to add another PDL, else the latest
+            // rejected / cancelled one from the last 30 days; null otherwise.
+            'pdlRequest' => ($pdlRequest = app(\App\Services\PdlLinkRequestService::class)->currentForVisitor($visitor))
+                ? PdlLinkRequestController::payload($pdlRequest)
+                : null,
         ]);
     }
 
@@ -539,7 +555,106 @@ class VisitorApiController extends Controller
         AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
             'Visitor uploaded supporting document via mobile app', Module::CODE_VISITOR_MANAGEMENT);
 
+        $visitor->resubmitIfReturned('new supporting document');
+
         return response()->json($this->relationshipPayload($relationship->fresh('pdl')), 201);
+    }
+
+    /**
+     * Replaces a relationship document sent with the registration that staff
+     * rejected — POST /api/registration-documents/{requirementKey} (multipart:
+     * file). Only while the account is not approved (pending or returned);
+     * approved visitors upload on the relationship checklist instead.
+     *
+     * The rejected row is kept as history; the replacement is a new pending
+     * row on the same visitor, still a registration upload (no relationship),
+     * so it joins the checklist when staff link the PDL and is approved only
+     * with the account. A returned account goes back to Account Review.
+     *
+     *   201 { document }   404 not sent with the registration
+     *   409 approved account, or the newest file is not rejected
+     */
+    public function replaceRegistrationDocument(Request $request, string $requirementKey): JsonResponse
+    {
+        $visitor = $this->currentVisitor($request);
+
+        if ($visitor->verification_status === 'verified') {
+            return response()->json([
+                'message' => 'Your account is already approved. Upload documents from your PDL\'s requirements under My PDLs.',
+            ], 409);
+        }
+
+        $latest = $visitor->registrationDocuments()->where('requirement_key', $requirementKey)->first();
+        if (! $latest) {
+            return response()->json(['message' => 'This document was not sent with your registration.'], 404);
+        }
+        if ($latest->status !== 'rejected') {
+            return response()->json([
+                'message' => 'Only a document that facility staff did not accept can be replaced. This one is waiting for review.',
+            ], 409);
+        }
+
+        $request->validate([
+            'file' => self::DOCUMENT_FILE_RULES,
+        ], [
+            'file.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
+            'file.max' => 'The file is too large. Maximum size is 10 MB.',
+        ]);
+
+        // Private disk — requirement documents are never publicly served.
+        $file = $request->file('file');
+        $path = $file->store('relationship-documents', 'local');
+
+        try {
+            $document = \Illuminate\Support\Facades\DB::transaction(function () use ($visitor, $requirementKey, $file, $path) {
+                // One replacement at a time: re-check under the visitor's lock.
+                VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
+                $current = $visitor->registrationDocuments()->where('requirement_key', $requirementKey)->first();
+                if (! $current || $current->status !== 'rejected') {
+                    return null;
+                }
+
+                $document = RelationshipDocument::create([
+                    'relationship_id' => null,
+                    'visitor_id' => $visitor->visitor_id,
+                    'requirement_key' => $requirementKey,
+                    'file_path' => $path,
+                    'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
+                    'status' => 'pending',
+                    'uploaded_at' => now(),
+                ]);
+
+                AuditLog::record('create', 'relationship_documents', $document->document_id,
+                    "Visitor replaced the rejected {$document->label()} (sent with registration) via mobile app",
+                    Module::CODE_VISITOR_MANAGEMENT);
+
+                return $document;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($path);
+            throw $e;
+        }
+
+        if (! $document) {
+            Storage::disk('local')->delete($path);
+
+            return response()->json([
+                'message' => 'Only a document that facility staff did not accept can be replaced. This one is waiting for review.',
+            ], 409);
+        }
+
+        $visitor->resubmitIfReturned("replaced {$document->label()}");
+
+        return response()->json([
+            'document' => [
+                'key' => $document->requirement_key,
+                'label' => $document->label(),
+                'status' => $document->status,
+                'uploadedAt' => $document->uploaded_at?->toIso8601String(),
+                'rejectionReason' => null,
+                'canReplace' => false,
+            ],
+        ], 201);
     }
 
     /**
@@ -589,6 +704,8 @@ class VisitorApiController extends Controller
 
         AuditLog::record('create', 'relationship_documents', $document->document_id,
             "Visitor uploaded {$item['label']} via mobile app", Module::CODE_VISITOR_MANAGEMENT);
+
+        $visitor->resubmitIfReturned("new {$item['label']}");
 
         return response()->json($this->relationshipPayload($relationship->fresh(['pdl', 'documents', 'visitor.idDocuments'])), 201);
     }

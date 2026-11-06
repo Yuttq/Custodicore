@@ -3,8 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildPdlRelationshipList,
   buildRegistrationDocuments,
   buildRelationshipRequirementDocuments,
+  isRegistrationDocumentKey,
   hasAnyRelationshipUpload,
   isAwaitingRelationshipLink,
   toRelationshipDocumentKey,
@@ -127,4 +129,63 @@ test('documents sent with the registration are listed read-only until staff link
   assert.equal(docs[0].requirementKey, 'marriage_certificate');
   assert.match(docs[0].unavailableReason, /link your account to the PDL/);
   assert.deepEqual(buildRegistrationDocuments(undefined), []);
+});
+
+test('a rejected registration document shows the reason and can be replaced when allowed', () => {
+  const [doc] = buildRegistrationDocuments([
+    {
+      key: 'marriage_certificate',
+      label: 'Marriage Certificate',
+      status: 'rejected',
+      rejectionReason: '  The page is cut off. ',
+      canReplace: true,
+    },
+  ]);
+  assert.equal(doc.uploadStatus, 'rejected');
+  assert.equal(doc.rejectionReason, 'The page is cut off.');
+  assert.equal(doc.canUpload, true);
+  assert.equal(doc.unavailableReason, null);
+  assert.equal(doc.requirementKey, 'marriage_certificate');
+  assert.equal(doc.relationshipRecordId, null);
+  assert.equal(isRegistrationDocumentKey(doc.key), true);
+});
+
+test('a registration document stays read-only unless the backend allows a replacement', () => {
+  const [approvedAccount, pending] = buildRegistrationDocuments([
+    { key: 'marriage_certificate', status: 'rejected', rejectionReason: 'Cut off', canReplace: false },
+    // A reason or canReplace on a file that is not rejected is ignored.
+    { key: 'cenomar_pdl', status: 'pending', rejectionReason: 'stale', canReplace: true },
+  ]);
+  assert.equal(approvedAccount.canUpload, false);
+  assert.equal(approvedAccount.rejectionReason, 'Cut off');
+  assert.match(approvedAccount.unavailableReason, /link your account to the PDL/);
+  assert.equal(pending.canUpload, false);
+  assert.equal(pending.rejectionReason, null);
+});
+
+test('only registration entries use the registration replacement upload', () => {
+  assert.equal(isRegistrationDocumentKey('registration:marriage_certificate'), true);
+  assert.equal(isRegistrationDocumentKey('relationship:7:marriage_certificate'), false);
+  assert.equal(isRegistrationDocumentKey('government_id'), false);
+  assert.equal(isRegistrationDocumentKey(undefined), false);
+});
+
+test('My PDLs lists every relationship with its status, rejected ones included', () => {
+  const list = buildPdlRelationshipList([
+    { id: 3, pdlName: 'Cy Reyes', relationshipLabel: 'Sibling', status: 'rejected' },
+    { id: 2, pdlName: 'Ben Cruz', relationshipLabel: 'Parent', status: 'pending' },
+    { id: 1, pdlName: ' Ana Lim ', relationshipLabel: 'Spouse', status: 'verified' },
+    { id: 4, pdlName: null, relationshipLabel: '', status: 'something_new' },
+    null,
+    { pdlName: 'No id' },
+  ]);
+
+  assert.deepEqual(list, [
+    { id: '1', pdlName: 'Ana Lim', relationshipLabel: 'Spouse', status: 'approved', statusLabel: 'Approved' },
+    { id: '2', pdlName: 'Ben Cruz', relationshipLabel: 'Parent', status: 'pending', statusLabel: 'Pending' },
+    // Unknown status shows as Pending, after the real pending ones.
+    { id: '4', pdlName: 'PDL', relationshipLabel: null, status: 'pending', statusLabel: 'Pending' },
+    { id: '3', pdlName: 'Cy Reyes', relationshipLabel: 'Sibling', status: 'rejected', statusLabel: 'Rejected' },
+  ]);
+  assert.deepEqual(buildPdlRelationshipList(undefined), []);
 });

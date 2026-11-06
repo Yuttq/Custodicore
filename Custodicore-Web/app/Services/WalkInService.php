@@ -358,8 +358,8 @@ class WalkInService
             if ($visitor->date_of_birth?->age < RelationshipRequirements::ADULT_AGE) {
                 $required[] = RelationshipRequirements::MINOR_DOCUMENT;
             }
-            $verifiedKeys = RelationshipDocument::where('visitor_id', $visitor->visitor_id)
-                ->whereNull('relationship_id')
+            $verifiedKeys = RelationshipDocument::registrationUploads()
+                ->where('visitor_id', $visitor->visitor_id)
                 ->where('status', 'verified')
                 ->pluck('requirement_key')
                 ->all();

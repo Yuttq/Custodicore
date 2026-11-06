@@ -13,8 +13,8 @@
 @section('content')
 @include('partials.review-queue-header', ['active' => 'accounts'])
 <p class="muted-cell queue-help">
-  Check the photo, ID and documents, confirm the PDL the visitor will visit, then click <strong>Approve</strong> once.
-  It approves the ID, the documents, the account and the PDL relationship together; nothing needs approving again later.
+  Check the photo, ID and documents, confirm the PDL the visitor will visit, tick the officer confirmations, then click <strong>Approve</strong> once.
+  It approves the ID, the documents, the account and the PDL relationship together. Approve stays off until every requirement is complete.
 </p>
 
 @if ($walkInsAwaitingDecision->isNotEmpty())
@@ -67,6 +67,8 @@
       $typeGuess = old('relationship_type', $visitor->intended_relationship_type
         ?: collect($typeLabels)->search(fn ($label) => strcasecmp($label, trim((string) $visitor->relationship_hint)) === 0) ?: null);
       $approveForm = 'approve-' . $visitor->visitor_id;
+      // Old input only refills the card whose Approve was refused.
+      $isOldCard = (string) old('review_card') === (string) $visitor->visitor_id;
     @endphp
     <article class="panel elig-card {{ $usableId ? 'is-ready' : '' }}">
       <header class="elig-head">
@@ -199,7 +201,11 @@
           'linked' => $linked ? ['pdl' => $linked->pdl?->full_name, 'type' => $linked->relationshipLabel()] : null,
           'typeLabels' => $typeLabels,
           'preview' => $needsLink ? app(\App\Services\AccountApproval::class)->preview($visitor) : null,
+          // A pending link on file (not walk-ins): its real checklist.
+          'linkedItems' => $linked && $linked->verification_status === 'pending' && ! $visitor->isWalkIn()
+            ? app(\App\Services\AccountApproval::class)->linkedPreview($linked) : null,
         ];
+        $oldConfirmations = $isOldCard ? (array) old('confirmations', []) : [];
       @endphp
       <section class="acct-approve" data-approve-panel data-form="{{ $approveForm }}">
         <script type="application/json" data-approve-data>@json($panelData)</script>
@@ -252,13 +258,35 @@
                 <div class="field-m" data-children-field hidden>
                   <label for="rel-children-{{ $visitor->visitor_id }}">Children Together</label>
                   <select id="rel-children-{{ $visitor->visitor_id }}" name="has_children_together" form="{{ $approveForm }}" data-children>
-                    <option value="">Not recorded</option>
-                    <option value="1">Has children together</option>
-                    <option value="0">No children together</option>
+                    <option value="">— Select —</option>
+                    <option value="1" @selected($isOldCard && old('has_children_together') === '1')>Has children together</option>
+                    <option value="0" @selected($isOldCard && old('has_children_together') === '0')>No children together</option>
                   </select>
+                  <p class="field-hint">Required for a live-in partner.</p>
                 </div>
               </div>
             @endif
+
+            @unless ($visitor->isWalkIn())
+              {{-- Officer confirmations; the script shows the ones this relationship needs. --}}
+              <div class="field-m" data-confirmations hidden style="margin-top:10px;">
+                <label>Officer confirmations</label>
+                @foreach (\App\Services\RelationshipRequirements::CONFIRMATIONS as $key => [$label, $description])
+                  <div data-confirm-item="{{ $key }}" hidden style="margin:6px 0;">
+                    <label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;">
+                      <input type="checkbox" name="confirmations[]" value="{{ $key }}" form="{{ $approveForm }}" data-confirm-box
+                             @checked(in_array($key, $oldConfirmations, true)) style="margin-top:3px;">
+                      <span>{{ $label }}<span class="field-hint" style="display:block;font-weight:400;margin:2px 0 0;">{{ $description }}</span></span>
+                    </label>
+                    @if ($key === 'accompanying_guardian')
+                      <input type="text" name="accompanying_adult" maxlength="150" form="{{ $approveForm }}" data-accompanying-adult
+                             placeholder="Name of the accompanying parent or guardian" aria-label="Name of the accompanying parent or guardian"
+                             value="{{ $isOldCard ? old('accompanying_adult') : '' }}" style="margin-top:6px;">
+                    @endif
+                  </div>
+                @endforeach
+              </div>
+            @endunless
           </div>
 
           {{-- Filled in by the script below; updates as the PDL and relationship change. --}}
@@ -271,6 +299,9 @@
 
       @if ($tab === 'rejected' && $visitor->rejection_reason)
         <div class="elig-note is-warn">Returned. What to fix: {{ $visitor->rejection_reason }}</div>
+      @elseif ($visitor->rejection_reason)
+        {{-- Back from the visitor after a correction (resubmitIfReturned keeps the reason until approval). --}}
+        <div class="elig-note is-warn">Resubmitted after being returned. It was returned for: {{ $visitor->rejection_reason }}</div>
       @endif
 
       {{-- What has happened to this account so far --}}
@@ -306,9 +337,12 @@
               </form>
             </details>
             <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}" id="{{ $approveForm }}"
-                  data-confirm="Approve {{ $visitor->full_name }}? This approves their ID, documents and account, and their relationship to the PDL. Nothing needs approving again later."
+                  data-confirm="{{ $visitor->isWalkIn() && ! $linked
+                    ? "Approve {$visitor->full_name}? This approves their government ID and account. The PDL is then linked from the Front Desk details."
+                    : "Approve {$visitor->full_name}? This approves their government ID, account, relationship documents and the confirmations you ticked, and their relationship to the PDL, in one step. If any requirement is still incomplete, nothing is approved." }}"
                   data-confirm-title="Approve" data-confirm-ok="Approve">
               @csrf
+              <input type="hidden" name="review_card" value="{{ $visitor->visitor_id }}">
               @if ($usableId)
                 <button type="submit" class="btn btn-blue" data-approve-button>Approve</button>
               @else
@@ -341,6 +375,11 @@
     var type = panel.querySelector('[data-rel-type]');
     var children = panel.querySelector('[data-children]');
     var childrenField = panel.querySelector('[data-children-field]');
+    var confirmBlock = panel.querySelector('[data-confirmations]');
+    var adultName = panel.querySelector('[data-accompanying-adult]');
+    var article = panel.closest('article');
+    var status = article ? article.querySelector('[data-approve-status]') : null;
+    var readyStatus = status ? status.innerHTML : '';
 
     function add(state, text) {
       var li = document.createElement('li');
@@ -349,51 +388,118 @@
       list.appendChild(li);
     }
 
+    // Shows the confirmation checkboxes this relationship needs; the others are
+    // hidden and disabled so they are not sent.
+    function showConfirmations(needed) {
+      if (!confirmBlock) return;
+      var keys = needed.map(function (c) { return c[0]; });
+      confirmBlock.hidden = keys.length === 0;
+      confirmBlock.querySelectorAll('[data-confirm-item]').forEach(function (item) {
+        var on = keys.indexOf(item.dataset.confirmItem) !== -1;
+        item.hidden = !on;
+        item.querySelectorAll('input').forEach(function (input) { input.disabled = !on; });
+      });
+    }
+
+    function isTicked(key) {
+      var box = confirmBlock ? confirmBlock.querySelector('[data-confirm-item="' + key + '"] [data-confirm-box]') : null;
+      return !!(box && box.checked);
+    }
+
     function update() {
       list.innerHTML = '';
-      var ready = !!data.id;
-      add(data.id ? 'ok' : 'bad', data.id ? (data.id.approved ? data.id.label + ' already approved' : 'Approve the ' + data.id.label) : 'No government ID uploaded yet');
+      var missing = [];       // why Approve is off, in plain words
+      var needed = [];        // [key, label] confirmations to tick on this card
+      var relationship = false;
+
+      if (data.id) add('ok', data.id.approved ? data.id.label + ' already approved' : 'Approve the ' + data.id.label);
+      else { add('bad', 'No government ID uploaded yet'); missing.push('a government ID from the visitor'); }
       add('ok', 'Approve the account');
 
       if (data.mode === 'linked') {
-        add('ok', 'Approve the link to ' + data.linked.pdl + ' (' + data.linked.type + ') and its documents');
+        if (!data.linkedItems) {
+          add('ok', 'Approve the link to ' + data.linked.pdl + ' (' + data.linked.type + ') and its documents');
+        } else {
+          relationship = true;
+          add('ok', 'Link to ' + data.linked.pdl + ' as ' + data.linked.type + ' (already on file)');
+          data.linkedItems.forEach(function (item) {
+            if (item.state === 'ok') {
+              // The government ID already has its own line above.
+              if (item.kind === 'confirmation') add('ok', item.label + ': already confirmed');
+              else if (item.kind !== 'valid_id') add('ok', 'Approve ' + item.label);
+            }
+            else if (item.state === 'confirm') needed.push([item.key, item.label]);
+            else { add('bad', item.label + ': finish it on the visitor page'); missing.push(item.label + ' (visitor page)'); }
+          });
+        }
       } else if (data.mode === 'walkin') {
         add('ok', 'Link the PDL from the Front Desk details');
       } else {
         var pdlName = pdlId.value ? pdlText.value.replace(/\s*\([^)]*\)\s*$/, '') : '';
         var t = type.value, info = t ? data.preview.types[t] : null;
         if (childrenField) childrenField.hidden = !(info && info.children);
-        if (!pdlName) { add('todo', 'Pick the PDL they will visit'); ready = false; }
-        if (!t) { add('todo', 'Pick the relationship'); ready = false; }
+        if (children) children.required = !!(info && info.children);
+        if (!pdlName) { add('todo', 'Pick the PDL they will visit'); missing.push('the PDL'); }
+        if (!t) { add('todo', 'Pick the relationship'); missing.push('the relationship'); }
         if (pdlName && t) add('ok', 'Link to ' + pdlName + ' as ' + data.typeLabels[t]);
 
         if (info) {
-          var missing = 0;
+          relationship = true;
           var docs = info.docs;
           if (info.children) {
             if (children.value === '1') docs = info.docsWithChildren;
             else if (children.value === '0') docs = info.docsWithoutChildren;
-            else { add('warn', 'Children together not recorded yet'); missing++; }
+            else { add('todo', 'Choose whether they have children together'); missing.push('Children together'); }
           }
-          if (info.blocked) { add('warn', 'Old relationship type: choose the specific relationship'); missing++; }
+          if (info.blocked) { add('bad', 'Old relationship type: choose the specific relationship'); missing.push('a specific relationship type'); }
+          data.preview.blockers.forEach(function (label) { add('bad', label + ': cannot be approved; return the account'); missing.push(label); });
+          var notUploaded = 0;
           docs.forEach(function (doc) {
             if (data.preview.uploaded[doc[0]]) add('ok', 'Approve ' + doc[1]);
-            else { add('warn', doc[1] + ' not uploaded'); missing++; }
+            else { add('bad', doc[1] + ' not uploaded'); missing.push(doc[1] + ' (not uploaded)'); notUploaded++; }
           });
-          info.confirmations.forEach(function (label) { add('warn', label + ': confirm on the visitor page'); missing++; });
-          add(missing ? 'warn' : 'done', missing
-            ? 'Relationship stays pending until the items above are done'
-            : 'Approve the relationship: they can book visits right away');
+          if (notUploaded) add('todo', 'Add the PDL relationship on the visitor\'s page so they can upload it in the app');
+          needed = info.confirmations;
         }
       }
 
+      showConfirmations(needed);
+      needed.forEach(function (c) {
+        var key = c[0], label = c[1];
+        var name = key === 'accompanying_guardian' && adultName ? adultName.value.trim() : null;
+        if (!isTicked(key)) { add('todo', 'Tick "' + label + '" on this card'); missing.push(label); }
+        else if (key === 'accompanying_guardian' && !name) { add('todo', 'Enter the name of the accompanying adult'); missing.push('the accompanying adult\'s name'); }
+        else add('ok', 'Record "' + label + '"' + (name ? ' (' + name + ')' : ''));
+      });
+
+      if (relationship) {
+        add(missing.length ? 'bad' : 'done', missing.length
+          ? 'Approve stays off until the items above are done'
+          : 'Approve the relationship: they can book visits right away');
+      }
+
       if (button) {
-        button.disabled = !ready;
-        button.title = ready ? '' : 'Pick the PDL and relationship first';
+        button.disabled = missing.length > 0;
+        button.title = missing.length ? 'Still needed: ' + missing.join(', ') : '';
+      }
+      if (status) {
+        if (missing.length) {
+          status.innerHTML = '';
+          var span = document.createElement('span');
+          span.className = 'elig-status-wait';
+          span.textContent = 'Approve is off. Still needed: ' + missing.join(', ') + '.';
+          status.appendChild(span);
+        } else {
+          status.innerHTML = readyStatus;
+        }
       }
     }
 
     [pdlId, type, children].forEach(function (el) { if (el) el.addEventListener('change', update); });
+    if (confirmBlock) {
+      confirmBlock.addEventListener('change', update);
+      confirmBlock.addEventListener('input', update);
+    }
     update();
   });
 </script>

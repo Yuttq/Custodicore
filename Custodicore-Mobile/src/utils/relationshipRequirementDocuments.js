@@ -108,12 +108,24 @@ export function isAwaitingRelationshipLink(relationships) {
   return !list.some((r) => r && r.status !== 'rejected');
 }
 
+const REGISTRATION_DOCUMENT_PREFIX = 'registration:';
+
 /**
- * Read-only entries for relationship documents sent with the registration
- * that are not on a relationship checklist yet (GET /api/documents
- * `registrationDocuments`). Staff review them once they link the PDL, so the
- * visitor cannot replace them here; they move onto the relationship's
- * checklist entries after the link.
+ * True for an entry built by buildRegistrationDocuments (a file sent with the
+ * registration); its replacement goes to POST /api/registration-documents/{key}.
+ * @param {string | null | undefined} documentKey
+ */
+export function isRegistrationDocumentKey(documentKey) {
+  return typeof documentKey === 'string' && documentKey.startsWith(REGISTRATION_DOCUMENT_PREFIX);
+}
+
+/**
+ * Entries for relationship documents sent with the registration that are not
+ * on a relationship checklist yet (GET /api/documents `registrationDocuments`).
+ * Staff review them with the account; they move onto the relationship's
+ * checklist when staff link the PDL. A file staff rejected shows their reason
+ * and can be replaced while the account is not approved (backend `canReplace`);
+ * otherwise the entry is read-only.
  * @param {unknown} registrationDocuments
  */
 export function buildRegistrationDocuments(registrationDocuments) {
@@ -124,20 +136,64 @@ export function buildRegistrationDocuments(registrationDocuments) {
     .map((d) => {
       const uploadStatus =
         d.status === 'verified' ? 'verified' : d.status === 'rejected' ? 'rejected' : 'under_review';
+      const canUpload = uploadStatus === 'rejected' && d.canReplace === true;
+      const reason =
+        uploadStatus === 'rejected' && typeof d.rejectionReason === 'string' && d.rejectionReason.trim()
+          ? d.rejectionReason.trim()
+          : null;
       return {
-        key: `registration:${d.key}`,
+        key: `${REGISTRATION_DOCUMENT_PREFIX}${d.key}`,
         label: String(d.label ?? d.key),
         uploadStatus,
         uploadedAt: d.uploadedAt ?? null,
         verifiedAt: null,
-        rejectionReason: null,
+        rejectionReason: reason,
         reviewNote: null,
-        canUpload: false,
-        unavailableReason:
-          'Sent with your registration. Facility staff review it after they link your account to the PDL you are visiting.',
+        canUpload,
+        unavailableReason: canUpload
+          ? null
+          : 'Sent with your registration. Facility staff review it after they link your account to the PDL you are visiting.',
         detail: 'Sent with registration',
         relationshipRecordId: null,
         requirementKey: d.key,
       };
     });
+}
+
+/** Backend relationship status → My PDLs label (pending / verified / rejected). */
+const PDL_RELATIONSHIP_STATUS = {
+  pending: { status: 'pending', label: 'Pending' },
+  verified: { status: 'approved', label: 'Approved' },
+  rejected: { status: 'rejected', label: 'Rejected' },
+};
+
+/**
+ * "My PDLs": every PDL relationship on the visitor's account, read-only,
+ * from GET /api/documents `relationships` (which includes rejected ones).
+ * Approved first, then pending, then rejected; the API's newest-first order
+ * is kept within each group. An unknown status shows as Pending.
+ * @param {unknown} relationships — GET /api/documents `relationships`
+ * @returns {{ id: string; pdlName: string; relationshipLabel: string | null; status: 'approved' | 'pending' | 'rejected'; statusLabel: string }[]}
+ */
+export function buildPdlRelationshipList(relationships) {
+  const list = Array.isArray(relationships) ? relationships : [];
+  const order = { approved: 0, pending: 1, rejected: 2 };
+  return list
+    .filter((r) => r && typeof r === 'object' && r.id != null)
+    .map((r) => {
+      const state = PDL_RELATIONSHIP_STATUS[r.status] ?? PDL_RELATIONSHIP_STATUS.pending;
+      return {
+        id: String(r.id),
+        pdlName: typeof r.pdlName === 'string' && r.pdlName.trim() ? r.pdlName.trim() : 'PDL',
+        relationshipLabel:
+          typeof r.relationshipLabel === 'string' && r.relationshipLabel.trim()
+            ? r.relationshipLabel.trim()
+            : null,
+        status: /** @type {'approved' | 'pending' | 'rejected'} */ (state.status),
+        statusLabel: state.label,
+      };
+    })
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => order[a.item.status] - order[b.item.status] || a.index - b.index)
+    .map(({ item }) => item);
 }

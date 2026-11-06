@@ -103,7 +103,17 @@ class RelationshipRequirementController extends Controller
             'rejection_reason.required' => 'Tell the visitor why this document was rejected.',
         ]);
 
-        if ($locked = $this->abortIfLocked($document->relationship)) {
+        // A file sent with an app registration of a visitor not approved yet can
+        // be rejected before the PDL is linked, so the visitor can replace it
+        // from the app. It is still approved only with the account (AccountApproval).
+        // Walk-ins keep their own document review (WalkInAssessmentController).
+        $isRegistrationUpload = $document->relationship_id === null
+            && $document->pdl_link_request_id === null
+            && $document->visitor
+            && ! $document->visitor->isWalkIn()
+            && $document->visitor->verification_status !== 'verified';
+
+        if (! $isRegistrationUpload && ($locked = $this->abortIfLocked($document->relationship))) {
             return $locked;
         }
         if ($document->status !== 'pending') {
@@ -115,15 +125,31 @@ class RelationshipRequirementController extends Controller
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
-        $document->update([
-            'status' => 'rejected',
-            'rejection_reason' => $validated['rejection_reason'],
-            'reviewed_by' => $staffId,
-            'reviewed_at' => now(),
-        ]);
+        $reason = trim($validated['rejection_reason']);
 
-        $label = RelationshipRequirements::DOCUMENTS[$document->requirement_key][0] ?? $document->requirement_key;
-        $this->logAudit('relationship_documents', $document->document_id, "Rejected {$label} for relationship #{$document->relationship_id}: {$validated['rejection_reason']}");
+        // Conditional update: a second click (or a second officer) cannot
+        // reject the same file twice, so only one notification goes out.
+        $rejected = RelationshipDocument::whereKey($document->document_id)
+            ->where('status', 'pending')
+            ->update([
+                'status' => 'rejected',
+                'rejection_reason' => $reason,
+                'reviewed_by' => $staffId,
+                'reviewed_at' => now(),
+            ]);
+        if ($rejected === 0) {
+            return back()->with('error', 'This document has already been reviewed.');
+        }
+
+        $label = $document->label();
+        $this->logAudit('relationship_documents', $document->document_id, $isRegistrationUpload
+            ? "Rejected {$label} sent with the registration of visitor #{$document->visitor_id}: {$reason}"
+            : "Rejected {$label} for relationship #{$document->relationship_id}: {$reason}");
+
+        if ($document->visitor) {
+            \App\Support\DocumentRejectionNotice::send($document->visitor, $label, $reason,
+                'relationship_documents', $document->document_id);
+        }
 
         return back()->with('success', "{$label} rejected. The visitor can upload a new one from the app.");
     }

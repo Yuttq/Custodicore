@@ -713,6 +713,12 @@ class AuthController extends Controller
             AuditLog::record('update', 'visitor_profiles', $profile->visitor_id,
                 'Visitor updated own profile via mobile app (' . implode(', ', array_keys($updates)) . ')',
                 Module::CODE_VISITOR_MANAGEMENT);
+
+            // Only a real change counts as a correction of a returned account.
+            $changed = array_values(array_diff(array_keys($profile->getChanges()), ['updated_at']));
+            if ($changed) {
+                $profile->resubmitIfReturned('profile details: ' . implode(', ', $changed));
+            }
         }
 
         $account->unsetRelation('visitorProfile');

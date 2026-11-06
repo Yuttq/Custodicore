@@ -291,6 +291,37 @@ export function normalizeAvailabilityResponse(data) {
   };
 }
 
+/**
+ * Date-first calendar (Home): one `daysByDate` across all of the visitor's
+ * verified relationships. A date is available when at least one
+ * relationship (PDL) has an available session on it.
+ * @param {{ daysByDate?: Record<string, { available: boolean }> }[] | null | undefined} relationships
+ * @returns {Record<string, { available: boolean }>}
+ */
+export function combineAvailableDays(relationships) {
+  /** @type {Record<string, { available: boolean }>} */
+  const combined = {};
+  for (const relationship of Array.isArray(relationships) ? relationships : []) {
+    for (const [date, day] of Object.entries(relationship?.daysByDate ?? {})) {
+      combined[date] = { available: combined[date]?.available === true || day?.available === true };
+    }
+  }
+  return combined;
+}
+
+/**
+ * The relationships (PDLs) with an available session on `date`, in their
+ * original order — the "Who will you visit?" choices after a date is picked.
+ * @template {{ daysByDate?: Record<string, { available: boolean }> }} R
+ * @param {R[] | null | undefined} relationships
+ * @param {string | null | undefined} date YYYY-MM-DD
+ * @returns {R[]}
+ */
+export function relationshipsAvailableOn(relationships, date) {
+  if (!Array.isArray(relationships) || !parseIsoDate(date)) return [];
+  return relationships.filter((r) => r?.daysByDate?.[/** @type {string} */ (date)]?.available === true);
+}
+
 /** Distinct "start–end" windows across a relationship's days, e.g. Morning + Afternoon. */
 export function visitingWindows(relationship) {
   const seen = new Map();

@@ -11,6 +11,11 @@ use Illuminate\Database\Eloquent\Model;
 // Files sent with the registration have no relationship yet
 // (relationship_id NULL, visitor_id set). They are attached when staff link
 // the PDL — see VisitorPdlRelationship::attachRegistrationDocuments().
+//
+// Files sent with a request to add another PDL (Phase 5B) also start
+// without a relationship, but carry pdl_link_request_id. They belong to that
+// request only and are never registration documents: always use
+// registrationUploads() to find registration files.
 class RelationshipDocument extends Model
 {
     protected $table = 'relationship_documents';
@@ -20,6 +25,7 @@ class RelationshipDocument extends Model
     protected $fillable = [
         'relationship_id',
         'visitor_id',
+        'pdl_link_request_id',
         'requirement_key',
         'file_path',
         'original_name',
@@ -43,6 +49,22 @@ class RelationshipDocument extends Model
     public function visitor()
     {
         return $this->belongsTo(VisitorProfile::class, 'visitor_id', 'visitor_id');
+    }
+
+    /** The add-another-PDL request this file was sent with, if any. */
+    public function pdlLinkRequest()
+    {
+        return $this->belongsTo(PdlLinkRequest::class, 'pdl_link_request_id', 'request_id');
+    }
+
+    /**
+     * Files sent with the registration and not attached to a relationship
+     * yet. A PDL-link request's files are excluded: they are not registration
+     * documents and may only move to the relationship their request is linked to.
+     */
+    public function scopeRegistrationUploads($query)
+    {
+        return $query->whereNull('relationship_id')->whereNull('pdl_link_request_id');
     }
 
     public function label(): string

@@ -19,6 +19,25 @@ import { hasVideoInputDevice, validateRegistrationPhoto } from '../utils/documen
 /** JPEG at this quality keeps a front-camera photo well under the 5 MB limit. */
 const PICTURE_OPTIONS = { quality: 0.6, imageType: 'jpg' };
 
+/**
+ * Portrait 3:4 (width:height), the shape of a front-camera photo held
+ * upright, so the live preview and the review show the same framing.
+ */
+const FRAME_ASPECT = 3 / 4;
+
+/** The face guide's width as a share of the frame width. */
+const FACE_GUIDE_WIDTH = 0.62;
+
+/**
+ * The largest 3:4 frame that fits the space measured by onLayout.
+ * @param {{ width: number, height: number } | null} area
+ */
+function frameSizeFor(area) {
+  if (!area || area.width <= 0 || area.height <= 0) return null;
+  const width = Math.min(area.width, area.height * FRAME_ASPECT);
+  return { width, height: width / FRAME_ASPECT };
+}
+
 const UNAVAILABLE_MESSAGE =
   "This browser can't open your camera. Use the CustodiCore app, or a browser with camera access.";
 
@@ -74,7 +93,14 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
   const [phase, setPhase] = useState('idle');
   const [draft, setDraft] = useState(/** @type {RegistrationPhoto | null} */ (null));
   const [error, setError] = useState(/** @type {string | null} */ (null));
+  // Space left for the photo frame; the frame is the largest 3:4 box in it.
+  const [frameArea, setFrameArea] = useState(/** @type {{ width: number, height: number } | null} */ (null));
   const cameraRef = useRef(/** @type {CameraView | null} */ (null));
+  const frame = frameSizeFor(frameArea);
+  const onFrameAreaLayout = useCallback((event) => {
+    const { width, height } = event.nativeEvent.layout;
+    setFrameArea((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
+  }, []);
 
   const requestAccess = useCallback(async () => {
     setPhase('loading');
@@ -190,15 +216,36 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
 
         {showCamera ? (
           <View style={styles.body}>
-            <View style={styles.frameWrap}>
-              <CameraView
-                ref={cameraRef}
-                style={styles.fill}
-                facing="front"
-                onMountError={() => setPhase('unavailable')}
-              />
+            <View style={styles.frameArea} onLayout={onFrameAreaLayout}>
+              {frame ? (
+                <View style={[styles.frameWrap, frame]}>
+                  {/* Front camera: the live view is mirrored like a selfie; the
+                      saved photo is not (`mirror` stays off). */}
+                  <CameraView
+                    ref={cameraRef}
+                    style={styles.fill}
+                    facing="front"
+                    onMountError={() => setPhase('unavailable')}
+                  />
+                  {/* Oval face guide; never blocks touches or the controls below. */}
+                  <View style={styles.guideLayer}>
+                    <View
+                      style={[
+                        styles.faceGuide,
+                        {
+                          width: frame.width * FACE_GUIDE_WIDTH,
+                          height: frame.width * FACE_GUIDE_WIDTH,
+                          borderRadius: (frame.width * FACE_GUIDE_WIDTH) / 2,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </View>
-            <Text style={styles.hint}>Face the camera in good light, without a hat or sunglasses.</Text>
+            <Text style={styles.hint}>
+              Center your face in the oval. Use good light, without a hat or sunglasses.
+            </Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable
               style={[styles.primaryBtn, phase === 'capturing' && styles.btnDisabled]}
@@ -219,15 +266,22 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
 
         {phase === 'review' && draft ? (
           <View style={styles.body}>
-            <View style={styles.frameWrap}>
-              <Image
-                source={{ uri: draft.uri }}
-                style={styles.fill}
-                resizeMode="cover"
-                accessibilityLabel="Preview of your photo"
-              />
+            <View style={styles.frameArea} onLayout={onFrameAreaLayout}>
+              {frame ? (
+                <View style={[styles.frameWrap, frame]}>
+                  {/* Shown as saved: unmirrored and upright, exactly the file
+                      that is uploaded. Only the live view above is mirrored. */}
+                  <Image
+                    source={{ uri: draft.uri }}
+                    style={styles.fill}
+                    resizeMode="cover"
+                    accessibilityLabel="Preview of your photo"
+                  />
+                </View>
+              ) : null}
             </View>
             <Text style={styles.hint}>Check that your face is clear before using this photo.</Text>
+            <Text style={styles.hint}>This is how your saved photo will look.</Text>
             <View style={styles.row}>
               <Pressable
                 style={[styles.secondaryBtn, styles.rowBtn]}
@@ -288,14 +342,32 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     gap: spacing.md,
   },
-  frameWrap: {
+  // Fills the space above the hint and buttons; the 3:4 frame is centred in it.
+  frameArea: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Width and height come from frameSizeFor() (3:4 portrait).
+  frameWrap: {
     borderRadius: layout.cardRadius,
     overflow: 'hidden',
     backgroundColor: colors.primaryNavy,
   },
   fill: {
     flex: 1,
+  },
+  guideLayer: {
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // A circle stretched vertically into an oval, slightly above centre.
+  faceGuide: {
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.75)',
+    transform: [{ translateY: -12 }, { scaleY: 1.3 }],
   },
   hint: {
     ...typography.metadata,

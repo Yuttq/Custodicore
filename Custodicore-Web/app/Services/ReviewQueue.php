@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\EligibilityAssessment;
+use App\Models\PdlLinkRequest;
+use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +19,11 @@ use Illuminate\Database\Eloquent\Builder;
  *       (status 'assigned'), whatever its eligibility result, and
  *     - any other visit whose eligibility check is flagged and not yet
  *       reviewed (e.g. a staff-assigned visit).
+ *   PDL Links — pending PDL relationships of visitors whose account is
+ *     already approved (an additional PDL). A pending account's relationship
+ *     is approved together with the account in Step 1, so it is not here.
+ *     The tab also lists open visitor requests to add another PDL (Phase
+ *     5B), which staff match to the actual PDL; its count includes both.
  */
 class ReviewQueue
 {
@@ -35,11 +42,25 @@ class ReviewQueue
         });
     }
 
+    public static function pdlLinksQuery(): Builder
+    {
+        return VisitorPdlRelationship::where('verification_status', 'pending')
+            ->whereHas('visitor', fn (Builder $q) => $q->where('verification_status', 'verified'));
+    }
+
+    /** Open visitor requests to add another PDL, waiting to be matched or rejected. */
+    public static function pdlRequestsQuery(): Builder
+    {
+        return PdlLinkRequest::query()->open();
+    }
+
     public static function counts(): array
     {
         return [
             'accounts' => self::accountsQuery()->count(),
             'visits' => self::visitsQuery()->count(),
+            // The PDL Links tab: pending links plus open visitor requests.
+            'pdl_links' => self::pdlLinksQuery()->count() + self::pdlRequestsQuery()->count(),
         ];
     }
 

@@ -506,13 +506,21 @@ Route::middleware([
         [\App\Http\Controllers\ActivityLogController::class, 'index']
     )->name('activity-log.index');
 
-    // Review Queue: one sidebar entry for both review steps. Opens Step 1
-    // (accounts) when accounts are waiting, otherwise Step 2 (visit requests).
+    // Review Queue: one sidebar entry for every review list. Opens Step 1
+    // (accounts) when accounts are waiting, else Step 2 (visit requests),
+    // else PDL Links when only those are waiting.
     Route::get('/review-queue', function () {
         $accountsWaiting = \App\Services\ReviewQueue::accountsQuery()->exists();
         $visitsWaiting = \App\Services\ReviewQueue::visitsQuery()->exists();
+        $pdlLinksWaiting = ! $accountsWaiting && ! $visitsWaiting
+            && (\App\Services\ReviewQueue::pdlLinksQuery()->exists() || \App\Services\ReviewQueue::pdlRequestsQuery()->exists());
 
-        return redirect()->route(! $accountsWaiting && $visitsWaiting ? 'eligibility.index' : 'account-reviews.index');
+        return redirect()->route(match (true) {
+            $accountsWaiting => 'account-reviews.index',
+            $visitsWaiting => 'eligibility.index',
+            $pdlLinksWaiting => 'pdl-links.index',
+            default => 'account-reviews.index',
+        });
     })->name('review-queue');
 
     // One-step decisions on a visit request in Review Queue → Visit Requests.
@@ -526,6 +534,24 @@ Route::middleware([
         '/account-reviews',
         [\App\Http\Controllers\AccountReviewController::class, 'index']
     )->name('account-reviews.index');
+
+    // Pending PDL relationships of approved visitors (an additional PDL).
+    // List only: each row opens the visitor page, where the relationship is
+    // reviewed and approved as before.
+    Route::get(
+        '/review-queue/pdl-links',
+        [\App\Http\Controllers\PdlLinkReviewController::class, 'index']
+    )->name('pdl-links.index');
+
+    // Phase 5B, Stage 3: a visitor's request to add another PDL — view its
+    // documents, match it to the actual PDL (creates, reuses or reopens a
+    // pending relationship), or reject it.
+    Route::get('/review-queue/pdl-requests/{pdlLinkRequest}', [\App\Http\Controllers\PdlLinkReviewController::class, 'show'])
+        ->whereNumber('pdlLinkRequest')->name('pdl-requests.show');
+    Route::post('/review-queue/pdl-requests/{pdlLinkRequest}/link', [\App\Http\Controllers\PdlLinkReviewController::class, 'link'])
+        ->whereNumber('pdlLinkRequest')->name('pdl-requests.link');
+    Route::post('/review-queue/pdl-requests/{pdlLinkRequest}/reject', [\App\Http\Controllers\PdlLinkReviewController::class, 'reject'])
+        ->whereNumber('pdlLinkRequest')->name('pdl-requests.reject');
 
     Route::get(
         '/visitors/{visitor}/ids/{idDocument}/file',

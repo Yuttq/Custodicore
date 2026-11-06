@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   addDaysIso,
   buildMonthGrid,
+  combineAvailableDays,
   dayOfWeekIso,
   formatDateLong,
   formatSlotRange,
@@ -15,6 +16,7 @@ import {
   normalizeAvailabilityResponse,
   parseIsoDate,
   periodLabel,
+  relationshipsAvailableOn,
   shiftMonth,
   slotReasonLabel,
   toVisitRequestParams,
@@ -204,4 +206,54 @@ test('whole-day request params send every session start as one visit', () => {
     endTime: '16:30',
     startTimes: ['09:00', '13:00'],
   });
+});
+
+// Date-first Home calendar: availability combined across PDLs.
+function relationshipWith(relationshipId, pdlName, availableByDate) {
+  return normalizeAvailabilityResponse({
+    relationships: [
+      {
+        relationshipId,
+        pdlName,
+        days: Object.entries(availableByDate).map(([date, available]) => ({
+          date,
+          slots: [{ startTime: '09:00', endTime: '11:00', available, reason: available ? null : 'full' }],
+        })),
+      },
+    ],
+  }).relationships[0];
+}
+
+test('combined calendar: a date is available when any PDL has an available session', () => {
+  const ana = relationshipWith('1', 'Ana', { '2026-11-10': true, '2026-11-11': false, '2026-11-12': false });
+  const ben = relationshipWith('2', 'Ben', { '2026-11-11': true, '2026-11-12': false, '2026-11-13': true });
+
+  assert.deepEqual(combineAvailableDays([ana, ben]), {
+    '2026-11-10': { available: true },
+    '2026-11-11': { available: true }, // Ana closed, Ben open
+    '2026-11-12': { available: false }, // closed for both
+    '2026-11-13': { available: true }, // only Ben lists it
+  });
+  // One PDL: the same days as that PDL's own calendar.
+  assert.deepEqual(combineAvailableDays([ana]), {
+    '2026-11-10': { available: true },
+    '2026-11-11': { available: false },
+    '2026-11-12': { available: false },
+  });
+  // No verified PDL / bad input: nothing is available.
+  assert.deepEqual(combineAvailableDays([]), {});
+  assert.deepEqual(combineAvailableDays(null), {});
+});
+
+test('PDLs available on a date: only those with an available session, in order', () => {
+  const ana = relationshipWith('1', 'Ana', { '2026-11-10': true, '2026-11-11': true });
+  const ben = relationshipWith('2', 'Ben', { '2026-11-10': false, '2026-11-11': true });
+  const cy = relationshipWith('3', 'Cy', { '2026-11-11': true });
+
+  assert.deepEqual(relationshipsAvailableOn([ana, ben, cy], '2026-11-11').map((r) => r.pdlName), ['Ana', 'Ben', 'Cy']);
+  // Ben is closed and Cy has no day: only Ana, so Home skips the PDL choice.
+  assert.deepEqual(relationshipsAvailableOn([ana, ben, cy], '2026-11-10').map((r) => r.relationshipId), ['1']);
+  assert.deepEqual(relationshipsAvailableOn([ana, ben, cy], '2026-11-12'), []);
+  assert.deepEqual(relationshipsAvailableOn([ana], 'not-a-date'), []);
+  assert.deepEqual(relationshipsAvailableOn(null, '2026-11-10'), []);
 });

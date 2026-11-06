@@ -10,6 +10,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { colors as dsColors } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
 import { MainTabBarIcon } from './mainTabBarIcons';
+import AddPdlRequestScreen from '../screens/AddPdlRequestScreen';
 import CheckEmailScreen from '../screens/CheckEmailScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
@@ -210,6 +211,8 @@ function AuthenticatedStack() {
         name="VerificationDocumentDetail"
         component={VerificationDocumentDetailScreen}
       />
+      {/* Phase 5B: approved visitors only (the backend checks again). */}
+      <AppStack.Screen name="AddPdlRequest" component={AddPdlRequestScreen} />
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
       <AppStack.Screen name="VisitHistoryDetail" component={VisitHistoryDetailScreen} />
       <AppStack.Screen name="PersonalInformation" component={PersonalInformationScreen} />

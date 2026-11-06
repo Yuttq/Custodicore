@@ -519,7 +519,7 @@ a.visit-stale{color:var(--amber-text);font-weight:600;}
 .filters:has(#visits){grid-template-columns:1.6fr 1fr 1fr 1.2fr 1fr auto auto;}
 
 /* ===================== REVIEW QUEUE (Accounts + Visit Requests) ===================== */
-.queue-tabs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.queue-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
 .queue-tab{position:relative;display:flex;flex-direction:column;gap:2px;padding:14px 56px 14px 18px;background:#fff;border:1px solid var(--border);border-radius:14px;text-decoration:none;color:var(--text);transition:border-color .15s,box-shadow .15s;}
 .queue-tab:hover{border-color:var(--teal);}
 .queue-tab.is-active{border-color:var(--teal);box-shadow:0 0 0 2px rgba(13,165,138,.25);background:var(--teal-bg);}

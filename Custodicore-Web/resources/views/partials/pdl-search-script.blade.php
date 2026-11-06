@@ -2,6 +2,8 @@
   Script for PDL search boxes: a [data-pdl-search] box with data-url (JSON
   search endpoint), a hidden [data-pdl-id], a text input, a [role=listbox]
   and a [data-pdl-hint]. Works for any number of boxes on a page.
+  Optional data-include-related="1": also list PDLs the visitor is already
+  related to, labelled with that relationship's status.
 --}}
 @once
 <script>
@@ -13,6 +15,8 @@
     var list = box.querySelector('[role="listbox"]');
     var hint = box.querySelector('[data-pdl-hint]');
     var statusLabels = { active: 'Active', released: 'Released', transferred: 'Transferred', deceased: 'Deceased' };
+    // Only sent with include_related (PDL request matching).
+    var linkLabels = { pending: 'Pending link (will be reused)', rejected: 'Rejected link (will be reopened)', verified: 'Already approved link' };
     var items = [], active = -1, timer = null, lastQuery = null, request = 0;
 
     function requireChoice() {
@@ -47,7 +51,7 @@
       if (!results.length) {
         var none = document.createElement('li');
         none.className = 'pdl-search-empty';
-        none.textContent = 'No PDL found for "' + q + '". PDLs already linked to this visitor are not shown.';
+        none.textContent = 'No PDL found for "' + q + '".' + (box.dataset.includeRelated ? '' : ' PDLs already linked to this visitor are not shown.');
         list.appendChild(none);
       }
       results.forEach(function (pdl, i) {
@@ -73,7 +77,8 @@
         name.textContent = pdl.name + (pdl.alias ? ' "' + pdl.alias + '"' : '');
         var meta = document.createElement('div');
         meta.className = 'muted-cell';
-        meta.textContent = pdl.number + ' · ID ' + pdl.id;
+        meta.textContent = pdl.number + ' · ID ' + pdl.id
+          + (pdl.relationshipStatus ? ' · ' + (linkLabels[pdl.relationshipStatus] || pdl.relationshipStatus) : '');
         text.appendChild(name);
         text.appendChild(meta);
 
@@ -99,7 +104,8 @@
       lastQuery = q;
       if (!q) { close(); return; }
       var mine = ++request;
-      fetch(box.dataset.url + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+      var url = box.dataset.url + '?q=' + encodeURIComponent(q) + (box.dataset.includeRelated ? '&include_related=1' : '');
+      fetch(url, { headers: { Accept: 'application/json' } })
         .then(function (r) { return r.ok ? r.json() : { results: [] }; })
         .then(function (data) { if (mine === request) render(data.results || [], q); })
         .catch(function () { if (mine === request) render([], q); });
