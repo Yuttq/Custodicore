@@ -66,7 +66,8 @@ class PdlPopulationAndReturnTest extends TestCase
     {
         $this->visitor->update(['verification_status' => 'pending']);
 
-        $this->get("/visitors/{$this->visitor->visitor_id}")->assertSee('>Return<', false)->assertDontSee('Reject Visitor');
+        // The Return button was removed from the page; the backend route below is kept.
+        $this->get("/visitors/{$this->visitor->visitor_id}")->assertDontSee('>Return<', false)->assertDontSee('Reject Visitor');
 
         $this->post("/visitors/{$this->visitor->visitor_id}/reject", ['rejection_reason' => 'Upload a clearer ID photo.'])
             ->assertSessionHas('success', 'Account returned. The visitor has been notified of what to fix.');

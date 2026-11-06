@@ -343,23 +343,6 @@
         @endif
       </form>
     @endif
-    @if ($visitor->verification_status !== 'rejected')
-      <details>
-        <summary class="row-action" style="cursor:pointer;color:var(--red);">Return</summary>
-        <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" style="margin-top:12px;"
-              data-confirm="Return {{ $visitor->full_name }}'s account for correction? They will be notified of what to fix and can resubmit."
-              data-confirm-title="Return account" data-confirm-ok="Return" data-confirm-danger>
-          @csrf
-          <div class="row">
-            <div class="field-m">
-              <label>What to fix (shown to the visitor)</label>
-              <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The uploaded ID photo is unreadable. Please upload a clearer copy."></textarea>
-            </div>
-          </div>
-          <button class="btn btn-outline-neutral" type="submit" style="color:var(--red);">Confirm Return</button>
-        </form>
-      </details>
-    @endif
   </div>
 </div>
 

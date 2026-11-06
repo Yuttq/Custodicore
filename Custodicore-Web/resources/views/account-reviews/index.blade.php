@@ -325,17 +325,6 @@
             @endif
           </div>
           <div class="elig-buttons">
-            <details class="acct-reject">
-              <summary class="btn btn-outline-neutral elig-reject">Return</summary>
-              <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" class="acct-reject-form"
-                    data-confirm="Return {{ $visitor->full_name }}'s account for correction? They will be notified of what to fix and can resubmit."
-                    data-confirm-title="Return account" data-confirm-ok="Return" data-confirm-danger>
-                @csrf
-                <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="What to fix (shown to the visitor)"
-                          placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
-                <button type="submit" class="btn btn-outline-neutral elig-reject">Confirm return</button>
-              </form>
-            </details>
             <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}" id="{{ $approveForm }}"
                   data-confirm="{{ $visitor->isWalkIn() && ! $linked
                     ? "Approve {$visitor->full_name}? This approves their government ID and account. The PDL is then linked from the Front Desk details."
@@ -452,7 +441,7 @@
             else { add('todo', 'Choose whether they have children together'); missing.push('Children together'); }
           }
           if (info.blocked) { add('bad', 'Old relationship type: choose the specific relationship'); missing.push('a specific relationship type'); }
-          data.preview.blockers.forEach(function (label) { add('bad', label + ': cannot be approved; return the account'); missing.push(label); });
+          data.preview.blockers.forEach(function (label) { add('bad', label + ': cannot be approved'); missing.push(label); });
           var notUploaded = 0;
           docs.forEach(function (doc) {
             if (data.preview.uploaded[doc[0]]) add('ok', 'Approve ' + doc[1]);
