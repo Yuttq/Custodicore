@@ -116,7 +116,7 @@ export function getDocumentDetailActionLabel(uploadStatus) {
     case 'replace':
       return 'Replace Document';
     case 'upload_new':
-      return 'Upload New Document';
+      return 'Replace Document';
     case 'upload':
       return 'Upload Document';
     default:

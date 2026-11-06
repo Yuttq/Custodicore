@@ -1,7 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
@@ -13,31 +23,78 @@ import {
   typography,
 } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
+import useVisitorVerification from '../hooks/useVisitorVerification';
+import { getInfoNotice } from '../utils/registrationRequirements';
 import {
-  RELATIONSHIP_DOCUMENTS_SUBMITTED_NOTICE,
-  getInfoNotice,
-} from '../utils/registrationRequirements';
+  getCheckStatusNotice,
+  getVerificationReviewState,
+} from '../utils/verificationReviewStatus';
 
 /**
- * Registration summaries saved by older app versions listed these even though
- * registration never uploaded them, and had no `kind` on Guardian Information.
- * Current summaries mark every uploaded document `submitted: true`, so a
- * Marriage Certificate sent with the registration is still listed.
+ * Registration summaries saved by older app versions had no `kind` on
+ * Guardian Information.
  */
-const LEGACY_NOT_SUBMITTED_LABELS = new Set([
-  'Marriage Certificate',
-  'Birth Certificate',
-  'CENOMAR',
-]);
 const LEGACY_INFO_LABELS = new Set(['Guardian Information']);
 
 /**
  * Typed details (Guardian Information), not uploaded documents. Sent with the
  * registration when `submitted`; older summaries kept them on the device only.
+ * Shown here because no other screen shows them. Uploaded documents are not
+ * listed: Verification Documents shows each one with its review status.
  * @param {{ label: string; kind?: string }} item
  */
 function isLocalInfo(item) {
   return item.kind === 'info' || LEGACY_INFO_LABELS.has(item.label);
+}
+
+/** Icon and colors per status tone. */
+const TONES = {
+  success: { icon: 'checkmark-circle-outline', color: colors.success, bg: 'rgba(22, 163, 74, 0.12)' },
+  danger: { icon: 'arrow-undo-outline', color: colors.danger, bg: 'rgba(239, 68, 68, 0.10)' },
+  warning: { icon: 'alert-circle-outline', color: colors.warningText, bg: 'rgba(245, 158, 11, 0.14)' },
+  info: { icon: 'time-outline', color: colors.primaryTeal, bg: 'rgba(13, 165, 138, 0.12)' },
+};
+
+/**
+ * Compact navigation row (same pattern as Profile's account menu).
+ * @param {object} props
+ * @param {string} props.icon
+ * @param {string} props.label
+ * @param {boolean} [props.destructive]
+ * @param {boolean} [props.isLast]
+ * @param {string} props.accessibilityLabel
+ * @param {() => void} props.onPress
+ */
+function NavRow({ icon, label, destructive, isLast, accessibilityLabel, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.navRow,
+        !isLast && styles.navRowBorder,
+        pressed && styles.navRowPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <View style={[styles.navIconWrap, destructive && styles.navIconWrapDanger]}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={destructive ? colors.danger : colors.primaryTeal}
+        />
+      </View>
+      <Text
+        style={[styles.navLabel, destructive && styles.navLabelDanger]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      {!destructive ? (
+        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+      ) : null}
+    </Pressable>
+  );
 }
 
 /**
@@ -45,18 +102,34 @@ function isLocalInfo(item) {
  * information/documents staff have not approved (verificationStatus
  * `pending` or `rejected`). AppNavigator shows only this stack until
  * /me reports `verified`; the API refuses visit features meanwhile too.
+ *
+ * The account status (GET /api/me) and each document's own status
+ * (GET /api/documents) are shown separately: see verificationReviewStatus.
  */
 export default function VerificationReviewScreen({ navigation }) {
   const { user, registrationSummary, refreshUser, logout } = useAuth();
+  // Reloads GET /api/documents whenever this screen regains focus.
+  const {
+    verification,
+    loading: documentsLoading,
+    error: documentsError,
+    reload: reloadDocuments,
+  } = useVisitorVerification();
   const [checking, setChecking] = useState(false);
   // Web only: react-native-web's Alert.alert is a no-op, so Check Status results are shown inline.
   const [webNotice, setWebNotice] = useState(null);
-  const isRejected = user?.verificationStatus === 'rejected';
-  const summaryItems = (registrationSummary?.documents ?? []).filter(
-    (item) => item.submitted === true || !LEGACY_NOT_SUBMITTED_LABELS.has(item.label),
+  const localInfo = (registrationSummary?.documents ?? []).filter(isLocalInfo);
+
+  const reviewState = useMemo(
+    () =>
+      getVerificationReviewState({
+        accountStatus: user?.verificationStatus,
+        accountReason: user?.rejectionReason,
+        documents: verification?.documents ?? null,
+      }),
+    [user?.verificationStatus, user?.rejectionReason, verification],
   );
-  const documents = summaryItems.filter((item) => !isLocalInfo(item));
-  const localInfo = summaryItems.filter(isLocalInfo);
+  const tone = TONES[reviewState.tone] ?? TONES.info;
 
   // Pick up a decision made while the app was in the background.
   useFocusEffect(
@@ -64,6 +137,22 @@ export default function VerificationReviewScreen({ navigation }) {
       refreshUser().catch(() => {});
     }, [refreshUser]),
   );
+
+  // Focus does not fire when the app returns from the background, so staff
+  // decisions made meanwhile are picked up here.
+  const refreshRef = useRef(() => {});
+  refreshRef.current = () => {
+    refreshUser().catch(() => {});
+    reloadDocuments();
+  };
+  useEffect(() => {
+    let previous = AppState.currentState;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (/inactive|background/.test(String(previous)) && next === 'active') refreshRef.current();
+      previous = next;
+    });
+    return () => sub.remove();
+  }, []);
 
   const onCheckStatus = useCallback(async () => {
     if (checking) return;
@@ -77,15 +166,18 @@ export default function VerificationReviewScreen({ navigation }) {
       }
     };
     try {
-      const fresh = await refreshUser();
-      // `verified` switches the navigator to the full app on its own.
-      if (fresh?.verificationStatus === 'pending') {
-        notify(
-          'Still under review',
-          'Our staff is still reviewing your documents and information. You will be notified once your account has been approved.',
-          false,
-        );
-      }
+      // Both sources, freshly loaded, so the result never reports "under
+      // review" while a document is actually rejected. `verified` also
+      // switches the navigator to the full app on its own.
+      const [fresh, freshDocuments] = await Promise.all([refreshUser(), reloadDocuments()]);
+      const { title, message } = getCheckStatusNotice(
+        getVerificationReviewState({
+          accountStatus: fresh?.verificationStatus,
+          accountReason: fresh?.rejectionReason,
+          documents: freshDocuments?.documents ?? null,
+        }),
+      );
+      notify(title, message, false);
     } catch (e) {
       notify(
         'Could not check status',
@@ -97,130 +189,91 @@ export default function VerificationReviewScreen({ navigation }) {
     } finally {
       setChecking(false);
     }
-  }, [checking, refreshUser]);
+  }, [checking, refreshUser, reloadDocuments]);
+
+  const openDocuments = useCallback(
+    () => navigation.navigate('VisitorVerificationDocuments'),
+    [navigation],
+  );
 
   const onLogout = useCallback(() => {
     logout().catch(() => {});
   }, [logout]);
 
+  const attention = reviewState.documentsNeedingAttention;
+  const isReturned = reviewState.kind === 'returned';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.illustrationWrap}>
-          <View style={styles.illustrationCircle}>
-            <Ionicons
-              name={isRejected ? 'document-text-outline' : 'clipboard-outline'}
-              size={56}
-              color={isRejected ? colors.danger : colors.primaryTeal}
-            />
-            <View
-              style={[
-                styles.illustrationBadge,
-                isRejected ? styles.illustrationBadgeRejected : null,
-              ]}
-            >
-              <Ionicons
-                name={isRejected ? 'close' : 'time-outline'}
-                size={16}
-                color={colors.white}
-              />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Text style={styles.pageTitle} accessibilityRole="header">
+          Account Verification
+        </Text>
+
+        {/* Status first: what state the account is in and what happens next. */}
+        <Card style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <View style={[styles.statusIcon, { backgroundColor: tone.bg }]}>
+              <Ionicons name={tone.icon} size={22} color={tone.color} />
+            </View>
+            <View style={styles.statusText}>
+              <Text style={styles.statusTitle} accessibilityRole="header">
+                {reviewState.title}
+              </Text>
+              <StatusChip status={reviewState.chip.status} label={reviewState.chip.label} />
             </View>
           </View>
-        </View>
 
-        <Card style={styles.reviewCard}>
-          {isRejected ? (
-            <>
-              <Text style={styles.reviewLead}>
-                Your information and documents were not approved.
-              </Text>
-              <Text style={styles.reviewBody}>
-                Our staff reviewed the information and documents you submitted and could not
-                approve your account. Visitor services are not available for this account.
-              </Text>
-              {user?.rejectionReason ? (
-                <View style={styles.reasonBox}>
-                  <Text style={styles.reasonLabel}>Reason</Text>
-                  <Text style={styles.reasonText}>{user.rejectionReason}</Text>
-                </View>
-              ) : null}
-              <Text style={styles.reviewBody}>
-                Please check your verification documents or contact facility staff for help.
-              </Text>
-              <View style={styles.chipWrap}>
-                <StatusChip status="verification_rejected" />
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.reviewLead}>
-                Your documents and information are under review.
-              </Text>
-              <Text style={styles.reviewBody}>
-                Your email has been verified successfully. Our staff is currently reviewing the
-                information and documents you submitted.
-              </Text>
-              <Text style={styles.reviewBody}>
-                You will receive a notification once your account has been approved.
-              </Text>
-              <View style={styles.chipWrap}>
-                <StatusChip status="pending_verification" />
-              </View>
-            </>
-          )}
-        </Card>
+          <Text style={styles.statusBody}>{reviewState.message}</Text>
 
-        {documents.length > 0 ? (
-          <>
-            <Text style={styles.sectionHeading}>Documents Submitted With Registration</Text>
-            <Card style={styles.documentsCard}>
-              {documents.map((item) => (
-                <View key={item.label} style={styles.docRow}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                  <View style={styles.docText}>
-                    <Text style={styles.docLabel}>{item.label}</Text>
-                    {item.detail ? (
-                      <Text style={styles.docDetail}>{item.detail}</Text>
-                    ) : null}
+          {/* Account-level reason: only for a returned account. */}
+          {isReturned ? (
+            reviewState.accountReason ? (
+              <View style={styles.reasonBox}>
+                <Text style={styles.reasonLabel}>Reason from staff</Text>
+                <Text style={styles.reasonText}>{reviewState.accountReason}</Text>
+              </View>
+            ) : (
+              <Text style={styles.mutedLine}>
+                No reason was given. Contact facility staff for details.
+              </Text>
+            )
+          ) : null}
+
+          {/* Each document staff rejected, with its own reason. */}
+          {attention.length > 0 ? (
+            <View style={styles.attentionWrap}>
+              <Text style={styles.attentionHeading}>Needs correction</Text>
+              {attention.map((doc) => (
+                <View key={doc.key} style={styles.attentionRow}>
+                  <Ionicons name="alert-circle" size={16} color={colors.danger} style={styles.attentionIcon} />
+                  <View style={styles.attentionText}>
+                    <Text style={styles.attentionLabel}>
+                      {doc.label}
+                      {doc.detail ? <Text style={styles.attentionDetail}> · {doc.detail}</Text> : null}
+                    </Text>
+                    <Text style={styles.attentionReason}>
+                      {doc.reason ?? 'No reason was given. Open Verification Documents for details.'}
+                    </Text>
                   </View>
                 </View>
               ))}
-            </Card>
-          </>
-        ) : null}
+            </View>
+          ) : null}
 
-        {localInfo.length > 0 ? (
-          <>
-            <Text style={styles.sectionHeading}>Information Provided</Text>
-            <Card style={styles.documentsCard}>
-              {localInfo.map((item) => (
-                <View key={item.label} style={styles.docRow}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                  <View style={styles.docText}>
-                    <Text style={styles.docLabel}>{item.label}</Text>
-                    {item.detail ? (
-                      <Text style={styles.docDetail}>{item.detail}</Text>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
-              <Text style={styles.docDetail}>{getInfoNotice(localInfo)}</Text>
-            </Card>
-          </>
-        ) : null}
+          {/* Document details are still unknown: say so instead of guessing. */}
+          {!verification && documentsLoading ? (
+            <View style={styles.inlineStatus}>
+              <ActivityIndicator size="small" color={colors.primaryTeal} />
+              <Text style={styles.mutedLineInline}>Checking your documents…</Text>
+            </View>
+          ) : null}
+          {!verification && !documentsLoading && documentsError ? (
+            <Text style={styles.mutedLine}>
+              Document details could not be loaded. Tap Check Status to try again.
+            </Text>
+          ) : null}
 
-        <Card style={styles.documentsCard}>
-          <Text style={styles.docDetail}>{RELATIONSHIP_DOCUMENTS_SUBMITTED_NOTICE}</Text>
-        </Card>
-
-        <View style={styles.buttonWrap}>
           {webNotice ? (
             <Text
               style={[styles.webNotice, webNotice.isError ? styles.webNoticeError : null]}
@@ -230,43 +283,84 @@ export default function VerificationReviewScreen({ navigation }) {
               {webNotice.message}
             </Text>
           ) : null}
-          <Button
-            title="Check Status"
-            onPress={onCheckStatus}
-            loading={checking}
-            disabled={checking}
-            accessibilityLabel="Check review status"
+
+          <View style={styles.actions}>
+            {reviewState.showDocumentsAction ? (
+              <>
+                <Button
+                  title="Open Verification Documents"
+                  onPress={openDocuments}
+                  accessibilityLabel="Open Verification Documents to correct your registration"
+                />
+                <View style={styles.actionGap} />
+                <Button
+                  variant="secondary"
+                  title="Check Status"
+                  onPress={onCheckStatus}
+                  loading={checking}
+                  disabled={checking}
+                  accessibilityLabel="Check review status"
+                />
+              </>
+            ) : (
+              <Button
+                title="Check Status"
+                onPress={onCheckStatus}
+                loading={checking}
+                disabled={checking}
+                accessibilityLabel="Check review status"
+              />
+            )}
+          </View>
+        </Card>
+
+        {localInfo.length > 0 ? (
+          <>
+            <Text style={styles.sectionLabel}>Information Provided</Text>
+            <Card style={styles.infoCard}>
+              {localInfo.map((item) => (
+                <View key={item.label} style={styles.infoRow}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                  <View style={styles.infoText}>
+                    <Text style={styles.infoLabel}>{item.label}</Text>
+                    {item.detail ? (
+                      <Text style={styles.infoDetail}>{item.detail}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+              <Text style={styles.infoDetail}>{getInfoNotice(localInfo)}</Text>
+            </Card>
+          </>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>Account</Text>
+        <Card style={styles.navCard}>
+          <NavRow
+            icon="document-text-outline"
+            label="Verification Documents"
+            accessibilityLabel="View verification documents"
+            onPress={openDocuments}
           />
-          <View style={styles.secondaryWrap}>
-            {/* A returned account corrects its documents and retakes its photo there. */}
-            <Button
-              variant="secondary"
-              title={isRejected ? 'Correct Documents or Photo' : 'Verification Documents'}
-              onPress={() => navigation.navigate('VisitorVerificationDocuments')}
-              accessibilityLabel={
-                isRejected
-                  ? 'Correct your documents or retake your photo'
-                  : 'View verification documents'
-              }
-            />
-          </View>
-          <View style={styles.secondaryWrap}>
-            <Button
-              variant="secondary"
-              title="Personal Information"
-              onPress={() => navigation.navigate('PersonalInformation')}
-              accessibilityLabel="View personal information"
-            />
-          </View>
-          <View style={styles.secondaryWrap}>
-            <Button
-              variant="secondary"
-              title="Log Out"
-              onPress={onLogout}
-              accessibilityLabel="Log out"
-            />
-          </View>
-        </View>
+          <NavRow
+            icon="person-outline"
+            label="Personal Information"
+            accessibilityLabel="View personal information"
+            onPress={() => navigation.navigate('PersonalInformation')}
+          />
+          <NavRow
+            icon="log-out-outline"
+            label="Log Out"
+            destructive
+            isLast
+            accessibilityLabel="Log out"
+            onPress={onLogout}
+          />
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -277,109 +371,122 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  illustrationWrap: {
+  pageTitle: {
+    ...typography.screenHeader,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+
+  statusCard: {
+    marginBottom: spacing.md,
+  },
+  statusHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: layout.sectionGap,
+    gap: spacing.sm + spacing.xs,
   },
-  illustrationCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(13, 165, 138, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(13, 165, 138, 0.25)',
-  },
-  illustrationBadge: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.warning,
+  statusIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.white,
   },
-  illustrationBadgeRejected: {
-    backgroundColor: colors.danger,
+  statusText: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
   },
-  sectionHeading: {
+  statusTitle: {
     ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing.sm,
   },
-  documentsCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.sectionGap,
-  },
-  docRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  docText: { flex: 1 },
-  docLabel: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  docDetail: {
+  statusBody: {
     ...typography.metadata,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  reviewCard: {
-    borderRadius: layout.cardRadius,
-    marginBottom: layout.sectionGap,
-  },
-  reviewLead: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-    lineHeight: 24,
-  },
-  reviewBody: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    lineHeight: 22,
+    marginTop: spacing.sm,
   },
   reasonBox: {
-    borderRadius: layout.cardRadius,
+    borderRadius: layout.borderRadiusSm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
   },
   reasonLabel: {
-    ...typography.sectionLabel,
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  reasonText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+  },
+  mutedLine: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  inlineStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  mutedLineInline: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+  },
+
+  attentionWrap: {
+    marginTop: spacing.sm + spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  attentionHeading: {
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
     color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
-  reasonText: {
-    ...typography.body,
+  attentionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  attentionIcon: {
+    marginTop: 2,
+  },
+  attentionText: { flex: 1 },
+  attentionLabel: {
+    ...typography.metadata,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
-  chipWrap: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
+  attentionDetail: {
+    fontWeight: '400',
+    color: colors.textSecondary,
   },
-  buttonWrap: {
-    marginTop: 'auto',
+  attentionReason: {
+    ...typography.metadata,
+    color: colors.textSecondary,
   },
+
   webNotice: {
     ...typography.metadata,
     color: colors.textPrimary,
-    marginBottom: spacing.md,
+    marginTop: spacing.sm,
   },
   webNoticeError: {
     color: colors.danger,
@@ -387,7 +494,85 @@ const styles = StyleSheet.create({
   webNoticeTitle: {
     fontWeight: '600',
   },
-  secondaryWrap: {
-    marginTop: spacing.sm,
+  actions: {
+    marginTop: spacing.md,
+  },
+  actionGap: {
+    height: spacing.sm,
+  },
+
+  sectionLabel: {
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs + 2,
+    marginLeft: spacing.xs,
+  },
+
+  infoCard: {
+    paddingVertical: spacing.sm + spacing.xs,
+    marginBottom: spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  infoText: { flex: 1 },
+  infoLabel: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  infoDetail: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+  },
+
+  navCard: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    overflow: 'hidden',
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm + spacing.xs,
+    backgroundColor: colors.card,
+  },
+  navRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  navRowPressed: {
+    backgroundColor: colors.background,
+  },
+  navIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconWrapDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  navLabel: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  navLabelDanger: {
+    color: colors.danger,
   },
 });

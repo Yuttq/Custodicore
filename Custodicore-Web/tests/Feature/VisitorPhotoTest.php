@@ -54,7 +54,8 @@ class VisitorPhotoTest extends TestCase
         $this->getJson('/api/me')->assertJsonPath('hasPhoto', true)->assertJsonPath('photoUrl', url('/api/me/photo'));
         $this->get('/api/me/photo')->assertOk()->assertHeader('Content-Type', 'image/png');
 
-        // Retaking replaces the old file.
+        // Retaking (allowed once staff return the account) replaces the old file.
+        $this->visitor->update(['verification_status' => 'rejected']);
         $this->post('/api/me/photo', ['photo' => $this->fakePhoto('again.png')], ['Accept' => 'application/json'])->assertCreated();
         Storage::disk('local')->assertMissing($path);
     }

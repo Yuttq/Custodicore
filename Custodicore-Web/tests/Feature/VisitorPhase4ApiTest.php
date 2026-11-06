@@ -315,7 +315,9 @@ class VisitorPhase4ApiTest extends TestCase
         Storage::disk('local')->assertExists($doc->file_path);
         Storage::disk('public')->assertMissing($doc->file_path);
 
-        // Display labels are accepted and mapped to the stored key.
+        // Display labels are accepted and mapped to the stored key. (Before
+        // approval a new ID is accepted only once staff rejected the last one.)
+        $doc->update(['verification_status' => 'rejected', 'rejection_reason' => 'Blurry.']);
         $this->postJson('/api/documents', [
             'documentType' => "Driver's License",
             'file' => UploadedFile::fake()->create('license.pdf', 200, 'application/pdf'),
@@ -373,7 +375,9 @@ class VisitorPhase4ApiTest extends TestCase
     public function test_visitor_can_upload_supporting_document_to_own_relationship_only(): void
     {
         Storage::fake('local');
-        Sanctum::actingAs($this->otherAccount);
+        // The legacy endpoint is for approved accounts on old app builds.
+        $this->otherVisitor->update(['verification_status' => 'verified']);
+        Sanctum::actingAs($this->otherAccount->fresh());
 
         $this->postJson("/api/relationships/{$this->otherRelationship->relationship_id}/supporting-document", [
             'file' => UploadedFile::fake()->create('birth-cert.pdf', 300, 'application/pdf'),
@@ -415,10 +419,11 @@ class VisitorPhase4ApiTest extends TestCase
             'file' => UploadedFile::fake()->create('id.png', 100, 'image/png'),
         ])->assertCreated()->assertJsonPath('status', 'pending');
 
+        // Unapproved: the legacy endpoint refuses the upload outright.
         $this->postJson("/api/relationships/{$this->otherRelationship->relationship_id}/supporting-document", [
             'verification_status' => 'verified',
             'file' => UploadedFile::fake()->create('doc.pdf', 10, 'application/pdf'),
-        ])->assertCreated()->assertJsonPath('status', 'pending');
+        ])->assertStatus(409);
 
         $this->assertSame('pending', VisitorId::first()->verification_status);
         $this->assertSame('pending', $this->otherRelationship->fresh()->verification_status);

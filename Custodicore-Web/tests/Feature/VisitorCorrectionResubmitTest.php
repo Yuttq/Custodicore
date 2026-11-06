@@ -342,7 +342,7 @@ class VisitorCorrectionResubmitTest extends TestCase
         Storage::disk('local')->assertExists($visitor->photo_path);
     }
 
-    public function test_pending_visitor_retakes_the_photo(): void
+    public function test_pending_visitor_without_a_photo_adds_one_but_cannot_retake_it(): void
     {
         $visitor = $this->visitorWithStatus('pending');
         $this->signInAs($visitor);
@@ -350,7 +350,14 @@ class VisitorCorrectionResubmitTest extends TestCase
         $this->post('/api/me/photo', ['photo' => $this->fakePhoto()], ['Accept' => 'application/json'])->assertCreated();
 
         $this->assertSame('pending', $visitor->fresh()->verification_status);
-        $this->assertNotNull($visitor->fresh()->photo_path);
+        $path = $visitor->fresh()->photo_path;
+        $this->assertNotNull($path);
+
+        // Now under review with the registration: locked.
+        $this->post('/api/me/photo', ['photo' => $this->fakePhoto('again.png')], ['Accept' => 'application/json'])
+            ->assertStatus(409);
+        $this->getJson('/api/documents')->assertJsonPath('canReplacePhoto', false);
+        $this->assertSame($path, $visitor->fresh()->photo_path);
     }
 
     public function test_invalid_photo_keeps_a_returned_account_returned(): void

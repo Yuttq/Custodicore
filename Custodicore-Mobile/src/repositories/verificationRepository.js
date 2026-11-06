@@ -16,7 +16,11 @@ import {
 } from '../utils/relationshipRequirementDocuments';
 import { normalizePdlRequest, toPdlRequestFields } from '../utils/pdlLinkRequest';
 import { visibleRejectionReason } from '../utils/verificationStatusUi';
-import { GOVERNMENT_ID_KEY } from '../utils/visitorVerificationDocuments';
+import {
+  GOVERNMENT_ID_KEY,
+  UNDER_REVIEW_LOCKED_NOTE,
+  canUploadGovernmentIdEntry,
+} from '../utils/visitorVerificationDocuments';
 
 /**
  * Visitor verification data access (Phase 4): government IDs and supporting
@@ -167,8 +171,12 @@ export function normalizeVerification(data, relationshipKey) {
       verifiedAt: currentId?.verifiedAt ?? null,
       rejectionReason: visibleRejectionReason(currentId?.status, currentId?.rejectionReason),
       reviewNote: null,
-      canUpload: currentId?.status !== 'verified',
-      unavailableReason: null,
+      canUpload: canUploadGovernmentIdEntry(currentId?.status, o.canUploadGovernmentId),
+      unavailableReason:
+        currentId?.status === 'pending' &&
+        !canUploadGovernmentIdEntry(currentId?.status, o.canUploadGovernmentId)
+          ? UNDER_REVIEW_LOCKED_NOTE
+          : null,
       detail: getGovernmentIdTypeLabel(currentId?.documentType) ?? null,
       relationshipRecordId: null,
       requirementKey: null,

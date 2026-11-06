@@ -21,6 +21,7 @@ import { replaceRegistrationPhoto } from '../repositories/verificationRepository
 import { BASE_URL, getStoredToken } from '../services/api';
 import { summarizeMyPdls } from '../utils/myPdls';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
+import { getPhotoAction } from '../utils/visitorVerificationDocuments';
 
 /**
  * @param {object} props
@@ -53,6 +54,9 @@ function DocumentCompactRow({ document: doc, isLast, onPress }) {
             Reason: {doc.rejectionReason}
           </Text>
         ) : null}
+        {doc.uploadStatus === 'rejected' && doc.canUpload ? (
+          <Text style={styles.docRowAction}>Tap to replace</Text>
+        ) : null}
       </View>
       <Text style={[styles.docStatusLabel, { color: status.color }]}>{status.label}</Text>
     </Pressable>
@@ -60,7 +64,8 @@ function DocumentCompactRow({ document: doc, isLast, onPress }) {
 }
 
 /**
- * The visitor's own photo, retakeable until the account is approved (front
+ * The visitor's own photo, retakeable only while staff have returned the
+ * account for correction, or added when there is none yet (front
  * camera only, same component and checks as registration). Loaded from
  * GET /api/me/photo with the visitor's token.
  * @param {object} props
@@ -97,7 +102,7 @@ function RegistrationPhotoSection({ hasPhoto, photoUploadedAt, onSaved }) {
         await replaceRegistrationPhoto(photo);
         Alert.alert(
           'Photo saved',
-          'Your new photo was sent. Facility staff will review your account again.',
+          'Your new photo was sent. Facility staff will review your account again. It stays locked while it is being reviewed.',
         );
         onSaved();
       } catch (e) {
@@ -135,8 +140,9 @@ function RegistrationPhotoSection({ hasPhoto, photoUploadedAt, onSaved }) {
           </Text>
         )}
         <Text style={styles.requestText}>
-          Facility staff compare this photo with your government ID. Retake it if staff asked you
-          to, using the front camera.
+          {hasPhoto
+            ? 'Staff returned your account for correction. Retake your photo with the front camera if they asked for a new one.'
+            : 'Take a photo of yourself with the front camera. Staff compare it with your government ID.'}
         </Text>
         <Button
           title={hasPhoto ? 'Retake Photo' : 'Take Photo'}
@@ -273,7 +279,8 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                 onRequestAgain={requestAgain}
               />
             ) : null}
-            {verification.canReplacePhoto ? (
+            {/* Only while the backend allows it (returned account or no photo yet). */}
+            {getPhotoAction(verification) ? (
               <RegistrationPhotoSection
                 hasPhoto={verification.hasPhoto}
                 photoUploadedAt={verification.photoUploadedAt}
@@ -369,6 +376,11 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  docRowAction: {
+    ...typography.statusLabel,
+    color: colors.primaryTealDark,
+    marginTop: 2,
   },
   photoCard: {
     padding: spacing.md,

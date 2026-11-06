@@ -20,6 +20,7 @@ export default function useVisitorVerification() {
   const relationshipHint = user?.relationshipHint ?? null;
   const fallbackRelationship = registrationSummary?.relationship ?? null;
 
+  /** Returns the freshly loaded data, or null when loading failed. */
   const reload = useCallback(async () => {
     // Keep showing the last good data during focus refreshes.
     if (!loadedOnce.current) setLoading(true);
@@ -28,10 +29,12 @@ export default function useVisitorVerification() {
       const next = await fetchVerification({ relationshipHint, fallbackRelationship });
       setVerification(next);
       loadedOnce.current = true;
+      return next;
     } catch (e) {
       setError(
         e instanceof Error && e.message.trim() ? e.message : 'Could not load verification status.',
       );
+      return null;
     } finally {
       setLoading(false);
     }

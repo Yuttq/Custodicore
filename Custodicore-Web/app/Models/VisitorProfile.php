@@ -157,6 +157,43 @@ class VisitorProfile extends Model
     }
 
     /**
+     * Whether the visitor may take or retake their own photo from the app
+     * (POST /api/me/photo). The photo is reviewed with the registration, so
+     * it is locked while the account is pending or approved. A retake is
+     * allowed only once staff return the account for correction (stored as
+     * 'rejected'); saving it moves the account back to pending, which locks
+     * the photo again. An account with no photo at all may add one.
+     */
+    public function canChangePhoto(): bool
+    {
+        return ! $this->photo_path || $this->verification_status === 'rejected';
+    }
+
+    /**
+     * Whether the visitor may upload a government ID from the app
+     * (POST /api/documents). Before approval only an ID that needs
+     * correcting can be replaced: never while one is approved, and while
+     * one is waiting for review only if staff returned the account for
+     * correction. Approved accounts keep their existing rule.
+     */
+    public function canUploadGovernmentId(): bool
+    {
+        if ($this->isVerified()) {
+            return true;
+        }
+
+        $statuses = $this->idDocuments()->pluck('verification_status');
+        if ($statuses->contains('verified')) {
+            return false;
+        }
+        if ($statuses->contains('pending')) {
+            return $this->verification_status === 'rejected';
+        }
+
+        return true;
+    }
+
+    /**
      * A returned account (stored as 'rejected') goes back to Account Review
      * ('pending') once the visitor has saved a correction: changed profile
      * details, a new government ID, photo or document. Call it only after

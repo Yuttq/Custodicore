@@ -35,6 +35,12 @@ class VisitorPhotoController extends Controller
             ], 409);
         }
 
+        if (! $visitor->canChangePhoto()) {
+            return response()->json([
+                'message' => 'Your photo is being reviewed with your registration. You can retake it only if facility staff return your account for correction.',
+            ], 409);
+        }
+
         $request->validate(['photo' => ['required', ...VisitorProfile::PHOTO_RULES]], [
             'photo.required' => 'Please take a photo of yourself.',
             'photo.image' => 'The photo must be a JPG, PNG or WEBP picture.',

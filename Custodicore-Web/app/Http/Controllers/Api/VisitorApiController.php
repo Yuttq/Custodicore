@@ -402,6 +402,12 @@ class VisitorApiController extends Controller
     {
         $visitor = $this->currentVisitor($request);
 
+        if (! $visitor->canUploadGovernmentId()) {
+            return response()->json([
+                'message' => 'Your government ID is already approved or waiting for review. You can replace it only if facility staff reject it or return your account for correction.',
+            ], 409);
+        }
+
         // Accept the stored key (national_id) or its display label (National ID).
         $request->merge(['documentType' => VisitorId::resolveType($request->input('documentType', ''))]);
 
@@ -494,6 +500,8 @@ class VisitorApiController extends Controller
             'rejectionReason' => $visitor->verification_status === 'rejected' ? $visitor->rejection_reason : null,
             'relationshipHint' => $visitor->relationship_hint,
             'governmentIds' => $visitor->idDocuments->map(fn ($d) => $this->governmentIdPayload($d))->values(),
+            // Whether POST /documents accepts a new government ID right now.
+            'canUploadGovernmentId' => $visitor->canUploadGovernmentId(),
             'relationships' => $visitor->relationships->map(fn ($r) => $this->relationshipPayload($r))->values(),
             // Sent with the registration, waiting for staff to link the PDL.
             // Newest file per requirement only.
@@ -510,10 +518,11 @@ class VisitorApiController extends Controller
                     // (POST /registration-documents/{key}).
                     'canReplace' => $d->status === 'rejected' && $visitor->verification_status !== 'verified',
                 ])->values(),
-            // The visitor's own photo (GET /me/photo); it can be retaken until approval.
+            // The visitor's own photo (GET /me/photo); retakeable only while the
+            // account is returned for correction (VisitorProfile::canChangePhoto).
             'hasPhoto' => (bool) $visitor->photo_path,
             'photoUploadedAt' => $visitor->photo_uploaded_at?->toIso8601String(),
-            'canReplacePhoto' => $visitor->verification_status !== 'verified',
+            'canReplacePhoto' => $visitor->canChangePhoto(),
             // Phase 5B: the open request to add another PDL, else the latest
             // rejected / cancelled one from the last 30 days; null otherwise.
             'pdlRequest' => ($pdlRequest = app(\App\Services\PdlLinkRequestService::class)->currentForVisitor($visitor))
@@ -537,6 +546,15 @@ class VisitorApiController extends Controller
             return response()->json([
                 'message' => 'This relationship is already verified. Its supporting document cannot be replaced.',
                 'status' => 'verified',
+            ], 409);
+        }
+
+        // Kept for old app builds only. Before approval, documents go through
+        // the checklist (requirements/{key}) or registration-documents/{key},
+        // which only accept what the checklist asks for.
+        if (! $visitor->isVerified()) {
+            return response()->json([
+                'message' => 'Upload this document from Verification Documents in the latest version of the app.',
             ], 409);
         }
 
@@ -682,6 +700,11 @@ class VisitorApiController extends Controller
         if (! $item['canUpload']) {
             return response()->json(['message' => 'This document has already been verified.'], 409);
         }
+        if (! self::visitorCanUploadRequirement($item, $relationship, $visitor)) {
+            return response()->json([
+                'message' => 'This document is waiting for review. You can replace it only if facility staff reject it.',
+            ], 409);
+        }
 
         $request->validate([
             'file' => self::DOCUMENT_FILE_RULES,
@@ -725,6 +748,24 @@ class VisitorApiController extends Controller
         ];
     }
 
+    /**
+     * Whether the visitor may upload this checklist document of this one
+     * relationship (each PDL link has its own checklist). Never for a
+     * verified relationship or item. Before the account is approved only a
+     * missing document or one staff rejected; one waiting for review stays
+     * as it is. Approved accounts keep the checklist's own rule.
+     *
+     * @param  array<string, mixed>  $item  one RelationshipRequirements::for() entry
+     */
+    private static function visitorCanUploadRequirement(array $item, VisitorPdlRelationship $relationship, ?VisitorProfile $visitor): bool
+    {
+        if (! $item['canUpload'] || $relationship->verification_status === 'verified') {
+            return false;
+        }
+
+        return ($visitor?->isVerified() ?? false) || in_array($item['status'], ['missing', 'rejected'], true);
+    }
+
     private function relationshipPayload(VisitorPdlRelationship $r): array
     {
         return [
@@ -743,7 +784,7 @@ class VisitorApiController extends Controller
                 'label' => $item['label'],
                 'description' => $item['description'],
                 'status' => $item['status'],
-                'canUpload' => $item['canUpload'] && $r->verification_status !== 'verified',
+                'canUpload' => self::visitorCanUploadRequirement($item, $r, $r->visitor),
                 'rejectionReason' => $item['kind'] === 'document' && $item['status'] === 'rejected' ? $item['note'] : null,
                 'uploadedAt' => $item['document']?->uploaded_at?->toIso8601String(),
                 'reviewedAt' => $item['document']?->reviewed_at?->toIso8601String(),

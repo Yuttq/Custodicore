@@ -63,6 +63,9 @@ export function buildRelationshipRequirementDocuments(relationships) {
         .filter((item) => item && item.kind === 'document' && typeof item.key === 'string')
         .map((item) => {
           const uploadStatus = toRequirementUploadStatus(item.status);
+          // Backend `canUpload` is per relationship and requirement: before
+          // approval only missing or rejected documents (enforced by the API).
+          const canUpload = Boolean(item.canUpload) && !relationshipVerified;
           return {
             key: toRelationshipDocumentKey(r.id, item.key),
             label: String(item.label ?? item.key),
@@ -71,8 +74,11 @@ export function buildRelationshipRequirementDocuments(relationships) {
             verifiedAt: uploadStatus === 'verified' ? (item.reviewedAt ?? null) : null,
             rejectionReason: uploadStatus === 'rejected' ? (item.rejectionReason ?? null) : null,
             reviewNote: uploadStatus === 'pending' ? legacyNote : null,
-            canUpload: Boolean(item.canUpload) && !relationshipVerified,
-            unavailableReason: null,
+            canUpload,
+            unavailableReason:
+              !canUpload && uploadStatus === 'under_review'
+                ? 'Waiting for review. You can replace it only if facility staff reject it.'
+                : null,
             detail: r.pdlName ? `For ${r.pdlName}` : null,
             relationshipRecordId: String(r.id),
             requirementKey: item.key,

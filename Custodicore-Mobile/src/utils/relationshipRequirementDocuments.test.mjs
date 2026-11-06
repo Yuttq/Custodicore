@@ -189,3 +189,50 @@ test('My PDLs lists every relationship with its status, rejected ones included',
   ]);
   assert.deepEqual(buildPdlRelationshipList(undefined), []);
 });
+
+test('two PDLs: only the rejected document of the right relationship can be replaced', () => {
+  // Same requirement on two PDL links, as GET /api/documents sends it before
+  // approval: rejected on PDL A (canUpload), waiting for review on PDL B (not).
+  const marriage = (status, canUpload, rejectionReason = null) => ({
+    key: 'marriage_certificate', kind: 'document', label: 'Marriage Certificate',
+    status, canUpload, rejectionReason, uploadedAt: '2026-10-14T01:00:00+08:00', reviewedAt: null,
+  });
+  const docs = buildRelationshipRequirementDocuments([
+    relationship({ id: '1', pdlName: 'PDL A', requirements: [marriage('rejected', true, 'Seal unreadable')] }),
+    relationship({ id: '2', pdlName: 'PDL B', requirements: [marriage('pending_review', false)] }),
+    relationship({ id: '3', pdlName: 'PDL C', requirements: [marriage('met', false)] }),
+  ]);
+
+  const byPdl = Object.fromEntries(docs.map((d) => [d.detail, d]));
+  assert.equal(byPdl['For PDL A'].canUpload, true);
+  assert.equal(byPdl['For PDL A'].rejectionReason, 'Seal unreadable');
+  assert.equal(byPdl['For PDL A'].relationshipRecordId, '1');
+  assert.equal(byPdl['For PDL A'].unavailableReason, null);
+
+  assert.equal(byPdl['For PDL B'].canUpload, false);
+  assert.equal(byPdl['For PDL B'].uploadStatus, 'under_review');
+  assert.match(byPdl['For PDL B'].unavailableReason, /only if facility staff reject it/);
+
+  assert.equal(byPdl['For PDL C'].canUpload, false);
+  assert.equal(byPdl['For PDL C'].uploadStatus, 'verified');
+  assert.equal(byPdl['For PDL C'].unavailableReason, null);
+
+  // Distinct keys, so opening one never targets another PDL's document.
+  assert.equal(new Set(docs.map((d) => d.key)).size, 3);
+});
+
+test('pending registration documents and approved ones are never replaceable', () => {
+  const docs = buildRegistrationDocuments([
+    { key: 'marriage_certificate', label: 'Marriage Certificate', status: 'pending', canReplace: false },
+    { key: 'cenomar_pdl', label: "PDL's CENOMAR", status: 'verified', canReplace: false },
+    { key: 'cenomar_visitor', label: "Visitor's CENOMAR", status: 'rejected', canReplace: true, rejectionReason: 'Cut off' },
+  ]);
+  assert.deepEqual(
+    docs.map((d) => [d.requirementKey, d.uploadStatus, d.canUpload]),
+    [
+      ['marriage_certificate', 'under_review', false],
+      ['cenomar_pdl', 'verified', false],
+      ['cenomar_visitor', 'rejected', true],
+    ],
+  );
+});
