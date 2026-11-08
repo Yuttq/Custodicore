@@ -75,7 +75,7 @@ export default function LoginScreen({ navigation, route }) {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   const logoSize = useMemo(() => {
-    const width = Math.min(windowWidth * 0.44, 168);
+    const width = Math.min(windowWidth * 0.36, 140);
     return { width, height: width / LOGO_ASPECT };
   }, [windowWidth]);
 
@@ -368,20 +368,22 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: 'flex-start',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   brandingSection: {
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   logo: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   welcomeTitle: {
     ...typography.pageTitle,
+    fontSize: 26,
+    lineHeight: 32,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   welcomeSubtitle: {
     ...typography.body,
@@ -407,7 +409,7 @@ const styles = StyleSheet.create({
   },
   formCard: {
     borderRadius: layout.cardRadius,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   field: {
     marginBottom: spacing.md,
@@ -448,8 +450,7 @@ const styles = StyleSheet.create({
   },
   forgotWrap: {
     alignSelf: 'flex-end',
-    marginTop: spacing.sm,
-    minHeight: layout.iconButtonSize,
+    minHeight: 40,
     justifyContent: 'center',
     paddingLeft: spacing.sm,
   },
@@ -459,7 +460,7 @@ const styles = StyleSheet.create({
     color: colors.primaryNavy,
   },
   altAuthSection: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
   registerRow: {
     alignItems: 'center',

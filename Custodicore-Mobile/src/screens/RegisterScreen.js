@@ -1321,9 +1321,9 @@ export default function RegisterScreen({ navigation, route }) {
   );
 
   const renderReviewRow = (label, value) => (
-    <View style={styles.reviewRow} key={label}>
-      <Text style={styles.reviewLabel}>{label}</Text>
-      <Text style={styles.reviewValue}>{value || '—'}</Text>
+    <View style={styles.reviewRowInline} key={label}>
+      <Text style={styles.reviewLabelInline}>{label}</Text>
+      <Text style={styles.reviewValueInline}>{value || '—'}</Text>
     </View>
   );
 
@@ -1712,16 +1712,16 @@ export default function RegisterScreen({ navigation, route }) {
 }
 
 const stepperStyles = StyleSheet.create({
-  wrap: { marginBottom: spacing.md },
+  wrap: { marginBottom: spacing.sm + spacing.xs },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   circle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.white,
@@ -1753,7 +1753,7 @@ const stepperStyles = StyleSheet.create({
     ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
 });
 
@@ -1802,15 +1802,15 @@ const legalStyles = StyleSheet.create({
 });
 
 const fieldStyles = StyleSheet.create({
-  wrap: { marginBottom: spacing.sm },
+  wrap: { marginBottom: spacing.sm + spacing.xs },
   label: {
     ...typography.metadata,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   input: {
-    height: layout.buttonHeight,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.buttonRadius,
@@ -1820,12 +1820,12 @@ const fieldStyles = StyleSheet.create({
     ...typography.body,
   },
   inputMultiline: {
-    height: 88,
+    height: 72,
     paddingTop: spacing.sm,
     textAlignVertical: 'top',
   },
   passwordRow: {
-    height: layout.buttonHeight,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.buttonRadius,
@@ -1848,7 +1848,7 @@ const fieldStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   readOnlyRow: {
-    height: layout.buttonHeight,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.buttonRadius,
@@ -1911,21 +1911,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.xl,
   },
+  // 40dp circle; the Pressable's hitSlop={10} keeps the touch target ≥ 48dp.
   backButton: {
-    width: layout.iconButtonSize,
-    height: layout.iconButtonSize,
-    borderRadius: layout.iconButtonSize / 2,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   screenTitle: {
     ...typography.pageTitle,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 28,
     color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
@@ -1951,13 +1952,13 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     lineHeight: 22,
-    marginBottom: layout.pageTitleGap,
+    marginBottom: spacing.md,
   },
   card: {
     borderRadius: layout.cardRadius,
   },
-  cardSpaced: { marginTop: layout.cardGap },
-  cardStacked: { marginBottom: layout.cardGap },
+  cardSpaced: { marginTop: spacing.sm + spacing.xs },
+  cardStacked: { marginBottom: spacing.sm + spacing.xs },
   stepError: {
     ...typography.metadata,
     color: colors.danger,
@@ -1971,7 +1972,7 @@ const styles = StyleSheet.create({
     borderRadius: layout.buttonRadius,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
+    marginBottom: 6,
     backgroundColor: colors.white,
   },
   optionRowSelected: {
@@ -1997,6 +1998,7 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     ...typography.body,
+    lineHeight: 20,
     color: colors.textPrimary,
     flex: 1,
   },
@@ -2018,16 +2020,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
   docTitle: {
     ...typography.cardTitle,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.textPrimary,
     flex: 1,
   },
   uploadBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingVertical: 6,
     borderRadius: layout.borderRadiusSm,
     backgroundColor: colors.primaryTeal,
   },
@@ -2040,7 +2045,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: layout.iconButtonSize,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.buttonRadius,
@@ -2059,9 +2064,9 @@ const styles = StyleSheet.create({
   // Step 4: the saved photo in the camera's 3:4 portrait frame.
   photoStepPreview: {
     alignSelf: 'center',
-    width: 180,
+    width: 150,
     aspectRatio: 3 / 4,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     borderRadius: layout.borderRadiusSm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2073,7 +2078,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
   photoStepButton: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm + spacing.xs,
   },
   centeredHint: {
     textAlign: 'center',
@@ -2156,6 +2161,27 @@ const styles = StyleSheet.create({
   },
   reviewRow: {
     marginBottom: spacing.sm,
+  },
+  // Plain text summary rows: label left, value right, one line each.
+  reviewRowInline: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  reviewLabelInline: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    width: '40%',
+  },
+  reviewValueInline: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    flex: 1,
+    textAlign: 'right',
   },
   reviewLabel: {
     ...typography.metadata,
