@@ -530,13 +530,15 @@ const styles = StyleSheet.create({
   },
   visitCard: {
     borderRadius: layout.cardRadius,
-    marginBottom: layout.cardGap,
+    marginBottom: spacing.sm + spacing.xs,
   },
   cardPressable: {
-    gap: spacing.xs,
+    gap: 2,
   },
   dateText: {
     ...typography.cardTitle,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.primaryNavy,
   },
   pdlName: {

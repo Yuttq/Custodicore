@@ -215,6 +215,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
               maxDate={to}
               selectedDate={selectedDate}
               onSelectDate={selectDate}
+              compact
             />
           </Card>
 
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
   },
   visitCard: {
     borderRadius: layout.cardRadius,
-    marginBottom: layout.cardGap,
+    marginBottom: spacing.sm + spacing.xs,
   },
   visitDate: {
     ...typography.cardTitle,

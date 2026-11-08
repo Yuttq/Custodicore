@@ -25,7 +25,7 @@ export default function EmptyState({
     <View style={[styles.wrap, style]} accessibilityRole={accessibilityRole}>
       {iconName ? (
         <View style={styles.iconCircle}>
-          <Ionicons name={iconName} size={44} color={iconColor} />
+          <Ionicons name={iconName} size={34} color={iconColor} />
         </View>
       ) : (
         <Image
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
   img: {
@@ -55,9 +55,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   iconCircle: {
-    width: spacing.xl * 3,
-    height: spacing.xl * 3,
-    borderRadius: spacing.xl * 1.5,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
@@ -68,12 +68,12 @@ const styles = StyleSheet.create({
   title: {
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   message: {
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
     maxWidth: spacing.xl * 10,
   },
   messageError: {
