@@ -52,7 +52,7 @@ const FAQS = [
  */
 function FaqItem({ question, answer, expanded, onToggle }) {
   return (
-    <Card style={styles.card}>
+    <Card style={[styles.card, styles.faqCard]}>
       <View accessibilityRole="header">
         <Pressable
           onPress={onToggle}
@@ -140,7 +140,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   card: {
-    marginBottom: layout.cardGap,
+    marginBottom: spacing.sm + spacing.xs,
+  },
+  // FAQ cards: slimmer than the info cards; the row keeps a 44dp touch target.
+  faqCard: {
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
     ...typography.cardTitle,
@@ -164,11 +169,14 @@ const styles = StyleSheet.create({
   },
   question: {
     ...typography.cardTitle,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.textPrimary,
     flex: 1,
   },
   answer: {
     marginTop: spacing.xs,
+    marginBottom: spacing.sm,
   },
   body: {
     ...typography.body,

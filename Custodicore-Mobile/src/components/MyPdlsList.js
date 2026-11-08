@@ -215,11 +215,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   block: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   row: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
     backgroundColor: colors.card,
     minHeight: 42,
   },

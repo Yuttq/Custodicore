@@ -269,12 +269,14 @@ export default function PersonalInformationScreen({ navigation }) {
               <InfoField label="Phone" value={user.contactNumber || '—'} />
               <InfoField label="Address" value={user.address || '—'} />
               <InfoField label="Relationship to PDL" value={relationshipLabel} />
-              <Button
-                title="Edit Profile"
-                variant="secondary"
-                onPress={startEditing}
-                accessibilityLabel="Edit profile"
-              />
+              <View style={styles.editProfileWrap}>
+                <Button
+                  title="Edit Profile"
+                  variant="secondary"
+                  onPress={startEditing}
+                  accessibilityLabel="Edit profile"
+                />
+              </View>
             </>
           )}
         </Card>
@@ -300,19 +302,30 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xs,
     marginBottom: spacing.md,
   },
+  // Label left, value right, one line each (same as the registration review).
   infoField: {
-    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
   },
   infoFieldLabel: {
     ...typography.metadata,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    width: '38%',
   },
   infoFieldValue: {
-    ...typography.body,
+    ...typography.metadata,
     color: colors.textPrimary,
-    fontWeight: '500',
-    lineHeight: 22,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+  editProfileWrap: {
+    marginTop: spacing.sm,
   },
   inputSpacing: {
     marginBottom: spacing.sm,

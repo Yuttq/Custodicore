@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
     gap: spacing.sm,
     backgroundColor: colors.card,
     minHeight: 48,
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   rowContent: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xs,
+    gap: 2,
   },
   historyDate: {
     ...typography.cardTitle,

@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
     gap: spacing.sm,
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   title: {
     ...typography.body,

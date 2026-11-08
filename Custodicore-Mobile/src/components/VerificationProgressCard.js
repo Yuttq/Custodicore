@@ -45,13 +45,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.card,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: layout.cardGap,
+    paddingVertical: spacing.sm + spacing.xs,
+    marginBottom: spacing.sm + spacing.xs,
   },
   title: {
     ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   meta: {
     ...typography.metadata,
@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.border,
     overflow: 'hidden',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   progressFill: {
     height: '100%',

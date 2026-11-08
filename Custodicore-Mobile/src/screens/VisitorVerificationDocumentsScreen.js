@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   section: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   documentsEmpty: {
     paddingVertical: spacing.md,
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
     gap: spacing.sm,
     backgroundColor: colors.card,
     minHeight: 42,
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   },
   // One compact row linking to Profile → My PDLs (approved visitors).
   myPdlsLink: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   docRowMeta: {
     ...typography.metadata,
