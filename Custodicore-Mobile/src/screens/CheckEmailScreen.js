@@ -90,11 +90,11 @@ export default function CheckEmailScreen({ navigation, route }) {
         <View style={styles.illustrationWrap}>
           <View style={styles.illustrationOuter}>
             <View style={styles.illustrationInner}>
-              <Ionicons name="mail-unread-outline" size={56} color={colors.primaryTeal} />
+              <Ionicons name="mail-unread-outline" size={44} color={colors.primaryTeal} />
             </View>
             {!fromLogin ? (
               <View style={styles.successBadge}>
-                <Ionicons name="checkmark" size={22} color={colors.white} />
+                <Ionicons name="checkmark" size={18} color={colors.white} />
               </View>
             ) : null}
           </View>
@@ -155,18 +155,18 @@ const styles = StyleSheet.create({
   },
   illustrationWrap: {
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   illustrationOuter: {
-    width: 120,
-    height: 120,
+    width: 96,
+    height: 96,
     alignItems: 'center',
     justifyContent: 'center',
   },
   illustrationInner: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -175,11 +175,11 @@ const styles = StyleSheet.create({
   },
   successBadge: {
     position: 'absolute',
-    right: 4,
-    bottom: 4,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    right: 2,
+    bottom: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',

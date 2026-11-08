@@ -3,9 +3,9 @@
  */
 export const typography = {
   pageTitle: {
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: '700',
-    lineHeight: 36,
+    lineHeight: 32,
   },
   sectionLabel: {
     fontSize: 14,

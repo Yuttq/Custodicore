@@ -20,10 +20,11 @@ export const commonStyles = StyleSheet.create({
     paddingHorizontal: layout.screenPadding,
     paddingVertical: spacing.sm,
   },
+  // 40dp circle; callers add hitSlop so the touch target stays ≥ 48dp.
   backButton: {
-    width: layout.iconButtonSize,
-    height: layout.iconButtonSize,
-    borderRadius: layout.iconButtonSize / 2,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
@@ -31,7 +32,7 @@ export const commonStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   backPlaceholder: {
-    width: layout.iconButtonSize,
+    width: 40,
   },
   stackTitleWrap: {
     flex: 1,
@@ -51,7 +52,7 @@ export const commonStyles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   pageIntro: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   pageTitle: {
     ...typography.pageTitle,
@@ -79,7 +80,7 @@ export const commonStyles = StyleSheet.create({
   segmentedControl: {
     flexDirection: 'row',
     marginHorizontal: layout.screenPadding,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm + spacing.xs,
     backgroundColor: colors.card,
     borderRadius: layout.buttonRadius,
     borderWidth: 1,
@@ -88,7 +89,7 @@ export const commonStyles = StyleSheet.create({
   },
   segmentedTab: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: 6,
     alignItems: 'center',
     borderRadius: layout.borderRadiusSm,
   },

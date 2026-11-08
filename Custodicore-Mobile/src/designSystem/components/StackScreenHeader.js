@@ -37,6 +37,7 @@ export function StackScreenHeader({
     <View style={[commonStyles.stackHeader, style]}>
       <Pressable
         onPress={handleBack}
+        hitSlop={8}
         style={commonStyles.backButton}
         accessibilityRole="button"
         accessibilityLabel="Go back"

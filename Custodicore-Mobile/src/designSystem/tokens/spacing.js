@@ -14,11 +14,13 @@ export const spacing = {
 export const layout = {
   screenPadding: spacing.md,
   cardPadding: spacing.md,
-  cardGap: spacing.md,
-  pageTitleGap: spacing.lg,
-  sectionGap: spacing.lg,
+  // Compact rhythm (Nov 2026): 12 between cards, 16 between sections.
+  cardGap: spacing.sm + spacing.xs,
+  pageTitleGap: spacing.md,
+  sectionGap: spacing.md,
 
-  buttonHeight: 48,
+  /** Buttons and text inputs. Icon-only controls keep iconButtonSize (48). */
+  buttonHeight: 44,
   /** Minimum touch target for icon-only controls */
   iconButtonSize: 48,
 
