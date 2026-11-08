@@ -11,7 +11,7 @@
 <body class="min-h-screen bg-primary-navy text-text-primary">
     <div class="flex min-h-screen items-center justify-center px-md py-xl">
         <div class="w-full @yield('width', 'max-w-md')">
-            <div class="mb-lg flex flex-col items-center text-center">
+            <div class="@yield('brand_gap', 'mb-lg') flex flex-col items-center text-center">
                 <p class="text-page-title text-white">CustodiCore</p>
                 <p class="text-status-label uppercase tracking-wide text-white/60">BJMP Facility Management System</p>
             </div>
