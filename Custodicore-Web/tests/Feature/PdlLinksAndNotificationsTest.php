@@ -165,8 +165,9 @@ class PdlLinksAndNotificationsTest extends TestCase
     {
         $rejected = $this->pendingLink($this->visitor, $this->newPdl('Rejected PDL', 'PDL-TEST-002'));
         $url = route('visitor.relationships.reject', [$this->visitor->visitor_id, $rejected->relationship_id]);
-        $this->post($url)->assertSessionHas('success');
-        $this->post($url)->assertSessionHas('error'); // already rejected: no second notification
+        $reason = ['rejection_reason' => 'The marriage certificate names do not match.'];
+        $this->post($url, $reason)->assertSessionHas('success');
+        $this->post($url, $reason)->assertSessionHas('error'); // already rejected: no second notification
 
         $sent = $this->notificationsOf($this->visitor, 'relationship_rejected');
         $this->assertCount(1, $sent);

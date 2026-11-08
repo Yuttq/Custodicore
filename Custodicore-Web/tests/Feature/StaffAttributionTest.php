@@ -200,7 +200,7 @@ class StaffAttributionTest extends TestCase
             ],
             'reject relationship' => [
                 'setup' => fn () => $this->pendingRelationship($this->newVisitor('verified')),
-                'send' => fn (VisitorPdlRelationship $r) => $this->post(route('visitor.relationships.reject', [$r->visitor_id, $r->relationship_id])),
+                'send' => fn (VisitorPdlRelationship $r) => $this->post(route('visitor.relationships.reject', [$r->visitor_id, $r->relationship_id]), ['rejection_reason' => 'The names do not match.']),
                 'attributed' => fn (VisitorPdlRelationship $r) => [$r->fresh()->verified_by],
                 'state' => fn (VisitorPdlRelationship $r) => $r->fresh()->only(['verification_status', 'verified_by', 'verified_at']),
             ],
@@ -340,7 +340,7 @@ class StaffAttributionTest extends TestCase
 
         $this->actingAs($this->officerAccount);
         $this->post(route('visitor.approve', $visitor->visitor_id), ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])->assertSessionHas('success');
-        $this->post(route('visitor.relationships.reject', [$relationship->visitor_id, $relationship->relationship_id]))->assertSessionHas('success');
+        $this->post(route('visitor.relationships.reject', [$relationship->visitor_id, $relationship->relationship_id]), ['rejection_reason' => 'The names do not match.'])->assertSessionHas('success');
 
         foreach ([['visitor_profiles', $visitor->visitor_id], ['visitor_pdl_relationships', $relationship->relationship_id]] as [$type, $id]) {
             $entry = AuditLog::where('record_type', $type)->where('record_id', $id)->sole();
@@ -420,7 +420,7 @@ class StaffAttributionTest extends TestCase
         $this->assertNull($unmet->fresh()->verified_by);
 
         $relationship = $this->pendingRelationship($this->newVisitor('verified'));
-        $this->post(route('visitor.relationships.reject', [$relationship->visitor_id, $relationship->relationship_id]))->assertSessionHas('success', 'Relationship rejected.');
+        $this->post(route('visitor.relationships.reject', [$relationship->visitor_id, $relationship->relationship_id]), ['rejection_reason' => 'The names do not match.'])->assertSessionHas('success', 'Relationship rejected.');
         $this->assertSame('rejected', $relationship->fresh()->verification_status);
         $this->assertNotNull($relationship->fresh()->verified_at);
     }

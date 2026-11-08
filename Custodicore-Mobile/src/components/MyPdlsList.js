@@ -28,6 +28,7 @@ const PDL_STATUS_COLORS = {
  * @param {(() => void) | null} props.onRequestAgain — rejected request, when a new one is allowed
  * @param {Set<string>} [props.docsNeeded] — relationship ids with a document to upload or replace
  * @param {(() => void) | null} [props.onOpenDocuments]
+ * @param {((pdl: any) => void) | null} [props.onRequestAgainForPdl] — rejected relationship, when a new request is allowed
  */
 export default function MyPdlsList({
   variant = 'screen',
@@ -38,6 +39,7 @@ export default function MyPdlsList({
   onRequestAgain,
   docsNeeded,
   onOpenDocuments = null,
+  onRequestAgainForPdl = null,
 }) {
   const onScreen = variant === 'screen';
 
@@ -62,6 +64,9 @@ export default function MyPdlsList({
             {pdls.map((pdl, index) => {
               const needsDocs =
                 pdl.status === 'pending' && Boolean(onOpenDocuments) && Boolean(docsNeeded?.has(pdl.id));
+              // Only while a new request is allowed (approved account, none
+              // open): the handler is null otherwise (useMyPdlActions).
+              const canRequestAgain = pdl.status === 'rejected' && Boolean(onRequestAgainForPdl);
               return (
                 <View
                   key={pdl.id}
@@ -86,6 +91,19 @@ export default function MyPdlsList({
                       {pdl.statusLabel}
                     </Text>
                   </View>
+                  {pdl.statusHint && !needsDocs ? (
+                    <Text style={[styles.meta, styles.hint]}>{pdl.statusHint}</Text>
+                  ) : null}
+                  {canRequestAgain ? (
+                    <View style={styles.rowButton}>
+                      <Button
+                        title="Request Again"
+                        variant="secondary"
+                        onPress={() => onRequestAgainForPdl(pdl)}
+                        accessibilityLabel={`Send a new request to add ${pdl.pdlName} with corrected documents`}
+                      />
+                    </View>
+                  ) : null}
                   {needsDocs ? (
                     <Pressable
                       onPress={onOpenDocuments}
@@ -136,7 +154,8 @@ function PdlRequestCard({ request, onCancel, cancelling, onRequestAgain }) {
       {open ? (
         <>
           <Text style={styles.meta}>
-            Staff will look for this PDL in their records. You will be notified when they review it.
+            Your request is waiting for review. Staff will look for this PDL in their records and
+            notify you when they review it.
           </Text>
           {request.documents.length > 0 ? (
             <Text style={styles.meta}>
@@ -166,6 +185,7 @@ function PdlRequestCard({ request, onCancel, cancelling, onRequestAgain }) {
           ) : (
             <Text style={styles.meta}>Facility staff did not accept this request.</Text>
           )}
+          <Text style={styles.meta}>Please submit a new request with corrected documents.</Text>
           {onRequestAgain ? (
             <Button
               title="Request Again"
@@ -244,6 +264,12 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  hint: {
+    marginTop: spacing.xs,
+  },
+  rowButton: {
+    marginTop: spacing.sm,
   },
   requestCard: {
     padding: spacing.md,

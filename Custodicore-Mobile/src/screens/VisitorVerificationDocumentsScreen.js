@@ -21,7 +21,11 @@ import { replaceRegistrationPhoto } from '../repositories/verificationRepository
 import { BASE_URL, getStoredToken } from '../services/api';
 import { summarizeMyPdls } from '../utils/myPdls';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
-import { getPhotoAction } from '../utils/visitorVerificationDocuments';
+import {
+  getAccountStatusMessage,
+  getPhotoAction,
+  groupVerificationDocuments,
+} from '../utils/visitorVerificationDocuments';
 
 /**
  * @param {object} props
@@ -167,7 +171,7 @@ function RegistrationPhotoSection({ hasPhoto, photoUploadedAt, onSaved }) {
  */
 export default function VisitorVerificationDocumentsScreen({ navigation }) {
   const { verification, loading, error, reload } = useVisitorVerification();
-  const documents = verification?.documents ?? [];
+  const documents = useMemo(() => verification?.documents ?? [], [verification]);
 
   const openDocument = useCallback(
     (doc) => {
@@ -180,7 +184,15 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
   const pdlRequest = verification?.pdlRequest ?? null;
   const hasPdlInfo = pdls.length > 0 || Boolean(pdlRequest);
   const pdlSummary = useMemo(() => summarizeMyPdls(pdls, pdlRequest), [pdls, pdlRequest]);
-  const { cancelling, cancelRequest, requestAgain } = useMyPdlActions({
+  const sections = useMemo(() => groupVerificationDocuments(documents, pdls), [documents, pdls]);
+  const initialDocuments = useMemo(() => {
+    const initial = sections
+      .filter((s) => s.kind !== 'additional_pdl')
+      .flatMap((s) => s.documents);
+    return initial.length ? initial : documents;
+  }, [sections, documents]);
+  const accountMessage = getAccountStatusMessage(verification?.backendStatus);
+  const { cancelling, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
     navigation,
     verification,
     reload,
@@ -230,10 +242,14 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               </View>
             ) : null}
 
+            {/* Progress of the account's own verification; additional PDLs
+                have their own sections and status under My PDLs. */}
             <VerificationProgressCard
-              documents={documents}
+              documents={initialDocuments}
               overallStatus={verification.verificationStatus}
             />
+
+            {accountMessage ? <Text style={styles.statusMessage}>{accountMessage}</Text> : null}
 
             {documents.every((doc) => doc.uploadStatus === 'pending') ? (
               <Text style={styles.noneSubmitted}>
@@ -277,6 +293,7 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                 onCancelRequest={cancelRequest}
                 cancelling={cancelling}
                 onRequestAgain={requestAgain}
+                onRequestAgainForPdl={requestAgainForRelationship}
               />
             ) : null}
             {/* Only while the backend allows it (returned account or no photo yet). */}
@@ -287,17 +304,22 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                 onSaved={reload}
               />
             ) : null}
-            <Text style={styles.sectionEyebrow}>Required Documents</Text>
-            <View style={styles.docList}>
-              {documents.map((doc, index) => (
-                <DocumentCompactRow
-                  key={doc.key}
-                  document={doc}
-                  isLast={index === documents.length - 1}
-                  onPress={() => openDocument(doc)}
-                />
-              ))}
-            </View>
+            {/* Account verification, then the first PDL, then each additional PDL. */}
+            {sections.map((section) => (
+              <View key={section.key} style={styles.section}>
+                <Text style={styles.sectionEyebrow}>{section.title}</Text>
+                <View style={styles.docList}>
+                  {section.documents.map((doc, index) => (
+                    <DocumentCompactRow
+                      key={doc.key}
+                      document={doc}
+                      isLast={index === section.documents.length - 1}
+                      onPress={() => openDocument(doc)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
           </>
         )}
       </ScrollView>
@@ -333,6 +355,14 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+  },
+  statusMessage: {
+    ...typography.body,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  section: {
+    marginBottom: spacing.lg,
   },
   documentsEmpty: {
     paddingVertical: spacing.md,

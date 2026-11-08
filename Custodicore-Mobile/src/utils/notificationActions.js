@@ -2,16 +2,19 @@
  * Phase 3 notifications: the staff reason, the inline shortcut and the icon
  * for a notification row, plus duplicate collapsing.
  *
- * GET /api/notifications sends only id, title, body, category (the backend
- * notification_type), read and createdAt — no record link and no separate
- * reason field. The reason is therefore read from the body text the backend
- * writes ("… Reason: <staff reason> …", "… What to fix: <staff reason>"), and
- * the shortcut is decided from the visitor's current verification state
- * (GET /api/documents), so it only appears while the item still needs action.
- * Nothing here invents a reason: no marker in the body → no reason.
+ * GET /api/notifications sends id, title, body, category (the backend
+ * notification_type), read, createdAt and the record it is about
+ * (relatedType / relatedId, e.g. `visitor_pdl_relationships` / "12"). The
+ * shortcut is chosen from the type and that record, checked against the
+ * visitor's current verification state (GET /api/documents), so it only
+ * appears while the item still needs action. Older notifications without a
+ * record fall back to the body text. There is no separate reason field, so
+ * the reason is read from the body the backend writes ("… Reason: <staff
+ * reason> …", "… What to fix: <staff reason>"). Nothing here invents a
+ * reason: no marker in the body → no reason.
  */
 
-import { canAddAnotherPdl, pdlRequestPrefill } from './pdlLinkRequest.js';
+import { canAddAnotherPdl, pdlRequestPrefill, relationshipRequestPrefill } from './pdlLinkRequest.js';
 
 /** Backend notification_type values with a staff reason in the body. */
 const REASON_PATTERNS = {
@@ -19,9 +22,17 @@ const REASON_PATTERNS = {
   document_rejected: /Reason:\s*([\s\S]+?)\s*(?:Please upload a new one\b[\s\S]*)?$/,
   // PdlLinkReviewController::reject: "… Reason: {reason}. You can send a new request …"
   pdl_request_rejected: /Reason:\s*([\s\S]+?)\s*(?:You can send a new request\b[\s\S]*)?$/,
+  // VisitorController::rejectRelationship: "… Reason: {reason}. To visit this PDL, send a new …"
+  relationship_rejected: /Reason:\s*([\s\S]+?)\s*(?:To visit this PDL\b[\s\S]*)?$/,
   // VisitorController::reject: "… What to fix: {reason}"
   account_rejected: /What to fix:\s*([\s\S]+?)\s*$/,
 };
+
+/** The notification's record id when it is of `type`, else null. */
+function relatedIdOf(notification, type) {
+  const id = notification?.relatedId;
+  return notification?.relatedType === type && id != null && String(id) !== '' ? String(id) : null;
+}
 
 /**
  * @param {unknown} category
@@ -68,31 +79,72 @@ export function extractRejectedDocumentLabel(body) {
  * The inline shortcut for a notification, or null when there is nothing to
  * do (already replaced, a newer request is waiting, state not loaded yet…).
  *
+ * - `account_rejected` → "Fix My Account" opens Verification Documents (the
+ *   reason and the documents to correct), only while the account is still
+ *   returned.
  * - `pdl_request_rejected` → "Request Again" opens the Add Another PDL form,
  *   only while a new request is allowed (approved account, none open). It is
  *   prefilled from the latest rejected request when that is the request this
- *   notification is about (its PDL name appears in the body); otherwise the
- *   form starts empty rather than with another request's details.
+ *   notification is about (same record, or — for older notifications — its
+ *   PDL name appears in the body); otherwise the form starts empty rather
+ *   than with another request's details.
+ * - `relationship_rejected` → "Request Again", same rule: a rejected
+ *   relationship takes no new documents, so the visitor sends a new request,
+ *   prefilled from that relationship while it is still rejected.
+ * - `relationship_approved` → "Book a Visit" opens Home (Visitation
+ *   Calendar), while that relationship is still approved.
  * - `document_rejected` → "Replace Document" opens the upload screen for
  *   that document (it shows the staff reason), or the Verification
  *   Documents list when the document cannot be pinned down. Only while a
  *   replaceable document is still rejected.
  *
- * @param {{ category?: unknown; body?: unknown }} notification
- * @param {{ backendStatus?: string | null; pdlRequest?: any; documents?: any[] } | null | undefined} verification
+ * @param {{ category?: unknown; body?: unknown; relatedType?: string | null; relatedId?: string | null }} notification
+ * @param {{ backendStatus?: string | null; pdlRequest?: any; pdlRelationships?: any[]; documents?: any[] } | null | undefined} verification
  * @returns {NotificationAction | null}
  */
 export function resolveNotificationAction(notification, verification) {
   if (!verification) return null;
   const type = typeOf(notification?.category);
+  const body = typeof notification?.body === 'string' ? notification.body : '';
+  const pdls = Array.isArray(verification.pdlRelationships) ? verification.pdlRelationships : [];
+
+  if (type === 'account_rejected') {
+    return verification.backendStatus === 'rejected'
+      ? { label: 'Fix My Account', route: 'VisitorVerificationDocuments' }
+      : null;
+  }
 
   if (type === 'pdl_request_rejected') {
     if (!canAddAnotherPdl(verification.backendStatus, verification.pdlRequest)) return null;
     const prefill = pdlRequestPrefill(verification.pdlRequest);
-    const body = typeof notification?.body === 'string' ? notification.body : '';
-    return prefill && prefill.pdlName && body.includes(prefill.pdlName)
+    const requestId = relatedIdOf(notification, 'pdl_link_requests');
+    const sameRequest = requestId
+      ? String(verification.pdlRequest?.id ?? '') === requestId
+      : Boolean(prefill?.pdlName && body.includes(prefill.pdlName));
+    return prefill && sameRequest
       ? { label: 'Request Again', route: 'AddPdlRequest', params: { prefill } }
       : { label: 'Request Again', route: 'AddPdlRequest' };
+  }
+
+  if (type === 'relationship_rejected') {
+    if (!canAddAnotherPdl(verification.backendStatus, verification.pdlRequest)) return null;
+    const relationshipId = relatedIdOf(notification, 'visitor_pdl_relationships');
+    const pdl = relationshipId ? pdls.find((p) => String(p?.id) === relationshipId) : null;
+    // Reopened or approved since: nothing left to do for this notification.
+    if (pdl && pdl.status !== 'rejected') return null;
+    const prefill = relationshipRequestPrefill(pdl, extractNotificationReason(type, body));
+    return prefill
+      ? { label: 'Request Again', route: 'AddPdlRequest', params: { prefill } }
+      : { label: 'Request Again', route: 'AddPdlRequest' };
+  }
+
+  if (type === 'relationship_approved') {
+    if (verification.backendStatus !== 'verified') return null;
+    const relationshipId = relatedIdOf(notification, 'visitor_pdl_relationships');
+    const stillApproved = relationshipId
+      ? pdls.some((p) => String(p?.id) === relationshipId && p.status === 'approved')
+      : pdls.some((p) => p?.status === 'approved');
+    return stillApproved ? { label: 'Book a Visit', route: 'Dashboard' } : null;
   }
 
   if (type === 'document_rejected') {

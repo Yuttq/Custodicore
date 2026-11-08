@@ -1,7 +1,11 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { cancelPdlRequest } from '../repositories/verificationRepository';
-import { canAddAnotherPdl, pdlRequestPrefill } from '../utils/pdlLinkRequest';
+import {
+  canAddAnotherPdl,
+  pdlRequestPrefill,
+  relationshipRequestPrefill,
+} from '../utils/pdlLinkRequest';
 
 /**
  * My PDLs request actions, shared by Profile → My PDLs and the inline list in
@@ -25,6 +29,19 @@ export default function useMyPdlActions({ navigation, verification, reload }) {
   const requestAgain = useCallback(() => {
     navigation.navigate('AddPdlRequest', { prefill: pdlRequestPrefill(pdlRequest) });
   }, [navigation, pdlRequest]);
+
+  // A rejected PDL relationship takes no new documents: the visitor sends a
+  // new Add Another PDL request for it (prefilled), same rules as above.
+  const canRequestForRelationship =
+    canAddAnotherPdl(verification?.backendStatus, pdlRequest) &&
+    Boolean(navigation.getState?.()?.routeNames?.includes('AddPdlRequest'));
+
+  const requestAgainForRelationship = useCallback(
+    (pdl) => {
+      navigation.navigate('AddPdlRequest', { prefill: relationshipRequestPrefill(pdl) });
+    },
+    [navigation],
+  );
 
   // Cancelling works whatever the account status (the backend allows it).
   const cancelRequest = useCallback(() => {
@@ -61,5 +78,6 @@ export default function useMyPdlActions({ navigation, verification, reload }) {
     cancelling,
     cancelRequest,
     requestAgain: canRequestAgain ? requestAgain : null,
+    requestAgainForRelationship: canRequestForRelationship ? requestAgainForRelationship : null,
   };
 }

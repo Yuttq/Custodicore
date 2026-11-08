@@ -231,3 +231,28 @@ export function pdlRequestPrefill(pdlRequest) {
     rejectionReason: pdlRequest.rejectionReason ?? null,
   };
 }
+
+/**
+ * "Request Again" for a PDL relationship staff rejected: a rejected
+ * relationship cannot take new documents, so the visitor sends a new Add
+ * Another PDL request (staff then reopen that relationship). Prefills the
+ * PDL name and relationship from it; null for anything but a rejected one.
+ * @param {{ status?: string; pdlName?: string; relationshipType?: string | null; hasChildrenTogether?: boolean | null } | null | undefined} pdl — buildPdlRelationshipList() entry
+ * @param {string | null} [rejectionReason] — the staff reason, when known
+ * @returns {PdlRequestPrefill | null}
+ */
+export function relationshipRequestPrefill(pdl, rejectionReason = null) {
+  if (!pdl || pdl.status !== 'rejected') return null;
+  const relationship = isRegistrationRelationship(pdl.relationshipType)
+    ? /** @type {string} */ (pdl.relationshipType)
+    : null;
+  return {
+    pdlName: !pdl.pdlName || pdl.pdlName === 'PDL' ? '' : pdl.pdlName,
+    relationship,
+    hasChildrenTogether:
+      relationship && asksChildrenTogether(relationship) && typeof pdl.hasChildrenTogether === 'boolean'
+        ? pdl.hasChildrenTogether
+        : null,
+    rejectionReason: rejectionReason || null,
+  };
+}

@@ -548,6 +548,9 @@ class VisitorApiController extends Controller
                 'status' => 'verified',
             ], 409);
         }
+        if ($relationship->verification_status === 'rejected') {
+            return response()->json(self::rejectedRelationshipBody(), 409);
+        }
 
         // Kept for old app builds only. Before approval, documents go through
         // the checklist (requirements/{key}) or registration-documents/{key},
@@ -692,6 +695,9 @@ class VisitorApiController extends Controller
                 'status' => 'verified',
             ], 409);
         }
+        if ($relationship->verification_status === 'rejected') {
+            return response()->json(self::rejectedRelationshipBody(), 409);
+        }
 
         $item = collect(RelationshipRequirements::for($relationship))->firstWhere('key', $requirementKey);
         if (! $item || $item['kind'] !== 'document') {
@@ -731,6 +737,20 @@ class VisitorApiController extends Controller
         $visitor->resubmitIfReturned("new {$item['label']}");
 
         return response()->json($this->relationshipPayload($relationship->fresh(['pdl', 'documents', 'visitor.idDocuments'])), 201);
+    }
+
+    /**
+     * 409 body for an upload to a rejected relationship. It would never be
+     * reviewed (a rejected relationship is not in the PDL Links queue); the
+     * visitor sends a new Add Another PDL request instead, which staff link
+     * by reopening the relationship.
+     */
+    private static function rejectedRelationshipBody(): array
+    {
+        return [
+            'message' => 'Facility staff did not approve this PDL relationship. To visit this PDL, send a new Add Another PDL request with corrected documents.',
+            'status' => 'rejected',
+        ];
     }
 
     private function governmentIdPayload(VisitorId $d): array

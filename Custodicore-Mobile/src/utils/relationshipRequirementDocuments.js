@@ -166,11 +166,22 @@ export function buildRegistrationDocuments(registrationDocuments) {
     });
 }
 
-/** Backend relationship status → My PDLs label (pending / verified / rejected). */
+/**
+ * Backend relationship status → My PDLs label (pending / verified / rejected)
+ * and the plain next step shown under it.
+ */
 const PDL_RELATIONSHIP_STATUS = {
-  pending: { status: 'pending', label: 'Pending' },
-  verified: { status: 'approved', label: 'Approved' },
-  rejected: { status: 'rejected', label: 'Rejected' },
+  pending: { status: 'pending', label: 'Pending', hint: 'Waiting for facility staff to review.' },
+  verified: {
+    status: 'approved',
+    label: 'Approved',
+    hint: 'You can now select this PDL when requesting a visit.',
+  },
+  rejected: {
+    status: 'rejected',
+    label: 'Rejected',
+    hint: 'Please send a new request with corrected documents.',
+  },
 };
 
 /**
@@ -178,8 +189,10 @@ const PDL_RELATIONSHIP_STATUS = {
  * from GET /api/documents `relationships` (which includes rejected ones).
  * Approved first, then pending, then rejected; the API's newest-first order
  * is kept within each group. An unknown status shows as Pending.
+ * `relationshipType` / `hasChildrenTogether` let "Request Again" on a
+ * rejected relationship prefill the Add Another PDL form.
  * @param {unknown} relationships — GET /api/documents `relationships`
- * @returns {{ id: string; pdlName: string; relationshipLabel: string | null; status: 'approved' | 'pending' | 'rejected'; statusLabel: string }[]}
+ * @returns {{ id: string; pdlName: string; relationshipLabel: string | null; relationshipType: string | null; hasChildrenTogether: boolean | null; status: 'approved' | 'pending' | 'rejected'; statusLabel: string; statusHint: string }[]}
  */
 export function buildPdlRelationshipList(relationships) {
   const list = Array.isArray(relationships) ? relationships : [];
@@ -195,8 +208,12 @@ export function buildPdlRelationshipList(relationships) {
           typeof r.relationshipLabel === 'string' && r.relationshipLabel.trim()
             ? r.relationshipLabel.trim()
             : null,
+        relationshipType:
+          typeof r.relationshipType === 'string' && r.relationshipType ? r.relationshipType : null,
+        hasChildrenTogether: typeof r.hasChildrenTogether === 'boolean' ? r.hasChildrenTogether : null,
         status: /** @type {'approved' | 'pending' | 'rejected'} */ (state.status),
         statusLabel: state.label,
+        statusHint: state.hint,
       };
     })
     .map((item, index) => ({ item, index }))

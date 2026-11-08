@@ -171,7 +171,8 @@
                 @else
                   <span class="muted-cell">No picture (entered at front desk)</span>
                 @endif
-                @if ($doc->verification_status !== 'rejected')
+                {{-- Only an ID waiting for review: an approved ID stays approved. --}}
+                @if ($doc->verification_status === 'pending')
                   <details class="acct-reject">
                     <summary class="btn btn-outline-neutral acct-small elig-reject">Reject</summary>
                     <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"

@@ -207,6 +207,12 @@ class VisitorController extends Controller
 
     public function reject(Request $request, VisitorProfile $visitor)
     {
+        // Approval is final under ordinary review: an approved account is not
+        // returned for correction. Revoking access uses flags or deactivation.
+        if ($visitor->verification_status === 'verified') {
+            return back()->with('error', 'This account is already approved and cannot be returned for correction.');
+        }
+
         // Shown to the visitor in the app — keep it to what they can act on.
         $data = $request->validate([
             'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
@@ -313,6 +319,13 @@ class VisitorController extends Controller
     public function rejectId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
+
+        // An approved ID stays approved: ordinary review only decides IDs that
+        // are waiting (walk-ins included). A new ID the visitor uploads later
+        // is pending and can be rejected on its own.
+        if ($idDocument->verification_status === 'verified') {
+            return back()->with('error', 'This ID is already approved and cannot be rejected.');
+        }
 
         // Shown to the visitor in the app — keep it to what they can act on.
         $data = $request->validate([
@@ -459,6 +472,11 @@ class VisitorController extends Controller
         if ($relationship->verification_status === 'verified') {
             return back()->with('error', 'This relationship is already approved.');
         }
+        // A rejected relationship is reopened (as pending) only by linking the
+        // visitor's new Add Another PDL request; it is never approved directly.
+        if ($relationship->verification_status === 'rejected') {
+            return back()->with('error', 'This relationship was rejected and cannot be approved directly. The visitor must send a new Add Another PDL request.');
+        }
 
         $requirements = RelationshipRequirements::for($relationship);
         if (! RelationshipRequirements::allMet($requirements)) {
@@ -488,14 +506,25 @@ class VisitorController extends Controller
         $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
         $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_approved', 'PDL Relationship Approved',
             "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) has been approved. "
-            . 'You can now request visits with this PDL.');
+            . 'You can now select this PDL on the Visitation Calendar when requesting a visit.');
 
         return back()->with('success', 'Relationship approved.');
     }
 
-    public function rejectRelationship(VisitorProfile $visitor, VisitorPdlRelationship $relationship)
+    public function rejectRelationship(Request $request, VisitorProfile $visitor, VisitorPdlRelationship $relationship)
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
+
+        // Shown to the visitor in the app — keep it to what they can act on.
+        // Not stored on the relationship (no column): it goes in the
+        // notification and the audit log.
+        $data = $request->validate([
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'rejection_reason.required' => 'Tell the visitor why this relationship was rejected.',
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
+        ]);
+        $reason = trim((string) $data['rejection_reason']);
 
         if ($relationship->verification_status === 'rejected') {
             return back()->with('error', 'This relationship is already rejected.');
@@ -518,12 +547,16 @@ class VisitorController extends Controller
         }
 
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
-            "Rejected relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}");
+            "Rejected relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}: {$reason}");
 
+        // Only this relationship changes: the account and every other PDL stay
+        // as they are. A rejected relationship takes no new documents, so the
+        // visitor sends a new Add Another PDL request (staff then reopen it).
         $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
         $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_rejected', 'PDL Relationship Not Approved',
-            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) was not approved by facility staff. "
-            . 'You cannot request visits with this PDL. Contact the facility if you have questions.');
+            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) was not approved by facility staff. Reason: {$reason}"
+            . (preg_match('/[.!?]$/', $reason) ? ' ' : '. ')
+            . 'To visit this PDL, send a new Add Another PDL request with corrected documents.');
 
         return back()->with('success', 'Relationship rejected.');
     }

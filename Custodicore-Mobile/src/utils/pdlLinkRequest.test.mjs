@@ -196,3 +196,22 @@ test('Request Again prefill: only rejected requests, only valid values', () => {
     rejectionReason: null,
   });
 });
+
+import { relationshipRequestPrefill } from './pdlLinkRequest.js';
+
+test('Request Again for a rejected relationship prefills its PDL and relationship', () => {
+  assert.deepEqual(
+    relationshipRequestPrefill(
+      { status: 'rejected', pdlName: 'Pedro Santos', relationshipType: 'spouse', hasChildrenTogether: null },
+      'Names do not match.',
+    ),
+    { pdlName: 'Pedro Santos', relationship: 'spouse', hasChildrenTogether: null, rejectionReason: 'Names do not match.' },
+  );
+  // Only a rejected one; an unknown relationship type is left for the visitor to pick.
+  assert.equal(relationshipRequestPrefill({ status: 'approved', pdlName: 'X' }), null);
+  assert.equal(relationshipRequestPrefill(null), null);
+  assert.deepEqual(
+    relationshipRequestPrefill({ status: 'rejected', pdlName: 'PDL', relationshipType: 'friend' }),
+    { pdlName: '', relationship: null, hasChildrenTogether: null, rejectionReason: null },
+  );
+});

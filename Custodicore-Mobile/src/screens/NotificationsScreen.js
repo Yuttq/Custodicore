@@ -77,8 +77,12 @@ function normalizeNotification(raw, index) {
   // The backend notification_type (e.g. `document_rejected`), before it is
   // folded into a filter category — drives the reason, action and icon.
   const rawCategory = typeof raw.category === 'string' ? raw.category : null;
+  // The record the notification is about (e.g. `visitor_pdl_relationships`
+  // and its id), so the shortcut does not depend on the wording.
+  const relatedType = typeof raw.relatedType === 'string' && raw.relatedType ? raw.relatedType : null;
+  const relatedId = raw.relatedId != null && raw.relatedId !== '' ? String(raw.relatedId) : null;
 
-  return { id, title, body, read, createdAt, category, tone, rawCategory };
+  return { id, title, body, read, createdAt, category, tone, rawCategory, relatedType, relatedId };
 }
 
 /**
@@ -235,7 +239,12 @@ export default function NotificationsScreen({ navigation }) {
       const preview = shortDescription(item.body);
       const reason = extractNotificationReason(item.rawCategory, item.body);
       const action = resolveNotificationAction(
-        { category: item.rawCategory, body: item.body },
+        {
+          category: item.rawCategory,
+          body: item.body,
+          relatedType: item.relatedType,
+          relatedId: item.relatedId,
+        },
         verification,
       );
 

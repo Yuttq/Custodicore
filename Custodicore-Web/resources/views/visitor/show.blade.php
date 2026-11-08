@@ -380,7 +380,8 @@
                   <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                 </form>
               @endif
-              @if ($doc->verification_status !== 'rejected')
+              {{-- Only an ID waiting for review: an approved ID stays approved. --}}
+              @if ($doc->verification_status === 'pending')
                 <details class="acct-reject">
                   <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
                   <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
@@ -445,7 +446,8 @@
           </td>
           <td>
             <div style="display:flex;gap:8px;">
-              @if ($rel->verification_status !== 'verified')
+              {{-- Only a pending relationship: a rejected one is reopened by a new Add Another PDL request. --}}
+              @if ($rel->verification_status === 'pending')
                 <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}"
                       data-confirm="Approve {{ $visitor->full_name }} as {{ $rel->relationshipLabel() }} of {{ $rel->pdl?->full_name ?? 'this PDL' }}? Its requirements will be locked."
                       data-confirm-title="Approve relationship" data-confirm-ok="Approve">
@@ -458,12 +460,20 @@
                 </form>
               @endif
               @if ($rel->verification_status !== 'rejected')
-                <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}"
-                      data-confirm="Reject this relationship? The visitor will not be able to visit {{ $rel->pdl?->full_name ?? 'this PDL' }}."
-                      data-confirm-title="Reject relationship" data-confirm-ok="Reject" data-confirm-danger>
-                  @csrf
-                  <button type="submit" class="row-action" style="color:var(--red);">Reject</button>
-                </form>
+                {{-- The reason goes to the visitor, who is told to send a new
+                     Add Another PDL request; nothing else on the account changes. --}}
+                <details class="acct-reject">
+                  <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
+                  <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}" class="acct-reject-form"
+                        data-confirm="Reject this relationship? The visitor will not be able to visit {{ $rel->pdl?->full_name ?? 'this PDL' }}.{{ $visitor->verification_status === 'verified' ? ' They will be asked to send a new request with corrected documents. Their account and other PDLs are not affected.' : '' }}"
+                        data-confirm-title="Reject relationship" data-confirm-ok="Reject" data-confirm-danger>
+                    @csrf
+                    <textarea name="rejection_reason" required minlength="5" maxlength="500" aria-label="Why the relationship was rejected (shown to the visitor)"
+                              data-label="Why the relationship was rejected (shown to the visitor)"
+                              placeholder="e.g. The names on the marriage certificate do not match."></textarea>
+                    <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
+                  </form>
+                </details>
               @endif
             </div>
           </td>

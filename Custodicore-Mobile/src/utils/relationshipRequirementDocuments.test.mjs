@@ -180,14 +180,26 @@ test('My PDLs lists every relationship with its status, rejected ones included',
     { pdlName: 'No id' },
   ]);
 
+  const approvedHint = 'You can now select this PDL when requesting a visit.';
+  const pendingHint = 'Waiting for facility staff to review.';
+  const rejectedHint = 'Please send a new request with corrected documents.';
+  const extra = { relationshipType: null, hasChildrenTogether: null };
   assert.deepEqual(list, [
-    { id: '1', pdlName: 'Ana Lim', relationshipLabel: 'Spouse', status: 'approved', statusLabel: 'Approved' },
-    { id: '2', pdlName: 'Ben Cruz', relationshipLabel: 'Parent', status: 'pending', statusLabel: 'Pending' },
+    { id: '1', pdlName: 'Ana Lim', relationshipLabel: 'Spouse', ...extra, status: 'approved', statusLabel: 'Approved', statusHint: approvedHint },
+    { id: '2', pdlName: 'Ben Cruz', relationshipLabel: 'Parent', ...extra, status: 'pending', statusLabel: 'Pending', statusHint: pendingHint },
     // Unknown status shows as Pending, after the real pending ones.
-    { id: '4', pdlName: 'PDL', relationshipLabel: null, status: 'pending', statusLabel: 'Pending' },
-    { id: '3', pdlName: 'Cy Reyes', relationshipLabel: 'Sibling', status: 'rejected', statusLabel: 'Rejected' },
+    { id: '4', pdlName: 'PDL', relationshipLabel: null, ...extra, status: 'pending', statusLabel: 'Pending', statusHint: pendingHint },
+    { id: '3', pdlName: 'Cy Reyes', relationshipLabel: 'Sibling', ...extra, status: 'rejected', statusLabel: 'Rejected', statusHint: rejectedHint },
   ]);
   assert.deepEqual(buildPdlRelationshipList(undefined), []);
+});
+
+test('My PDLs keeps the relationship type for Request Again', () => {
+  const [entry] = buildPdlRelationshipList([
+    { id: 9, pdlName: 'Pedro Santos', relationshipType: 'live_in_partner', hasChildrenTogether: true, status: 'rejected' },
+  ]);
+  assert.equal(entry.relationshipType, 'live_in_partner');
+  assert.equal(entry.hasChildrenTogether, true);
 });
 
 test('two PDLs: only the rejected document of the right relationship can be replaced', () => {

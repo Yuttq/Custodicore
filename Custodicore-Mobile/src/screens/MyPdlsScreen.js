@@ -23,7 +23,7 @@ import { relationshipsNeedingDocuments } from '../utils/myPdls';
  */
 export default function MyPdlsScreen({ navigation }) {
   const { verification, loading, error, reload } = useVisitorVerification();
-  const { cancelling, cancelRequest, requestAgain } = useMyPdlActions({
+  const { cancelling, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
     navigation,
     verification,
     reload,
@@ -76,6 +76,7 @@ export default function MyPdlsScreen({ navigation }) {
           onCancelRequest={cancelRequest}
           cancelling={cancelling}
           onRequestAgain={requestAgain}
+          onRequestAgainForPdl={requestAgainForRelationship}
           docsNeeded={docsNeeded}
           onOpenDocuments={openDocuments}
         />

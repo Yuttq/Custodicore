@@ -48,3 +48,55 @@ test('a rejected document is offered as "Replace Document"; an approved one has 
   assert.equal(getDocumentDetailActionLabel('rejected'), 'Replace Document');
   assert.equal(getDocumentDetailActionLabel('verified'), null);
 });
+
+// ---------------------------------------------------------------------------
+// Grouping and the account status sentence.
+// ---------------------------------------------------------------------------
+import {
+  getAccountStatusMessage,
+  groupVerificationDocuments,
+} from './visitorVerificationDocuments.js';
+
+test('account status sentence per backend status', () => {
+  assert.equal(getAccountStatusMessage('pending'), 'Your documents are being reviewed.');
+  assert.equal(
+    getAccountStatusMessage('rejected'),
+    'Please review the reason and replace the required documents.',
+  );
+  assert.equal(getAccountStatusMessage('verified'), 'Your account verification is complete.');
+  assert.equal(getAccountStatusMessage(null), null);
+});
+
+test('documents are grouped: account, first PDL, additional PDLs', () => {
+  const docs = [
+    { key: 'rel-20:birth_certificate', relationshipRecordId: '20', detail: 'For Ben Cruz' },
+    { key: 'rel-3:marriage_certificate', relationshipRecordId: '3', detail: 'For Ana Lim' },
+    { key: 'reg:birth_certificate', relationshipRecordId: null, detail: 'Sent with registration' },
+    { key: 'government_id', relationshipRecordId: null, detail: 'Passport' },
+    { key: 'rel-3:cenomar_visitor', relationshipRecordId: '3', detail: 'For Ana Lim' },
+  ];
+  const pdls = [
+    { id: '20', pdlName: 'Ben Cruz' },
+    { id: '3', pdlName: 'Ana Lim' },
+  ];
+
+  const sections = groupVerificationDocuments(docs, pdls);
+  assert.deepEqual(
+    sections.map((s) => [s.title, s.kind, s.documents.map((d) => d.key)]),
+    [
+      ['Account Verification', 'account', ['reg:birth_certificate', 'government_id']],
+      ['First PDL: Ana Lim', 'first_pdl', ['rel-3:marriage_certificate', 'rel-3:cenomar_visitor']],
+      ['Additional PDL: Ben Cruz', 'additional_pdl', ['rel-20:birth_certificate']],
+    ],
+  );
+});
+
+test('the first PDL stays first when it has no documents listed (e.g. rejected)', () => {
+  const sections = groupVerificationDocuments(
+    [{ key: 'rel-8:x', relationshipRecordId: '8', detail: 'For Cy Reyes' }],
+    [{ id: '2', pdlName: 'Old PDL' }, { id: '8', pdlName: 'PDL' }],
+  );
+  // Name falls back to the document's "For …" detail.
+  assert.deepEqual(sections.map((s) => [s.title, s.kind]), [['Additional PDL: Cy Reyes', 'additional_pdl']]);
+  assert.deepEqual(groupVerificationDocuments(undefined, undefined), []);
+});

@@ -212,3 +212,106 @@ test('separate events stay separate', () => {
   // Without dates nothing is collapsed.
   assert.equal(collapseDuplicateNotifications([row('b', null), row('a', null)]).length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// Account returned, PDL relationship rejected / approved, structured records.
+// ---------------------------------------------------------------------------
+
+const REL_BODY =
+  'Your relationship to Pedro Santos (Spouse) was not approved by facility staff. Reason: The marriage certificate names do not match. To visit this PDL, send a new Add Another PDL request with corrected documents.';
+
+const rejectedPdl = {
+  id: '12',
+  pdlName: 'Pedro Santos',
+  relationshipLabel: 'Spouse',
+  relationshipType: 'spouse',
+  hasChildrenTogether: null,
+  status: 'rejected',
+};
+const approvedPdl = { ...rejectedPdl, id: '5', pdlName: 'Ana Cruz', relationshipType: 'parent', status: 'approved' };
+
+test('account rejection opens Verification Documents while the account is returned', () => {
+  const n = { category: 'account_rejected', body: ACCOUNT_BODY };
+  assert.deepEqual(resolveNotificationAction(n, { backendStatus: 'rejected' }), {
+    label: 'Fix My Account',
+    route: 'VisitorVerificationDocuments',
+  });
+  // Already resubmitted or approved: nothing left to fix.
+  assert.equal(resolveNotificationAction(n, { backendStatus: 'pending' }), null);
+  assert.equal(resolveNotificationAction(n, { backendStatus: 'verified' }), null);
+});
+
+test('relationship rejection shows the staff reason', () => {
+  assert.equal(
+    extractNotificationReason('relationship_rejected', REL_BODY),
+    'The marriage certificate names do not match.',
+  );
+});
+
+test('relationship rejection offers Request Again prefilled from that relationship', () => {
+  const n = {
+    category: 'relationship_rejected',
+    body: REL_BODY,
+    relatedType: 'visitor_pdl_relationships',
+    relatedId: '12',
+  };
+  const state = { ...approved, pdlRelationships: [approvedPdl, rejectedPdl] };
+  assert.deepEqual(resolveNotificationAction(n, state), {
+    label: 'Request Again',
+    route: 'AddPdlRequest',
+    params: {
+      prefill: {
+        pdlName: 'Pedro Santos',
+        relationship: 'spouse',
+        hasChildrenTogether: null,
+        rejectionReason: 'The marriage certificate names do not match.',
+      },
+    },
+  });
+  // A request is already waiting, or the account is not approved: no shortcut.
+  assert.equal(resolveNotificationAction(n, { ...state, pdlRequest: { status: 'open' } }), null);
+  assert.equal(resolveNotificationAction(n, { ...state, backendStatus: 'pending' }), null);
+  // Reopened by staff since: nothing left to do.
+  assert.equal(
+    resolveNotificationAction(n, { ...state, pdlRelationships: [{ ...rejectedPdl, status: 'pending' }] }),
+    null,
+  );
+  // An older notice without a record: an empty form.
+  assert.deepEqual(resolveNotificationAction({ category: 'relationship_rejected', body: REL_BODY }, state), {
+    label: 'Request Again',
+    route: 'AddPdlRequest',
+  });
+});
+
+test('relationship approval opens the Visitation Calendar while it is still approved', () => {
+  const n = {
+    category: 'relationship_approved',
+    body: 'Your relationship to Ana Cruz (Parent) has been approved.',
+    relatedType: 'visitor_pdl_relationships',
+    relatedId: '5',
+  };
+  const state = { ...approved, pdlRelationships: [approvedPdl] };
+  assert.deepEqual(resolveNotificationAction(n, state), { label: 'Book a Visit', route: 'Dashboard' });
+  assert.equal(
+    resolveNotificationAction(n, { ...state, pdlRelationships: [{ ...approvedPdl, status: 'rejected' }] }),
+    null,
+  );
+  assert.equal(resolveNotificationAction(n, { ...state, backendStatus: 'rejected' }), null);
+});
+
+test('PDL request rejection matches its request by record before the body text', () => {
+  // The body names another PDL, but the record is the rejected request.
+  const n = {
+    category: 'pdl_request_rejected',
+    body: PDL_BODY.replace('Juan Dela Cruz', 'Someone Else'),
+    relatedType: 'pdl_link_requests',
+    relatedId: '7',
+  };
+  const action = resolveNotificationAction(n, { ...approved, pdlRequest: rejectedRequest });
+  assert.equal(action?.params?.prefill?.pdlName, 'Juan Dela Cruz');
+  // A different request id: an empty form.
+  assert.deepEqual(resolveNotificationAction({ ...n, relatedId: '99' }, { ...approved, pdlRequest: rejectedRequest }), {
+    label: 'Request Again',
+    route: 'AddPdlRequest',
+  });
+});

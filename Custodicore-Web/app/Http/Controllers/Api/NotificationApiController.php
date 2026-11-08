@@ -52,6 +52,11 @@ class NotificationApiController extends Controller
             'title' => $n->title,
             'body' => $n->message,
             'category' => $n->notification_type,
+            // The record the notification is about (e.g. visitor_pdl_relationships
+            // and its id), so the app can pick the next action without
+            // reading the message text. Both null when there is none.
+            'relatedType' => $n->related_record_type,
+            'relatedId' => $n->related_record_id !== null ? (string) $n->related_record_id : null,
             'read' => (bool) $n->is_read,
             'createdAt' => optional($n->sent_at)->toIso8601String(),
         ];
