@@ -223,12 +223,14 @@ class PurgeVisitors extends Command
                 }
             }
 
-            // Visit requests first: their relationship_id key has no cascade,
-            // so deleting a relationship that still has visits would fail.
-            // Deleting them cascades to QR codes, check-ins, eligibility
-            // assessments and booked sessions.
+            // Visits and everything under them, bottom-up. Two keys have no
+            // cascade and would block a plain delete on MySQL:
+            // visit_checkins.qr_code_id → qr_codes, and
+            // visit_requests.relationship_id → visitor_pdl_relationships.
             if ($ids['visitRequestIds'] !== []) {
-                DB::table('visit_requests')->whereIn('visit_request_id', $ids['visitRequestIds'])->delete();
+                foreach (['visit_checkins', 'qr_codes', 'eligibility_assessments', 'visit_sessions', 'visit_requests'] as $table) {
+                    DB::table($table)->whereIn('visit_request_id', $ids['visitRequestIds'])->delete();
+                }
             }
 
             // Not linked by foreign keys, so removed explicitly.

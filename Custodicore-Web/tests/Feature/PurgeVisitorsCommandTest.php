@@ -64,6 +64,21 @@ class PurgeVisitorsCommandTest extends TestCase
         ])->assertCreated()->json('id');
         app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
 
+        // A QR pass that was scanned: visit_checkins.qr_code_id has no
+        // cascade, which blocked the first purge attempt on MySQL.
+        $qrId = DB::table('qr_codes')->insertGetId([
+            'visit_request_id' => $id,
+            'qr_token' => str_repeat('a', 64),
+            'generated_at' => now(),
+            'status' => 'used',
+        ], 'qr_code_id');
+        DB::table('visit_checkins')->insert([
+            'visit_request_id' => $id,
+            'schedule_id' => DB::table('visit_sessions')->where('visit_request_id', $id)->value('schedule_id'),
+            'qr_code_id' => $qrId,
+            'status' => 'checked_out',
+        ]);
+
         // An older ID still on the legacy public disk.
         VisitorId::create([
             'visitor_id' => $this->visitor->visitor_id,
@@ -108,7 +123,7 @@ class PurgeVisitorsCommandTest extends TestCase
 
         $this->assertDatabaseMissing('accounts', ['account_id' => $this->visitorAccount->account_id]);
         foreach (['visitor_profiles', 'visitor_ids', 'visitor_pdl_relationships', 'relationship_documents',
-            'visit_requests', 'visit_sessions', 'qr_codes', 'personal_access_tokens', 'password_reset_tokens'] as $table) {
+            'visit_requests', 'visit_sessions', 'qr_codes', 'visit_checkins', 'personal_access_tokens', 'password_reset_tokens'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "{$table} should be empty");
         }
         $this->assertSame(['Unrelated'], Notification::pluck('title')->all());
