@@ -3,19 +3,30 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Account;
+use App\Models\AuditLog;
+use App\Models\Module;
 use App\Models\VisitorProfile;
 use App\Support\Sanitizer;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use App\Support\Pages;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
- * Module 1.3 Visitor Management — read-only.
+ * Module 1.3 Visitor Management.
  *
  * Visitors register and get verified through the mobile app (and the
  * Records Officer module's verification actions). The Warden can search the
- * list and open a visitor to VIEW their profile, their relationship to each
- * PDL, their visit history and their flags. Nothing here writes anything.
+ * list and open a visitor to view their profile, their relationship to each
+ * PDL, their visit history and their flags.
+ *
+ * The Warden's only write action here is switching the visitor's ACCOUNT on
+ * or off (accounts.status). That is separate from verification
+ * (visitor_profiles.verification_status), which this never changes: a
+ * verified visitor who is deactivated and later reactivated is still verified.
  */
 class VisitorController extends Controller
 {
@@ -70,7 +81,92 @@ class VisitorController extends Controller
         return view('admin.visitors.show', [
             'visitor' => $visitor,
             'activeFlags' => $visitor->flags->filter->isActive()->count(),
+            'upcomingVisits' => $this->upcomingVisitCount($visitor),
         ]);
+    }
+
+    /**
+     * PATCH admin/visitors/{visitor}/account-status  (action=deactivate|reactivate)
+     *
+     * Behind `reauth`: the Warden re-enters their own password. Deactivating
+     * needs a reason, signs the visitor out of the app everywhere and is
+     * refused at the gate (Front Desk). Visits are not cancelled.
+     */
+    public function setAccountStatus(Request $request, VisitorProfile $visitor): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:deactivate,reactivate'],
+            'reason' => ['nullable', 'required_if:action,deactivate', 'string', 'max:200'],
+        ], [
+            'reason.required_if' => 'Give a reason for deactivating this account.',
+        ]);
+
+        $back = redirect()->route('admin.visitors.show', $visitor->visitor_id);
+
+        if (! $visitor->account_id) {
+            return $back->with('status', 'This visitor has no account to switch on or off.');
+        }
+
+        $target = $data['action'] === 'deactivate' ? 'inactive' : 'active';
+        $reason = Sanitizer::text($data['reason'] ?? null);
+
+        // Row lock, like Admin → Users: two Wardens acting at once are applied
+        // in turn, and the sign-out always matches the status that was saved.
+        $changed = DB::transaction(function () use ($visitor, $target) {
+            $locked = Account::whereKey($visitor->account_id)
+                ->whereHas('role', fn ($q) => $q->where('role_name', 'Visitor'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status === $target) {
+                return false;
+            }
+
+            $locked->status = $target;
+            $locked->save();
+
+            if ($target !== 'active') {
+                $locked->signOutEverywhere();
+            }
+
+            return true;
+        });
+
+        if (! $changed) {
+            return $back->with('status', $target === 'active'
+                ? "{$visitor->full_name}'s account is already active."
+                : "{$visitor->full_name}'s account is already deactivated.");
+        }
+
+        AuditLog::record(
+            'update',
+            'accounts',
+            (int) $visitor->account_id,
+            Str::limit($target === 'active'
+                ? "Reactivated visitor {$visitor->full_name}'s account (password re-confirmed)"
+                : "Deactivated visitor {$visitor->full_name}'s account (password re-confirmed). Reason: {$reason}", 250),
+            Module::CODE_VISITOR_MANAGEMENT
+        );
+
+        if ($target === 'active') {
+            return $back->with('status', "{$visitor->full_name}'s account is active again. They can sign in to the app; their verification is unchanged.");
+        }
+
+        $upcoming = $this->upcomingVisitCount($visitor);
+        $note = $upcoming > 0
+            ? " {$upcoming} upcoming " . Str::plural('visit', $upcoming) . ' stay booked (not cancelled); the Front Desk will refuse check-in while the account is inactive.'
+            : '';
+
+        return $back->with('status', "{$visitor->full_name}'s account is deactivated and signed out of the app.{$note}");
+    }
+
+    /** Pending or confirmed visits from today on (shown before/after deactivating). */
+    private function upcomingVisitCount(VisitorProfile $visitor): int
+    {
+        return $visitor->visitRequests()
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '>=', now()->toDateString()))
+            ->count();
     }
 
     /**
@@ -92,7 +188,7 @@ class VisitorController extends Controller
         $likeDigits = $digits !== '' ? '%' . $digits . '%' : null;
 
         return VisitorProfile::query()
-            ->with(['relationships' => fn ($q) => $q->orderByDesc('priority_tier')->with('pdl')])
+            ->with(['account:account_id,status', 'relationships' => fn ($q) => $q->orderByDesc('priority_tier')->with('pdl')])
             ->when($filter, fn ($query) => $query->where('verification_status', $filter))
             ->when($like, function ($query) use ($like, $likeDigits) {
                 $query->where(function ($q) use ($like, $likeDigits) {
@@ -130,6 +226,7 @@ class VisitorController extends Controller
                     'more_pdls' => max(0, $visitor->relationships->count() - 1),
                     'relationship_type' => $relationship?->relationship_type ?? 'unknown_or_other',
                     'verification_status' => $visitor->verification_status,
+                    'account_status' => $visitor->account?->status,
                 ];
             })
             ->all();

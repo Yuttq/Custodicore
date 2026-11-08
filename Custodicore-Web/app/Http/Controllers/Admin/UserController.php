@@ -185,7 +185,12 @@ class UserController extends Controller
 
     public function toggleStatus(int $id): RedirectResponse
     {
-        $account = Account::with('staffProfile')->findOrFail($id);
+        // Staff accounts only. Visitors are switched on/off from Visitor
+        // Management (Admin\VisitorController::setAccountStatus), which asks
+        // for a reason and keeps verification separate.
+        $account = Account::with('staffProfile')
+            ->whereHas('role', fn ($q) => $q->whereIn('role_name', self::ROLE_NAMES))
+            ->findOrFail($id);
 
         if ($account->invitationState() !== null) {
             return redirect()->route('admin.users.index')
@@ -205,7 +210,7 @@ class UserController extends Controller
             $locked->save();
 
             if ($locked->status !== 'active') {
-                $this->signOutEverywhere($locked);
+                $locked->signOutEverywhere();
             }
 
             return $locked->status;
@@ -267,23 +272,6 @@ class UserController extends Controller
         }
 
         return StaffInvitationService::describe($result);
-    }
-
-    /**
-     * A deactivated account's mobile tokens and stored web sessions are
-     * removed. This is cleanup only: EnsureRoleAccess and the Sanctum token
-     * check (AppServiceProvider) are what actually refuse an inactive account.
-     */
-    private function signOutEverywhere(Account $account): void
-    {
-        $account->tokens()->delete();
-
-        if (config('session.driver') === 'database') {
-            DB::connection(config('session.connection'))
-                ->table(config('session.table', 'sessions'))
-                ->where('user_id', $account->account_id)
-                ->delete();
-        }
     }
 
     private static function rows(?string $search): array

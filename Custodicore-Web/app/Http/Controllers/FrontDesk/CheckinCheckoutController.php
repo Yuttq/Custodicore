@@ -45,9 +45,26 @@ class CheckinCheckoutController extends Controller
     // check_in_officer_id / check_out_officer_id: the signed-in officer.
     use \App\Http\Controllers\Concerns\ResolvesActingStaff;
 
+    private const ACCOUNT_INACTIVE_MESSAGE =
+        "This visitor's account is deactivated. Do not admit them; refer them to the Warden.";
+
     public function __construct(
         private VisitGateService $gate
     ) {
+    }
+
+    /**
+     * Whether the visit's visitor has an account that is switched off
+     * (Admin → Visitor Management). Read from the database, not a loaded
+     * relation, so a deactivation a moment ago is seen. Check-out is never
+     * blocked: someone already inside can always leave.
+     */
+    private function visitorAccountInactive(VisitRequest $visitRequest): bool
+    {
+        $accountId = $visitRequest->visitor?->account_id;
+
+        return $accountId !== null
+            && \App\Models\Account::whereKey($accountId)->value('status') !== 'active';
     }
 
     /**
@@ -483,6 +500,17 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
+             * A deactivated visitor account is refused, even with a pass
+             * saved before it was deactivated.
+             */
+            if ($this->visitorAccountInactive($visitRequest)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => self::ACCOUNT_INACTIVE_MESSAGE,
+                ], 422);
+            }
+
+            /*
              * Prevent scanning an already checked-in visitor.
              */
             if ($this->gate->activeCheckin($visitRequest)) {
@@ -719,6 +747,17 @@ class CheckinCheckoutController extends Controller
                         'success' => false,
                         'message' =>
                             'This visit is no longer confirmed.',
+                    ], 422);
+                }
+
+                /*
+                 * Re-checked under the lock: the account may have been
+                 * deactivated after the scan.
+                 */
+                if ($this->visitorAccountInactive($visitRequest)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => self::ACCOUNT_INACTIVE_MESSAGE,
                     ], 422);
                 }
 
@@ -1092,6 +1131,10 @@ class CheckinCheckoutController extends Controller
                         'error',
                         'No visitor profile is linked to this visit.'
                     );
+                }
+
+                if ($this->visitorAccountInactive($visitRequest)) {
+                    return back()->with('error', self::ACCOUNT_INACTIVE_MESSAGE);
                 }
 
                 /*

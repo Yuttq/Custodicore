@@ -5,6 +5,8 @@
 
 @php
     $status = $visitor->verification_status;
+    // Account on/off (accounts.status) — separate from verification above.
+    $accountStatus = $visitor->account?->status;
     $plural = fn (int $n, string $word) => $n . ' ' . \Illuminate\Support\Str::plural($word, $n);
 
     // Right-hand bars: real counts only.
@@ -76,12 +78,59 @@
                         <dd class="break-all font-semibold text-primary-navy">{{ $visitor->account?->email ?? '—' }}</dd>
                     </div>
                 </dl>
+
+                {{-- Account access: switches accounts.status only. Verification is not touched. --}}
+                @if ($accountStatus)
+                    <div class="space-y-sm rounded-sm border border-border p-md" id="account-access">
+                        <div class="flex items-center justify-between gap-sm">
+                            <p class="text-card-title text-primary-navy">Account access</p>
+                            @include('admin.partials.status-chip', ['status' => $accountStatus])
+                        </div>
+
+                        @if ($accountStatus === 'active')
+                            <p class="text-metadata text-text-secondary">
+                                Deactivating signs them out of the app and blocks sign-in and check-in. Verification stays as it is.
+                                @if ($upcomingVisits > 0)
+                                    <strong class="text-warning">{{ $upcomingVisits }} upcoming {{ \Illuminate\Support\Str::plural('visit', $upcomingVisits) }}</strong> will stay booked but be refused at the gate.
+                                @endif
+                            </p>
+                            <form method="POST" action="{{ route('admin.visitors.account-status', $visitor->visitor_id) }}"
+                                  class="space-y-sm"
+                                  data-password-confirm="Deactivate {{ $visitor->full_name }}'s account? Enter your password to confirm.">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="action" value="deactivate">
+                                <label for="deactivate-reason" class="cc-label">Reason (required)</label>
+                                <textarea id="deactivate-reason" name="reason" rows="2" maxlength="200" required
+                                          class="cc-input h-auto py-sm" placeholder="e.g. Banned by facility order">{{ old('reason') }}</textarea>
+                                @error('reason')
+                                    <p class="text-metadata text-danger">{{ $message }}</p>
+                                @enderror
+                                <button type="submit" class="cc-btn-secondary w-full text-danger">Deactivate account</button>
+                            </form>
+                        @else
+                            <p class="text-metadata text-text-secondary">
+                                They cannot sign in to the app or be checked in. Reactivating lets them sign in again with their verification unchanged.
+                            </p>
+                            <form method="POST" action="{{ route('admin.visitors.account-status', $visitor->visitor_id) }}"
+                                  data-password-confirm="Reactivate {{ $visitor->full_name }}'s account? Enter your password to confirm.">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="action" value="reactivate">
+                                <button type="submit" class="cc-btn-primary w-full">Reactivate account</button>
+                            </form>
+                        @endif
+                    </div>
+                @endif
             </div>
 
             {{-- ===== MIDDLE: chips, more details, relationships, history, flags ===== --}}
             <div class="min-w-0 space-y-lg">
                 <div class="flex flex-wrap gap-sm">
                     @include('admin.partials.status-chip', ['status' => $status])
+                    @if ($accountStatus && $accountStatus !== 'active')
+                        <span class="cc-chip cc-chip-danger">Account {{ $accountStatus === 'inactive' ? 'deactivated' : $accountStatus }}</span>
+                    @endif
                     @if ($activeFlags > 0)
                         <span class="cc-chip cc-chip-danger">{{ $plural($activeFlags, 'active flag') }}</span>
                     @endif

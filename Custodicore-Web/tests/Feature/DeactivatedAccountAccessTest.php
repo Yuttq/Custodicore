@@ -83,6 +83,19 @@ class DeactivatedAccountAccessTest extends TestCase
         return $this->patch(route('admin.users.toggle-status', $account->account_id), ['current_password' => 'password']);
     }
 
+    /** Visitors are switched on/off from Visitor Management, not Admin → Users. */
+    private function setVisitorAccess(string $action): \Illuminate\Testing\TestResponse
+    {
+        $this->freshRequest();
+        $this->actingAs($this->adminAccount, 'web');
+
+        return $this->patch(route('admin.visitors.account-status', $this->visitor->visitor_id), [
+            'action' => $action,
+            'reason' => 'Test',
+            'current_password' => 'password',
+        ]);
+    }
+
     private function storeSession(Account $account): string
     {
         $id = Str::random(40);
@@ -265,7 +278,7 @@ class DeactivatedAccountAccessTest extends TestCase
         $otherSession = $this->storeSession($this->frontDeskAccount);
 
         $this->toggle($this->recordOfficerAccount)->assertRedirect(route('admin.users.index'));
-        $this->toggle($this->visitorAccount)->assertRedirect(route('admin.users.index'));
+        $this->setVisitorAccess('deactivate')->assertRedirect(route('admin.visitors.show', $this->visitor->visitor_id));
 
         $this->assertSame('inactive', $this->recordOfficerAccount->fresh()->status);
         $this->assertSame('inactive', $this->visitorAccount->fresh()->status);
@@ -283,13 +296,13 @@ class DeactivatedAccountAccessTest extends TestCase
     {
         $revoked = $this->visitorAccount->createToken('mobile')->plainTextToken;
 
-        $this->toggle($this->visitorAccount);
+        $this->setVisitorAccess('deactivate');
         $this->assertSame(0, $this->visitorAccount->tokens()->count());
 
         // A token that exists while the account is inactive is left alone by
         // reactivation (and starts working again once active).
         $kept = $this->visitorAccount->createToken('mobile')->plainTextToken;
-        $this->toggle($this->visitorAccount);
+        $this->setVisitorAccess('reactivate');
         $this->assertSame('active', $this->visitorAccount->fresh()->status);
 
         $this->api($revoked, 'GET', '/api/me')->assertUnauthorized();

@@ -147,4 +147,22 @@ class Account extends Authenticatable
     {
         return $this->isRole('Visitor');
     }
+
+    /**
+     * Removes this account's mobile tokens and stored web sessions (used when
+     * it is deactivated). Cleanup only: EnsureRoleAccess and the Sanctum
+     * token check (AppServiceProvider) are what actually refuse an inactive
+     * account, whether or not this ran.
+     */
+    public function signOutEverywhere(): void
+    {
+        $this->tokens()->delete();
+
+        if (config('session.driver') === 'database') {
+            \Illuminate\Support\Facades\DB::connection(config('session.connection'))
+                ->table(config('session.table', 'sessions'))
+                ->where('user_id', $this->account_id)
+                ->delete();
+        }
+    }
 }

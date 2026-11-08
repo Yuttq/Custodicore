@@ -265,6 +265,11 @@ Route::prefix('admin')
         // Read-only profile / PDL relationships / visit history / flags of one visitor.
         Route::get('/visitors/{visitor}', [VisitorController::class, 'show'])
             ->name('visitors.show');
+
+        // Switch the visitor's ACCOUNT on/off (not their verification).
+        Route::patch('/visitors/{visitor}/account-status', [VisitorController::class, 'setAccountStatus'])
+            ->middleware('reauth')
+            ->name('visitors.account-status');
         /*
         |--------------------------------------------------------------------------
         | Check-In / Check-Out

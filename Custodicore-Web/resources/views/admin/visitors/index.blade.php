@@ -50,6 +50,7 @@
                         <th class="py-sm pr-md">PDL #</th>
                         <th class="py-sm pr-md">Relationship</th>
                         <th class="py-sm pr-md">Verification</th>
+                        <th class="py-sm pr-md">Account</th>
                         <th class="py-sm pr-md">Actions</th>
                     </tr>
                 </thead>
@@ -73,12 +74,19 @@
                             <td class="py-sm pr-md text-text-secondary">{{ ucwords(str_replace('_', ' ', $visitor['relationship_type'])) }}</td>
                             <td class="py-sm pr-md">@include('admin.partials.status-chip', ['status' => $visitor['verification_status']])</td>
                             <td class="py-sm pr-md">
+                                @if ($visitor['account_status'])
+                                    @include('admin.partials.status-chip', ['status' => $visitor['account_status']])
+                                @else
+                                    <span class="text-text-secondary">—</span>
+                                @endif
+                            </td>
+                            <td class="py-sm pr-md">
                                 <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="cc-btn-ghost">View</a>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="py-lg text-center text-text-secondary">
+                            <td colspan="8" class="py-lg text-center text-text-secondary">
                                 {{ $search || $filter ? 'No visitor matches your search.' : 'No visitors registered yet.' }}
                             </td>
                         </tr>

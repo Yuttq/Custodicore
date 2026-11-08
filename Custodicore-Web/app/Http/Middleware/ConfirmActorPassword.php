@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Applied (alias `reauth`, see bootstrap/app.php) to every web route that
  * changes an EXISTING person's / record's details:
  *   - admin.users.update, admin.users.toggle-status   (Admin / Warden)
+ *   - admin.visitors.account-status                   (Admin / Warden)
  *   - pdl.update                                      (Record Officer)
  *
  * The signed-in staff member must submit their OWN password in a
