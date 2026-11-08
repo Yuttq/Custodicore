@@ -136,6 +136,8 @@ php artisan migrate:status            # quick database connection check
 php artisan migrate --force           # after deploying new migrations
 php artisan cc:mail-test you@example.com
 php artisan cc:mfa-reset              # remove a staff member's two-step verification
+php artisan cc:purge-visitors         # dry run: lists every visitor account it would delete
+php artisan cc:purge-visitors --force # PERMANENTLY deletes all visitors (PDLs and staff kept); asks you to type a phrase
 ```
 
 **Never run on production:** plain `php artisan db:seed`, `migrate:fresh`, `migrate:refresh`, `migrate:reset`, or `SEED_DEMO_DATA=true`.
