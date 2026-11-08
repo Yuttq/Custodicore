@@ -68,7 +68,7 @@
        dialog opened via showModal() on its own; these classes just style
        its box and the darkened backdrop behind it. */
     .cc-modal {
-        @apply w-full max-w-md rounded-card border border-border bg-card p-lg shadow-card;
+        @apply w-full max-w-md rounded-card border border-border bg-card p-md shadow-card;
     }
     .cc-modal::backdrop {
         background-color: rgb(17 24 39 / 0.5);
@@ -80,7 +80,7 @@
     /* Sidebar navigation: identical on Admin and Front Desk, and the same
        look as the Record Officer sidebar (white, text only, teal when active). */
     .cc-nav-link {
-        @apply flex items-center gap-[10px] rounded-button p-[10px] text-[13.5px] font-medium text-[#4b5563] transition hover:bg-background;
+        @apply flex items-center gap-[10px] rounded-button px-[10px] py-[8px] text-[13.5px] font-medium text-[#4b5563] transition hover:bg-background;
     }
     /* Small dot before each menu item; teal when it is the current page. */
     .cc-nav-link::before {
@@ -101,8 +101,10 @@
 
     /* Gradient page banner (navy to teal) with two soft circles, shared by Admin
        and Front Desk. The page content below slides up over its bottom edge. */
+    /* Compact (Nov 2026): was pt-7 / pb-64px, home pb-104px; the main area's
+       negative top margin in the layouts shrank to match (-mt-8 / -mt-14). */
     .cc-hero {
-        @apply relative overflow-hidden px-8 pb-[64px] pt-7 text-white;
+        @apply relative overflow-hidden px-6 pb-[48px] pt-5 text-white;
         background-image: linear-gradient(120deg, #0f3d7a 0%, #1558a8 45%, #0da58a 100%);
     }
     .cc-hero::before {
@@ -130,7 +132,7 @@
         z-index: 1;
     }
     .cc-hero-home {
-        @apply pb-[104px];
+        @apply pb-[84px];
     }
 
     /* Card titles: navy, with a small teal-to-blue accent bar in front.
@@ -238,10 +240,10 @@
         width: auto;
     }
     .cc-hero {
-        padding: 20px 16px 56px;
+        padding: 16px 16px 44px;
     }
     .cc-hero-home {
-        padding-bottom: 96px;
+        padding-bottom: 76px;
     }
     .cc-hero h1 {
         font-size: 22px;

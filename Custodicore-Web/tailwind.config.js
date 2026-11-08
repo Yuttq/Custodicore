@@ -45,13 +45,14 @@ export default {
                 'text-primary': '#111827',
                 'text-secondary': '#6B7280',
             },
-            // 1:1 with src/designSystem/tokens/spacing.js (spacing + layout.*Radius)
+            // Based on src/designSystem/tokens/spacing.js (spacing + layout.*Radius).
+            // lg/xl are tighter on the web (compact pass, Nov 2026: were 24/32).
             spacing: {
                 xs: '4px',
                 sm: '8px',
                 md: '16px',
-                lg: '24px',
-                xl: '32px',
+                lg: '20px',
+                xl: '28px',
             },
             borderRadius: {
                 card: '16px',      // layout.cardRadius

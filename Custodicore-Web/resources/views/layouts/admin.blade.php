@@ -10,8 +10,8 @@
 <body class="min-h-screen bg-background text-text-primary">
     <div class="flex min-h-screen flex-col lg:flex-row">
         {{-- Sidebar: white, text-only buttons, teal when active (same as the Record Officer sidebar) --}}
-        <aside class="cc-sidebar flex w-[220px] shrink-0 flex-col border-r border-border bg-white px-[14px] py-5">
-            <div class="flex items-center gap-[10px] px-2 pb-[22px] pt-[6px]">
+        <aside class="cc-sidebar flex w-[210px] shrink-0 flex-col border-r border-border bg-white px-[12px] py-4">
+            <div class="flex items-center gap-[10px] px-2 pb-[14px] pt-[4px]">
                 <img src="{{ asset('images/bjmp-logo.png') }}" alt="BJMP logo" class="h-[38px] w-[38px] shrink-0 object-contain"
                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div style="display:none;" class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-button bg-primary-navy text-body font-bold text-white">CC</div>
@@ -68,14 +68,14 @@
             <header class="cc-hero {{ $isHome ? 'cc-hero-home' : '' }}">
                 <p class="text-metadata text-white/85">{{ now()->format('l, j F Y') }}</p>
                 @if ($isHome)
-                    <h1 id="greeting" class="mt-xs text-[28px] font-bold leading-tight">Welcome back, {{ $firstName }}</h1>
+                    <h1 id="greeting" class="mt-xs text-[24px] font-bold leading-tight">Welcome back, {{ $firstName }}</h1>
                     <p class="mt-xs text-body text-white/90">Here is what is happening at the facility today.</p>
                 @else
-                    <h1 class="mt-xs text-[28px] font-bold leading-tight">@yield('title', 'Dashboard')</h1>
+                    <h1 class="mt-xs text-[24px] font-bold leading-tight">@yield('title', 'Dashboard')</h1>
                 @endif
             </header>
 
-            <main class="cc-main relative flex-1 space-y-lg px-8 pb-[22px] {{ $isHome ? '-mt-[72px]' : '-mt-11' }}">
+            <main class="cc-main relative flex-1 space-y-md px-6 pb-[18px] {{ $isHome ? '-mt-14' : '-mt-8' }}">
                 @if (session('status'))
                     <div class="cc-card border-l-4 border-l-info">
                         {{ session('status') }}
