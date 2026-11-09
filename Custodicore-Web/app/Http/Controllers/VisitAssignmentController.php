@@ -136,6 +136,7 @@ class VisitAssignmentController extends Controller
         ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => 'PDL not available for visits',
         ScheduleAvailabilityService::REASON_CLOSED => 'Session closed',
         ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => 'Already has a visit with this PDL that day',
+        ScheduleAvailabilityService::REASON_DAILY_LIMIT => 'Already visiting another PDL that day',
         ScheduleAvailabilityService::REASON_FULL => 'Full',
         ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => 'Weekly visit limit reached',
     ];

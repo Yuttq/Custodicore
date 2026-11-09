@@ -482,6 +482,11 @@ class WalkInService
         }
 
         return DB::transaction(function () use ($visitor, $relationship, $startTimes, $assessment) {
+            // First statement of this (outer) transaction, before the
+            // availability reads in submitVisitorRequest(): the read snapshot
+            // must be taken after the visitor lock (see lockVisitor()).
+            $this->assignments->lockVisitor($visitor);
+
             $today = CarbonImmutable::parse($this->availability->now()->toDateString());
 
             $visit = $this->assignments->submitVisitorRequest($visitor, $relationship, $today, $startTimes);
@@ -504,6 +509,13 @@ class WalkInService
      * facility, a walk-in session today (walkInSession()), even on a day
      * without visiting for the PDL. Null when they already have a visit today
      * or today's visiting hours are over.
+     *
+     * A failed booking stays failed: a ValidationException from bookVisit()
+     * (eligibility, one PDL per day, weekly limit, a seat taken meanwhile)
+     * is thrown to the caller, never retried as a walk-in session. The
+     * walk-in session enforces the same per-visitor rules itself.
+     *
+     * @throws ValidationException
      */
     public function autoBook(VisitorProfile $visitor): ?VisitRequest
     {
@@ -513,14 +525,8 @@ class WalkInService
 
         foreach ($this->todaysSessions($visitor) as $entry) {
             $slot = collect($entry['slots'])->where('available', true)->sortBy('startTime')->first();
-            if (! $slot) {
-                continue;
-            }
-
-            try {
+            if ($slot) {
                 return $this->bookVisit($visitor, $entry['relationship'], [$slot['startTime']]);
-            } catch (ValidationException) {
-                // Filled or closed meanwhile: fall back to a walk-in session.
             }
         }
 
@@ -536,6 +542,12 @@ class WalkInService
      * weekday). The dated session is not a special visiting date, so it does
      * not open the day for app bookings. The PDL must still be in active
      * custody without restrictions. Null after today's last session.
+     *
+     * The per-visitor rules still apply (one PDL per day, weekly limit), as
+     * does the session's capacity: the visit takes a seat on it. Checked
+     * under the visitor lock, like every other visit-creating path.
+     *
+     * @throws ValidationException
      */
     private function walkInSession(VisitorProfile $visitor, VisitorPdlRelationship $relationship): ?VisitRequest
     {
@@ -557,6 +569,9 @@ class WalkInService
         $assessment = $this->assessment($visitor);
 
         return DB::transaction(function () use ($visitor, $relationship, $pdl, $rule, $today, $assessment) {
+            // Lock order: visitor, then schedule (VisitAssignmentService::lockVisitor()).
+            $this->assignments->lockVisitor($visitor);
+
             $schedule = VisitSchedule::where('rule_id', $rule->rule_id)
                 ->whereDate('schedule_date', $today)
                 ->where('time_slot_start', $rule->time_slot_start)
@@ -573,6 +588,15 @@ class WalkInService
                     'status' => 'closed',
                 ]);
 
+            $this->assignments->assertVisitorMayBook($visitor, $pdl, $schedule);
+
+            $taken = max((int) $schedule->slots_taken, $this->assignments->occupiedSlots($schedule));
+            if ($taken >= $schedule->max_capacity) {
+                throw ValidationException::withMessages([
+                    'schedule_id' => 'Today\'s session is full. No seat is left for this walk-in.',
+                ]);
+            }
+
             $visit = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
                 'pdl_id' => $pdl->pdl_id,
@@ -583,6 +607,15 @@ class WalkInService
                 'is_walk_in' => true,
             ]);
             VisitSession::firstOrCreate(['visit_request_id' => $visit->visit_request_id, 'schedule_id' => $schedule->schedule_id]);
+
+            // Take the seat. A walk-in-only (or staff-closed) session stays
+            // closed: reserveSlot() would flip it to `full`, which a later
+            // release turns into `open` and so opens it for app bookings.
+            if ($schedule->status === 'open') {
+                $schedule->reserveSlot();
+            } else {
+                $schedule->update(['slots_taken' => min($taken + 1, $schedule->max_capacity)]);
+            }
 
             EligibilityAssessment::assessFor($visit->fresh(['visitor.idDocuments', 'visitor.flags', 'pdl.restrictions', 'relationship']));
             $assessment?->update(['visit_request_id' => $visit->visit_request_id]);

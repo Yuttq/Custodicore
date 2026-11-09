@@ -32,7 +32,9 @@ use Illuminate\Validation\ValidationException;
  *
  * A visit is one day with one PDL and covers one or more sessions
  * (visit_sessions): a visitor request may take the morning, the afternoon or
- * both (whole day); a staff assignment takes one schedule. The visit carries
+ * both (whole day); a staff assignment takes one schedule. A visitor holds
+ * at most one visit per calendar day, so visits only ONE PDL that day, even
+ * with several verified relationships (assertVisitorMayBook). The visit carries
  * the status lifecycle and counts once toward visit.max_per_week; each
  * session holds one seat on its schedule, reserved and released together.
  *
@@ -61,6 +63,11 @@ class VisitAssignmentService
     ];
 
     public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for this calendar week.';
+
+    /** One PDL per visitor per day: the visitor already has a visit with a different PDL that date. */
+    public const ONE_PDL_PER_DAY_MESSAGE = 'You already have a visit with another PDL on this date. Visitors may visit only one PDL per day.';
+
+    public const STAFF_ONE_PDL_PER_DAY_MESSAGE = 'This visitor already has a visit with another PDL on this date. Visitors may visit only one PDL per day.';
 
     /**
      * cancellation_reason of a visitor request that expired unreviewed (shown to the visitor).
@@ -99,8 +106,7 @@ class VisitAssignmentService
                 ]);
             }
 
-            $this->assertNoDuplicate($visitor, $pdl, $schedule);
-            $this->assertWeeklyVisitLimit($visitor, $schedule);
+            $this->assertVisitorMayBook($visitor, $pdl, $schedule);
 
             $visitRequest = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
@@ -162,6 +168,7 @@ class VisitAssignmentService
         return $this->bookSessions(
             $visitor, $relationship, $date, $startTimes, 'assigned', null,
             'You already have a visit with this PDL on this date.',
+            self::ONE_PDL_PER_DAY_MESSAGE,
             function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
                 $scheduleLabel = $this->visitLabel($visitRequest);
                 Notification::notify(
@@ -203,6 +210,7 @@ class VisitAssignmentService
             $visitor, $relationship, $date, $startTimes, 'pending_confirmation',
             $this->resolveDeadline($confirmationDeadline),
             'This visitor already has a visit with this PDL on this date.',
+            self::STAFF_ONE_PDL_PER_DAY_MESSAGE,
             function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
                 $scheduleLabel = $this->visitLabel($visitRequest);
                 Notification::notify(
@@ -242,6 +250,7 @@ class VisitAssignmentService
         string $status,
         mixed $deadline,
         string $duplicateMessage,
+        string $otherPdlMessage,
         callable $afterCreate
     ): VisitRequest {
         if ((int) $relationship->visitor_id !== (int) $visitor->visitor_id) {
@@ -277,7 +286,7 @@ class VisitAssignmentService
         $this->assertPdlAssignable($pdl);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
-        return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots, $status, $deadline, $duplicateMessage, $afterCreate) {
+        return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots, $status, $deadline, $duplicateMessage, $otherPdlMessage, $afterCreate) {
             // Lock order: visitor, then schedules (see lockVisitor()). The
             // schedules are locked in start-time order, so two requests for
             // the same day always take the schedule locks in the same order.
@@ -308,11 +317,7 @@ class VisitAssignmentService
             }
 
             $first = $schedules[0];
-            $this->assertNoDuplicate(
-                $visitor, $pdl, $first,
-                $duplicateMessage
-            );
-            $this->assertWeeklyVisitLimit($visitor, $first);
+            $this->assertVisitorMayBook($visitor, $pdl, $first, $duplicateMessage, $otherPdlMessage);
 
             $visitRequest = VisitRequest::create([
                 'visitor_id' => $visitor->visitor_id,
@@ -935,28 +940,47 @@ class VisitAssignmentService
     }
 
     /**
-     * One active visit per visitor, PDL and day: a second session that day is
-     * part of the same visit, chosen when the visit is requested, never a
-     * separate visit (which would count twice toward the weekly limit).
-     * Called inside the creating transaction, after lockVisitor().
+     * The per-visitor booking rules every visit-creating path must pass:
+     * one PDL per visitor per day, and visit.max_per_week. Must run inside
+     * the creating transaction, after lockVisitor() (see there).
      */
-    private function assertNoDuplicate(
+    public function assertVisitorMayBook(
         VisitorProfile $visitor,
         Pdl $pdl,
         VisitSchedule $schedule,
-        string $message = 'This visitor already has a visit with this PDL on the selected date.'
+        string $samePdlMessage = 'This visitor already has a visit with this PDL on the selected date.',
+        string $otherPdlMessage = self::STAFF_ONE_PDL_PER_DAY_MESSAGE
     ): void {
-        $exists = VisitRequest::where('visitor_id', $visitor->visitor_id)
-            ->where('pdl_id', $pdl->pdl_id)
-            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', $schedule->schedule_date->toDateString()))
-            ->whereIn('status', self::CAPACITY_STATUSES)
-            ->exists();
+        $this->assertOneVisitPerDay($visitor, $pdl, $schedule, $samePdlMessage, $otherPdlMessage);
+        $this->assertWeeklyVisitLimit($visitor, $schedule);
+    }
 
-        if ($exists) {
-            throw ValidationException::withMessages([
-                'schedule_id' => $message,
-            ]);
+    /**
+     * One active visit per visitor per day, with ONE PDL, whatever other
+     * verified relationships the visitor has. A second session that day with
+     * the same PDL is part of the same visit, chosen when the visit is
+     * requested, never a separate visit (which would count twice toward the
+     * weekly limit). Called inside the creating transaction, after
+     * lockVisitor().
+     */
+    private function assertOneVisitPerDay(
+        VisitorProfile $visitor,
+        Pdl $pdl,
+        VisitSchedule $schedule,
+        string $samePdlMessage,
+        string $otherPdlMessage
+    ): void {
+        $sameDay = VisitRequest::where('visitor_id', $visitor->visitor_id)
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', $schedule->schedule_date->toDateString()))
+            ->whereIn('status', self::CAPACITY_STATUSES);
+
+        if (! (clone $sameDay)->exists()) {
+            return;
         }
+
+        throw ValidationException::withMessages([
+            'schedule_id' => $sameDay->where('pdl_id', $pdl->pdl_id)->exists() ? $samePdlMessage : $otherPdlMessage,
+        ]);
     }
 
     /**
@@ -983,7 +1007,7 @@ class VisitAssignmentService
 
     /**
      * Serializes visit creation per visitor: the weekly limit and the
-     * one-visit-per-PDL-per-day rule span several schedule rows, so the
+     * one-PDL-per-day rule span several schedule rows, so the
      * schedule locks alone cannot stop two requests by the same visitor for
      * different sessions from both passing those checks.
      *
@@ -994,9 +1018,10 @@ class VisitAssignmentService
      * first also means that under InnoDB REPEATABLE READ the transaction's
      * read snapshot is taken after this lock is granted, so the duplicate
      * and weekly-limit counts see every visit committed by the request that
-     * held the lock before.
+     * held the lock before. Public for the walk-in paths (WalkInService),
+     * which open their own transaction and must take this lock first.
      */
-    private function lockVisitor(VisitorProfile $visitor): void
+    public function lockVisitor(VisitorProfile $visitor): void
     {
         VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
     }
@@ -1052,6 +1077,7 @@ class VisitAssignmentService
             ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => ['relationshipId', 'Visits with this PDL are not available at this time. Please contact the facility for details.'],
             ScheduleAvailabilityService::REASON_CLOSED => ['startTime', 'This visiting slot is closed. Choose another available slot.'],
             ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit with this PDL on this date.'],
+            ScheduleAvailabilityService::REASON_DAILY_LIMIT => ['schedule_id', self::ONE_PDL_PER_DAY_MESSAGE],
             ScheduleAvailabilityService::REASON_FULL => ['startTime', 'This visiting slot is full. Choose another available slot.'],
             ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => ['schedule_id', self::WEEKLY_LIMIT_MESSAGE],
             default => ['startTime', 'This visiting slot is not available.'],

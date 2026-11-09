@@ -11,6 +11,7 @@ use App\Support\Sanitizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The Record Officer's walk-in decision for a visitor registered at the
@@ -46,15 +47,22 @@ class WalkInAssessmentController extends Controller
         $assessment = $walkIns->assess($visitor, $data, $staffId);
 
         $message = "Walk-in assessment saved: {$assessment->label('decision')}.";
+        $back = route('visitor.show', $visitor->visitor_id).'#walk-in';
         if ($assessment->decision === 'approved') {
             // The visitor is at the facility: set up today's visit so the Front Desk only checks them in.
-            $visit = $walkIns->autoBook($visitor);
+            try {
+                $visit = $walkIns->autoBook($visitor);
+            } catch (ValidationException $e) {
+                // The booking rules refused today's visit; nothing is booked.
+                return redirect()->to($back)->with('error',
+                    "{$message} No visit was booked for today: ".collect($e->errors())->flatten()->first());
+            }
             $message .= $visit
                 ? ' The Front Desk can check the visitor in now ('.$visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ').').'
                 : ' Today\'s visiting hours are over, so the visitor cannot be checked in today.';
         }
 
-        return redirect()->to(route('visitor.show', $visitor->visitor_id).'#walk-in')->with('success', $message);
+        return redirect()->to($back)->with('success', $message);
     }
 
     /** Verifies one walk-in document; may link the PDL and verify the relationship (WalkInService::autoLink). */

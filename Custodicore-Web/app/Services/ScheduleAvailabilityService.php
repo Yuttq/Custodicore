@@ -37,6 +37,8 @@ use Illuminate\Support\Collection;
  *   pdl_unavailable  — PDL not in active custody, or has an active restriction
  *   closed           — the overlaid visit_schedules row is closed
  *   already_scheduled — this visitor already has an active visit for this PDL on this date
+ *   daily_limit      — this visitor already has an active visit with ANOTHER PDL on this
+ *                      date (one PDL per visitor per day)
  *   full             — no capacity left
  *   weekly_limit     — the visitor already holds visit.max_per_week visits that week
  */
@@ -50,6 +52,7 @@ class ScheduleAvailabilityService
     public const REASON_PDL_UNAVAILABLE = 'pdl_unavailable';
     public const REASON_CLOSED = 'closed';
     public const REASON_ALREADY_SCHEDULED = 'already_scheduled';
+    public const REASON_DAILY_LIMIT = 'daily_limit';
     public const REASON_FULL = 'full';
     public const REASON_WEEKLY_LIMIT = 'weekly_limit';
 
@@ -346,6 +349,9 @@ class ScheduleAvailabilityService
         if (! $reason && isset($ownBookings[$relationship->pdl_id.'|'.$date->toDateString()])) {
             $reason = self::REASON_ALREADY_SCHEDULED;
         }
+        if (! $reason && isset($ownBookings[$date->toDateString()])) {
+            $reason = self::REASON_DAILY_LIMIT;
+        }
         if (! $reason && ($schedule?->status === 'full' || $remaining <= 0)) {
             $reason = self::REASON_FULL;
         }
@@ -469,14 +475,16 @@ class ScheduleAvailabilityService
     }
 
     /**
-     * A visitor holds at most one active visit per PDL per day; its sessions
-     * are chosen when it is requested.
+     * A visitor holds at most one active visit per day, with one PDL; its
+     * sessions are chosen when it is requested.
      *
-     * @return array<string, true> "pdl_id|Y-m-d" days on which this visitor already has a visit with that PDL
+     * @return array<string, true> two kinds of key: "pdl_id|Y-m-d" (a visit with
+     *                             that PDL that day) and "Y-m-d" (a visit with any PDL that day)
      */
     private function visitorBookings(VisitorProfile $visitor, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        return VisitRequest::query()
+        $bookings = [];
+        VisitRequest::query()
             ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
             ->where('visit_requests.visitor_id', $visitor->visitor_id)
             ->whereIn('visit_requests.status', VisitAssignmentService::CAPACITY_STATUSES)
@@ -484,8 +492,13 @@ class ScheduleAvailabilityService
             ->whereDate('visit_schedules.schedule_date', '<=', $to->toDateString())
             ->toBase()
             ->get(['visit_requests.pdl_id', 'visit_schedules.schedule_date'])
-            ->mapWithKeys(fn ($v) => [$v->pdl_id.'|'.substr((string) $v->schedule_date, 0, 10) => true])
-            ->all();
+            ->each(function ($v) use (&$bookings) {
+                $day = substr((string) $v->schedule_date, 0, 10);
+                $bookings[$v->pdl_id.'|'.$day] = true;
+                $bookings[$day] = true;
+            });
+
+        return $bookings;
     }
 
     private function scheduleKey(string $date, $start, $ruleId): string

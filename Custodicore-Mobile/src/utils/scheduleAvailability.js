@@ -25,6 +25,7 @@ export const SLOT_REASON_LABELS = {
   pdl_unavailable: 'Not available for this PDL',
   closed: 'Closed',
   already_scheduled: 'Already scheduled',
+  daily_limit: 'Visiting another PDL that day',
   full: 'Full',
   weekly_limit: 'Weekly limit reached',
 };
