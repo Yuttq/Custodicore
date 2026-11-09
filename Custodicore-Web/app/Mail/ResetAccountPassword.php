@@ -8,7 +8,8 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
 /**
- * The visitor's password reset link (PasswordResetService::sendLink()).
+ * A password reset link (PasswordResetService::sendLink()) — for a visitor
+ * (requested from the mobile app) or a staff officer (web login page).
  * Sent synchronously, not queued: the link must never sit in the jobs table.
  */
 class ResetAccountPassword extends Mailable
@@ -17,6 +18,7 @@ class ResetAccountPassword extends Mailable
         public Account $account,
         public string $resetUrl,
         public int $expiresInMinutes,
+        public bool $isStaff = false,
     ) {}
 
     public function envelope(): Envelope
@@ -31,6 +33,8 @@ class ResetAccountPassword extends Mailable
             text: 'emails.reset-password-text',
             with: [
                 'name' => $this->account->displayName(),
+                'accountKind' => $this->isStaff ? 'staff' : 'visitor',
+                'requestFrom' => $this->isStaff ? 'the CustodiCore sign-in page ("Forgot password?")' : 'the CustodiCore app',
             ],
         );
     }

@@ -46,9 +46,19 @@
                     </div>
 
                     <div>
-                        <label for="password" class="cc-label">Password</label>
-                        <input type="password" id="password" name="password" required
-                               autocomplete="current-password" placeholder="••••••••" class="cc-input" />
+                        <div class="flex items-center justify-between">
+                            <label for="password" class="cc-label">Password</label>
+                            <a href="{{ route('password.request') }}" class="text-metadata font-semibold text-primary-teal hover:underline">Forgot password?</a>
+                        </div>
+                        <div style="position:relative;">
+                            <input type="password" id="password" name="password" required
+                                   autocomplete="current-password" placeholder="••••••••" class="cc-input" style="padding-right:4rem;" />
+                            {{-- Show / hide the typed password. type="button" so it never submits the form. --}}
+                            <button type="button" id="toggle-password"
+                                    class="text-metadata font-semibold text-text-secondary hover:text-primary-navy"
+                                    style="position:absolute; top:0; bottom:0; right:0; display:flex; align-items:center; padding:0 12px; background:none; border:0; cursor:pointer;"
+                                    aria-controls="password" aria-pressed="false" aria-label="Show password">Show</button>
+                        </div>
                     </div>
 
                     <button type="submit" class="cc-btn-primary w-full">
@@ -57,10 +67,28 @@
                 </form>
 
                 <p class="mt-lg text-center text-metadata text-text-secondary">
-                    Lost access to your account? Contact your Admin to reset it.
+                    Forgot your password? <a href="{{ route('password.request') }}" class="font-semibold text-primary-teal hover:underline">Reset it by email</a>.
+                    Still locked out? Contact your Admin.
                 </p>
             </div>
         </div>
     </div>
+    <script>
+        (function () {
+            var input = document.getElementById('password');
+            var btn = document.getElementById('toggle-password');
+            if (!input || !btn) return;
+            btn.addEventListener('click', function () {
+                var show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.textContent = show ? 'Hide' : 'Show';
+                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                input.focus();
+            });
+            // Never submit the password while it is visible on screen.
+            input.form.addEventListener('submit', function () { input.type = 'password'; });
+        })();
+    </script>
 </body>
 </html>

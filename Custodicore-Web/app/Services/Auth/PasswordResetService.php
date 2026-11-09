@@ -26,11 +26,16 @@ use App\Support\VisitorPasswordPolicy;
  * Account deliberately does not have (see the doc comment on Account), so
  * Account::sendPasswordResetNotification() calls sendLink() here instead.
  *
- * Who may reset: only an active Visitor account that is not waiting on a
- * staff setup invitation (isEligible()). Staff passwords stay a Warden
- * task ("Contact your Warden administrator" on the web login page). A
- * Google-linked visitor is eligible — every visitor has a password (Google
- * registration requires one) and resetting it leaves google_id untouched.
+ * Who may reset (isEligible()): an active account that is not waiting on a
+ * staff setup invitation, and is either a Visitor (link requested from the
+ * mobile app) or a staff officer (link requested from the web login page's
+ * "Forgot password?"). Each entry point only ever emails its own audience
+ * (request()'s $audience), so the app's form never mails a staff account and
+ * the web form never mails a visitor. A staff officer's new password follows
+ * the staff-setup policy (staffPasswordRules()); two-step verification still
+ * applies at the next sign-in. A Google-linked visitor is eligible — every
+ * visitor has a password (Google registration requires one) and resetting it
+ * leaves google_id untouched.
  *
  * Resetting does NOT set email_verified_at. Email verification has its own
  * single-use flow (EmailVerificationService); an unverified visitor who
@@ -45,13 +50,37 @@ class PasswordResetService
     public const RESET = 'reset';
     public const INVALID = 'invalid';
 
-    /** Visitors only, active, and not a staff invitation waiting to be used. */
-    public static function isEligible(?Account $account): bool
+    /** Who a reset request is for — the mobile app (visitors) or the web login page (staff). */
+    public const AUDIENCE_VISITOR = 'visitor';
+    public const AUDIENCE_STAFF = 'staff';
+
+    /** The roles that sign in to the web dashboards (same list as LoginController). */
+    public const STAFF_ROLES = [
+        'System Administrator/Warden',
+        'Record Officer',
+        'Front Desk Officer',
+    ];
+
+    /**
+     * Active, not a staff invitation waiting to be used, and a Visitor or a
+     * staff officer. With $audience, only that kind of account counts.
+     */
+    public static function isEligible(?Account $account, ?string $audience = null): bool
     {
-        return $account !== null
-            && $account->isVisitor()
-            && $account->status === 'active'
-            && $account->invitation_token_hash === null;
+        if ($account === null || $account->status !== 'active' || $account->invitation_token_hash !== null) {
+            return false;
+        }
+
+        return match ($audience) {
+            self::AUDIENCE_VISITOR => $account->isVisitor(),
+            self::AUDIENCE_STAFF => self::isStaff($account),
+            default => $account->isVisitor() || self::isStaff($account),
+        };
+    }
+
+    public static function isStaff(?Account $account): bool
+    {
+        return $account !== null && in_array($account->role?->role_name, self::STAFF_ROLES, true);
     }
 
     /**
@@ -61,6 +90,42 @@ class PasswordResetService
     public static function passwordRules(?string $email = null): array
     {
         return VisitorPasswordPolicy::rules($email);
+    }
+
+    /**
+     * The staff password policy — the same one the staff setup page uses
+     * (StaffSetupController): 10+ characters, upper and lower case, a number
+     * and a symbol, confirmed, and not the officer's email or username.
+     */
+    public static function staffPasswordRules(?Account $account): array
+    {
+        return [
+            'required', 'string', 'confirmed', 'max:128',
+            \Illuminate\Validation\Rules\Password::min(10)->letters()->mixedCase()->numbers()->symbols(),
+            function (string $attribute, $value, \Closure $fail) use ($account) {
+                if ($account === null) {
+                    return;
+                }
+                $lower = mb_strtolower((string) $value);
+                if ($lower === mb_strtolower((string) $account->email) || $lower === mb_strtolower((string) $account->username)) {
+                    $fail('Your password cannot be the same as your email or username.');
+                }
+            },
+        ];
+    }
+
+    /** The password rules for whoever owns $email: staff policy for officers, visitor policy otherwise. */
+    public function rulesFor(?string $email): array
+    {
+        $account = $email !== null ? $this->findByEmail($email) : null;
+
+        return self::isStaff($account) ? self::staffPasswordRules($account) : self::passwordRules($email);
+    }
+
+    /** True when $email belongs to a staff officer (decides which wording the reset page shows). */
+    public function isStaffEmail(?string $email): bool
+    {
+        return $email !== null && self::isStaff($this->findByEmail($email));
     }
 
     /**
@@ -83,14 +148,14 @@ class PasswordResetService
      *    link < 60 s ago), an equivalent hash is computed anyway, so known
      *    addresses aren't told apart by the bcrypt cost.
      */
-    public function request(string $email): void
+    public function request(string $email, string $audience = self::AUDIENCE_VISITOR): void
     {
         $account = $this->findByEmail($email);
 
         $status = $this->broker()->sendResetLink(
             ['email' => $account?->email ?? trim($email)],
-            function (Account $account, #[\SensitiveParameter] string $token) {
-                if (! self::isEligible($account)) {
+            function (Account $account, #[\SensitiveParameter] string $token) use ($audience) {
+                if (! self::isEligible($account, $audience)) {
                     // The broker created a token before asking us: drop it.
                     $this->broker()->deleteToken($account);
 
@@ -116,6 +181,7 @@ class PasswordResetService
                 $account,
                 $this->resetUrl($account, $token),
                 $this->expiresInMinutes(),
+                self::isStaff($account),
             ));
         } catch (\Throwable $e) {
             // The response has already gone out, so the failure is logged
@@ -137,7 +203,8 @@ class PasswordResetService
      * Sets the new password. Returns RESET, or INVALID for an unknown,
      * ineligible, expired, used or replaced link (indistinguishable on
      * purpose). On success the token is deleted by the broker and every
-     * Sanctum token of the account is revoked (signs out the mobile app).
+     * Sanctum token of the account is revoked (signs out the mobile app);
+     * for a staff officer every stored web session is removed as well.
      */
     public function reset(string $email, #[\SensitiveParameter] string $token, #[\SensitiveParameter] string $password): string
     {
@@ -161,7 +228,13 @@ class PasswordResetService
                         }
 
                         $locked->forceFill(['password_hash' => Hash::make($password)])->save();
-                        $locked->tokens()->delete();
+
+                        if (self::isStaff($locked)) {
+                            // Officers: end every web session too, not only mobile tokens.
+                            $locked->signOutEverywhere();
+                        } else {
+                            $locked->tokens()->delete();
+                        }
 
                         // The visitor is not signed in, so credit the entry to them explicitly.
                         $log = AuditLog::record(

@@ -59,7 +59,7 @@
                         <tr class="transition hover:bg-background">
                             <td class="py-sm pr-md">
                                 <div class="flex items-center gap-sm">
-                                    @include('admin.partials.avatar', ['name' => $visitor['full_name'], 'size' => 'h-8 w-8'])
+                                    @include('admin.partials.avatar', ['name' => $visitor['full_name'], 'photo' => $visitor['photo'] ?? null, 'size' => 'h-8 w-8'])
                                     <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="font-semibold hover:underline">{{ $visitor['full_name'] }}</a>
                                 </div>
                             </td>

@@ -49,9 +49,31 @@
 
             {{-- ===== LEFT: avatar + quick facts ===== --}}
             <div class="space-y-md">
-                <div class="aspect-[4/5] w-full overflow-hidden rounded-sm border border-border">
-                    @include('admin.partials.person-silhouette')
+                {{-- The visitor's own photo (taken in the mobile app), served from private
+                     storage through the staff-only visitor.photo route. Silhouette when none yet,
+                     or if the picture fails to load. --}}
+                @php $photoUrl = $visitor->photoUrl(); @endphp
+                <div class="aspect-[4/5] w-full overflow-hidden rounded-sm border border-border bg-background">
+                    @if ($photoUrl)
+                        <a href="{{ $photoUrl }}" target="_blank" rel="noopener" title="Open full-size photo" style="display:block; width:100%; height:100%;">
+                            <img src="{{ $photoUrl }}" alt="Photo of {{ $visitor->full_name }}"
+                                 style="display:block; width:100%; height:100%; object-fit:cover;"
+                                 onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='block';">
+                        </a>
+                        <div style="display:none; width:100%; height:100%;">
+                            @include('admin.partials.person-silhouette')
+                        </div>
+                    @else
+                        @include('admin.partials.person-silhouette')
+                    @endif
                 </div>
+                @if ($photoUrl)
+                    <p class="text-center text-metadata text-text-secondary" style="margin-top:-8px;">
+                        Photo taken in the app{{ $visitor->photo_uploaded_at ? ' · ' . $visitor->photo_uploaded_at->format('M j, Y') : '' }}
+                    </p>
+                @else
+                    <p class="text-center text-metadata text-text-secondary" style="margin-top:-8px;">No photo uploaded yet</p>
+                @endif
 
                 <div class="rounded-sm border border-primary-navy/10 bg-primary-navy/[0.07] p-md text-center text-metadata italic text-text-secondary">
                     @if ($visitor->relationship_hint)

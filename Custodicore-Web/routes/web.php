@@ -92,14 +92,25 @@ Route::post('/email/verify', [EmailVerificationController::class, 'verify'])
 
 /*
 |--------------------------------------------------------------------------
-| Visitor password reset
+| Password reset (visitors and staff)
 |--------------------------------------------------------------------------
-| Public: opened from the link in the reset email the mobile app's "Forgot
-| Password" requests (POST /api/auth/password/forgot). GET only shows the
+| Public: opened from the link in the reset email — requested from the
+| mobile app's "Forgot Password" (POST /api/auth/password/forgot, visitors)
+| or the web login page's "Forgot password?" (POST /forgot-password, staff). GET only shows the
 | form; the single-use token is consumed by the POST. Never signs anyone
 | in. 'password.reset' is the name Laravel's password broker expects.
 | See PasswordResetController / PasswordResetService.
 */
+
+// Staff "Forgot password?" (link on the web login page). Guests only; the
+// answer is the same whether or not the address has an account.
+Route::middleware('guest')->group(function () {
+    Route::get('/forgot-password', [PasswordResetController::class, 'forgotForm'])
+        ->name('password.request');
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendStaffLink'])
+        ->middleware('throttle:5,1,staff-password-forgot')
+        ->name('password.email');
+});
 
 Route::get('/password/reset/{token}', [PasswordResetController::class, 'show'])
     ->middleware('throttle:20,1,password-reset-page')
@@ -218,6 +229,11 @@ Route::prefix('admin')
 
         Route::post('/users', [UserController::class, 'store'])
             ->name('users.store');
+
+        // Live "is this email already used?" check for the Register / Edit Officer forms.
+        Route::get('/users/check-email', [UserController::class, 'checkEmail'])
+            ->middleware('throttle:60,1,staff-email-check')
+            ->name('users.check-email');
 
         // Changing an existing officer's details / status requires the
         // admin to re-enter their own password as the final step.

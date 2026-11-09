@@ -11,10 +11,13 @@ use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Services\Auth\StaffInvitationService;
 use App\Support\Sanitizer;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use App\Support\Pages;
 use Illuminate\View\View;
 
@@ -88,11 +91,45 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * GET admin/users/check-email?email=&ignore= — live "is this email free?"
+     * check for the Register / Edit Officer forms. The real check is still
+     * StaffAccountRequest on submit; this only warns the Warden early.
+     */
+    public function checkEmail(Request $request): JsonResponse
+    {
+        $email = Sanitizer::email(is_string($request->query('email')) ? $request->query('email') : null);
+        $ignore = is_numeric($request->query('ignore')) ? (int) $request->query('ignore') : null;
+
+        if ($email === null || $email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json(['available' => null, 'message' => null]);
+        }
+
+        $message = StaffAccountRequest::emailTakenMessage($email, $ignore);
+
+        return response()->json(['available' => $message === null, 'message' => $message]);
+    }
+
     public function store(StaffAccountRequest $request): RedirectResponse
     {
         $data = $request->validated();
 
-        $account = $this->invitations->createStaffAccount($data);
+        try {
+            $account = DB::transaction(function () use ($data) {
+                // Checked again right before saving: another admin may have used
+                // this email between the form check and this request.
+                if ($message = StaffAccountRequest::emailTakenMessage($data['personal_email'])) {
+                    throw ValidationException::withMessages(['personal_email' => $message]);
+                }
+
+                return $this->invitations->createStaffAccount($data);
+            });
+        } catch (UniqueConstraintViolationException) {
+            // A unique index in the database refused it (two saves at the same moment).
+            throw ValidationException::withMessages([
+                'personal_email' => 'This email or mobile number was just registered to another account. Nothing was saved — check the details and try again.',
+            ]);
+        }
 
         // Outside the transaction: a mail/SMS problem must not undo the account.
         $delivery = $this->deliverInvitation($account);

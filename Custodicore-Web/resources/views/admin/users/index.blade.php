@@ -151,6 +151,63 @@
         @include('admin.partials.pagination-footer', ['paginator' => $accounts, 'label' => 'accounts'])
     </div>
 
+    {{-- Live duplicate-email check (Register + Edit Officer). Warns as soon as the Warden
+         leaves the email field; the server still re-checks on save (StaffAccountRequest). --}}
+    <script>
+        (function () {
+            function msgFor(input) {
+                return input.parentElement.querySelector('.email-check-msg');
+            }
+            function show(input, text) {
+                var el = msgFor(input);
+                if (!el) return;
+                el.textContent = text || '';
+                el.style.display = text ? '' : 'none';
+                input.setCustomValidity(text || '');
+                input.style.borderColor = text ? '#DC2626' : '';
+            }
+            // Resolves true when the email is free (or cannot be checked right now —
+            // the server check on save still applies), false when it is taken.
+            window.ccCheckStaffEmail = function (input) {
+                var email = (input.value || '').trim().toLowerCase();
+                if (!email) return Promise.resolve(true);
+                show(input, '');
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Promise.resolve(true);
+                var url = input.getAttribute('data-email-check') + '?email=' + encodeURIComponent(email);
+                var ignore = input.getAttribute('data-email-ignore');
+                if (ignore) url += '&ignore=' + encodeURIComponent(ignore);
+                return fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : { available: null }; })
+                    .then(function (data) {
+                        if (data.available === false) { show(input, data.message || 'This email is already used by another account.'); return false; }
+                        return true;
+                    })
+                    .catch(function () { return true; });
+            };
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('input[data-email-check]').forEach(function (input) {
+                    var timer;
+                    // A server error from the last save (shown under the field) stays until edited.
+                    var initial = msgFor(input);
+                    if (initial && initial.textContent.trim()) { initial.style.display = ''; input.style.borderColor = '#DC2626'; }
+                    input.addEventListener('input', function () {
+                        show(input, '');
+                        clearTimeout(timer);
+                        timer = setTimeout(function () { window.ccCheckStaffEmail(input); }, 600);
+                    });
+                    input.addEventListener('blur', function () { clearTimeout(timer); window.ccCheckStaffEmail(input); });
+                    // Edit Officer submits directly: stop it while the email is taken.
+                    if (input.hasAttribute('data-email-ignore')) {
+                        input.form.addEventListener('submit', function (e) {
+                            var el = msgFor(input);
+                            if (el && el.style.display !== 'none' && el.textContent.trim()) { e.preventDefault(); input.focus(); }
+                        });
+                    }
+                });
+            });
+        })();
+    </script>
+
     {{-- "Register Officer" — the admin's only way to create data on this dashboard. --}}
     <dialog id="new-account-modal" class="cc-modal">
         <form method="POST" action="{{ route('admin.users.store') }}" autocomplete="off">
@@ -209,7 +266,9 @@
                 <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                     <div>
                         <label class="cc-label" for="new-personal-email">Email <span class="normal-case">(sign-in &amp; setup link)</span></label>
-                        <input id="new-personal-email" type="email" name="personal_email" value="{{ $isNew ? old('personal_email') : '' }}" required maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
+                        <input id="new-personal-email" type="email" name="personal_email" value="{{ $isNew ? old('personal_email') : '' }}" required maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com"
+                               data-email-check="{{ route('admin.users.check-email') }}" />
+                        <p class="email-check-msg text-metadata text-danger" role="alert" style="display:none; margin-top:4px;">@if ($isNew && $errors->has('personal_email')){{ $errors->first('personal_email') }}@endif</p>
                     </div>
                     <div>
                         <label class="cc-label" for="new-contact">Mobile Number</label>
@@ -262,13 +321,23 @@
                     confirmBox.style.display = on ? '' : 'none';
                 }
 
+                var emailInput = document.getElementById('new-personal-email');
+                var reviewBtn = document.getElementById('register-review');
+
                 function review() {
                     if (!form.reportValidity()) return; // shows the usual "fill this in" hints
                     var v = function (n) { return (form.elements[n] ? form.elements[n].value : '').trim(); };
-                    var name = [v('first_name'), v('middle_name'), v('last_name'), v('suffix')].filter(Boolean).join(' ');
-                    document.getElementById('register-confirm-name').textContent = name;
-                    document.getElementById('register-confirm-email').textContent = v('personal_email').toLowerCase();
+
+                    // Do not go on to "Send the setup link now?" while the email is already in use.
+                    reviewBtn.disabled = true;
+                    window.ccCheckStaffEmail(emailInput).then(function (ok) {
+                        reviewBtn.disabled = false;
+                        if (!ok) { emailInput.focus(); return; }
+                        var name = [v('first_name'), v('middle_name'), v('last_name'), v('suffix')].filter(Boolean).join(' ');
+                        document.getElementById('register-confirm-name').textContent = name;
+                        document.getElementById('register-confirm-email').textContent = v('personal_email').toLowerCase();
                         showConfirm(true);
+                    });
                 }
 
                 document.getElementById('register-review').addEventListener('click', review);
@@ -365,7 +434,9 @@
                     <div class="grid grid-cols-1 gap-sm sm:grid-cols-2">
                         <div>
                             <label class="cc-label">Email <span class="normal-case">(sign-in &amp; setup link)</span></label>
-                            <input type="email" name="personal_email" value="{{ $mine ? old('personal_email') : $account['personal_email'] }}" maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com" />
+                            <input type="email" name="personal_email" value="{{ $mine ? old('personal_email') : $account['personal_email'] }}" maxlength="100" class="cc-input" placeholder="e.g. juan.delacruz@gmail.com"
+                                   data-email-check="{{ route('admin.users.check-email') }}" data-email-ignore="{{ $account['id'] }}" />
+                            <p class="email-check-msg text-metadata text-danger" role="alert" style="display:none; margin-top:4px;"></p>
                         </div>
                         <div>
                             <label class="cc-label">Mobile Number</label>

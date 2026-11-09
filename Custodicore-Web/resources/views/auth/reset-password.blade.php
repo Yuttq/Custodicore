@@ -7,7 +7,8 @@
     <meta name="referrer" content="no-referrer">
     <meta name="robots" content="noindex, nofollow">
     <title>Reset password · CustodiCore</title>
-    {{-- Public page opened from the visitor's inbox: no Vite / no login needed. --}}
+    {{-- Public page opened from the visitor's or officer's inbox: no Vite / no login needed. --}}
+    @php $isStaff = $isStaff ?? false; @endphp
     <style>
         :root { --navy: #0F3D7A; --teal: #0DA58A; --red: #DC2626; --amber: #F59E0B; --bg: #F8FAFC; --card: #FFFFFF; --border: #E5E7EB; --text: #111827; --muted: #6B7280; }
         * { box-sizing: border-box; }
@@ -33,6 +34,10 @@
         .error { font-size: 13px; color: var(--red); margin-top: 6px; }
         .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
         .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
+        .pw-wrap { position: relative; }
+        .pw-wrap input { padding-right: 70px; }
+        .pw-toggle { position: absolute; top: 0; bottom: 0; right: 0; padding: 0 14px; border: 0; background: none; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
+        .pw-toggle:hover { color: var(--navy); }
         @media (max-width: 480px) { main { margin: 24px auto; } .card { padding: 24px 20px; } }
     </style>
 @include('partials.favicon')
@@ -44,7 +49,7 @@
             @if ($state === 'form')
                 <div class="icon info">*</div>
                 <h1>Choose a new password</h1>
-                <p class="muted">Enter the email address of your CustodiCore visitor account and your new password.</p>
+                <p class="muted">Enter the email address of your CustodiCore {{ $isStaff ? 'staff' : 'visitor' }} account and your new password.</p>
                 <form method="POST" action="{{ route('password.update') }}" novalidate>
                     @csrf
                     <input type="hidden" name="token" value="{{ $token }}">
@@ -57,24 +62,61 @@
 
                     <div class="field">
                         <label for="password">New password</label>
-                        <input id="password" type="password" name="password" autocomplete="new-password" required class="{{ $errors->has('password') ? 'invalid' : '' }}">
-                        {{-- No maxlength: the browser would silently cut a pasted password; the server rejects > 64 instead. --}}
-                        <div class="hint">{{ \App\Support\VisitorPasswordPolicy::REQUIREMENTS }}</div>
+                        <div class="pw-wrap">
+                            <input id="password" type="password" name="password" autocomplete="new-password" required class="{{ $errors->has('password') ? 'invalid' : '' }}">
+                            <button type="button" class="pw-toggle" data-target="password" aria-label="Show password" aria-pressed="false">Show</button>
+                        </div>
+                        {{-- No maxlength: the browser would silently cut a pasted password; the server rejects an over-long one instead. --}}
+                        <div class="hint">
+                            @if ($isStaff)
+                                At least 10 characters with upper and lower case letters, a number and a symbol. It cannot be your email or username.
+                            @else
+                                {{ \App\Support\VisitorPasswordPolicy::REQUIREMENTS }}
+                            @endif
+                        </div>
                         @error('password') <div class="error">{{ $message }}</div> @enderror
                     </div>
 
                     <div class="field">
                         <label for="password_confirmation">Confirm new password</label>
-                        <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" required>
+                        <div class="pw-wrap">
+                            <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" required>
+                            <button type="button" class="pw-toggle" data-target="password_confirmation" aria-label="Show password" aria-pressed="false">Show</button>
+                        </div>
                     </div>
 
                     @error('token') <div class="error" style="margin-bottom:12px;">This reset link is incomplete. Open the link from your email again.</div> @enderror
 
                     <button type="submit" class="btn">Reset password</button>
                 </form>
+                <script>
+                    (function () {
+                        var buttons = document.querySelectorAll('.pw-toggle');
+                        buttons.forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                var input = document.getElementById(btn.getAttribute('data-target'));
+                                var show = input.type === 'password';
+                                input.type = show ? 'text' : 'password';
+                                btn.textContent = show ? 'Hide' : 'Show';
+                                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                            });
+                        });
+                        // Hide both again before the form is sent.
+                        var form = buttons.length ? buttons[0].closest('form') : null;
+                        if (form) form.addEventListener('submit', function () {
+                            buttons.forEach(function (btn) { document.getElementById(btn.getAttribute('data-target')).type = 'password'; });
+                        });
+                    })();
+                </script>
             @elseif ($state === 'done')
                 <div class="icon ok">&#10003;</div>
                 <h1>Your password has been reset</h1>
+                @if ($isStaff)
+                <p>You can now sign in to the CustodiCore dashboard with your new password.</p>
+                <p class="muted">For your security, every browser and device that was signed in to your account has been signed out. Two-step verification still applies when you sign in.</p>
+                <a class="btn" href="{{ route('login') }}">Go to Sign In</a>
+                @else
                 <p>You can now log in to the CustodiCore app with your new password.</p>
                 <p class="muted">For your security, any device that was signed in to your account has been signed out.</p>
                 {{-- Opens Login only: no token, email or password. --}}
@@ -83,11 +125,12 @@
                     'fallback' => 'If the app does not open, open CustodiCore on your phone yourself and sign in with your new password.',
                     'notOpened' => 'The CustodiCore app did not open. Open CustodiCore on your phone yourself and sign in with your new password.',
                 ])
+                @endif
             @else
                 <div class="icon err">&times;</div>
                 <h1>This link is not valid</h1>
                 <p>This password reset link is invalid, has expired, or has already been used.</p>
-                <p class="muted">Open the CustodiCore app and tap “Forgot Password?” to request a new link. Each new email replaces the earlier ones — only the link in the newest email works.</p>
+                <p class="muted">Visitors: open the CustodiCore app and tap “Forgot Password?” to request a new link. Staff: use <a href="{{ route('password.request') }}">Forgot password?</a> on the sign-in page. Each new email replaces the earlier ones — only the link in the newest email works.</p>
             @endif
         </div>
     </main>

@@ -13,11 +13,11 @@
                 <tr><td style="padding:28px 24px;line-height:1.6;">
                     <h1 style="margin:0 0 12px;font-size:22px;color:#0F3D7A;">Reset your password</h1>
                     <p style="margin:0 0 12px;">Hello {{ $name }},</p>
-                    <p style="margin:0 0 20px;">We received a request to reset the password for your CustodiCore visitor account. Choose a new password using the button below.</p>
+                    <p style="margin:0 0 20px;">We received a request to reset the password for your CustodiCore {{ $accountKind }} account. Choose a new password using the button below.</p>
                     <p style="margin:0 0 24px;">
                         <a href="{{ $resetUrl }}" style="display:inline-block;background:#0DA58A;color:#FFFFFF;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;">Reset password</a>
                     </p>
-                    <p style="margin:0 0 12px;font-size:13px;color:#6B7280;">This link can be used once and expires in {{ $expiresInMinutes }} minutes. If it has expired, request a new one from the CustodiCore app.</p>
+                    <p style="margin:0 0 12px;font-size:13px;color:#6B7280;">This link can be used once and expires in {{ $expiresInMinutes }} minutes. If it has expired, request a new one from {{ $requestFrom }}.</p>
                     <p style="margin:0;font-size:13px;color:#6B7280;">If you did not ask to reset your password, you can ignore this email — your password will not change.</p>
                 </td></tr>
             </table>

@@ -83,8 +83,53 @@ class StaffAccountRequest extends FormRequest
                 'email:rfc', 'max:100',
                 Rule::unique('staff_profiles', 'personal_email')->ignore($staffId, 'staff_id'),
                 Rule::unique('accounts', 'email')->ignore($accountId, 'account_id'),
+                // Also catches the same address saved with different capitals or
+                // stray spaces, whatever the database collation does.
+                function (string $attribute, $value, \Closure $fail) use ($accountId) {
+                    if ($value !== null && $value !== '' && ($message = self::emailTakenMessage((string) $value, $accountId))) {
+                        $fail($message);
+                    }
+                },
             ],
         ];
+    }
+
+    /**
+     * Why $email cannot be used for a staff account, or null when it is free.
+     * Compared case- and space-insensitively against every account's sign-in
+     * email (staff AND visitors share the accounts table) and every officer's
+     * personal email. $ignoreAccountId = the account being edited.
+     * Also used by UserController::checkEmail() for the live check in the form.
+     */
+    public static function emailTakenMessage(string $email, ?int $ignoreAccountId = null): ?string
+    {
+        $email = mb_strtolower(trim($email));
+        if ($email === '') {
+            return null;
+        }
+
+        $account = \App\Models\Account::query()
+            ->with('role')
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+            ->when($ignoreAccountId, fn ($q) => $q->where('account_id', '!=', $ignoreAccountId))
+            ->first();
+
+        if ($account) {
+            return $account->isVisitor()
+                ? 'This email is already registered to a visitor account. Use a different email for the officer.'
+                : 'This email is already registered to another staff account ('.$account->displayName().'). Use a different email.';
+        }
+
+        $profile = StaffProfile::query()
+            ->whereRaw('LOWER(TRIM(personal_email)) = ?', [$email])
+            ->when($ignoreAccountId, fn ($q) => $q->where('account_id', '!=', $ignoreAccountId))
+            ->first();
+
+        if ($profile) {
+            return 'This email is already used by another staff member ('.$profile->full_name.'). Use a different email.';
+        }
+
+        return null;
     }
 
     public function messages(): array

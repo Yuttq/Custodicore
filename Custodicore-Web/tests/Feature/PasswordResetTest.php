@@ -21,7 +21,8 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * Visitor Forgot Password: POST /api/auth/password/forgot → emailed link →
+ * Forgot Password: visitors use POST /api/auth/password/forgot (mobile app),
+ * staff use POST /forgot-password (web login page) → emailed link →
  * GET/POST /password/reset → login with the new password. See
  * PasswordResetService for the eligibility rules and policy decisions.
  */
@@ -335,15 +336,87 @@ class PasswordResetTest extends TestCase
         $this->submitReset($second)->assertSee('Your password has been reset');
     }
 
-    public function test_staff_cannot_reset_even_with_a_broker_token(): void
+    // ---------------------------------------------------------------
+    // Staff: "Forgot password?" on the web login page
+    // ---------------------------------------------------------------
+
+    /** Requests a link from the web form and returns the token from the sent email. */
+    private function staffLinkFor(Account $account): string
     {
-        // A token created directly (bypassing the request endpoint) must still not work.
-        $token = Password::broker('accounts')->createToken($this->recordOfficerAccount);
+        $this->post('/forgot-password', ['email' => $account->email])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status');
+
+        $mail = null;
+        Mail::assertSent(ResetAccountPassword::class, function (ResetAccountPassword $m) use ($account, &$mail) {
+            $mail = $m;
+
+            return $m->hasTo($account->email);
+        });
+        $this->assertTrue($mail->isStaff);
+
+        $path = parse_url($mail->resetUrl, PHP_URL_PATH);
+
+        return rawurldecode(substr($path, strlen('/password/reset/')));
+    }
+
+    public function test_login_page_links_to_forgot_password_and_has_a_show_password_button(): void
+    {
+        $this->withoutVite();
+
+        $this->get('/login')->assertOk()
+            ->assertSee(route('password.request'), false)
+            ->assertSee('id="toggle-password"', false);
+
+        $this->get('/forgot-password')->assertOk()->assertSee('Forgot your password?');
+    }
+
+    public function test_staff_can_reset_their_password_from_the_web_form(): void
+    {
+        $token = $this->staffLinkFor($this->recordOfficerAccount);
+
+        $this->get('/password/reset/'.$token.'?email='.urlencode($this->recordOfficerAccount->email))
+            ->assertOk()->assertSee('staff account');
 
         $this->submitReset($token, ['email' => $this->recordOfficerAccount->email])
-            ->assertSee('This link is not valid');
+            ->assertOk()
+            ->assertSee('Your password has been reset')
+            ->assertSee(route('login'), false);
+
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $this->recordOfficerAccount->fresh()->password_hash));
+    }
+
+    public function test_staff_reset_uses_the_staff_password_policy(): void
+    {
+        $token = $this->staffLinkFor($this->recordOfficerAccount);
+
+        // Fine for nobody: 9 characters, no symbol.
+        $this->submitReset($token, [
+            'email' => $this->recordOfficerAccount->email,
+            'password' => 'Short1abc',
+            'password_confirmation' => 'Short1abc',
+        ])->assertSessionHasErrors('password');
 
         $this->assertTrue(Hash::check(self::OLD_PASSWORD, $this->recordOfficerAccount->fresh()->password_hash));
+    }
+
+    public function test_web_forgot_form_never_emails_a_visitor_and_answers_the_same(): void
+    {
+        $this->post('/forgot-password', ['email' => $this->visitorAccount->email])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status');
+        $this->post('/forgot-password', ['email' => 'nobody@example.com'])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status');
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_app_forgot_endpoint_still_never_emails_staff(): void
+    {
+        $this->assertGenericResponse($this->requestLink($this->recordOfficerAccount->email));
+
+        Mail::assertNothingSent();
     }
 
     public function test_account_deactivated_after_the_link_was_sent_cannot_reset(): void

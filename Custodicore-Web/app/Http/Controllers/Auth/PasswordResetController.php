@@ -12,10 +12,11 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 /**
- * Visitor "Forgot Password". See PasswordResetService.
+ * "Forgot Password" for visitors (mobile app) and staff (web). See PasswordResetService.
  *
- * The mobile app requests a link (API); the link opens a web page where the
- * visitor chooses a new password. Nothing here signs anyone in or issues a
+ * The mobile app requests a visitor link (API); the web login page's
+ * "Forgot password?" requests a staff link (forgotForm()/sendStaffLink()).
+ * Either link opens the same web page where the owner chooses a new password. Nothing here signs anyone in or issues a
  * Sanctum token — the visitor logs in to the app afterwards. The token is
  * never logged, flashed to the session, or echoed in a JSON response.
  */
@@ -62,6 +63,41 @@ class PasswordResetController extends Controller
         ]);
     }
 
+    /** GET /forgot-password — staff "Forgot password?" form (web login page). */
+    public function forgotForm(): View
+    {
+        return view('auth.forgot-password');
+    }
+
+    /**
+     * POST /forgot-password {email} — staff only. Same rule as the API: the
+     * answer never says whether the address has an account, and it is limited
+     * per IP (route throttle) and per address (here).
+     */
+    public function sendStaffLink(Request $request): RedirectResponse
+    {
+        $data = $request->validate(
+            ['email' => ['required', 'string', 'email', 'max:100']],
+            ['email.email' => 'Enter the email address you use to sign in, e.g. juan.delacruz@gmail.com.'],
+        );
+
+        $key = 'staff-password-reset-request:'.sha1(mb_strtolower(trim($data['email'])));
+
+        if (RateLimiter::tooManyAttempts($key, self::REQUEST_MAX_ATTEMPTS)) {
+            $minutes = (int) ceil(RateLimiter::availableIn($key) / 60);
+
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => "Too many reset emails were requested for this address. Please wait about {$minutes} minute(s) and try again."]);
+        }
+
+        RateLimiter::hit($key, self::REQUEST_DECAY_SECONDS);
+
+        $this->passwords->request($data['email'], PasswordResetService::AUDIENCE_STAFF);
+
+        return redirect()->route('password.request')
+            ->with('status', self::GENERIC_MESSAGE.' Check your inbox (and spam folder). The link expires in '.$this->passwords->expiresInMinutes().' minutes.');
+    }
+
     /** GET /password/reset/{token}?email= — the new-password form, or an error page for a dead link. */
     public function show(Request $request, string $token): View
     {
@@ -69,10 +105,19 @@ class PasswordResetController extends Controller
         $email = is_string($email) ? $email : ''; // ?email[]=x is ignored, not cast
 
         if ($email !== '' && ! $this->passwords->tokenIsValid($email, $token)) {
-            return view('auth.reset-password', ['state' => 'invalid']);
+            return view('auth.reset-password', ['state' => 'invalid', 'isStaff' => false]);
         }
 
-        return view('auth.reset-password', ['state' => 'form', 'token' => $token, 'email' => $email]);
+        // After a failed submit the address comes back as old input instead of ?email=.
+        $lookup = $email !== '' ? $email : (is_string(old('email')) ? old('email') : null);
+
+        return view('auth.reset-password', [
+            'state' => 'form',
+            'token' => $token,
+            'email' => $email,
+            // Only decided for a link already proven valid above (or a refilled form).
+            'isStaff' => $this->passwords->isStaffEmail($lookup),
+        ]);
     }
 
     /** POST /password/reset {token, email, password, password_confirmation}. */
@@ -85,7 +130,8 @@ class PasswordResetController extends Controller
         $validator = Validator::make($request->all(), [
             'token' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:100'],
-            'password' => PasswordResetService::passwordRules($email),
+            // Staff officers get the staff policy, visitors the visitor policy.
+            'password' => $this->passwords->rulesFor($email),
         ], [
             'password.confirmed' => 'The two passwords do not match.',
         ]);
@@ -93,7 +139,7 @@ class PasswordResetController extends Controller
         if ($validator->fails()) {
             $token = $request->input('token');
             if (! is_string($token) || $token === '' || strlen($token) > 255) {
-                return view('auth.reset-password', ['state' => 'invalid']);
+                return view('auth.reset-password', ['state' => 'invalid', 'isStaff' => false]);
             }
 
             // Back to the reset page — explicitly, because that page is never
@@ -115,6 +161,9 @@ class PasswordResetController extends Controller
             (string) $request->input('password'),
         );
 
-        return view('auth.reset-password', ['state' => $result === PasswordResetService::RESET ? 'done' : 'invalid']);
+        return view('auth.reset-password', [
+            'state' => $result === PasswordResetService::RESET ? 'done' : 'invalid',
+            'isStaff' => $this->passwords->isStaffEmail((string) $request->input('email')),
+        ]);
     }
 }

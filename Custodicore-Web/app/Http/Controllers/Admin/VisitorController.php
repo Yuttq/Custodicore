@@ -220,6 +220,7 @@ class VisitorController extends Controller
                 return [
                     'id' => $visitor->visitor_id,
                     'full_name' => $visitor->full_name,
+                    'photo' => $visitor->photoUrl(),
                     'contact_number' => $visitor->contact_number,
                     'related_pdl_name' => $relationship?->pdl?->full_name ?? '—',
                     'related_pdl_number' => $relationship?->pdl?->pdl_number ?? '—',
