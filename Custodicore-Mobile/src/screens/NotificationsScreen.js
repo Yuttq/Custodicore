@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EmptyState, LoadingSpinner, NotificationRow } from '../components';
 import { Button, colors, commonStyles, layout, spacing, typography } from '../designSystem';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { useNotificationBadge } from '../context/NotificationBadgeContext';
@@ -175,6 +176,14 @@ export default function NotificationsScreen({ navigation }) {
   useEffect(() => {
     fetchNotifications(false);
   }, [fetchNotifications]);
+
+  // While the screen stays open: no spinner, and a failure keeps the list.
+  useAutoRefresh(async () => {
+    const data = await fetchNotificationsList();
+    setItems(collapseDuplicateNotifications(normalizeList(data)));
+    setError(null);
+    refreshUnreadCount();
+  });
 
   const onRefresh = useCallback(() => {
     fetchNotifications(true);

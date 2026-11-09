@@ -128,7 +128,7 @@
             </div>
           @endif
           <div class="elig-source">{{ $byVisitor ? 'Requested by the visitor in the app' : 'Assigned by staff' }}</div>
-          <div class="muted-cell elig-since">{{ $byVisitor ? 'Requested' : 'Assigned' }} {{ $visit->assigned_at?->diffForHumans() ?? $visit->created_at?->diffForHumans() }}</div>
+          <div class="muted-cell elig-since" data-live-ignore>{{ $byVisitor ? 'Requested' : 'Assigned' }} {{ $visit->assigned_at?->diffForHumans() ?? $visit->created_at?->diffForHumans() }}</div>
         </div>
       </header>
 
@@ -338,4 +338,5 @@
     });
   })();
 </script>
+@include('partials.live-refresh')
 @endsection

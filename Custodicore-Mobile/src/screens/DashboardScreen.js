@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -482,6 +483,13 @@ export default function DashboardScreen({ navigation }) {
       });
       reloadAvailability();
     }, [refreshVisits, reloadAvailability]),
+  );
+  // While Home stays open, keep visits and the calendar current.
+  useAutoRefresh(() =>
+    Promise.allSettled([
+      refreshVisits({ silent: true }),
+      isApprovedVisitor ? reloadAvailability({ silent: true }) : null,
+    ]),
   );
   const [profile, setProfile] = useState(LOCAL_PHOTO_DEFAULTS);
   const announcements = useAnnouncements();

@@ -84,13 +84,6 @@
 
         @include('frontdesk.partials.pagination', ['paginator' => $walkIns, 'noun' => 'visitor'])
     </div>
+{{-- Status changes (Records approving, check-ins) show up on their own. --}}
+@include('partials.live-refresh')
 @endsection
-
-@if (collect($walkIns->items())->contains(fn ($row) => in_array($row['key'], ['waiting', 'linking', 'assess'], true)))
-    @push('scripts')
-        <script>
-            // Someone is waiting on the Records Officer: refresh so the status changes show up.
-            setTimeout(() => { if (!document.hidden) location.reload(); }, 20000);
-        </script>
-    @endpush
-@endif

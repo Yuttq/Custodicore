@@ -33,6 +33,7 @@ import { LoadingSpinner, EmptyState } from '../components';
 import VisitationScheduleSection from '../components/VisitationScheduleSection';
 import { useVisits } from '../context/VisitsContext';
 import { useAuth } from '../hooks/useAuth';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
@@ -326,6 +327,13 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
         // error already stored in VisitsContext
       });
     }, [fetchVisits, refreshVisits]),
+  );
+  // While this tab stays open, keep the visits and the Schedule tab current.
+  useAutoRefresh(() =>
+    Promise.allSettled([
+      refreshVisits({ silent: true }),
+      isApprovedVisitor ? reloadSchedule({ silent: true }) : null,
+    ]),
   );
 
   const filteredVisits = useMemo(() => {

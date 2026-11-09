@@ -33,7 +33,14 @@ export default function useScheduleAvailability({
   const [selectedSlotKey, setSelectedSlotKey] = useState(/** @type {string | null} */ (null));
   const requestId = useRef(0);
 
-  const load = useCallback(async () => {
+  // `silent` (auto-refresh): no loading state, and a failure keeps the
+  // current data and error instead of showing a new error. A silent load is
+  // skipped while a normal one runs: it would supersede it and leave
+  // `loading` stuck on.
+  const normalLoadRunning = useRef(false);
+  const load = useCallback(async (options) => {
+    const silent = options?.silent === true;
+    if (silent && normalLoadRunning.current) return;
     const current = ++requestId.current;
     if (!enabled) {
       setData(null);
@@ -41,19 +48,28 @@ export default function useScheduleAvailability({
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      normalLoadRunning.current = true;
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await fetchScheduleAvailability({ from, to, relationshipId });
-      if (current === requestId.current) setData(result);
-    } catch (e) {
       if (current === requestId.current) {
+        setData(result);
+        if (silent) setError(null);
+      }
+    } catch (e) {
+      if (current === requestId.current && !silent) {
         setError(
           e instanceof Error && e.message.trim() ? e.message : 'Could not load visit availability.',
         );
       }
     } finally {
-      if (current === requestId.current) setLoading(false);
+      if (current === requestId.current && !silent) {
+        setLoading(false);
+        normalLoadRunning.current = false;
+      }
     }
   }, [enabled, from, to, relationshipId]);
 

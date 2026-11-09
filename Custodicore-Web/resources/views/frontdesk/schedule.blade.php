@@ -148,5 +148,6 @@
             @include('frontdesk.partials.pagination', ['paginator' => $visits, 'noun' => 'visitor'])
         @endif
     </div>
+@include('partials.live-refresh')
 @endsection
 

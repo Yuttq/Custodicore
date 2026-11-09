@@ -27,7 +27,7 @@
       @foreach ($walkInsAwaitingDecision as $walkIn)
         <li style="margin:4px 0;">
           <a class="elig-name" href="{{ route('visitor.show', $walkIn->visitor_id) }}#walk-in">{{ $walkIn->full_name }}</a>
-          <span class="muted-cell">· visiting {{ $walkIn->intended_pdl_name ?: '—' }} · registered {{ $walkIn->created_at?->diffForHumans() }}</span>
+          <span class="muted-cell">· visiting {{ $walkIn->intended_pdl_name ?: '—' }} · registered <span data-live-ignore>{{ $walkIn->created_at?->diffForHumans() }}</span></span>
         </li>
       @endforeach
     </ul>
@@ -88,7 +88,7 @@
         <div class="elig-when">
           <div class="elig-role">Registered</div>
           <div class="elig-date">{{ $visitor->created_at?->format('M j, Y') ?? '—' }}</div>
-          <div class="muted-cell elig-since">{{ $visitor->created_at?->diffForHumans() }}</div>
+          <div class="muted-cell elig-since" data-live-ignore>{{ $visitor->created_at?->diffForHumans() }}</div>
         </div>
       </header>
 
@@ -493,4 +493,5 @@
     update();
   });
 </script>
+@include('partials.live-refresh')
 @endsection

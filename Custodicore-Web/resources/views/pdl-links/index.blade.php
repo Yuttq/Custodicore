@@ -85,4 +85,5 @@
     @endif
   </div>
 @endif
+@include('partials.live-refresh')
 @endsection

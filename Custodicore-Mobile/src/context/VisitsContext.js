@@ -33,24 +33,29 @@ export function VisitsProvider({ children }) {
     setError(null);
   }, []);
 
-  const refreshVisits = useCallback(async () => {
+  // `silent` (auto-refresh): no loading state, and a failure keeps the
+  // current list and error (it still throws, for the caller to ignore).
+  const refreshVisits = useCallback(async (options) => {
+    const silent = options?.silent === true;
     if (!token) {
       clearVisits();
       return [];
     }
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const list = await fetchAssignedVisits();
       setVisits(list);
+      if (silent) setError(null);
       return list;
     } catch (e) {
-      const message = e?.message ?? 'Could not load visits.';
-      setError(message);
+      if (!silent) setError(e?.message ?? 'Could not load visits.');
       throw e;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [token, clearVisits]);
 

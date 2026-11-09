@@ -18,6 +18,7 @@ import {
   typography,
 } from '../designSystem';
 import { EmptyState } from '../components';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
 import {
   getHistoryStatusLabel,
@@ -127,6 +128,13 @@ export default function VisitHistoryScreen({ navigation }) {
   useEffect(() => {
     loadHistory(false);
   }, [loadHistory]);
+
+  // While the screen stays open: no spinner, and a failure keeps the list.
+  useAutoRefresh(async () => {
+    const data = await fetchVisitationHistory();
+    setItems(data);
+    setError(null);
+  });
 
   const filteredItems = useMemo(
     () => items.filter((r) => getHistoryTab(r.status) === activeTab),

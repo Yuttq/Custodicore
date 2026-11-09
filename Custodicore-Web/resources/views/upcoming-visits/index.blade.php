@@ -138,4 +138,5 @@
   </div>
 @endforelse
 </div>
+@include('partials.live-refresh')
 @endsection
