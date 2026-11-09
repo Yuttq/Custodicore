@@ -3,6 +3,52 @@
 @section('title', 'New Walk-in')
 
 @section('content')
+    {{-- Phase 1: look for the visitor first, so a returning walk-in is not registered twice. --}}
+    <div class="cc-card mb-lg">
+        <p class="text-card-title">Already registered?</p>
+        <p class="text-metadata text-text-secondary">Search by name before registering. A returning walk-in gets a new arrival on their record instead.</p>
+        <form method="GET" action="{{ route('frontdesk.walk-ins.create') }}" class="mt-md flex flex-wrap items-end gap-sm" role="search">
+            <div class="min-w-[260px] flex-1">
+                <label for="visitor_search" class="cc-label">Visitor name</label>
+                <input id="visitor_search" name="q" value="{{ $search }}" maxlength="100" placeholder="e.g. Lourdes Reyes" class="cc-input" />
+            </div>
+            <button type="submit" class="cc-btn-secondary">Search</button>
+            @if ($searched)
+                <a href="{{ route('frontdesk.walk-ins.create') }}" class="cc-btn-secondary">Clear</a>
+            @endif
+        </form>
+
+        @if ($searched)
+            @if ($existing->isEmpty())
+                <p class="mt-md text-body">No visitor named "{{ $search }}" is registered. Register them below.</p>
+            @else
+                <ul class="mt-md divide-y divide-border rounded-lg border border-border">
+                    @foreach ($existing as $row)
+                        @php
+                            $found = $row['visitor'];
+                            $foundStatus = $row['status'];
+                        @endphp
+                        <li class="flex flex-wrap items-center justify-between gap-sm p-sm">
+                            <div>
+                                <p class="text-body font-semibold">{{ $found->full_name }}</p>
+                                <p class="text-metadata text-text-secondary">
+                                    Born {{ $found->date_of_birth?->format('M j, Y') ?? '—' }} ·
+                                    {{ $found->isWalkIn() ? 'Walk-in' : 'App user' }}
+                                    @if ($foundStatus) · {{ $foundStatus['label'] }} @endif
+                                </p>
+                            </div>
+                            @if ($found->isWalkIn())
+                                <a href="{{ route('frontdesk.walk-ins.show', $found) }}" class="cc-btn-primary">Open record</a>
+                            @else
+                                <a href="{{ route('frontdesk.visitor-lookup.show', $found) }}" class="cc-btn-secondary">View visitor</a>
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        @endif
+    </div>
+
     <form method="POST" action="{{ route('frontdesk.walk-ins.store') }}" enctype="multipart/form-data" id="walkInForm" class="space-y-lg">
         @csrf
 
@@ -132,18 +178,19 @@
         <div class="cc-card">
             <p class="text-card-title">4 · Who they are visiting</p>
             <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
-                <div>
-                    <label for="intended_pdl_name" class="cc-label">PDL name *</label>
-                    <input id="intended_pdl_name" name="intended_pdl_name" value="{{ old('intended_pdl_name') }}" required maxlength="150" placeholder="As the visitor says it" class="cc-input" />
+                <div class="relative md:col-span-2">
+                    <label for="pdl_search" class="cc-label">PDL *</label>
+                    <input id="pdl_search" type="text" autocomplete="off" maxlength="100" role="combobox" aria-expanded="false" aria-controls="pdlResults"
+                           value="{{ $selectedPdl ? $selectedPdl->full_name.' ('.$selectedPdl->pdl_number.')' : '' }}"
+                           placeholder="Type part of the name, alias or PDL number" data-url="{{ route('frontdesk.walk-ins.pdl-search') }}" class="cc-input" />
+                    <input type="hidden" id="pdl_id" name="pdl_id" value="{{ $selectedPdl?->pdl_id }}" />
+                    <ul id="pdlResults" role="listbox" hidden
+                        class="absolute z-10 mt-xs max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg"></ul>
+                    <p id="pdlChosen" class="mt-xs text-metadata {{ $selectedPdl ? 'font-semibold text-success' : 'text-text-secondary' }}" aria-live="polite">
+                        {{ $selectedPdl ? "Selected: {$selectedPdl->full_name} · {$selectedPdl->pdl_number}" : 'Search, then select the correct PDL from the list.' }}
+                    </p>
+                    @error('pdl_id') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
                 </div>
-                <div>
-                    <label for="intended_pdl_number" class="cc-label">PDL ID number (if known)</label>
-                    <input id="intended_pdl_number" name="intended_pdl_number" value="{{ old('intended_pdl_number') }}" maxlength="50" autocomplete="off"
-                           placeholder="e.g. PDL-2026-00007" data-lookup-url="{{ route('frontdesk.walk-ins.pdl-lookup') }}" class="cc-input uppercase" />
-                    <p id="pdlNumberCheck" class="mt-xs text-metadata" aria-live="polite"></p>
-                    @error('intended_pdl_number') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
-                </div>
-                <p class="text-metadata text-text-secondary md:col-span-2">The Records Officer matches the name and number to the correct PDL record when approving.</p>
                 <div>
                     <label for="relationship_type" class="cc-label">Relationship to the PDL *</label>
                     <select id="relationship_type" name="relationship_type" required class="cc-input">
@@ -189,6 +236,22 @@
                         <div class="mt-sm">@include('frontdesk.walk-ins.partials.capture-field', ['name' => "documents[{$key}]", 'id' => "document_{$key}", 'pdf' => true])</div>
                     </div>
                 @endforeach
+            </div>
+        </div>
+
+        {{-- Phase 2: a session Records opened; Records' approval books it. --}}
+        <div class="cc-card">
+            <p class="text-card-title">5 · Visit date and session *</p>
+            <p class="text-metadata text-text-secondary">Only the dates and sessions Records opened are shown. Approving the walk-in books the session chosen here.</p>
+            <div class="mt-md">
+                @include('frontdesk.walk-ins.partials.slot-picker', [
+                    'id' => 'registrationSlots',
+                    'pdlId' => null,
+                    'pdlSource' => '#pdl_id',
+                    'typeSource' => '#relationship_type',
+                    'oldDate' => old('requested_date'),
+                    'oldTimes' => old('requested_start_times', []),
+                ])
             </div>
         </div>
 
@@ -285,35 +348,87 @@
             input.value = input.value.replace(/\D/g, '').slice(0, 11);
         }));
 
-        // PDL ID number: checked live against the PDL records (as on the Records PDL profile).
-        const pdlNumber = $('intended_pdl_number');
-        const pdlCheck = $('pdlNumberCheck');
-        let lookupTimer = null;
-        let lookupRun = 0;
-        const checkPdlNumber = () => {
-            const number = pdlNumber.value.trim().toUpperCase();
-            pdlCheck.textContent = '';
-            pdlCheck.className = 'mt-xs text-metadata';
-            if (number.length < 5) return;
-            const run = ++lookupRun;
-            fetch(`${pdlNumber.dataset.lookupUrl}?number=${encodeURIComponent(number)}`, { headers: { Accept: 'application/json' } })
+        // PDL search: partial name, alias or PDL number; the desk selects the right PDL.
+        const pdlSearch = $('pdl_search');
+        const pdlId = $('pdl_id');
+        const pdlResults = $('pdlResults');
+        const pdlChosen = $('pdlChosen');
+        const custody = { active: 'Active', released: 'Released', transferred: 'Transferred', deceased: 'Deceased' };
+        let searchTimer = null;
+        let searchRun = 0;
+
+        const closeResults = () => { pdlResults.hidden = true; pdlSearch.setAttribute('aria-expanded', 'false'); };
+        const choosePdl = pdl => {
+            pdlId.value = pdl.id;
+            pdlSearch.value = `${pdl.name} (${pdl.number})`;
+            pdlChosen.textContent = `Selected: ${pdl.name} · ${pdl.number}` + (pdl.visitable ? '' : ' · not available for visits');
+            pdlChosen.className = 'mt-xs text-metadata font-semibold ' + (pdl.visitable ? 'text-success' : 'text-danger');
+            pdlSearch.setCustomValidity('');
+            closeResults();
+            pdlId.dispatchEvent(new Event('change')); // loads the PDL's sessions
+        };
+        const searchPdls = () => {
+            const q = pdlSearch.value.trim();
+            if (q.length < 2) { pdlResults.innerHTML = ''; closeResults(); return; }
+            const current = ++searchRun;
+            fetch(`${pdlSearch.dataset.url}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } })
                 .then(r => r.ok ? r.json() : null)
                 .then(data => {
-                    if (!data || run !== lookupRun) return;
-                    if (data.found) {
-                        pdlNumber.value = data.pdlNumber;
-                        pdlCheck.textContent = `✓ ${data.fullName} (${data.pdlNumber})`;
-                        pdlCheck.classList.add('text-success', 'font-semibold');
-                        if (!$('intended_pdl_name').value.trim()) $('intended_pdl_name').value = data.fullName;
-                    } else {
-                        pdlCheck.textContent = 'No PDL has this PDL ID number.';
-                        pdlCheck.classList.add('text-danger');
+                    if (!data || current !== searchRun) return;
+                    pdlResults.innerHTML = '';
+                    if (!data.results.length) {
+                        const none = document.createElement('li');
+                        none.className = 'p-sm text-metadata text-text-secondary';
+                        none.textContent = `No PDL found for "${q}".`;
+                        pdlResults.appendChild(none);
                     }
+                    data.results.forEach(pdl => {
+                        const li = document.createElement('li');
+                        li.setAttribute('role', 'option');
+                        li.tabIndex = 0;
+                        li.className = 'cursor-pointer p-sm text-body hover:bg-background';
+                        const name = document.createElement('span');
+                        name.className = 'font-semibold';
+                        name.textContent = pdl.name + (pdl.alias ? ` "${pdl.alias}"` : '');
+                        const meta = document.createElement('span');
+                        meta.className = 'block text-metadata text-text-secondary';
+                        meta.textContent = `${pdl.number} · ${custody[pdl.status] || pdl.status}` + (pdl.visitable ? '' : ' · not available for visits');
+                        li.append(name, meta);
+                        li.addEventListener('click', () => choosePdl(pdl));
+                        li.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); choosePdl(pdl); } });
+                        pdlResults.appendChild(li);
+                    });
+                    pdlResults.hidden = false;
+                    pdlSearch.setAttribute('aria-expanded', 'true');
                 })
                 .catch(() => {});
         };
-        pdlNumber.addEventListener('input', () => { clearTimeout(lookupTimer); lookupTimer = setTimeout(checkPdlNumber, 300); });
-        if (pdlNumber.value) checkPdlNumber();
+        pdlSearch.addEventListener('input', () => {
+            // Typing again drops the earlier selection until a PDL is picked.
+            if (pdlId.value) {
+                pdlId.value = '';
+                pdlChosen.textContent = 'Search, then select the correct PDL from the list.';
+                pdlChosen.className = 'mt-xs text-metadata text-text-secondary';
+                pdlId.dispatchEvent(new Event('change'));
+            }
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(searchPdls, 250);
+        });
+        pdlSearch.addEventListener('keydown', e => { if (e.key === 'Escape') closeResults(); });
+        document.addEventListener('click', e => { if (!pdlResults.contains(e.target) && e.target !== pdlSearch) closeResults(); });
+        $('walkInForm').addEventListener('submit', e => {
+            if (!pdlId.value) {
+                e.preventDefault();
+                pdlSearch.setCustomValidity('Select the PDL from the search results.');
+                pdlSearch.reportValidity();
+                return;
+            }
+            if (!document.querySelector('#registrationSlots [data-slot-date]').value) {
+                e.preventDefault();
+                window.ccToast ? window.ccToast('Choose a visit date and session.', 'warning') : alert('Choose a visit date and session.');
+                document.getElementById('registrationSlots').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
 
         // Purpose: a type from the list, or Other with the purpose typed in.
         const purposeType = $('visit_purpose_type');

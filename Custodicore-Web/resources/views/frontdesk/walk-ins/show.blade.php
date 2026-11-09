@@ -44,7 +44,7 @@
                     Explain it to the visitor; they can come back with what's missing.
                     @break
                 @case('declined')
-                    The Records Officer rejected this walk-in. See their remarks in the assessment below and explain them to the visitor.
+                    The Records Officer rejected this walk-in. The decision is final; see their remarks in the assessment below and explain them to the visitor.
                     @break
                 @case('assess')
                     The ID and PDL relationship are verified. Waiting for the Records Officer's approve or reject decision. This page updates on its own.
@@ -53,12 +53,22 @@
                     The ID is approved. Records is now linking and verifying the PDL relationship.
                     @break
                 @case('ready')
-                    Approved, but today's visiting hours are over, so the visitor cannot be checked in today.
+                    Approved, but no visit was booked. Record a new arrival with a date and session.
                     @break
                 @case('booked')
-                    Approved by Records. Verify the visitor's identity and check them in for
-                    <strong>{{ $status['visit']->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ') }}</strong>
-                    with {{ $status['visit']->pdl?->full_name }}: take their ID at the gate.
+                    @php
+                        $bookedTimes = $status['visit']->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ');
+                        $bookedToday = $status['visit']->schedule?->schedule_date?->isToday();
+                    @endphp
+                    @if ($bookedToday)
+                        Approved by Records. Verify the visitor's identity and check them in for
+                        <strong>{{ $bookedTimes }}</strong>
+                        with {{ $status['visit']->pdl?->full_name }}: take their ID at the gate.
+                    @else
+                        Approved by Records. The visit with {{ $status['visit']->pdl?->full_name }} is booked for
+                        <strong>{{ $status['visit']->schedule?->schedule_date?->format('D, M j, Y') }} · {{ $bookedTimes }}</strong>.
+                        Check the visitor in on that day.
+                    @endif
                     @break
                 @case('inside')
                     The visitor is checked in. Check them out on the Check-In / Check-Out page when they leave.
@@ -84,10 +94,12 @@
             <div><dt class="cc-label">PDL name (as given)</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
             <div><dt class="cc-label">PDL ID number (as given)</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
             <div class="sm:col-span-2"><dt class="cc-label">Purpose of visit</dt><dd class="mt-xs font-semibold">{{ $assessment?->visit_purpose ?: '—' }}</dd></div>
+            <div class="sm:col-span-2"><dt class="cc-label">PDL selected</dt><dd class="mt-xs font-semibold">{{ $assessment?->pdl ? $assessment->pdl->full_name.' · '.$assessment->pdl->pdl_number : '—' }}</dd></div>
+            <div class="sm:col-span-2"><dt class="cc-label">Visit date and session</dt><dd class="mt-xs font-semibold">{{ $assessment?->requestedVisitLabel() ?? 'Not chosen yet' }}</dd></div>
         </dl>
 
 
-        @if ($status['key'] === 'booked')
+        @if ($status['key'] === 'booked' && $status['visit']->schedule?->schedule_date?->isToday())
             <div class="mt-lg">
                 <a href="{{ route('frontdesk.checkin-checkout', ['checkin' => $visitor->full_name]) }}" class="cc-btn-primary">Check In Now</a>
             </div>
@@ -98,26 +110,72 @@
         @endif
     </div>
 
+    {{-- The arrival is still waiting for Records: the desk can pick another session. --}}
+    @if ($canChangeSlot && $slotPdl)
+        <div class="cc-card">
+            <p class="text-card-title">{{ $assessment->hasRequestedVisit() ? 'Change Visit Date or Session' : 'Choose Visit Date and Session' }}</p>
+            <p class="text-metadata text-text-secondary">
+                For {{ $slotPdl->full_name }} ({{ $slotPdl->pdl_number }}). Only the sessions Records opened are shown;
+                approving the walk-in books the session chosen here.
+            </p>
+            <form method="POST" action="{{ route('frontdesk.walk-ins.slot.update', $visitor) }}" class="mt-md">
+                @csrf
+                @include('frontdesk.walk-ins.partials.slot-picker', [
+                    'id' => 'changeSlot',
+                    'pdlId' => $slotPdl->pdl_id,
+                    'visitorId' => $visitor->visitor_id,
+                    'oldDate' => old('requested_date', $assessment->requested_date?->toDateString()),
+                    'oldTimes' => old('requested_start_times', $assessment->requested_start_times ?? []),
+                ])
+                <button type="submit" class="cc-btn-primary mt-md">Save Date and Session</button>
+            </form>
+        </div>
+    @endif
+
     {{-- A registered walk-in came back: a new arrival for the Records Officer, no new registration. --}}
     @if ($canRecordArrival)
         <div class="cc-card">
             <p class="text-card-title">New Arrival</p>
             <p class="text-metadata text-text-secondary">
                 The visitor is back to visit. Their ID and PDL relationship are already verified; the Records Officer
-                only decides on this arrival, and approving it books today's visit.
+                only decides on this arrival, and approving it books the session chosen here.
             </p>
-            <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md flex flex-wrap items-end gap-sm">
+            <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md space-y-md">
                 @csrf
-                <div class="min-w-[260px] flex-1">
-                    <label for="arrival_purpose" class="cc-label">Purpose of visit *</label>
-                    <input id="arrival_purpose" name="visit_purpose" list="arrivalPurposes" required maxlength="150"
-                           value="{{ old('visit_purpose') }}" placeholder="Choose or type the purpose" class="cc-input" />
-                    <datalist id="arrivalPurposes">
-                        @foreach ($purposes as $purpose)
-                            <option value="{{ $purpose }}"></option>
-                        @endforeach
-                    </datalist>
-                    @error('visit_purpose') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                <div class="grid grid-cols-1 gap-md md:grid-cols-2">
+                    <div>
+                        <label for="arrival_purpose" class="cc-label">Purpose of visit *</label>
+                        <input id="arrival_purpose" name="visit_purpose" list="arrivalPurposes" required maxlength="150"
+                               value="{{ old('visit_purpose') }}" placeholder="Choose or type the purpose" class="cc-input" />
+                        <datalist id="arrivalPurposes">
+                            @foreach ($purposes as $purpose)
+                                <option value="{{ $purpose }}"></option>
+                            @endforeach
+                        </datalist>
+                        @error('visit_purpose') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="arrival_pdl" class="cc-label">PDL to visit *</label>
+                        <select id="arrival_pdl" name="pdl_id" required class="cc-input">
+                            @foreach ($arrivalPdls as $arrivalPdl)
+                                <option value="{{ $arrivalPdl->pdl_id }}" @selected((int) old('pdl_id', $assessment?->pdl_id) === $arrivalPdl->pdl_id)>
+                                    {{ $arrivalPdl->full_name }} · {{ $arrivalPdl->pdl_number }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('pdl_id') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <div>
+                    <p class="cc-label">Visit date and session *</p>
+                    @include('frontdesk.walk-ins.partials.slot-picker', [
+                        'id' => 'arrivalSlots',
+                        'pdlId' => null,
+                        'pdlSource' => '#arrival_pdl',
+                        'visitorId' => $visitor->visitor_id,
+                        'oldDate' => old('requested_date'),
+                        'oldTimes' => old('requested_start_times', []),
+                    ])
                 </div>
                 <button type="submit" class="cc-btn-primary">Record New Arrival</button>
             </form>
@@ -129,7 +187,7 @@
             <div class="flex flex-wrap items-start justify-between gap-sm">
                 <div>
                     <p class="text-card-title">Walk-in Assessment</p>
-                    <p class="text-metadata text-text-secondary">Done by the Records Officer. You can book the visit once the decision is Approved.</p>
+                    <p class="text-metadata text-text-secondary">Done by the Records Officer, once. Approving books the chosen session.</p>
                 </div>
                 <span class="font-semibold {{ ['approved' => 'text-success', 'declined' => 'text-danger'][$assessment->decision] ?? 'text-warning' }}">
                     {{ $assessment->label('decision') }}
@@ -171,8 +229,15 @@
 @if (in_array($status['key'], ['waiting', 'linking', 'assess'], true))
     @push('scripts')
         <script>
-            // Follow the Records Officer's progress.
-            setInterval(() => { if (!document.hidden) location.reload(); }, 15000);
+            // Follow the Records Officer's progress, but not while the desk is
+            // filling in a form (e.g. choosing another session).
+            (() => {
+                let editing = false;
+                document.querySelectorAll('form[method="POST"]').forEach(form => {
+                    ['input', 'change', 'click'].forEach(type => form.addEventListener(type, () => { editing = true; }));
+                });
+                setInterval(() => { if (!document.hidden && !editing) location.reload(); }, 15000);
+            })();
         </script>
     @endpush
 @endif

@@ -23,9 +23,11 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * Walk-in visitors (no phone): the Front Desk registers them, the Record
- * Officer approves, links the PDL and decides in the walk-in assessment, then
- * the Front Desk books today's visit, confirmed at once, and checks them in.
+ * Walk-in visitors (no phone), in six phases: the Front Desk finds or
+ * registers the visitor and selects the PDL (1), chooses a session Records
+ * opened (2); the Record Officer verifies and approves or rejects once (3);
+ * approval books the chosen session (4); the Front Desk checks the visitor
+ * in (5) and out (6).
  */
 class WalkInVisitorTest extends TestCase
 {
@@ -35,11 +37,16 @@ class WalkInVisitorTest extends TestCase
     /** A Friday: the fixture rule has a 09:00–11:30 session. */
     private const FRIDAY = '2026-10-09';
 
+    /** The next Friday: the fixture's own open session. */
+    private const NEXT_FRIDAY = '2026-10-16';
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 08:00:00', 'Asia/Manila'));
         $this->seedPhase1Fixtures();
+        // Records opened today's session too.
+        $this->publishSessions(self::FRIDAY, self::FRIDAY);
         $this->withoutVite();
         Storage::fake('local');
         Storage::fake('public');
@@ -57,8 +64,9 @@ class WalkInVisitorTest extends TestCase
             'id_type' => 'national_id',
             'id_number' => 'PSN-1234-5678',
             'government_id' => UploadedFile::fake()->image('id.jpg'),
-            'intended_pdl_name' => 'Example PDL',
-            'intended_pdl_number' => 'PDL-TEST-001',
+            'pdl_id' => $this->pdl->pdl_id,
+            'requested_date' => self::FRIDAY,
+            'requested_start_times' => ['09:00'],
             'visit_purpose' => 'Family visit',
             'relationship_type' => 'spouse',
             'documents' => ['marriage_certificate' => UploadedFile::fake()->create('marriage.pdf', 200, 'application/pdf')],
@@ -109,6 +117,13 @@ class WalkInVisitorTest extends TestCase
         return $relationship;
     }
 
+    private function todaysSchedule(): VisitSchedule
+    {
+        return VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '09:00:00')->firstOrFail();
+    }
+
+    // ------------------------------------------- Phase 1: visitor information
+
     public function test_front_desk_registers_a_walk_in_without_email(): void
     {
         $this->register()->assertSessionHasNoErrors()->assertRedirect();
@@ -116,26 +131,74 @@ class WalkInVisitorTest extends TestCase
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $this->assertSame('walk_in', $walkIn->registered_via);
         $this->assertSame('pending', $walkIn->verification_status);
-        $this->assertSame('Example Pdl', $walkIn->intended_pdl_name); // cleaned like the app's (Sanitizer::name)
+        // The PDL the desk selected.
+        $this->assertSame('Example PDL', $walkIn->intended_pdl_name);
+        $this->assertSame('PDL-TEST-001', $walkIn->intended_pdl_number);
         $this->assertSame('Spouse', $walkIn->relationship_hint);
         $this->assertSame(['Lourdes', 'Reyes'], [$walkIn->first_name, $walkIn->last_name]);
-        $this->assertSame('PDL-TEST-001', $walkIn->intended_pdl_number);
         $assessment = $walkIn->walkInAssessments()->firstOrFail();
         $this->assertSame('Family visit', $assessment->visit_purpose);
         $this->assertSame('pending', $assessment->decision);
+        $this->assertSame($this->pdl->pdl_id, $assessment->pdl_id);
+        $this->assertSame(self::FRIDAY, $assessment->requested_date->toDateString());
+        $this->assertSame(['09:00'], $assessment->requested_start_times);
         $this->assertNull($assessment->processed_by);
         $this->assertSame($this->frontDeskAccount->staffProfile->staff_id, $walkIn->walk_in_registered_by);
         $this->assertNull($walkIn->account->email);
         $this->assertNotNull($walkIn->photo_path);
         $this->assertSame(1, VisitorId::where('visitor_id', $walkIn->visitor_id)->where('verification_status', 'pending')->count());
         $this->assertTrue(RelationshipDocument::where('visitor_id', $walkIn->visitor_id)->where('requirement_key', 'marriage_certificate')->exists());
-        // No PDL is linked: the Record Officer does that.
+        // No PDL is linked yet: the Record Officer verifies the relationship first.
         $this->assertSame(0, $walkIn->relationships()->count());
+        // Choosing a session reserves nothing until Records approves.
+        $this->assertSame(0, (int) $this->todaysSchedule()->slots_taken);
+        $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
         $this->get(route('frontdesk.walk-ins.index'))
             ->assertOk()
             ->assertSee('Lourdes Reyes')
             ->assertSee('Pending Approval');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertSee('Fri, Oct 9, 2026 · 09:00');
+    }
+
+    public function test_the_desk_searches_existing_visitors_before_registering(): void
+    {
+        $this->register();
+        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
+
+        $this->get(route('frontdesk.walk-ins.create', ['q' => 'lourdes']))
+            ->assertOk()
+            ->assertSee('Lourdes Reyes')
+            ->assertSee(route('frontdesk.walk-ins.show', $walkIn), false);
+        // App visitors are found too.
+        $this->get(route('frontdesk.walk-ins.create', ['q' => 'santos']))
+            ->assertSee('Maria D. Santos')
+            ->assertSee('App user');
+        $this->get(route('frontdesk.walk-ins.create', ['q' => 'nobody here']))
+            ->assertSee('is registered. Register them below.', false);
+    }
+
+    public function test_pdl_search_finds_partial_names(): void
+    {
+        $this->actingAs($this->frontDeskAccount);
+
+        // Any part of the name, alias or number; every word must match.
+        $this->getJson(route('frontdesk.walk-ins.pdl-search', ['q' => 'examp']))
+            ->assertOk()
+            ->assertJsonPath('results.0.id', $this->pdl->pdl_id)
+            ->assertJsonPath('results.0.number', 'PDL-TEST-001')
+            ->assertJsonPath('results.0.visitable', true);
+        $this->getJson(route('frontdesk.walk-ins.pdl-search', ['q' => 'pdl-test']))->assertJsonCount(1, 'results');
+        $this->getJson(route('frontdesk.walk-ins.pdl-search', ['q' => 'example nobody']))->assertJsonCount(0, 'results');
+        $this->getJson(route('frontdesk.walk-ins.pdl-search', ['q' => 'e']))->assertJsonCount(0, 'results');
+    }
+
+    public function test_a_pdl_must_be_selected(): void
+    {
+        $this->register(['pdl_id' => null])->assertSessionHasErrors('pdl_id');
+        $this->register(['pdl_id' => 999999])->assertSessionHasErrors('pdl_id');
+        $this->assertSame(0, VisitorProfile::where('registered_via', 'walk_in')->count());
     }
 
     public function test_walk_in_comes_first_in_the_review_queue(): void
@@ -200,7 +263,57 @@ class WalkInVisitorTest extends TestCase
             ->assertSessionHasNoErrors();
     }
 
-    public function test_records_approval_books_the_visit_so_the_desk_only_checks_in(): void
+    // ------------------------------------- Phase 2: date and session selection
+
+    public function test_slots_lists_the_sessions_records_opened_with_seats(): void
+    {
+        $this->actingAs($this->frontDeskAccount);
+
+        $days = $this->getJson(route('frontdesk.walk-ins.slots', ['pdl_id' => $this->pdl->pdl_id]))
+            ->assertOk()
+            ->json('days');
+
+        // Today and next Friday are opened; the Fridays in between are not.
+        $this->assertSame([self::FRIDAY, self::NEXT_FRIDAY], array_column($days, 'date'));
+        $this->assertSame('09:00', $days[0]['slots'][0]['startTime']);
+        $this->assertTrue($days[0]['slots'][0]['available']);
+        $this->assertSame(2, $days[0]['slots'][0]['remaining']);
+
+        // A full session is listed, but cannot be chosen.
+        $this->todaysSchedule()->update(['slots_taken' => 2]);
+        $this->getJson(route('frontdesk.walk-ins.slots', ['pdl_id' => $this->pdl->pdl_id]))
+            ->assertJsonPath('days.0.slots.0.available', false)
+            ->assertJsonPath('days.0.slots.0.reason', 'Full');
+
+        // A session Records closed is not offered at all.
+        $this->todaysSchedule()->update(['status' => 'closed']);
+        $this->assertSame([self::NEXT_FRIDAY], array_column(
+            $this->getJson(route('frontdesk.walk-ins.slots', ['pdl_id' => $this->pdl->pdl_id]))->json('days'), 'date'
+        ));
+    }
+
+    public function test_only_an_open_session_with_seats_can_be_chosen(): void
+    {
+        // A Friday Records has not opened.
+        $this->register(['requested_date' => '2026-10-23'])
+            ->assertSessionHasErrors(['requested_start_times' => 'Records has not opened a session for this PDL on that date. Choose one of the dates shown.']);
+        // No session at that time.
+        $this->register(['requested_start_times' => ['14:00']])->assertSessionHasErrors('requested_start_times');
+        // No session chosen.
+        $this->register(['requested_date' => null, 'requested_start_times' => []])->assertSessionHasErrors(['requested_date', 'requested_start_times']);
+        // Full.
+        $this->todaysSchedule()->update(['slots_taken' => 2]);
+        $this->register()->assertSessionHasErrors(['requested_start_times' => 'That session cannot be booked: Full.']);
+
+        $this->assertSame(0, VisitorProfile::where('registered_via', 'walk_in')->count());
+
+        // Another date Records opened is fine.
+        $this->register(['requested_date' => self::NEXT_FRIDAY])->assertSessionHasNoErrors();
+    }
+
+    // ------------------------- Phases 3–6: approve once, booking, check-in/out
+
+    public function test_records_approval_books_the_chosen_session_and_the_desk_checks_in_and_out(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
@@ -218,12 +331,15 @@ class WalkInVisitorTest extends TestCase
         $this->assessAsRecords($walkIn)
             ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now (09:00–11:30)'));
 
-        $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->firstOrFail();
+        // Phase 4: the chosen session is reserved and the visit confirmed.
+        $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->firstOrFail();
         $this->assertSame('confirmed', $visit->status);
         $this->assertTrue($visit->is_walk_in);
+        $this->assertSame($this->todaysSchedule()->schedule_id, $visit->schedule_id);
+        $this->assertSame(1, (int) $this->todaysSchedule()->slots_taken);
         $this->assertSame($visit->visit_request_id, $walkIn->walkInAssessments()->first()->visit_request_id);
 
-        // The desk just checks the visitor in.
+        // Phase 5: the desk verifies the ID, takes it and checks the visitor in.
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
             ->assertSee('Rico P. Salcedo')
@@ -232,7 +348,7 @@ class WalkInVisitorTest extends TestCase
             ->assertSee(e(route('frontdesk.checkin-checkout', ['checkin' => 'Lourdes Reyes'])), false);
         $this->get(route('frontdesk.schedule', 'expected'))->assertOk()->assertSee('Lourdes Reyes');
 
-        // Front Desk verifies the ID, takes it and checks the visitor in.
+        $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 09:15:00', 'Asia/Manila'));
         $this->post(route('frontdesk.checkin-checkout.check-in', $visit), [
             'verification_method' => 'manual_override',
             'id_surrendered_type' => 'national_id',
@@ -240,49 +356,110 @@ class WalkInVisitorTest extends TestCase
             'override_reason' => 'Walk-in visitor approved by Records.',
         ])->assertSessionHasNoErrors();
 
+        $checkin = $visit->checkins()->firstOrFail();
+        $this->assertSame('checked_in', $checkin->status);
+        $this->assertNotNull($checkin->check_in_time);
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Checked In')
             ->assertDontSee('Check In Now');
         // Checked-in walk-ins stay under "All" (there is no Checked In tab).
         $this->get(route('frontdesk.walk-ins.index'))->assertSee('Lourdes Reyes')->assertDontSee('status=checked-in', false);
+
+        // Phase 6: check-out records the time and completes the visit.
+        $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 11:00:00', 'Asia/Manila'));
+        $this->post(route('frontdesk.checkin-checkout.check-out', $checkin))->assertSessionHasNoErrors();
+        $this->assertSame('checked_out', $checkin->fresh()->status);
+        $this->assertNotNull($checkin->fresh()->check_out_time);
+        $this->assertSame('completed', $visit->fresh()->status);
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Checked Out');
     }
 
-    public function test_approved_walk_in_can_check_in_even_on_a_non_visiting_day(): void
+    public function test_a_later_date_is_booked_for_that_day(): void
     {
-        // A Thursday: the PDL's group only has visiting on Fridays.
-        $this->travelTo(CarbonImmutable::parse('2026-10-08 10:00:00', 'Asia/Manila'));
-        $this->register();
+        $this->register(['requested_date' => self::NEXT_FRIDAY]);
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $this->approveAndLink($walkIn);
 
         $this->assessAsRecords($walkIn)
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now (09:00–11:30)'));
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Visit booked for Fri, Oct 16, 2026 (09:00–11:30)'));
 
-        $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->firstOrFail();
+        $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->sole();
         $this->assertSame('confirmed', $visit->status);
-        $this->assertTrue($visit->is_walk_in);
-        $this->assertSame('2026-10-08', $visit->schedule->schedule_date->toDateString());
-        // It does not open the day for app bookings.
-        $this->assertFalse((bool) $visit->schedule->is_special);
-        $this->assertSame('closed', $visit->schedule->status);
-        $this->assertSame(1, (int) $visit->schedule->slots_taken, 'The walk-in takes a seat on the session.');
+        $this->assertSame(self::NEXT_FRIDAY, $visit->schedule->schedule_date->toDateString());
+        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
 
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Approved')->assertSee('Check In Now');
-        $this->get(route('frontdesk.checkin-checkout'))->assertOk()->assertSee('Lourdes Reyes');
+        // Approved, but checked in on that day, not today.
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertSee('Approved')
+            ->assertSee('booked for')
+            ->assertDontSee('Check In Now');
+        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes');
     }
 
-    public function test_nothing_is_set_up_after_visiting_hours(): void
+    public function test_the_decision_is_final(): void
     {
-        $this->register();
-        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
-        $this->approveAndLink($walkIn);
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors();
 
-        // Approved after the last session of the day ended.
+        // Approved: it cannot be changed to Rejected (or approved again).
+        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'Changed my mind.'])
+            ->assertSessionHasErrors('decision');
+        $this->assertSame('approved', $walkIn->walkInAssessments()->first()->decision);
+        $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
+
+        // Rejected: it cannot be approved afterwards.
+        $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01']);
+        $rejected = VisitorProfile::where('full_name', 'Pedro Cruz')->firstOrFail();
+        $this->assessAsRecords($rejected, ['decision' => 'declined', 'remarks' => 'Not on the PDL\'s visitor list.'])->assertSessionHasNoErrors();
+        $this->approveAndLink($rejected);
+        $this->assessAsRecords($rejected)->assertSessionHasErrors('decision');
+        $this->assertSame('declined', $rejected->walkInAssessments()->first()->decision);
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->get(route('visitor.show', $rejected->visitor_id))
+            ->assertSee('The decision is final');
+    }
+
+    public function test_an_approval_whose_session_ended_is_not_saved(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+
+        // Records gets to it after today's session ended.
         $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 18:00:00', 'Asia/Manila'));
         $this->assessAsRecords($walkIn)
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'visiting hours are over'));
+            ->assertSessionHas('error', fn ($message) => str_contains($message, 'already ended') && str_contains($message, 'stays Pending'));
+        $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('visiting hours are over');
+
+        // The desk chooses another session; then Records approves.
+        $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
+            'requested_date' => self::NEXT_FRIDAY,
+            'requested_start_times' => ['09:00'],
+        ])->assertSessionHasNoErrors();
+        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $this->assertSame(self::NEXT_FRIDAY, VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->schedule->schedule_date->toDateString());
+    }
+
+    public function test_the_session_cannot_be_changed_after_the_decision(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn);
+
+        $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
+            'requested_date' => self::NEXT_FRIDAY,
+            'requested_start_times' => ['09:00'],
+        ])->assertSessionHasErrors('requested_start_times');
+        $this->assertSame(self::FRIDAY, $walkIn->walkInAssessments()->first()->requested_date->toDateString());
+    }
+
+    public function test_approval_needs_a_chosen_session(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        // An arrival recorded before sessions were chosen at the desk.
+        $walkIn->walkInAssessments()->first()->update(['requested_date' => null, 'requested_start_times' => null]);
+
+        $this->assessAsRecords($walkIn)->assertSessionHasErrors('decision');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Choose Visit Date and Session');
     }
 
     // ------------------------------------- Walk-ins follow the booking rules
@@ -309,7 +486,7 @@ class WalkInVisitorTest extends TestCase
         ]);
     }
 
-    public function test_walk_in_at_the_weekly_limit_gets_no_fallback_visit(): void
+    public function test_walk_in_at_the_weekly_limit_is_not_approved(): void
     {
         [$walkIn, $relationship] = $this->linkedWalkIn();
         SystemSetting::create(['setting_key' => 'visit.max_per_week', 'setting_value' => '1', 'updated_by' => StaffProfile::first()->staff_id]);
@@ -326,10 +503,12 @@ class WalkInVisitorTest extends TestCase
             ->assertSessionHas('error', fn ($message) => str_contains($message, VisitAssignmentService::WEEKLY_LIMIT_MESSAGE));
 
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'No walk-in visit is created.');
-        $this->assertNull($walkIn->walkInAssessments()->first()->visit_request_id);
+        $assessment = $walkIn->walkInAssessments()->first();
+        $this->assertNull($assessment->visit_request_id);
+        $this->assertSame('pending', $assessment->decision, 'Nothing was approved.');
     }
 
-    public function test_walk_in_with_a_pending_visit_with_another_pdl_today_is_refused(): void
+    public function test_walk_in_with_a_pending_visit_with_another_pdl_that_day_is_refused(): void
     {
         [$walkIn] = $this->linkedWalkIn();
         $otherPdl = Pdl::create([
@@ -350,7 +529,8 @@ class WalkInVisitorTest extends TestCase
             'verification_status' => 'verified',
         ]);
         // A visit request with the other PDL today, still awaiting review.
-        $today = $this->scheduleOn(self::FRIDAY, ['slots_taken' => 1]);
+        $today = $this->todaysSchedule();
+        $today->update(['slots_taken' => 1]);
         VisitRequest::create([
             'visitor_id' => $walkIn->visitor_id,
             'pdl_id' => $otherPdl->pdl_id,
@@ -366,24 +546,24 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, (int) $today->fresh()->slots_taken);
     }
 
-    public function test_walk_in_session_respects_capacity(): void
+    public function test_a_session_that_filled_up_is_not_booked(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        // Today's session exists, closed and with every seat taken.
-        $full = $this->scheduleOn(self::FRIDAY, ['status' => 'closed', 'slots_taken' => 2]);
+        // Every seat was taken after the desk chose the session.
+        $this->todaysSchedule()->update(['slots_taken' => 2]);
 
         $this->assessAsRecords($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, 'full'));
 
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
-        $this->assertSame(2, (int) $full->fresh()->slots_taken);
+        $this->assertSame(2, (int) $this->todaysSchedule()->slots_taken);
+        $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
     }
 
-    public function test_a_failed_regular_booking_is_not_retried_as_a_walk_in_session(): void
+    public function test_a_refused_booking_saves_nothing(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->scheduleOn(self::FRIDAY); // an open regular session today
-        // The regular booking is refused at approval (e.g. eligibility).
+        // The booking is refused at approval (e.g. eligibility).
         $assignments = Mockery::mock(VisitAssignmentService::class, [app(ScheduleAvailabilityService::class)])->makePartial();
         $assignments->shouldReceive('approveVisitorRequest')
             ->andThrow(ValidationException::withMessages(['eligibility' => 'Eligibility refused this visit.']));
@@ -392,16 +572,22 @@ class WalkInVisitorTest extends TestCase
         $this->assessAsRecords($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, 'Eligibility refused this visit.'));
 
-        $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'Nothing is booked, not even a walk-in session.');
-        $this->assertSame(1, VisitSchedule::whereDate('schedule_date', self::FRIDAY)->count(), 'No walk-in session was created.');
+        $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'Nothing is booked.');
+        $this->assertSame(0, (int) $this->todaysSchedule()->slots_taken, 'The seat was not taken.');
+        $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
     }
 
     // ------------------------------------------- Returning walk-ins (no phone)
 
-    private function recordArrival(VisitorProfile $walkIn, string $purpose = 'Family visit')
+    private function recordArrival(VisitorProfile $walkIn, string $purpose = 'Family visit', string $date = self::NEXT_FRIDAY)
     {
         return $this->actingAs($this->frontDeskAccount)
-            ->post(route('frontdesk.walk-ins.arrivals.store', $walkIn), ['visit_purpose' => $purpose]);
+            ->post(route('frontdesk.walk-ins.arrivals.store', $walkIn), [
+                'visit_purpose' => $purpose,
+                'pdl_id' => $this->pdl->pdl_id,
+                'requested_date' => $date,
+                'requested_start_times' => ['09:00'],
+            ]);
     }
 
     public function test_a_returning_walk_in_gets_a_new_arrival_instead_of_registering_again(): void
@@ -411,7 +597,7 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
         // A week later the visitor is back at the desk.
-        $this->travelTo(CarbonImmutable::parse('2026-10-16 08:00:00', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse(self::NEXT_FRIDAY.' 08:00:00', 'Asia/Manila'));
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
             ->assertSee('Registered')
@@ -423,10 +609,11 @@ class WalkInVisitorTest extends TestCase
         $arrival = $walkIn->walkInAssessments()->first();
         $this->assertSame('pending', $arrival->decision);
         $this->assertSame('Deliver food', $arrival->visit_purpose);
-        $this->assertSame('spouse', $arrival->relationship_type, 'Carried over from the first arrival.');
+        $this->assertSame('spouse', $arrival->relationship_type, 'From the verified relationship.');
+        $this->assertSame(self::NEXT_FRIDAY, $arrival->requested_date->toDateString());
         $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Record New Arrival');
 
-        // Records decides on the new arrival, which books today's visit as before.
+        // Records decides on the new arrival, which books the chosen session.
         $this->assessAsRecords($walkIn)
             ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now'));
 
@@ -435,7 +622,7 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, VisitorProfile::where('registered_via', 'walk_in')->count(), 'No second registration.');
     }
 
-    public function test_no_new_arrival_while_one_waits_or_after_todays_visit(): void
+    public function test_no_new_arrival_while_one_waits_or_a_visit_is_booked(): void
     {
         [$walkIn] = $this->linkedWalkIn();
 
@@ -444,8 +631,18 @@ class WalkInVisitorTest extends TestCase
 
         // Today's visit is booked.
         $this->assessAsRecords($walkIn);
-        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor already has a visit today.']);
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor already has a booked visit.']);
 
+        $this->assertSame(1, $walkIn->walkInAssessments()->count());
+    }
+
+    public function test_a_new_arrival_needs_an_open_session(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn);
+        $this->travelTo(CarbonImmutable::parse(self::NEXT_FRIDAY.' 08:00:00', 'Asia/Manila'));
+
+        $this->recordArrival($walkIn, 'Family visit', '2026-10-23')->assertSessionHasErrors('requested_start_times');
         $this->assertSame(1, $walkIn->walkInAssessments()->count());
     }
 
@@ -462,7 +659,7 @@ class WalkInVisitorTest extends TestCase
     {
         [$walkIn] = $this->linkedWalkIn();
         $this->assessAsRecords($walkIn);
-        $this->travelTo(CarbonImmutable::parse('2026-10-16 08:00:00', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse(self::NEXT_FRIDAY.' 08:00:00', 'Asia/Manila'));
 
         $this->recordArrival($walkIn, '  ')->assertSessionHasErrors(['visit_purpose' => 'Enter the purpose of the visit.']);
         $this->assertSame(1, $walkIn->walkInAssessments()->count());
@@ -477,7 +674,7 @@ class WalkInVisitorTest extends TestCase
         $this->actingAs($this->recordOfficerAccount)
             ->post(route('visitor.visits.assign', $walkIn->visitor_id), [
                 'relationship_id' => $relationship->relationship_id,
-                'date' => '2026-10-16',
+                'date' => self::NEXT_FRIDAY,
                 'start_times' => ['09:00'],
             ])
             ->assertSessionHasNoErrors()
@@ -496,7 +693,7 @@ class WalkInVisitorTest extends TestCase
         $walkIn->account->forceFill(['last_login_at' => now()])->save();
 
         $visit = app(VisitAssignmentService::class)->assignSessions(
-            $walkIn->fresh(), $relationship, CarbonImmutable::parse('2026-10-16', 'Asia/Manila'), ['09:00']
+            $walkIn->fresh(), $relationship, CarbonImmutable::parse(self::NEXT_FRIDAY, 'Asia/Manila'), ['09:00']
         );
 
         $this->assertSame('pending_confirmation', $visit->status);
@@ -515,6 +712,8 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('pending_confirmation', $visit->status);
         $this->assertNull($visit->confirmed_at);
     }
+
+    // ------------------------------------------------------- Front Desk pages
 
     public function test_cards_count_and_filter_walk_ins_by_status(): void
     {
@@ -563,21 +762,6 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
     }
 
-    public function test_pdl_id_number_is_checked_against_the_pdl_records(): void
-    {
-        $this->actingAs($this->frontDeskAccount);
-
-        // Live check, as on the Records PDL profile (case does not matter).
-        $this->getJson(route('frontdesk.walk-ins.pdl-lookup', ['number' => 'pdl-test-001']))
-            ->assertExactJson(['found' => true, 'pdlNumber' => 'PDL-TEST-001', 'fullName' => 'Example PDL']);
-        $this->getJson(route('frontdesk.walk-ins.pdl-lookup', ['number' => 'PDL-0000-99999']))
-            ->assertExactJson(['found' => false]);
-
-        // A number that no PDL has is refused; blank is fine.
-        $this->register(['intended_pdl_number' => 'PDL-0000-99999'])->assertSessionHasErrors('intended_pdl_number');
-        $this->register(['intended_pdl_number' => ''])->assertSessionHasNoErrors();
-    }
-
     public function test_messages_are_short_lived_toasts(): void
     {
         // The confirmation after registering goes away after 5 seconds.
@@ -592,11 +776,22 @@ class WalkInVisitorTest extends TestCase
 
     public function test_walk_in_list_search_and_calendar(): void
     {
+        $otherPdl = Pdl::create([
+            'pdl_number' => 'PDL-TEST-002',
+            'full_name' => 'Juan Dela Cruz',
+            'date_of_birth' => '1991-01-01',
+            'gender' => 'male',
+            'classification' => 'non_drug_related',
+            'admission_date' => '2024-01-01',
+            'custody_status' => 'active',
+            'registered_by' => StaffProfile::first()->staff_id,
+        ]);
         $this->register();
         $this->travelTo(CarbonImmutable::parse('2026-10-10 09:00:00', 'Asia/Manila'));
-        $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01', 'intended_pdl_name' => 'Juan Dela Cruz', 'intended_pdl_number' => '']);
+        $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01', 'pdl_id' => $otherPdl->pdl_id, 'requested_date' => self::NEXT_FRIDAY])
+            ->assertSessionHasNoErrors();
 
-        // Search: visitor, or the PDL name / number given.
+        // Search: visitor, or the PDL's name / number.
         $this->get(route('frontdesk.walk-ins.index', ['q' => 'pedro']))->assertSee('Pedro Cruz')->assertDontSee('Lourdes Reyes');
         $this->get(route('frontdesk.walk-ins.index', ['q' => 'PDL-TEST-001']))->assertSee('Lourdes Reyes')->assertDontSee('Pedro Cruz');
 
@@ -616,6 +811,8 @@ class WalkInVisitorTest extends TestCase
         $this->register(['contact_number' => '0917-123-4567'])->assertSessionHasNoErrors();
         $this->assertSame('09171234567', VisitorProfile::where('full_name', 'Lourdes Reyes')->value('contact_number'));
     }
+
+    // ---------------------------------------------- Phase 3: Records review
 
     public function test_approving_a_walk_in_without_email_works(): void
     {
@@ -644,7 +841,7 @@ class WalkInVisitorTest extends TestCase
         // Pending is fine meanwhile; it records who and when, and the automatic checks.
         $this->assessAsRecords($walkIn, ['decision' => 'pending'])->assertSessionHasNoErrors();
         $assessment = $walkIn->walkInAssessments()->first();
-        $this->assertSame('verified', $assessment->pdl_verification); // "Example PDL" / PDL-TEST-001 exists
+        $this->assertSame('verified', $assessment->pdl_verification); // the PDL the desk selected
         $this->assertSame('for_review', $assessment->visitor_eligibility);
         $this->assertSame('for_review', $assessment->authorized_visitor);
         $this->assertSame($this->recordOfficerAccount->staffProfile->staff_id, $assessment->processed_by);
@@ -674,7 +871,8 @@ class WalkInVisitorTest extends TestCase
             ->assertOk()
             ->assertSee('Walk-in Assessment')
             ->assertSee('Family visit')
-            ->assertSee('PDL-TEST-001');
+            ->assertSee('PDL-TEST-001')
+            ->assertSee('Fri, Oct 9, 2026 · 09:00');
 
         $this->assessAsRecords($walkIn);
         $this->actingAs($this->recordOfficerAccount)
@@ -695,27 +893,25 @@ class WalkInVisitorTest extends TestCase
             ->assertSee('Showing 1–2 of 2 visitors');
     }
 
-    public function test_pdl_verification_is_automatic(): void
+    public function test_pdl_verification_uses_the_selected_pdl(): void
     {
         $service = app(\App\Services\WalkInService::class);
 
         $this->register();
-        $byBoth = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
-        $this->assertSame('verified', $service->checks($byBoth)['pdl_verification']);
-
-        $this->register(['first_name' => 'Ana', 'last_name' => 'Lim', 'intended_pdl_name' => 'Somebody Else', 'intended_pdl_number' => 'pdl-test-001']);
-        $byNumber = VisitorProfile::where('full_name', 'Ana Lim')->firstOrFail();
-        $this->assertSame([$this->pdl->pdl_id], $service->checks($byNumber)['matches']->pluck('pdl_id')->all());
-
-        $this->register(['first_name' => 'Ben', 'last_name' => 'Tan', 'intended_pdl_name' => 'Nobody Known', 'intended_pdl_number' => null]);
-        $notFound = VisitorProfile::where('full_name', 'Ben Tan')->firstOrFail();
-        $this->assertSame('not_found', $service->checks($notFound)['pdl_verification']);
+        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
+        $this->assertSame('verified', $service->checks($walkIn)['pdl_verification']);
+        $this->assertSame([$this->pdl->pdl_id], $service->checks($walkIn)['matches']->pluck('pdl_id')->all());
 
         // The Records Officer sees the match; it is linked once the documents are verified.
         $this->actingAs($this->recordOfficerAccount)
-            ->get(route('visitor.show', $byBoth->visitor_id))
+            ->get(route('visitor.show', $walkIn->visitor_id))
             ->assertSee('Matches Example PDL (PDL-TEST-001')
-            ->assertSee('Linked automatically as Spouse once every document is verified');
+            ->assertSee('Linked automatically as Spouse once every document is approved');
+
+        // An older registration without a selected PDL is matched by the name given.
+        $walkIn->walkInAssessments()->first()->update(['pdl_id' => null]);
+        $walkIn->update(['intended_pdl_name' => 'Nobody Known', 'intended_pdl_number' => null]);
+        $this->assertSame('not_found', $service->checks($walkIn->fresh())['pdl_verification']);
     }
 
     public function test_linking_the_matched_pdl_attaches_the_documents_for_review(): void

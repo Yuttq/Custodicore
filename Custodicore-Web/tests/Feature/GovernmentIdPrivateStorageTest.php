@@ -90,8 +90,10 @@ class GovernmentIdPrivateStorageTest extends TestCase
             'id_type' => 'national_id',
             'id_number' => 'PSN-1234-5678',
             'government_id' => UploadedFile::fake()->create('id.jpg', 50, 'image/jpeg'),
-            'intended_pdl_name' => 'Example PDL',
-            'intended_pdl_number' => 'PDL-TEST-001',
+            'pdl_id' => $this->pdl->pdl_id,
+            // The fixture's open session (next Friday), which Records opened.
+            'requested_date' => $this->schedule->schedule_date->toDateString(),
+            'requested_start_times' => ['09:00'],
             'visit_purpose' => 'Family visit',
             'relationship_type' => 'spouse',
             'documents' => ['marriage_certificate' => UploadedFile::fake()->create('marriage.pdf', 50, 'application/pdf')],

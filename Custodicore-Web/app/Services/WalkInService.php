@@ -5,8 +5,6 @@ namespace App\Services;
 use App\Http\Controllers\Api\VisitorPhotoController;
 use App\Models\Account;
 use App\Models\AuditLog;
-use App\Models\EligibilityAssessment;
-use App\Models\FacilityVisitationRule;
 use App\Models\Module;
 use App\Models\Pdl;
 use App\Models\RelationshipDocument;
@@ -15,8 +13,6 @@ use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
-use App\Models\VisitSchedule;
-use App\Models\VisitSession;
 use App\Models\WalkInAssessment;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
@@ -28,18 +24,24 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Walk-in visitors: people without a phone (or who can't use the app),
- * registered at the Front Desk. The registration creates exactly what the
- * app's does (AuthController::register): a Visitor account, a pending
- * profile, the government ID and the relationship documents. The PDL is only
- * the name the visitor gives; the Record Officer links the PDL, checks the
- * documents and approves in the Review Queue, where walk-ins come first.
+ * registered at the Front Desk. The walk-in visit runs in six phases:
  *
- * Each arrival gets a walk-in assessment (WalkInAssessment): the purpose of
- * the visit, then the Record Officer's checks and decision. Once Records has
- * approved and linked the visitor AND the decision is `approved`, the
- * Front Desk books a visit for today. It goes through the same checks as an
- * app request (VisitAssignmentService) and is confirmed straight away, since
- * the visitor is at the desk to confirm it.
+ *   1. Front Desk: finds the visitor (or registers them — exactly what the
+ *      app's registration creates: a Visitor account, a pending profile, the
+ *      government ID and the relationship documents) and selects the PDL
+ *      from a partial-name search.
+ *   2. Front Desk: chooses a date and session from those Records opened
+ *      (openSlots()), checked against capacity and the booking rules.
+ *   3. Records Officer: reviews the visitor, the ID and relationship
+ *      documents and the PDL's eligibility, then approves or rejects ONCE
+ *      (assess()).
+ *   4. System: approval books the chosen session in the same transaction
+ *      (same checks as an app request, VisitAssignmentService), confirmed at
+ *      once; if it cannot be booked, nothing is approved.
+ *   5–6. Front Desk: manual check-in and check-out (CheckinCheckoutController).
+ *
+ * Each arrival is a walk-in assessment (WalkInAssessment) holding the
+ * purpose, the PDL and session chosen, and the Records decision.
  */
 class WalkInService
 {
@@ -48,21 +50,36 @@ class WalkInService
         private readonly ScheduleAvailabilityService $availability,
     ) {}
 
+    /** How far ahead (days, today included) the Front Desk can choose a session. */
+    public const SLOT_DAYS = 14;
+
+    /** Why a session Records opened cannot be chosen, for the Front Desk. */
+    public const SLOT_REASONS = [
+        ScheduleAvailabilityService::REASON_FULL => 'Full',
+        ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => 'Weekly visit limit reached',
+        ScheduleAvailabilityService::REASON_DAILY_LIMIT => 'Already has a visit that day',
+        ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => 'Already booked with this PDL that day',
+        ScheduleAvailabilityService::REASON_PDL_UNAVAILABLE => 'PDL not available for visits',
+    ];
+
     /**
      * @param  array{full_name:string,first_name:string,last_name:string,date_of_birth:string,gender:string,address?:?string,contact_number?:?string,email?:?string,
      *               guardian_full_name?:?string,guardian_relationship?:?string,guardian_contact_number?:?string,
-     *               intended_pdl_name:string,intended_pdl_number?:?string,visit_purpose:string,relationship_type:string,has_children_together?:?bool,
+     *               pdl_id:int,requested_date:string,requested_start_times:array<int,string>,
+     *               visit_purpose:string,relationship_type:string,has_children_together?:?bool,
      *               id_type?:?string,id_number?:?string}  $data
      * @param  array<string, UploadedFile>  $documents  relationship documents by requirement key
      */
     public function register(array $data, UploadedFile $photo, ?UploadedFile $governmentId, array $documents, int $staffId): VisitorProfile
     {
+        $pdl = Pdl::findOrFail($data['pdl_id']);
+
         // Written once, before the transaction: a rollback cannot remove files.
         $photoPath = VisitorPhotoController::storeFile($photo);
         $stored = [];
 
         try {
-            return DB::transaction(function () use ($data, $photoPath, $governmentId, $documents, $staffId, &$stored) {
+            return DB::transaction(function () use ($data, $pdl, $photoPath, $governmentId, $documents, $staffId, &$stored) {
                 $now = now();
 
                 // No usable password: the visitor signs in only after claiming
@@ -98,9 +115,10 @@ class WalkInService
                     'guardian_relationship' => $data['guardian_relationship'] ?? null,
                     'guardian_contact_number' => $data['guardian_contact_number'] ?? null,
                     'relationship_hint' => $hint,
-                    // Unverified, as in the app: the Record Officer links the PDL.
-                    'intended_pdl_name' => $data['intended_pdl_name'],
-                    'intended_pdl_number' => $data['intended_pdl_number'] ?? null,
+                    // The PDL the desk selected; the Record Officer still
+                    // verifies the relationship before it is linked.
+                    'intended_pdl_name' => $pdl->full_name,
+                    'intended_pdl_number' => $pdl->pdl_number,
                     'verification_status' => 'pending',
                     'registered_via' => 'walk_in',
                     'walk_in_registered_by' => $staffId,
@@ -141,11 +159,15 @@ class WalkInService
                     'has_children_together' => $type === 'live_in_partner' && isset($data['has_children_together'])
                         ? (bool) $data['has_children_together']
                         : null,
+                    'pdl_id' => $pdl->pdl_id,
+                    'requested_date' => $data['requested_date'],
+                    'requested_start_times' => self::normalizeTimes($data['requested_start_times']),
                     'decision' => 'pending',
                 ]);
 
                 AuditLog::record('create', 'visitor_profiles', $profile->visitor_id,
-                    "Front Desk registered walk-in visitor {$profile->full_name} (to visit \"{$profile->intended_pdl_name}\", "
+                    "Front Desk registered walk-in visitor {$profile->full_name} (to visit {$pdl->full_name} ({$pdl->pdl_number}) on "
+                    .$data['requested_date'].' '.implode(' + ', self::normalizeTimes($data['requested_start_times'])).', '
                     .count($documents).' relationship document(s)'.($governmentId ? ', government ID' : '').')',
                     Module::CODE_VISITOR_MANAGEMENT);
 
@@ -167,34 +189,41 @@ class WalkInService
      * In, Checked Out); the key says why, for the page's explanation:
      *   waiting  — the Record Officer has not approved the account yet
      *   returned — rejected; rejection_reason says why
-     *   declined — the Record Officer declined this walk-in (assessment)
+     *   declined — the Record Officer rejected this arrival (final)
      *   linking  — approved, but no verified relationship to a PDL yet
      *   assess   — approved and linked; waiting for the walk-in decision
-     *   ready    — can be booked for today
-     *   booked   — has a confirmed visit today, not checked in yet
+     *   ready    — approved without a booked visit (arrivals decided before
+     *              approval booked the chosen session); a new arrival can be
+     *              recorded
+     *   booked   — the approval booked the chosen session (today or later),
+     *              not checked in yet
      *   inside   — checked in now
      *   done     — today's visit is over
-     *   returning — the last arrival's visit was on an earlier day; a new
-     *               arrival can be recorded when they come back
+     *   returning — the last arrival's visit is over (an earlier day, or
+     *               missed); a new arrival can be recorded when they come back
      *
      * @return array{key:string,label:string,tone:string,visit:?VisitRequest}
      */
     public function status(VisitorProfile $visitor): array
     {
-        $visit = $this->todaysVisit($visitor);
         $assessment = $this->assessment($visitor);
+        // The visit the arrival's approval booked; else one Records assigned for today.
+        $visit = $this->arrivalVisit($assessment) ?? $this->todaysVisit($visitor);
         $decision = $assessment?->decision;
+        $today = $this->availability->now()->toDateString();
+        $visitDay = $visit?->schedule?->schedule_date?->toDateString();
+
         [$key, $label, $tone] = match (true) {
             $visitor->verification_status === 'rejected' => ['returned', 'Rejected', 'danger'],
-            $decision === 'declined' && $visit === null => ['declined', 'Rejected', 'danger'],
+            $decision === 'declined' => ['declined', 'Rejected', 'danger'],
             $visitor->verification_status !== 'verified' => ['waiting', 'Pending Approval', 'warning'],
             $visit && $visit->checkins->contains('status', 'checked_in') => ['inside', 'Checked In', 'info'],
-            $visit && $visit->status === 'completed' => ['done', 'Checked Out', 'neutral'],
-            $visit !== null => ['booked', 'Approved', 'success'],
-            $this->verifiedRelationships($visitor)->isEmpty() => ['linking', 'Pending Approval', 'warning'],
-            // The last arrival's visit was booked (on an earlier day): a
+            $visit && $visit->status === 'completed' && $visitDay === $today => ['done', 'Checked Out', 'neutral'],
+            $visit && $visit->status === 'confirmed' && $visitDay >= $today => ['booked', 'Approved', 'success'],
+            // The visit is over (an earlier day, missed or cancelled): a
             // registered walk-in, ready for a new arrival (newArrival()).
-            $assessment?->visit_request_id !== null => ['returning', 'Registered', 'neutral'],
+            $visit !== null => ['returning', 'Registered', 'neutral'],
+            $this->verifiedRelationships($visitor)->isEmpty() => ['linking', 'Pending Approval', 'warning'],
             $decision !== 'approved' => ['assess', 'Pending Approval', 'warning'],
             default => ['ready', 'Approved', 'success'],
         };
@@ -202,25 +231,213 @@ class WalkInService
         return compact('key', 'label', 'tone', 'visit');
     }
 
-    /**
-     * Today's sessions for each verified relationship, as the visitor
-     * calendar sees them (availability, seats, weekly limit, ...).
-     *
-     * @return array<int, array{relationship:VisitorPdlRelationship, slots:array<int, array<string, mixed>>}>
-     */
-    public function todaysSessions(VisitorProfile $visitor): array
+    /** The visit booked for this arrival, if any. */
+    private function arrivalVisit(?WalkInAssessment $assessment): ?VisitRequest
     {
-        $relationships = $this->verifiedRelationships($visitor);
-        $today = $this->availability->now()->startOfDay();
-        $results = collect($this->availability->forRelationships($visitor, $relationships, $today, $today));
+        return $assessment?->visit_request_id
+            ? VisitRequest::with(['pdl', 'checkins', 'sessionSchedules', 'schedule'])->find($assessment->visit_request_id)
+            : null;
+    }
 
-        return $relationships->map(fn (VisitorPdlRelationship $relationship, int $i) => [
-            'relationship' => $relationship,
-            'slots' => collect($results[$i]['days'][0]['slots'] ?? [])
-                ->reject(fn ($slot) => in_array($slot['reason'], [ScheduleAvailabilityService::REASON_PAST, ScheduleAvailabilityService::REASON_ENDED], true))
-                ->values()
-                ->all(),
-        ])->values()->all();
+    /**
+     * Phase 2: the dates and sessions Records opened (published, not closed,
+     * not ended) for this PDL over the next SLOT_DAYS days, as the visitor
+     * calendar sees them: seats left, and for a known visitor the weekly
+     * limit and one-PDL-per-day rule. Sessions that cannot be booked are
+     * listed with the reason; days without an open session are left out.
+     *
+     * @return array{pdlAvailable:bool,message:?string,days:array<int, array<string, mixed>>}
+     */
+    public function openSlots(Pdl $pdl, ?VisitorProfile $visitor = null, ?string $relationshipType = null): array
+    {
+        $from = $this->availability->now()->startOfDay();
+        $to = $from->addDays(self::SLOT_DAYS - 1);
+        // A visitor not registered yet has no bookings: id 0 matches none.
+        $visitor ??= (new VisitorProfile)->forceFill(['visitor_id' => 0]);
+        $result = $this->availability->forRelationships(
+            $visitor, collect([$this->relationshipFor($pdl, $visitor, $relationshipType)]), $from, $to
+        )[0];
+
+        $hidden = [
+            ScheduleAvailabilityService::REASON_PAST,
+            ScheduleAvailabilityService::REASON_ENDED,
+            ScheduleAvailabilityService::REASON_CLOSED,
+            ScheduleAvailabilityService::REASON_NOT_PUBLISHED,
+        ];
+        $reasonLabel = fn (?string $reason) => $reason === null ? null : (self::SLOT_REASONS[$reason] ?? 'Not available');
+
+        $days = [];
+        foreach ($result['days'] as $day) {
+            $slots = collect($day['slots'])
+                ->filter(fn ($slot) => $slot['scheduleId'] !== null && ! in_array($slot['reason'], $hidden, true))
+                ->map(fn ($slot) => [
+                    'startTime' => $slot['startTime'],
+                    'endTime' => $slot['endTime'],
+                    'available' => $slot['available'],
+                    'remaining' => $slot['slotsRemaining'],
+                    'capacity' => $slot['capacity'],
+                    'reason' => $reasonLabel($slot['reason']),
+                ])
+                ->values();
+            if ($slots->isEmpty()) {
+                continue;
+            }
+
+            // The whole day only when every session of the day is open.
+            $whole = $day['wholeDay'] && count($day['wholeDay']['startTimes']) === $slots->count() ? [
+                'startTimes' => $day['wholeDay']['startTimes'],
+                'startTime' => $day['wholeDay']['startTime'],
+                'endTime' => $day['wholeDay']['endTime'],
+                'available' => $day['wholeDay']['available'],
+                'reason' => $reasonLabel($day['wholeDay']['reason']),
+            ] : null;
+
+            $days[] = [
+                'date' => $day['date'],
+                'label' => CarbonImmutable::parse($day['date'])->format('D, M j'),
+                'today' => $day['date'] === $from->toDateString(),
+                'slots' => $slots->all(),
+                'wholeDay' => $whole,
+            ];
+        }
+
+        return ['pdlAvailable' => $result['pdlAvailable'], 'message' => $result['message'], 'days' => $days];
+    }
+
+    /**
+     * The chosen date and session(s) must be one Records opened for this PDL
+     * and bookable right now (seats, booking rules). Several start times
+     * must be the whole day. The booking at approval checks all of it again.
+     *
+     * @param  array<int, string>  $startTimes
+     *
+     * @throws ValidationException
+     */
+    public function assertSlotOpen(Pdl $pdl, ?VisitorProfile $visitor, ?string $relationshipType, string $date, array $startTimes): void
+    {
+        $fail = fn (string $message) => throw ValidationException::withMessages(['requested_start_times' => $message]);
+        $times = self::normalizeTimes($startTimes);
+        $day = collect($this->openSlots($pdl, $visitor, $relationshipType)['days'])->firstWhere('date', $date);
+
+        if (! $day) {
+            $fail('Records has not opened a session for this PDL on that date. Choose one of the dates shown.');
+        }
+        if ($times === []) {
+            $fail('Choose a session.');
+        }
+
+        if (count($times) > 1) {
+            $whole = $day['wholeDay'];
+            if (! $whole || $whole['startTimes'] !== $times) {
+                $fail('Choose one session, or the whole day.');
+            }
+            if (! $whole['available']) {
+                $fail('The whole day cannot be booked: '.($whole['reason'] ?? 'not available').'.');
+            }
+
+            return;
+        }
+
+        $slot = collect($day['slots'])->firstWhere('startTime', $times[0]);
+        if (! $slot) {
+            $fail('That session is not open on the chosen date.');
+        }
+        if (! $slot['available']) {
+            $fail("That session cannot be booked: {$slot['reason']}.");
+        }
+    }
+
+    /**
+     * The visitor's verified relationship to this PDL, or an unsaved one
+     * standing in for it (the PDL is not linked yet) so the availability
+     * service can describe the PDL's sessions.
+     */
+    private function relationshipFor(Pdl $pdl, VisitorProfile $visitor, ?string $relationshipType): VisitorPdlRelationship
+    {
+        $pdl->loadMissing('activeRestrictions');
+
+        if ($visitor->exists) {
+            $verified = $this->verifiedRelationships($visitor)->firstWhere('pdl_id', $pdl->pdl_id);
+            if ($verified) {
+                return $verified->setRelation('pdl', $pdl);
+            }
+        }
+
+        return (new VisitorPdlRelationship)
+            ->forceFill([
+                'visitor_id' => $visitor->visitor_id,
+                'pdl_id' => $pdl->pdl_id,
+                'relationship_type' => $relationshipType ?: 'other',
+            ])
+            ->setRelation('pdl', $pdl);
+    }
+
+    /** ["13:00:00", "09:00"] -> ["09:00", "13:00"] */
+    public static function normalizeTimes(array $startTimes): array
+    {
+        return collect($startTimes)
+            ->map(fn ($time) => substr(trim((string) $time), 0, 5))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The PDL this arrival is for: the one the Front Desk selected when the
+     * visitor is linked to it; else the PDL Records linked; else the
+     * selection, or the one PDL matching what the visitor gave.
+     */
+    public function arrivalPdl(VisitorProfile $visitor, ?WalkInAssessment $assessment = null): ?Pdl
+    {
+        $assessment ??= $this->assessment($visitor);
+        $verified = $this->verifiedRelationships($visitor);
+
+        if ($assessment?->pdl_id && $linked = $verified->firstWhere('pdl_id', $assessment->pdl_id)) {
+            return $linked->pdl;
+        }
+        if ($verified->isNotEmpty()) {
+            return $verified->first()->pdl;
+        }
+        if ($assessment?->pdl_id) {
+            return $assessment->pdl;
+        }
+
+        $matches = $this->matchingPdls($visitor);
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * Changes the date and session of an arrival still waiting for the
+     * Records decision (e.g. the chosen session filled up, or an arrival
+     * recorded before sessions were chosen at the desk).
+     *
+     * @param  array<int, string>  $startTimes
+     */
+    public function changeRequestedVisit(VisitorProfile $visitor, string $date, array $startTimes, int $staffId): WalkInAssessment
+    {
+        $assessment = $this->assessment($visitor);
+        if (! $assessment || $assessment->isDecided() || $assessment->visit_request_id) {
+            throw ValidationException::withMessages(['requested_start_times' => 'The Records Officer has already decided on this arrival, so its date and session can no longer be changed.']);
+        }
+
+        $pdl = $this->arrivalPdl($visitor, $assessment)
+            ?? throw ValidationException::withMessages(['requested_start_times' => 'No PDL is selected for this walk-in yet.']);
+        $this->assertSlotOpen($pdl, $visitor, $assessment->relationship_type, $date, $startTimes);
+
+        $assessment->update([
+            'pdl_id' => $pdl->pdl_id,
+            'requested_date' => $date,
+            'requested_start_times' => self::normalizeTimes($startTimes),
+        ]);
+
+        AuditLog::record('update', 'walk_in_assessments', $assessment->assessment_id,
+            "Front Desk set the walk-in visit of {$visitor->full_name} with {$pdl->full_name} to {$assessment->requestedVisitLabel()}",
+            Module::CODE_VISITOR_MANAGEMENT);
+
+        return $assessment;
     }
 
     /**
@@ -279,38 +496,49 @@ class WalkInService
 
     /**
      * A registered walk-in came back: records the new arrival as a fresh
-     * walk-in assessment (purpose of the visit), which goes to the Record
-     * Officer for the approve/reject decision exactly like the first one;
-     * approving it books today's visit (autoBook(), every booking rule
-     * applies). The account, ID and PDL relationship are already verified,
-     * so nothing is registered again.
+     * walk-in assessment (purpose, PDL and the date and session chosen from
+     * those Records opened), which goes to the Record Officer for the
+     * approve/reject decision exactly like the first one; approving it books
+     * that session. The account, ID and PDL relationship are already
+     * verified, so nothing is registered again.
      *
      * Only from NEW_ARRIVAL_STATUSES: not while an arrival is still waiting
-     * for Records, nor when the visitor already has a visit today.
+     * for Records, nor while the visitor has a booked visit.
+     *
+     * @param  array<int, string>  $startTimes
      */
-    public function newArrival(VisitorProfile $visitor, string $purpose, int $staffId): WalkInAssessment
+    public function newArrival(VisitorProfile $visitor, string $purpose, int $pdlId, string $date, array $startTimes, int $staffId): WalkInAssessment
     {
         $key = $this->status($visitor)['key'];
         if (! in_array($key, self::NEW_ARRIVAL_STATUSES, true)) {
             throw ValidationException::withMessages(['visit_purpose' => match ($key) {
-                'booked', 'inside', 'done' => 'This visitor already has a visit today.',
+                'booked' => 'This visitor already has a booked visit.',
+                'inside', 'done' => 'This visitor already has a visit today.',
                 'assess' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.',
                 default => 'This walk-in has not been approved and linked to a PDL yet.',
             }]);
         }
+
+        $relationship = $this->verifiedRelationships($visitor)->firstWhere('pdl_id', $pdlId)
+            ?? throw ValidationException::withMessages(['pdl_id' => 'Choose a PDL this visitor is approved to visit.']);
+        $this->assertSlotOpen($relationship->pdl, $visitor, $relationship->relationship_type, $date, $startTimes);
 
         $previous = $this->assessment($visitor);
 
         $assessment = WalkInAssessment::create([
             'visitor_id' => $visitor->visitor_id,
             'visit_purpose' => $purpose,
-            'relationship_type' => $previous?->relationship_type,
-            'has_children_together' => $previous?->has_children_together,
+            'relationship_type' => $relationship->relationship_type ?? $previous?->relationship_type,
+            'has_children_together' => $relationship->has_children_together ?? $previous?->has_children_together,
+            'pdl_id' => $relationship->pdl_id,
+            'requested_date' => $date,
+            'requested_start_times' => self::normalizeTimes($startTimes),
             'decision' => 'pending',
         ]);
 
         AuditLog::record('create', 'walk_in_assessments', $assessment->assessment_id,
-            "Front Desk recorded a new arrival of walk-in {$visitor->full_name} ({$purpose})",
+            "Front Desk recorded a new arrival of walk-in {$visitor->full_name} ({$purpose}) to visit "
+            ."{$relationship->pdl->full_name} on {$assessment->requestedVisitLabel()}",
             Module::CODE_VISITOR_MANAGEMENT);
 
         return $assessment;
@@ -319,7 +547,7 @@ class WalkInService
     /** The current arrival's assessment (the newest). */
     public function assessment(VisitorProfile $visitor): ?WalkInAssessment
     {
-        return $visitor->walkInAssessments()->with('processedBy')->first();
+        return $visitor->walkInAssessments()->with(['processedBy', 'pdl'])->first();
     }
 
     /**
@@ -363,7 +591,10 @@ class WalkInService
         $pendingFiles = $visitor->idDocuments->where('verification_status', 'pending')->count()
             + $documents->where('status', 'pending')->count();
 
+        $assessment = $this->assessment($visitor);
+
         $blockers = array_values(array_filter([
+            $assessment && ! $assessment->hasRequestedVisit() ? 'The Front Desk has not chosen a visit date and session yet.' : null,
             $pdlVerification === 'not_found' ? 'No PDL matches the name or ID number given. Find the PDL and link it.' : null,
             $linkedPdls->isEmpty() && $matches->count() === 1 ? 'Verify every document: the matched PDL is then linked automatically.' : null,
             $linkedPdls->isEmpty() && $matches->count() > 1 ? 'Several PDLs match: link the right one.' : null,
@@ -486,11 +717,18 @@ class WalkInService
     }
 
     /**
-     * PDLs matching what the visitor gave: the exact PDL ID number, or a name
-     * containing every word of the given name (in the full name or alias).
+     * PDLs matching what the visitor gave: the PDL the Front Desk selected
+     * for the current arrival; else (older registrations) the exact PDL ID
+     * number, or a name containing every word of the given name (in the
+     * full name or alias).
      */
     public function matchingPdls(VisitorProfile $visitor)
     {
+        $selected = $this->assessment($visitor)?->pdl;
+        if ($selected) {
+            return collect([$selected]);
+        }
+
         $number = trim((string) $visitor->intended_pdl_number);
         $words = collect(preg_split('/\s+/u', mb_strtolower((string) $visitor->intended_pdl_name)))
             ->map(fn ($word) => trim($word, ".'’-"))
@@ -517,64 +755,122 @@ class WalkInService
     }
 
     /**
-     * Records the Record Officer's decision on the current arrival. The
-     * checks are filled in by the system (checks()) and saved with it.
-     * Approved is refused while any check still blocks it.
+     * Phase 3–4: the Record Officer's decision on the current arrival, made
+     * ONCE. The checks are filled in by the system (checks()) and saved with
+     * it; Approved is refused while any check still blocks it. Pending can be
+     * saved meanwhile (with remarks); Approved and Rejected are final — a
+     * later visit is a new arrival recorded by the Front Desk.
+     *
+     * Approving books the date and session the Front Desk chose, in the same
+     * transaction (bookVisit(): every booking rule and the eligibility check
+     * apply, the seat is reserved, the visit is confirmed at once). If it
+     * cannot be booked, nothing is saved and the decision stays Pending; the
+     * reason is under the `booking` key.
      *
      * @param  array{decision:string,walk_in_reason:string,remarks:?string}  $data
+     * @return array{0:WalkInAssessment,1:?VisitRequest}
+     *
+     * @throws ValidationException
      */
-    public function assess(VisitorProfile $visitor, array $data, int $staffId): WalkInAssessment
+    public function assess(VisitorProfile $visitor, array $data, int $staffId): array
     {
-        $assessment = $this->assessment($visitor)
-            ?? throw ValidationException::withMessages(['decision' => 'This visitor has no walk-in registration to assess.']);
+        return DB::transaction(function () use ($visitor, $data, $staffId) {
+            // First statement: the visitor lock (VisitAssignmentService::lockVisitor()),
+            // then the arrival, so two officers cannot both decide it.
+            $this->assignments->lockVisitor($visitor);
+            $assessment = WalkInAssessment::where('visitor_id', $visitor->visitor_id)
+                ->latest('assessment_id')
+                ->lockForUpdate()
+                ->first()
+                ?? throw ValidationException::withMessages(['decision' => 'This visitor has no walk-in registration to assess.']);
 
-        if ($assessment->visit_request_id !== null) {
-            throw ValidationException::withMessages(['decision' => 'A visit was already booked for this walk-in.']);
-        }
+            if ($assessment->visit_request_id !== null) {
+                throw ValidationException::withMessages(['decision' => 'A visit was already booked for this walk-in.']);
+            }
+            if ($assessment->isDecided()) {
+                throw ValidationException::withMessages([
+                    'decision' => "This walk-in was already {$assessment->label('decision')}, and the decision is final. "
+                        .'For another visit, the Front Desk records a new arrival.',
+                ]);
+            }
 
-        $checks = $this->checks($visitor);
-        if ($data['decision'] === 'approved' && ! $checks['canApprove']) {
-            throw ValidationException::withMessages([
-                'decision' => 'The walk-in cannot be approved yet: '.implode(' ', $checks['blockers']),
+            $checks = $this->checks($visitor);
+            if ($data['decision'] === 'approved' && ! $checks['canApprove']) {
+                throw ValidationException::withMessages([
+                    'decision' => 'The walk-in cannot be approved yet: '.implode(' ', $checks['blockers']),
+                ]);
+            }
+
+            $assessment->update($data + collect($checks)->only(WalkInAssessment::AUTOMATIC)->all() + [
+                'processed_by' => $staffId,
+                'processed_at' => now(),
             ]);
+
+            $visit = null;
+            if ($assessment->decision === 'approved') {
+                try {
+                    $visit = $this->bookRequestedVisit($visitor, $assessment);
+                } catch (ValidationException $e) {
+                    // Rolls the decision back with the booking.
+                    throw ValidationException::withMessages(['booking' => collect($e->errors())->flatten()->first()]);
+                }
+            }
+
+            AuditLog::record('update', 'walk_in_assessments', $assessment->assessment_id,
+                "Record Officer assessed walk-in {$visitor->full_name}: {$assessment->label('decision')}"
+                .($assessment->remarks ? " ({$assessment->remarks})" : '')
+                .($visit ? "; booked {$assessment->requestedVisitLabel()}" : ''),
+                Module::CODE_VISITOR_MANAGEMENT);
+
+            return [$assessment, $visit];
+        });
+    }
+
+    /** Books the date and session(s) the Front Desk chose for this arrival. */
+    private function bookRequestedVisit(VisitorProfile $visitor, WalkInAssessment $assessment): VisitRequest
+    {
+        if (! $assessment->hasRequestedVisit()) {
+            throw ValidationException::withMessages(['requested_start_times' => 'The Front Desk has not chosen a visit date and session yet.']);
         }
 
-        $assessment->update($data + collect($checks)->only(WalkInAssessment::AUTOMATIC)->all() + [
-            'processed_by' => $staffId,
-            'processed_at' => now(),
-        ]);
+        $relationship = $this->verifiedRelationships($visitor)
+            ->first(fn (VisitorPdlRelationship $r) => $assessment->pdl_id === null || (int) $r->pdl_id === (int) $assessment->pdl_id)
+            ?? throw ValidationException::withMessages([
+                'relationship' => 'The visitor is not linked to the PDL the Front Desk selected. Ask the Front Desk to choose the session again.',
+            ]);
 
-        AuditLog::record('update', 'walk_in_assessments', $assessment->assessment_id,
-            "Record Officer assessed walk-in {$visitor->full_name}: {$assessment->label('decision')}"
-            .($assessment->remarks ? " ({$assessment->remarks})" : ''),
-            Module::CODE_VISITOR_MANAGEMENT);
-
-        return $assessment;
+        return $this->bookVisit(
+            $visitor,
+            $relationship,
+            $assessment->requested_start_times,
+            CarbonImmutable::parse($assessment->requested_date->toDateString()),
+        );
     }
 
     /**
-     * Books today's visit at the desk: the same request and approval as a
+     * Books a walk-in visit: the same request and approval as a
      * visitor-booked visit (every rule and the eligibility check apply), in
-     * one step, marked as a walk-in. Nothing is kept if any check fails.
+     * one step, marked as a walk-in and confirmed at once. Nothing is kept if
+     * any check fails. $date defaults to today.
      *
      * @param  array<int, string>  $startTimes
      */
-    public function bookVisit(VisitorProfile $visitor, VisitorPdlRelationship $relationship, array $startTimes): VisitRequest
+    public function bookVisit(VisitorProfile $visitor, VisitorPdlRelationship $relationship, array $startTimes, ?CarbonImmutable $date = null): VisitRequest
     {
         $assessment = $this->assessment($visitor);
         if ($assessment?->decision !== 'approved') {
             throw ValidationException::withMessages(['start_times' => 'The Records Officer has not approved this walk-in yet.']);
         }
 
-        return DB::transaction(function () use ($visitor, $relationship, $startTimes, $assessment) {
+        return DB::transaction(function () use ($visitor, $relationship, $startTimes, $assessment, $date) {
             // First statement of this (outer) transaction, before the
             // availability reads in submitVisitorRequest(): the read snapshot
             // must be taken after the visitor lock (see lockVisitor()).
             $this->assignments->lockVisitor($visitor);
 
-            $today = CarbonImmutable::parse($this->availability->now()->toDateString());
+            $date ??= CarbonImmutable::parse($this->availability->now()->toDateString());
 
-            $visit = $this->assignments->submitVisitorRequest($visitor, $relationship, $today, $startTimes);
+            $visit = $this->assignments->submitVisitorRequest($visitor, $relationship, $date, $startTimes);
             $visit = $this->assignments->approveVisitorRequest($visit);
             $visit->update(['is_walk_in' => true]);
             $assessment->update(['visit_request_id' => $visit->visit_request_id]);
@@ -583,135 +879,7 @@ class WalkInService
                 "Booked walk-in visit for {$visitor->full_name} → {$visit->pdl->full_name}",
                 Module::CODE_VISIT_SCHEDULING);
 
-            return $visit;
-        });
-    }
-
-    /**
-     * Right after Records approves the walk-in, so the Front Desk only has
-     * to check the visitor in: books the next regular session today that
-     * still has seats, or else, since the visitor is already at the
-     * facility, a walk-in session today (walkInSession()), even on a day
-     * without visiting for the PDL. Null when they already have a visit today
-     * or today's visiting hours are over.
-     *
-     * A failed booking stays failed: a ValidationException from bookVisit()
-     * (eligibility, one PDL per day, weekly limit, a seat taken meanwhile)
-     * is thrown to the caller, never retried as a walk-in session. The
-     * walk-in session enforces the same per-visitor rules itself.
-     *
-     * @throws ValidationException
-     */
-    public function autoBook(VisitorProfile $visitor): ?VisitRequest
-    {
-        if ($this->todaysVisit($visitor)) {
-            return null;
-        }
-
-        foreach ($this->todaysSessions($visitor) as $entry) {
-            $slot = collect($entry['slots'])->where('available', true)->sortBy('startTime')->first();
-            if ($slot) {
-                return $this->bookVisit($visitor, $entry['relationship'], [$slot['startTime']]);
-            }
-        }
-
-        $relationship = $this->verifiedRelationships($visitor)->first();
-
-        return $relationship ? $this->walkInSession($visitor, $relationship) : null;
-    }
-
-    /**
-     * A visit today outside the regular visiting days/seats, for a walk-in
-     * Records approved: the PDL's next session today that has not ended,
-     * with the usual times of that session (from the PDL's own rules, any
-     * weekday). The dated session is not a special visiting date, so it does
-     * not open the day for app bookings. The PDL must still be in active
-     * custody without restrictions. Null after today's last session.
-     *
-     * The per-visitor rules still apply (one PDL per day, weekly limit), as
-     * does the session's capacity: the visit takes a seat on it. Checked
-     * under the visitor lock, like every other visit-creating path.
-     *
-     * @throws ValidationException
-     */
-    private function walkInSession(VisitorProfile $visitor, VisitorPdlRelationship $relationship): ?VisitRequest
-    {
-        $pdl = $relationship->pdl()->with('activeRestrictions')->first();
-        if (! $pdl || $pdl->custody_status !== 'active' || $pdl->activeRestrictions->isNotEmpty()) {
-            return null;
-        }
-
-        $now = $this->availability->now();
-        $today = $now->toDateString();
-        $rule = FacilityVisitationRule::rulesForPdl($pdl)
-            ->filter(fn (FacilityVisitationRule $rule) => $rule->isInEffectOn($today))
-            ->sortBy(fn (FacilityVisitationRule $rule) => (string) $rule->time_slot_start)
-            ->first(fn (FacilityVisitationRule $rule) => ! $this->availability->sessionHasEnded($today, $rule->time_slot_end, $now));
-        if (! $rule) {
-            return null;
-        }
-
-        $assessment = $this->assessment($visitor);
-
-        return DB::transaction(function () use ($visitor, $relationship, $pdl, $rule, $today, $assessment) {
-            // Lock order: visitor, then schedule (VisitAssignmentService::lockVisitor()).
-            $this->assignments->lockVisitor($visitor);
-
-            $schedule = VisitSchedule::where('rule_id', $rule->rule_id)
-                ->whereDate('schedule_date', $today)
-                ->where('time_slot_start', $rule->time_slot_start)
-                ->lockForUpdate()
-                ->first()
-                ?? VisitSchedule::create([
-                    'rule_id' => $rule->rule_id,
-                    'schedule_date' => $today,
-                    'time_slot_start' => $rule->time_slot_start,
-                    'time_slot_end' => $rule->time_slot_end,
-                    'max_capacity' => $rule->max_capacity,
-                    'slots_taken' => 0,
-                    // Walk-ins only: closed to bookings (and never a special visiting date).
-                    'status' => 'closed',
-                ]);
-
-            $this->assignments->assertVisitorMayBook($visitor, $pdl, $schedule);
-
-            $taken = max((int) $schedule->slots_taken, $this->assignments->occupiedSlots($schedule));
-            if ($taken >= $schedule->max_capacity) {
-                throw ValidationException::withMessages([
-                    'schedule_id' => 'Today\'s session is full. No seat is left for this walk-in.',
-                ]);
-            }
-
-            $visit = VisitRequest::create([
-                'visitor_id' => $visitor->visitor_id,
-                'pdl_id' => $pdl->pdl_id,
-                'relationship_id' => $relationship->relationship_id,
-                'schedule_id' => $schedule->schedule_id,
-                'status' => 'confirmed',
-                'confirmed_at' => now(),
-                'is_walk_in' => true,
-            ]);
-            VisitSession::firstOrCreate(['visit_request_id' => $visit->visit_request_id, 'schedule_id' => $schedule->schedule_id]);
-
-            // Take the seat. A walk-in-only (or staff-closed) session stays
-            // closed: reserveSlot() would flip it to `full`, which a later
-            // release turns into `open` and so opens it for app bookings.
-            if ($schedule->status === 'open') {
-                $schedule->reserveSlot();
-            } else {
-                $schedule->update(['slots_taken' => min($taken + 1, $schedule->max_capacity)]);
-            }
-
-            EligibilityAssessment::assessFor($visit->fresh(['visitor.idDocuments', 'visitor.flags', 'pdl.restrictions', 'relationship']));
-            $assessment?->update(['visit_request_id' => $visit->visit_request_id]);
-
-            AuditLog::record('create', 'visit_requests', $visit->visit_request_id,
-                "Walk-in visit for {$visitor->full_name} → {$pdl->full_name} today "
-                .substr((string) $rule->time_slot_start, 0, 5).'–'.substr((string) $rule->time_slot_end, 0, 5)
-                .' (approved by Records; outside the regular visiting schedule)',
-                Module::CODE_VISIT_SCHEDULING);
-
-            return $visit->fresh(['pdl', 'sessionSchedules']);
+            return $visit->fresh(['pdl', 'schedule', 'sessionSchedules']);
         });
     }
 
@@ -720,7 +888,7 @@ class WalkInService
         return VisitRequest::where('visitor_id', $visitor->visitor_id)
             ->whereIn('status', ['confirmed', 'completed'])
             ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()))
-            ->with(['pdl', 'checkins', 'sessionSchedules'])
+            ->with(['pdl', 'checkins', 'sessionSchedules', 'schedule'])
             ->latest('visit_request_id')
             ->first();
     }

@@ -3,19 +3,24 @@
 namespace App\Http\Requests\FrontDesk;
 
 use App\Http\Controllers\Api\VisitorApiController;
+use App\Models\Pdl;
 use App\Models\VisitorId;
 use App\Models\VisitorProfile;
 use App\Services\RelationshipRequirements;
+use App\Services\WalkInService;
 use App\Support\Sanitizer;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 
 /**
  * POST front-desk/walk-ins — registers a walk-in visitor at the desk. Asks
  * for what the app's registration asks for, except that the relationship
- * documents are required: the visitor brings them to the desk. The PDL is
- * only the name the visitor gives; the Record Officer links the PDL.
+ * documents are required: the visitor brings them to the desk. The desk
+ * selects the PDL (partial-name search) and a date and session from those
+ * Records opened (WalkInService::openSlots()); the Record Officer verifies
+ * the relationship, and approving books that session.
  */
 class WalkInRegistrationRequest extends FrontDeskRequest
 {
@@ -34,9 +39,7 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'guardian_full_name' => Sanitizer::name($this->input('guardian_full_name')),
             'guardian_relationship' => Sanitizer::text($this->input('guardian_relationship')),
             'guardian_contact_number' => preg_replace('/\D/', '', (string) $this->input('guardian_contact_number')) ?: null,
-            'intended_pdl_name' => Sanitizer::name($this->input('intended_pdl_name')),
-            // PDL numbers are stored in capitals (PDL-2026-00007).
-            'intended_pdl_number' => ($number = Sanitizer::text($this->input('intended_pdl_number'))) ? mb_strtoupper($number) : null,
+            'requested_start_times' => WalkInService::normalizeTimes((array) $this->input('requested_start_times', [])),
             'visit_purpose' => Sanitizer::text($this->input('visit_purpose')),
             'id_type' => VisitorId::resolveType(Sanitizer::text($this->input('id_type'))),
             'id_number' => Sanitizer::idNumber($this->input('id_number')),
@@ -67,9 +70,11 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'id_type' => [Rule::requiredIf(! $minor), 'nullable', Rule::in(VisitorId::TYPES)],
             'id_number' => [Rule::requiredIf(! $minor), 'nullable', 'string', 'min:4', 'max:50', 'regex:'.Sanitizer::ID_NUMBER_REGEX],
             'government_id' => [Rule::requiredIf(! $minor), 'nullable', ...$fileRules],
-            'intended_pdl_name' => ['required', 'string', 'min:2', 'max:150', 'regex:'.Sanitizer::NAME_REGEX],
-            // Optional; when given it must be a PDL number on record (Records PDL profile).
-            'intended_pdl_number' => ['nullable', 'string', 'max:50', Rule::exists('pdl_profiles', 'pdl_number')],
+            // Phases 1–2: the PDL picked from the search, then a session Records opened.
+            'pdl_id' => ['required', 'integer', Rule::exists('pdl_profiles', 'pdl_id')],
+            'requested_date' => ['required', 'date_format:Y-m-d'],
+            'requested_start_times' => ['required', 'array', 'min:1', 'max:4'],
+            'requested_start_times.*' => ['date_format:H:i'],
             'visit_purpose' => ['required', 'string', 'max:150'],
             'relationship_type' => ['required', Rule::in(RelationshipRequirements::registrationTypes())],
             'has_children_together' => [Rule::requiredIf($this->input('relationship_type') === 'live_in_partner'), 'nullable', 'boolean'],
@@ -100,6 +105,19 @@ class WalkInRegistrationRequest extends FrontDeskRequest
                 if (! $this->boolean('not_duplicate') && $duplicate = $this->possibleDuplicate()) {
                     $validator->errors()->add('duplicate', 'A visitor with this name and birthdate is already registered.');
                     session()->flash('duplicate_visitor_id', $duplicate->visitor_id);
+                }
+
+                // The chosen session must be open and bookable now (checked again when Records approves).
+                try {
+                    app(WalkInService::class)->assertSlotOpen(
+                        Pdl::findOrFail($this->integer('pdl_id')),
+                        null,
+                        (string) $this->input('relationship_type'),
+                        (string) $this->input('requested_date'),
+                        (array) $this->input('requested_start_times'),
+                    );
+                } catch (ValidationException $e) {
+                    $validator->errors()->add('requested_start_times', collect($e->errors())->flatten()->first());
                 }
             },
         ];
@@ -143,7 +161,10 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'first_name.regex' => 'The first name can only contain letters, spaces, periods, apostrophes and hyphens.',
             'last_name.regex' => 'The last name can only contain letters, spaces, periods, apostrophes and hyphens.',
             'visit_purpose.required' => 'Enter the purpose of the visit.',
-            'intended_pdl_number.exists' => 'No PDL has this PDL ID number. Check it (e.g. PDL-2026-00007) or leave it blank.',
+            'pdl_id.required' => 'Search for the PDL and select them from the results.',
+            'pdl_id.*' => 'Select the PDL from the search results.',
+            'requested_date.*' => 'Choose a visit date from the sessions Records opened.',
+            'requested_start_times.*' => 'Choose a session for the visit.',
             'date_of_birth.before' => 'The birthdate must be in the past.',
             'email.unique' => 'This email is already used by another account.',
             'guardian_full_name.required' => 'A minor must come with a parent or guardian. Enter the guardian\'s name.',
@@ -158,8 +179,6 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'id_number.regex' => 'The ID number may only contain letters, numbers, spaces, hyphens and slashes.',
             'government_id.required' => 'Capture or upload the visitor\'s valid ID.',
             'government_id.*' => 'Upload a JPG, PNG, WEBP or PDF file up to 10 MB.',
-            'intended_pdl_name.required' => 'Write the name of the PDL the visitor wants to visit.',
-            'intended_pdl_name.regex' => 'The PDL name can only contain letters, spaces, periods, apostrophes and hyphens.',
             'relationship_type.*' => 'Select the visitor\'s relationship to the PDL.',
             'has_children_together.required' => 'Say whether the visitor and the PDL have children together.',
             'documents.*' => 'Upload a JPG, PNG, WEBP or PDF file up to 10 MB.',

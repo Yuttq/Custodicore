@@ -57,9 +57,10 @@
   @php
     $options = \App\Models\WalkInAssessment::OPTIONS;
     $checks = app(\App\Services\WalkInService::class)->checks($visitor);
-    $locked = $assessment->visit_request_id !== null;
-    // Live checks until the visit is booked; then what was saved with the decision.
-    $auto = fn ($field) => $locked ? $assessment->{$field} : $checks[$field];
+    // The decision is made once: locked when Approved or Rejected (or a visit is booked).
+    $locked = $assessment->visit_request_id !== null || $assessment->isDecided();
+    // Live checks until the decision; then what was saved with it.
+    $auto = fn ($field) => $locked && $assessment->{$field} ? $assessment->{$field} : $checks[$field];
     $value = fn ($field) => old($field, $assessment->{$field});
     $tone = fn ($v) => in_array($v, ['verified', 'yes'], true) ? 'active' : ($v === 'no' || $v === 'not_found' ? 'rejected' : 'transferred');
     $statusBadge = fn ($status) => ['verified' => 'active', 'rejected' => 'rejected'][$status] ?? 'transferred';
@@ -79,6 +80,8 @@
       <div><div class="stat-label">PDL Name Given</div><div>{{ $visitor->intended_pdl_name ?: '—' }}</div></div>
       <div><div class="stat-label">PDL ID Number Given</div><div>{{ $visitor->intended_pdl_number ?: '—' }}</div></div>
       <div><div class="stat-label">Relationship Given</div><div>{{ $visitor->relationship_hint ?: '—' }}</div></div>
+      <div><div class="stat-label">PDL Selected by the Front Desk</div><div>{{ $assessment->pdl ? $assessment->pdl->full_name.' ('.$assessment->pdl->pdl_number.')' : '—' }}</div></div>
+      <div><div class="stat-label">Requested Visit (Booked on Approval)</div><div>{{ $assessment->requestedVisitLabel() ?? 'Not chosen yet' }}</div></div>
     </div>
 
     {{-- 1. Checks the system fills in --}}
@@ -244,7 +247,10 @@
 
     {{-- 3. The Records Officer's decision --}}
     @if ($locked)
-      <p class="muted-cell" style="margin:0 0 12px;">The Front Desk booked the visit, so this assessment is final.</p>
+      <p class="muted-cell" style="margin:0 0 12px;">
+        This walk-in was {{ $assessment->label('decision') }}{{ $assessment->visit_request_id ? ' and its visit was booked' : '' }}. The decision is final;
+        for another visit, the Front Desk records a new arrival.
+      </p>
     @elseif (! $checks['canApprove'])
       <div class="field-hint" style="margin:0 0 12px;">
         <strong>Before You Can Approve:</strong>

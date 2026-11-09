@@ -16,8 +16,9 @@ use Illuminate\Validation\ValidationException;
 /**
  * The Record Officer's walk-in decision for a visitor registered at the
  * Front Desk. The checks (PDL verification, eligibility, authorization) are
- * filled in by the system; Processed By and the time are set here. An
- * `approved` decision lets the Front Desk book today's visit (WalkInService).
+ * filled in by the system; Processed By and the time are set here. The
+ * decision is made once: Approved books the date and session the Front Desk
+ * chose, in the same step (WalkInService::assess()).
  */
 class WalkInAssessmentController extends Controller
 {
@@ -44,22 +45,26 @@ class WalkInAssessmentController extends Controller
         ]);
         $data['remarks'] = Sanitizer::paragraph($data['remarks'] ?? null);
 
-        $assessment = $walkIns->assess($visitor, $data, $staffId);
+        $back = route('visitor.show', $visitor->visitor_id).'#walk-in';
+        try {
+            [$assessment, $visit] = $walkIns->assess($visitor, $data, $staffId);
+        } catch (ValidationException $e) {
+            // The chosen session could not be booked: nothing was saved.
+            if (isset($e->errors()['booking'])) {
+                return redirect()->to($back)->with('error',
+                    'The walk-in was not approved, because its visit could not be booked: '.$e->errors()['booking'][0]
+                    .' The decision stays Pending: the Front Desk can choose another session, or reject the walk-in.');
+            }
+
+            throw $e;
+        }
 
         $message = "Walk-in assessment saved: {$assessment->label('decision')}.";
-        $back = route('visitor.show', $visitor->visitor_id).'#walk-in';
-        if ($assessment->decision === 'approved') {
-            // The visitor is at the facility: set up today's visit so the Front Desk only checks them in.
-            try {
-                $visit = $walkIns->autoBook($visitor);
-            } catch (ValidationException $e) {
-                // The booking rules refused today's visit; nothing is booked.
-                return redirect()->to($back)->with('error',
-                    "{$message} No visit was booked for today: ".collect($e->errors())->flatten()->first());
-            }
-            $message .= $visit
-                ? ' The Front Desk can check the visitor in now ('.$visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ').').'
-                : ' Today\'s visiting hours are over, so the visitor cannot be checked in today.';
+        if ($visit) {
+            $times = $visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ');
+            $message .= $visit->schedule->schedule_date->toDateString() === app(\App\Services\ScheduleAvailabilityService::class)->now()->toDateString()
+                ? " The Front Desk can check the visitor in now ({$times})."
+                : " Visit booked for {$visit->schedule->schedule_date->format('D, M j, Y')} ({$times}); the Front Desk checks the visitor in that day.";
         }
 
         return redirect()->to($back)->with('success', $message);

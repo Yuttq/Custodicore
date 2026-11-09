@@ -421,18 +421,30 @@ class OnePdlPerDayTest extends TestCase
         $this->assertSame('confirmed', VisitRequest::sole()->status);
     }
 
-    public function test_walk_in_session_locks_the_visitor_first_and_checks_the_rules(): void
+    public function test_walk_in_approval_locks_the_visitor_first_and_books_the_chosen_session(): void
     {
         $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 08:00:00', 'Asia/Manila'));
-        // Today's regular sessions are closed, so the walk-in gets a walk-in session.
-        VisitSchedule::whereDate('schedule_date', self::FRIDAY)->update(['status' => 'closed']);
+        $this->completeRequirements();
+        // The Front Desk chose Sunday's session; approving books exactly that.
+        WalkInAssessment::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'visit_purpose' => 'Family visit',
+            'pdl_id' => $this->pdl->pdl_id,
+            'requested_date' => self::SUNDAY,
+            'requested_start_times' => ['09:00'],
+        ]);
 
-        $statements = $this->statementsOfFirstTransaction(fn () => app(WalkInService::class)->autoBook($this->visitor));
+        $statements = $this->statementsOfFirstTransaction(fn () => app(WalkInService::class)->assess(
+            $this->visitor,
+            ['decision' => 'approved', 'walk_in_reason' => 'no_prior_booking', 'remarks' => null],
+            StaffProfile::first()->staff_id,
+        ));
 
         $this->assertVisitorLockFirstThenChecks($statements);
         $visit = VisitRequest::sole();
+        $this->assertSame('confirmed', $visit->status);
         $this->assertTrue($visit->is_walk_in);
+        $this->assertSame(self::SUNDAY, $visit->schedule->schedule_date->toDateString());
         $this->assertSame(1, (int) $visit->schedule->fresh()->slots_taken, 'The walk-in takes a seat.');
-        $this->assertSame('closed', $visit->schedule->fresh()->status);
     }
 }

@@ -893,19 +893,23 @@ Route::prefix('front-desk')
         | Walk-in Visitors
         |--------------------------------------------------------------------------
         |
-        | Visitors without a phone: registered at the desk, approved and
-        | assessed by the Record Officer (which sets up today's visit), then
-        | checked in at the gate (WalkInService).
+        | Visitors without a phone: found or registered at the desk, with the
+        | PDL and a session Records opened; the Record Officer approves once,
+        | which books that session; then checked in and out at the gate
+        | (WalkInService).
         |
         */
 
         Route::get('/walk-ins', [WalkInController::class, 'index'])->name('walk-ins.index');
         Route::get('/walk-ins/create', [WalkInController::class, 'create'])->name('walk-ins.create');
-        Route::get('/walk-ins/pdl-lookup', [WalkInController::class, 'pdlLookup'])->name('walk-ins.pdl-lookup');
+        Route::get('/walk-ins/pdl-search', [WalkInController::class, 'pdlSearch'])->middleware('throttle:60,1,pdl-search')->name('walk-ins.pdl-search');
+        Route::get('/walk-ins/slots', [WalkInController::class, 'slots'])->middleware('throttle:60,1,walk-in-slots')->name('walk-ins.slots');
         Route::post('/walk-ins', [WalkInController::class, 'store'])->name('walk-ins.store');
         Route::get('/walk-ins/{visitor}', [WalkInController::class, 'show'])->name('walk-ins.show');
         // A registered walk-in came back: a new arrival for Records to decide on.
         Route::post('/walk-ins/{visitor}/arrivals', [WalkInController::class, 'storeArrival'])->name('walk-ins.arrivals.store');
+        // Another date or session for an arrival still waiting for the Records decision.
+        Route::post('/walk-ins/{visitor}/slot', [WalkInController::class, 'updateSlot'])->name('walk-ins.slot.update');
 
 
         /*
