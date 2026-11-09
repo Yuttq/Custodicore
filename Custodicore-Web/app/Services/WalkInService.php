@@ -237,6 +237,43 @@ class WalkInService
             ->get();
     }
 
+    /** App registration matched a walk-in that has no email on file. */
+    public const ALREADY_A_WALK_IN_MESSAGE = 'You are already registered at the facility as a walk-in visitor. '
+        .'Ask the Front Desk to add your email to your account, then use Forgot Password to sign in.';
+
+    /** ...and one that gave an email at the desk (not shown, so it is not revealed). */
+    public const ALREADY_A_WALK_IN_WITH_EMAIL_MESSAGE = 'You are already registered at the facility as a walk-in visitor. '
+        .'Use Forgot Password with the email you gave at the Front Desk to sign in.';
+
+    /**
+     * The walk-in this app registration would duplicate: same date of birth
+     * and the same name (full name, or first + last name, ignoring case and
+     * spacing). One person keeps one account, so the weekly limit and the
+     * one-PDL-per-day rule cannot be split across two.
+     */
+    public static function matchingWalkIn(?string $fullName, ?string $firstName, ?string $lastName, mixed $dateOfBirth): ?VisitorProfile
+    {
+        try {
+            $day = CarbonImmutable::parse((string) $dateOfBirth)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $norm = fn (?string $name) => mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string) $name)));
+        $full = $norm($fullName);
+        $firstLast = $norm($firstName) !== '' && $norm($lastName) !== '' ? $norm($firstName).' '.$norm($lastName) : null;
+
+        return VisitorProfile::where('registered_via', 'walk_in')
+            ->whereDate('date_of_birth', $day)
+            ->get()
+            ->first(function (VisitorProfile $walkIn) use ($norm, $full, $firstLast) {
+                $names = array_filter([$norm($walkIn->full_name), $norm($walkIn->first_name.' '.$walkIn->last_name)]);
+
+                return ($full !== '' && in_array($full, $names, true))
+                    || ($firstLast !== null && in_array($firstLast, $names, true));
+            });
+    }
+
     /** Statuses (status()) from which the Front Desk can record a new arrival. */
     public const NEW_ARRIVAL_STATUSES = ['returning', 'declined', 'ready'];
 

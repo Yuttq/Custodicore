@@ -516,7 +516,22 @@ class AuthController extends Controller
     private function profileRegistrationRules(): array
     {
         return [
-            'fullName' => ['required', 'string', 'max:150'],
+            'fullName' => ['required', 'string', 'max:150', function (string $attribute, mixed $value, \Closure $fail) {
+                // Already registered at the Front Desk: claim that account
+                // instead of creating a second one for the same person.
+                $request = request();
+                $walkIn = \App\Services\WalkInService::matchingWalkIn(
+                    is_string($value) ? $value : null,
+                    $request->input('firstName'),
+                    $request->input('lastName'),
+                    $request->input('dateOfBirth'),
+                );
+                if ($walkIn) {
+                    $fail($walkIn->account?->email
+                        ? \App\Services\WalkInService::ALREADY_A_WALK_IN_WITH_EMAIL_MESSAGE
+                        : \App\Services\WalkInService::ALREADY_A_WALK_IN_MESSAGE);
+                }
+            }],
             'firstName' => ['nullable', 'string', 'max:100'],
             'lastName' => ['nullable', 'string', 'max:100'],
             'dateOfBirth' => ['required', 'date', 'before:today'],
