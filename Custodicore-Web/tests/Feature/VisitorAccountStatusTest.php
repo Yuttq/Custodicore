@@ -199,6 +199,6 @@ class VisitorAccountStatusTest extends TestCase
         $this->actingAs($this->warden, 'web')->get(route('admin.visitors.index'))
             ->assertOk()->assertSee('Inactive')->assertSee('Verified');
         $this->actingAs($this->warden, 'web')->get(route('admin.visitors.show', $this->visitor->visitor_id))
-            ->assertOk()->assertSee('Account deactivated')->assertSee('Reactivate account');
+            ->assertOk()->assertSee('Account deactivated')->assertSee('Enable Account');
     }
 }

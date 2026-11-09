@@ -15,13 +15,13 @@
                 <input type="text" id="setup-link-url" readonly value="{{ session('setup_link.url') }}"
                        onfocus="this.select()"
                        class="h-[38px] w-full rounded-button border border-border bg-background px-md text-body" />
-                <button type="button" id="setup-link-copy" class="cc-btn-primary shrink-0">Copy link</button>
+                <button type="button" id="setup-link-copy" class="cc-btn-primary shrink-0">Copy Setup Link</button>
             </div>
             <script>
                 document.getElementById('setup-link-copy').addEventListener('click', function () {
                     var box = document.getElementById('setup-link-url');
                     var btn = this;
-                    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy link'; }, 2000); }
+                    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy Setup Link'; }, 2000); }
                     box.select();
                     if (navigator.clipboard && window.isSecureContext) {
                         navigator.clipboard.writeText(box.value).then(done, function () { document.execCommand('copy'); done(); });
@@ -70,7 +70,7 @@
                     @endif
                 </form>
                 <button type="button" class="cc-btn-primary shrink-0" onclick="document.getElementById('new-account-modal').showModal()">
-                    Register Officer
+                    + Add Officer
                 </button>
             </div>
         </div>
@@ -121,16 +121,16 @@
                                         {{-- Not set up yet: Activate/Deactivate makes no sense (nobody knows the password). --}}
                                         <form method="POST" action="{{ route('admin.users.resend-invite', $account['id']) }}">
                                             @csrf
-                                            <button type="submit" class="cc-btn-ghost">Resend setup link</button>
+                                            <button type="submit" class="cc-btn-ghost">Resend Invite</button>
                                         </form>
                                     @elseif (! $account['is_self'])
                                         {{-- Password popup replaces the plain confirm(): same question, plus re-entering your own password. --}}
                                         <form method="POST" action="{{ route('admin.users.toggle-status', $account['id']) }}"
-                                              data-password-confirm="{{ $account['status'] === 'active' ? 'Deactivate' : 'Activate' }} {{ $account['full_name'] }}'s account? Enter your password to confirm.">
+                                              data-password-confirm="{{ $account['status'] === 'active' ? 'Disable' : 'Enable' }} {{ $account['full_name'] }}'s account? Enter your password to confirm.">
                                             @csrf
                                             @method('PATCH')
                                             <button type="submit" class="cc-btn-ghost">
-                                                {{ $account['status'] === 'active' ? 'Deactivate' : 'Activate' }}
+                                                {{ $account['status'] === 'active' ? 'Disable Account' : 'Enable Account' }}
                                             </button>
                                         </form>
                                     @endif
@@ -286,7 +286,7 @@
             {{-- Step 1: review. Step 2: the Warden confirms, and only then is the account created and the email sent. --}}
             <div id="register-actions" class="mt-lg flex justify-end gap-sm">
                 <button type="button" class="cc-btn-secondary" onclick="document.getElementById('new-account-modal').close()">Cancel</button>
-                <button type="button" id="register-review" class="cc-btn-primary">Create Account &amp; Send Setup Link</button>
+                <button type="button" id="register-review" class="cc-btn-primary">Continue</button>
             </div>
 
             <div id="register-confirm" class="mt-lg rounded-sm border border-border bg-background p-md" style="display:none;">
@@ -304,7 +304,7 @@
                 @endunless
                 <div class="mt-md flex justify-end gap-sm">
                     <button type="button" id="register-back" class="cc-btn-secondary">Back</button>
-                    <button type="submit" class="cc-btn-primary">Yes, create account and send</button>
+                    <button type="submit" class="cc-btn-primary">Create &amp; Send Invite</button>
                 </div>
             </div>
         </form>

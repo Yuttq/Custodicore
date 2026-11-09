@@ -128,7 +128,7 @@
                                 @error('reason')
                                     <p class="text-metadata text-danger">{{ $message }}</p>
                                 @enderror
-                                <button type="submit" class="cc-btn-secondary w-full text-danger">Deactivate account</button>
+                                <button type="submit" class="cc-btn-secondary w-full text-danger">Disable Account</button>
                             </form>
                         @else
                             <p class="text-metadata text-text-secondary">
@@ -139,7 +139,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="action" value="reactivate">
-                                <button type="submit" class="cc-btn-primary w-full">Reactivate account</button>
+                                <button type="submit" class="cc-btn-primary w-full">Enable Account</button>
                             </form>
                         @endif
                     </div>

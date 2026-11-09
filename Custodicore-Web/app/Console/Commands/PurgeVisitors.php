@@ -15,6 +15,11 @@ use Illuminate\Support\Str;
  * php artisan cc:purge-visitors            (dry run: shows what would be deleted)
  * php artisan cc:purge-visitors --force    (deletes, after a typed confirmation)
  *
+ * php artisan cc:purge-visitors --only="Russel Alforque"          (dry run for matching visitors only)
+ * php artisan cc:purge-visitors --only="Russel Alforque" --force  (deletes just those visitors)
+ *   --only matches the visitor's full name or email (case-insensitive, "contains").
+ *   Every other visitor is left alone. Always run the dry run first and check the list.
+ *
  * Permanently deletes EVERY Visitor account and everything that belongs to
  * it, so the same emails / Google accounts can register again from scratch:
  * the account, visitor profile, photo, government IDs, relationship links and
@@ -34,6 +39,8 @@ class PurgeVisitors extends Command
 
     private const CONFIRM_PHRASE = 'DELETE ALL VISITORS';
 
+    private const CONFIRM_PHRASE_SELECTED = 'DELETE SELECTED VISITORS';
+
     /** Notification related_record_type values that point at visitor data. */
     private const VISITOR_NOTIFICATION_TYPES = [
         'visitor_profiles' => 'visitorIds',
@@ -44,6 +51,7 @@ class PurgeVisitors extends Command
 
     protected $signature = 'cc:purge-visitors
         {--force : Actually delete (without it, this is a dry run that changes nothing)}
+        {--only= : Only visitors whose full name or email contains this text (e.g. "Russel Alforque")}
         {--yes : Skip the typed confirmation (only with --force)}';
 
     protected $description = 'Permanently delete every Visitor account and its data and files (PDLs and staff are kept)';
@@ -58,10 +66,20 @@ class PurgeVisitors extends Command
             return self::FAILURE;
         }
 
-        $ids = $this->collectIds($role->role_id);
+        $only = trim((string) $this->option('only'));
+
+        if ($this->option('only') !== null && mb_strlen($only) < 3) {
+            $this->error('--only needs at least 3 characters of the visitor\'s name or email.');
+
+            return self::FAILURE;
+        }
+
+        $ids = $this->collectIds($role->role_id, $only !== '' ? $only : null);
 
         if ($ids['accountIds'] === []) {
-            $this->info('There are no visitor accounts. Nothing to delete.');
+            $this->info($only !== ''
+                ? "No visitor account matches \"{$only}\". Nothing to delete. (Staff and PDL records are not searched by this command.)"
+                : 'There are no visitor accounts. Nothing to delete.');
 
             return self::SUCCESS;
         }
@@ -77,9 +95,10 @@ class PurgeVisitors extends Command
         }
 
         if (! $this->option('yes')) {
-            $typed = $this->ask('This cannot be undone. Type "' . self::CONFIRM_PHRASE . '" to continue');
+            $phrase = $only !== '' ? self::CONFIRM_PHRASE_SELECTED : self::CONFIRM_PHRASE;
+            $typed = $this->ask('This cannot be undone. Type "' . $phrase . '" to continue');
 
-            if ($typed !== self::CONFIRM_PHRASE) {
+            if ($typed !== $phrase) {
                 $this->warn('Cancelled: nothing was deleted.');
 
                 return self::FAILURE;
@@ -97,7 +116,9 @@ class PurgeVisitors extends Command
             'delete',
             'accounts',
             0,
-            Str::limit("Purged all {$deleted} visitor accounts and their data from the server console ({$removedFiles} files removed)", 250),
+            Str::limit($only !== ''
+                ? "Deleted {$deleted} visitor account(s) matching \"{$only}\" and their data from the server console ({$removedFiles} files removed)"
+                : "Purged all {$deleted} visitor accounts and their data from the server console ({$removedFiles} files removed)", 250),
             Module::CODE_VISITOR_MANAGEMENT
         );
 
@@ -112,9 +133,18 @@ class PurgeVisitors extends Command
     /**
      * @return array<string, list<int>>
      */
-    private function collectIds(int $roleId): array
+    private function collectIds(int $roleId, ?string $only = null): array
     {
-        $accountIds = $this->ints(DB::table('accounts')->where('role_id', $roleId)->pluck('account_id'));
+        $accountQuery = DB::table('accounts')->where('accounts.role_id', $roleId);
+
+        if ($only !== null) {
+            $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($only)) . '%';
+            $accountQuery->leftJoin('visitor_profiles', 'visitor_profiles.account_id', '=', 'accounts.account_id')
+                ->where(fn ($q) => $q->whereRaw('LOWER(visitor_profiles.full_name) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(accounts.email) LIKE ?', [$like]));
+        }
+
+        $accountIds = $this->ints($accountQuery->distinct()->pluck('accounts.account_id'));
         $visitorIds = $this->ints(DB::table('visitor_profiles')->whereIn('account_id', $accountIds)->pluck('visitor_id'));
 
         return [

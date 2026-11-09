@@ -81,7 +81,7 @@
                                 @endif
                             </td>
                             <td class="py-sm pr-md">
-                                <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="cc-btn-ghost">View</a>
+                                <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="cc-btn-ghost">View Profile</a>
                             </td>
                         </tr>
                     @empty

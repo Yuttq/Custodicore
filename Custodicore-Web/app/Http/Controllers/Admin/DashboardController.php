@@ -128,6 +128,7 @@ class DashboardController extends Controller
             ->get()
             ->filter(fn ($row) => $row->pdl !== null)
             ->map(fn ($row) => [
+                'id' => $row->pdl->pdl_id,
                 'pdl_number' => $row->pdl->pdl_number,
                 'full_name' => $row->pdl->full_name,
                 'visits_this_month' => $row->visits_this_month,
@@ -148,6 +149,7 @@ class DashboardController extends Controller
             ->take(200)
             ->get()
             ->map(fn ($pdl) => [
+                'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
                 'last_visit' => $pdl->last_visit_at ? \Illuminate\Support\Carbon::parse($pdl->last_visit_at)->format('M j, Y') : null,

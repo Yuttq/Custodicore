@@ -113,7 +113,9 @@
 
                 <ul class="mt-md space-y-sm">
                     @forelse ($mostVisitedPdls as $pdl)
-                        <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
+                        <li class="border-b border-border pb-sm last:border-0 last:pb-0">
+                          <a href="{{ route('admin.pdls.show', $pdl['id']) }}" title="Open {{ $pdl['full_name'] }}'s profile"
+                             class="cc-dash-pdl-link flex items-center justify-between gap-sm rounded-sm">
                             <div class="flex items-center gap-sm">
                                 @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
                                 <div>
@@ -123,7 +125,9 @@
                             </div>
                             <span class="flex items-center gap-xs text-body font-semibold text-primary-navy">
                                 {{ $pdl['visits_this_month'] }}
+                                <span aria-hidden="true" class="text-text-secondary">&rsaquo;</span>
                             </span>
+                          </a>
                         </li>
                     @empty
                         <li class="text-metadata text-text-secondary">No visits recorded yet.</li>
@@ -142,7 +146,9 @@
                 {{-- Shows about five rows; the rest are reached by scrolling inside the card. --}}
                 <ul class="mt-md max-h-[19.5rem] space-y-sm overflow-y-auto pr-sm">
                     @forelse ($leastVisitedPdls as $pdl)
-                        <li class="flex items-center justify-between gap-sm border-b border-border pb-sm last:border-0 last:pb-0">
+                        <li class="border-b border-border pb-sm last:border-0 last:pb-0">
+                          <a href="{{ route('admin.pdls.show', $pdl['id']) }}" title="Open {{ $pdl['full_name'] }}'s profile"
+                             class="cc-dash-pdl-link flex items-center justify-between gap-sm rounded-sm">
                             <div class="flex items-center gap-sm">
                                 @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
                                 <div>
@@ -153,7 +159,11 @@
                                     </p>
                                 </div>
                             </div>
-                            <span class="flex items-center gap-xs rounded-chip bg-[#FEF3C7] px-[10px] py-[3px] text-body font-semibold text-[#B45309]">0</span>
+                            <span class="flex items-center gap-xs">
+                                <span class="rounded-chip bg-[#FEF3C7] px-[10px] py-[3px] text-body font-semibold text-[#B45309]">0</span>
+                                <span aria-hidden="true" class="text-text-secondary">&rsaquo;</span>
+                            </span>
+                          </a>
                         </li>
                     @empty
                         <li class="text-metadata text-text-secondary">Every PDL in custody has had at least one visit.</li>
@@ -162,6 +172,11 @@
             </div>
         </div>
     </div>
+    <style>
+        .cc-dash-pdl-link { color: inherit; text-decoration: none; padding: 4px 6px; margin: -4px -6px; transition: background-color .15s; }
+        .cc-dash-pdl-link:hover, .cc-dash-pdl-link:focus-visible { background-color: rgba(15, 61, 122, .06); }
+        .cc-dash-pdl-link:hover p.font-semibold { color: #0F3D7A; text-decoration: underline; }
+    </style>
 @endsection
 
 @push('scripts')

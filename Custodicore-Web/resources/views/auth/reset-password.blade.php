@@ -35,8 +35,8 @@
         .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
         .notice { font-size: 14px; color: var(--text); background: #FEF3C7; border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; }
         .pw-wrap { position: relative; }
-        .pw-wrap input { padding-right: 70px; }
-        .pw-toggle { position: absolute; top: 0; bottom: 0; right: 0; padding: 0 14px; border: 0; background: none; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
+        .pw-wrap input { padding-right: 44px; }
+        .pw-toggle { position: absolute; top: 0; bottom: 0; right: 0; padding: 0 12px; border: 0; background: none; cursor: pointer; color: var(--muted); display: flex; align-items: center; }
         .pw-toggle:hover { color: var(--navy); }
         @media (max-width: 480px) { main { margin: 24px auto; } .card { padding: 24px 20px; } }
     </style>
@@ -64,7 +64,7 @@
                         <label for="password">New password</label>
                         <div class="pw-wrap">
                             <input id="password" type="password" name="password" autocomplete="new-password" required class="{{ $errors->has('password') ? 'invalid' : '' }}">
-                            <button type="button" class="pw-toggle" data-target="password" aria-label="Show password" aria-pressed="false">Show</button>
+                            <button type="button" class="pw-toggle" data-target="password" aria-label="Show password" aria-pressed="false" title="Show password"><svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.4 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg></button>
                         </div>
                         {{-- No maxlength: the browser would silently cut a pasted password; the server rejects an over-long one instead. --}}
                         <div class="hint">
@@ -81,7 +81,7 @@
                         <label for="password_confirmation">Confirm new password</label>
                         <div class="pw-wrap">
                             <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" required>
-                            <button type="button" class="pw-toggle" data-target="password_confirmation" aria-label="Show password" aria-pressed="false">Show</button>
+                            <button type="button" class="pw-toggle" data-target="password_confirmation" aria-label="Show password" aria-pressed="false" title="Show password"><svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.4 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg></button>
                         </div>
                     </div>
 
@@ -97,7 +97,9 @@
                                 var input = document.getElementById(btn.getAttribute('data-target'));
                                 var show = input.type === 'password';
                                 input.type = show ? 'text' : 'password';
-                                btn.textContent = show ? 'Hide' : 'Show';
+                                btn.querySelector('.icon-eye').style.display = show ? 'none' : '';
+                                btn.querySelector('.icon-eye-off').style.display = show ? '' : 'none';
+                                btn.setAttribute('title', show ? 'Hide password' : 'Show password');
                                 btn.setAttribute('aria-pressed', show ? 'true' : 'false');
                                 btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
                             });

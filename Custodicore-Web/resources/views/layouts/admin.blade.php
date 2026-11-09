@@ -26,11 +26,11 @@
                 @php
                     $links = [
                         ['route' => 'admin.dashboard', 'label' => 'Dashboard'],
-                        ['route' => 'admin.users.index', 'label' => 'User Management'],
-                        ['route' => 'admin.pdls.index', 'label' => 'PDL Management'],
-                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Management'],
-                        ['route' => 'admin.checkins.index', 'label' => 'Check-In / Check-Out'],
-                        ['route' => 'admin.audit.index', 'label' => 'Audit Trail'],
+                        ['route' => 'admin.users.index', 'label' => 'Staff Accounts'],
+                        ['route' => 'admin.pdls.index', 'label' => 'PDL Records'],
+                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Records'],
+                        ['route' => 'admin.checkins.index', 'label' => 'Visit Log'],
+                        ['route' => 'admin.audit.index', 'label' => 'Activity History'],
                     ];
                 @endphp
 
