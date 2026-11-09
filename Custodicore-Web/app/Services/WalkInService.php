@@ -174,13 +174,16 @@ class WalkInService
      *   booked   — has a confirmed visit today, not checked in yet
      *   inside   — checked in now
      *   done     — today's visit is over
+     *   returning — the last arrival's visit was on an earlier day; a new
+     *               arrival can be recorded when they come back
      *
      * @return array{key:string,label:string,tone:string,visit:?VisitRequest}
      */
     public function status(VisitorProfile $visitor): array
     {
         $visit = $this->todaysVisit($visitor);
-        $decision = $this->assessment($visitor)?->decision;
+        $assessment = $this->assessment($visitor);
+        $decision = $assessment?->decision;
         [$key, $label, $tone] = match (true) {
             $visitor->verification_status === 'rejected' => ['returned', 'Rejected', 'danger'],
             $decision === 'declined' && $visit === null => ['declined', 'Rejected', 'danger'],
@@ -189,6 +192,9 @@ class WalkInService
             $visit && $visit->status === 'completed' => ['done', 'Checked Out', 'neutral'],
             $visit !== null => ['booked', 'Approved', 'success'],
             $this->verifiedRelationships($visitor)->isEmpty() => ['linking', 'Pending Approval', 'warning'],
+            // The last arrival's visit was booked (on an earlier day): a
+            // registered walk-in, ready for a new arrival (newArrival()).
+            $assessment?->visit_request_id !== null => ['returning', 'Registered', 'neutral'],
             $decision !== 'approved' => ['assess', 'Pending Approval', 'warning'],
             default => ['ready', 'Approved', 'success'],
         };
@@ -229,6 +235,48 @@ class WalkInService
                 ->whereRaw('walk_in_assessments.assessment_id = (select max(a.assessment_id) from walk_in_assessments a where a.visitor_id = walk_in_assessments.visitor_id)'))
             ->orderBy('created_at')
             ->get();
+    }
+
+    /** Statuses (status()) from which the Front Desk can record a new arrival. */
+    public const NEW_ARRIVAL_STATUSES = ['returning', 'declined', 'ready'];
+
+    /**
+     * A registered walk-in came back: records the new arrival as a fresh
+     * walk-in assessment (purpose of the visit), which goes to the Record
+     * Officer for the approve/reject decision exactly like the first one;
+     * approving it books today's visit (autoBook(), every booking rule
+     * applies). The account, ID and PDL relationship are already verified,
+     * so nothing is registered again.
+     *
+     * Only from NEW_ARRIVAL_STATUSES: not while an arrival is still waiting
+     * for Records, nor when the visitor already has a visit today.
+     */
+    public function newArrival(VisitorProfile $visitor, string $purpose, int $staffId): WalkInAssessment
+    {
+        $key = $this->status($visitor)['key'];
+        if (! in_array($key, self::NEW_ARRIVAL_STATUSES, true)) {
+            throw ValidationException::withMessages(['visit_purpose' => match ($key) {
+                'booked', 'inside', 'done' => 'This visitor already has a visit today.',
+                'assess' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.',
+                default => 'This walk-in has not been approved and linked to a PDL yet.',
+            }]);
+        }
+
+        $previous = $this->assessment($visitor);
+
+        $assessment = WalkInAssessment::create([
+            'visitor_id' => $visitor->visitor_id,
+            'visit_purpose' => $purpose,
+            'relationship_type' => $previous?->relationship_type,
+            'has_children_together' => $previous?->has_children_together,
+            'decision' => 'pending',
+        ]);
+
+        AuditLog::record('create', 'walk_in_assessments', $assessment->assessment_id,
+            "Front Desk recorded a new arrival of walk-in {$visitor->full_name} ({$purpose})",
+            Module::CODE_VISITOR_MANAGEMENT);
+
+        return $assessment;
     }
 
     /** The current arrival's assessment (the newest). */

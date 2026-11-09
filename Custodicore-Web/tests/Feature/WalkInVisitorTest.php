@@ -396,6 +396,126 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, VisitSchedule::whereDate('schedule_date', self::FRIDAY)->count(), 'No walk-in session was created.');
     }
 
+    // ------------------------------------------- Returning walk-ins (no phone)
+
+    private function recordArrival(VisitorProfile $walkIn, string $purpose = 'Family visit')
+    {
+        return $this->actingAs($this->frontDeskAccount)
+            ->post(route('frontdesk.walk-ins.arrivals.store', $walkIn), ['visit_purpose' => $purpose]);
+    }
+
+    public function test_a_returning_walk_in_gets_a_new_arrival_instead_of_registering_again(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn);
+        $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
+
+        // A week later the visitor is back at the desk.
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 08:00:00', 'Asia/Manila'));
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertOk()
+            ->assertSee('Registered')
+            ->assertSee('Record New Arrival');
+
+        $this->recordArrival($walkIn, 'Deliver food')->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->assertSame(2, $walkIn->walkInAssessments()->count());
+        $arrival = $walkIn->walkInAssessments()->first();
+        $this->assertSame('pending', $arrival->decision);
+        $this->assertSame('Deliver food', $arrival->visit_purpose);
+        $this->assertSame('spouse', $arrival->relationship_type, 'Carried over from the first arrival.');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Record New Arrival');
+
+        // Records decides on the new arrival, which books today's visit as before.
+        $this->assessAsRecords($walkIn)
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now'));
+
+        $this->assertSame(2, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
+        $this->assertNotNull($walkIn->walkInAssessments()->first()->visit_request_id);
+        $this->assertSame(1, VisitorProfile::where('registered_via', 'walk_in')->count(), 'No second registration.');
+    }
+
+    public function test_no_new_arrival_while_one_waits_or_after_todays_visit(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+
+        // The first arrival is still waiting for Records.
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
+
+        // Today's visit is booked.
+        $this->assessAsRecords($walkIn);
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor already has a visit today.']);
+
+        $this->assertSame(1, $walkIn->walkInAssessments()->count());
+    }
+
+    public function test_a_walk_in_not_yet_approved_cannot_get_a_new_arrival(): void
+    {
+        $this->register();
+        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
+
+        $this->recordArrival($walkIn)->assertSessionHasErrors('visit_purpose');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
+    }
+
+    public function test_a_new_arrival_needs_a_purpose(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn);
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 08:00:00', 'Asia/Manila'));
+
+        $this->recordArrival($walkIn, '  ')->assertSessionHasErrors(['visit_purpose' => 'Enter the purpose of the visit.']);
+        $this->assertSame(1, $walkIn->walkInAssessments()->count());
+    }
+
+    // ------------------------------- Visits assigned to walk-ins without the app
+
+    public function test_a_visit_assigned_to_a_walk_in_without_the_app_is_confirmed_at_once(): void
+    {
+        [$walkIn, $relationship] = $this->linkedWalkIn();
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.visits.assign', $walkIn->visitor_id), [
+                'relationship_id' => $relationship->relationship_id,
+                'date' => '2026-10-16',
+                'start_times' => ['09:00'],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'assigned and confirmed'));
+
+        $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole();
+        $this->assertSame('confirmed', $visit->status);
+        $this->assertNotNull($visit->confirmed_at);
+        $this->assertNull($visit->confirmation_deadline);
+        $this->assertFalse((bool) $visit->is_walk_in, 'Booked ahead, not at the desk.');
+    }
+
+    public function test_a_walk_in_who_uses_the_app_still_confirms_there(): void
+    {
+        [$walkIn, $relationship] = $this->linkedWalkIn();
+        $walkIn->account->forceFill(['last_login_at' => now()])->save();
+
+        $visit = app(VisitAssignmentService::class)->assignSessions(
+            $walkIn->fresh(), $relationship, CarbonImmutable::parse('2026-10-16', 'Asia/Manila'), ['09:00']
+        );
+
+        $this->assertSame('pending_confirmation', $visit->status);
+        $this->assertNotNull($visit->confirmation_deadline);
+    }
+
+    public function test_app_visitors_still_confirm_staff_assigned_visits(): void
+    {
+        $visit = app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $this->relationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+
+        $this->assertSame('pending_confirmation', $visit->status);
+        $this->assertNull($visit->confirmed_at);
+    }
+
     public function test_cards_count_and_filter_walk_ins_by_status(): void
     {
         $this->register();

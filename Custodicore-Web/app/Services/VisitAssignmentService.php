@@ -25,6 +25,7 @@ use Illuminate\Validation\ValidationException;
  *
  *   Staff assigns:    assign()               -> pending_confirmation -> visitor confirms (confirmed)
  *                                                                       or declines (declined)
+ *                     (a walk-in without the app: confirmed at once, see usesNoApp())
  *   Visitor requests: submitVisitorRequest() -> assigned -> staff approves (confirmed) or rejects (cancelled)
  *
  * `assigned` is staff review only — the visitor API never confirms or
@@ -93,9 +94,11 @@ class VisitAssignmentService
         $this->assertScheduleAssignable($schedule, $pdl);
         $this->assertSessionNotEnded($schedule);
 
-        $deadline = $this->resolveDeadline($input['confirmation_deadline'] ?? null);
+        // A walk-in without the app cannot confirm it there: confirmed at once.
+        $confirmNow = $visitor->usesNoApp();
+        $deadline = $confirmNow ? null : $this->resolveDeadline($input['confirmation_deadline'] ?? null);
 
-        return DB::transaction(function () use ($visitor, $pdl, $relationship, $schedule, $deadline) {
+        return DB::transaction(function () use ($visitor, $pdl, $relationship, $schedule, $deadline, $confirmNow) {
             // Lock order: visitor, then schedule (see lockVisitor()).
             $this->lockVisitor($visitor);
             $schedule = VisitSchedule::whereKey($schedule->schedule_id)->lockForUpdate()->first();
@@ -113,7 +116,8 @@ class VisitAssignmentService
                 'pdl_id' => $pdl->pdl_id,
                 'relationship_id' => $relationship->relationship_id,
                 'schedule_id' => $schedule->schedule_id,
-                'status' => 'pending_confirmation',
+                'status' => $confirmNow ? 'confirmed' : 'pending_confirmation',
+                'confirmed_at' => $confirmNow ? now() : null,
                 'confirmation_deadline' => $deadline,
             ]);
 
@@ -126,23 +130,7 @@ class VisitAssignmentService
                 'relationship',
             ]));
 
-            $scheduleLabel = $this->scheduleLabel($schedule);
-            Notification::notify(
-                $visitor->account_id,
-                'visits',
-                'Visit Assigned — Confirmation Required',
-                "A visit with {$pdl->full_name} has been assigned for {$scheduleLabel}. Please confirm or decline in the app.",
-                'visit_requests',
-                $visitRequest->visit_request_id
-            );
-
-            AuditLog::record(
-                'create',
-                'visit_requests',
-                $visitRequest->visit_request_id,
-                "Record Officer assigned visit for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
-                Module::CODE_VISIT_SCHEDULING
-            );
+            $this->recordStaffAssignment($visitRequest, $visitor, $pdl, $this->scheduleLabel($schedule));
 
             return $visitRequest->fresh(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment']);
         });
@@ -195,7 +183,9 @@ class VisitAssignmentService
      * Record Officer assigns one visit on one day with one or more sessions
      * (both = whole day), the staff twin of submitVisitorRequest. Sessions must
      * already be created and open in Manage Visitor Slots. The visit is
-     * `pending_confirmation` until the visitor confirms it in the app.
+     * `pending_confirmation` until the visitor confirms it in the app; for a
+     * walk-in without the app (VisitorProfile::usesNoApp) it is `confirmed`
+     * at once, since they agreed the date with the officer directly.
      *
      * @param  array<int, string>  $startTimes
      */
@@ -206,30 +196,47 @@ class VisitAssignmentService
         array $startTimes,
         mixed $confirmationDeadline = null
     ): VisitRequest {
+        $confirmNow = $visitor->loadMissing('account')->usesNoApp();
+
         return $this->bookSessions(
-            $visitor, $relationship, $date, $startTimes, 'pending_confirmation',
-            $this->resolveDeadline($confirmationDeadline),
+            $visitor, $relationship, $date, $startTimes,
+            $confirmNow ? 'confirmed' : 'pending_confirmation',
+            $confirmNow ? null : $this->resolveDeadline($confirmationDeadline),
             'This visitor already has a visit with this PDL on this date.',
             self::STAFF_ONE_PDL_PER_DAY_MESSAGE,
-            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
-                $scheduleLabel = $this->visitLabel($visitRequest);
-                Notification::notify(
-                    $visitor->account_id,
-                    'visits',
-                    'Visit Assigned — Confirmation Required',
-                    "A visit with {$pdl->full_name} has been assigned for {$scheduleLabel}. Please confirm or decline in the app.",
-                    'visit_requests',
-                    $visitRequest->visit_request_id
-                );
+            fn (VisitRequest $visitRequest, Pdl $pdl) => $this->recordStaffAssignment(
+                $visitRequest, $visitor, $pdl, $this->visitLabel($visitRequest)
+            )
+        );
+    }
 
-                AuditLog::record(
-                    'create',
-                    'visit_requests',
-                    $visitRequest->visit_request_id,
-                    "Record Officer assigned visit for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
-                    Module::CODE_VISIT_SCHEDULING
-                );
-            }
+    /**
+     * Notification and audit entry of a staff-assigned visit: a request for
+     * the visitor to confirm in the app, or, when it was confirmed at once
+     * (walk-in without the app), the confirmed visit.
+     */
+    private function recordStaffAssignment(VisitRequest $visitRequest, VisitorProfile $visitor, Pdl $pdl, string $scheduleLabel): void
+    {
+        $confirmed = $visitRequest->status === 'confirmed';
+
+        Notification::notify(
+            $visitor->account_id,
+            $confirmed ? 'visit_confirmed' : 'visits',
+            $confirmed ? 'Visit Scheduled' : 'Visit Assigned — Confirmation Required',
+            $confirmed
+                ? "A visit with {$pdl->full_name} is scheduled for {$scheduleLabel}. Arrive 15 minutes early with valid ID."
+                : "A visit with {$pdl->full_name} has been assigned for {$scheduleLabel}. Please confirm or decline in the app.",
+            'visit_requests',
+            $visitRequest->visit_request_id
+        );
+
+        AuditLog::record(
+            'create',
+            'visit_requests',
+            $visitRequest->visit_request_id,
+            "Record Officer assigned visit for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})"
+                .($confirmed ? ', confirmed at once (walk-in without the app)' : ''),
+            Module::CODE_VISIT_SCHEDULING
         );
     }
 
@@ -325,6 +332,7 @@ class VisitAssignmentService
                 'relationship_id' => $relationship->relationship_id,
                 'schedule_id' => $first->schedule_id,
                 'status' => $status,
+                'confirmed_at' => $status === 'confirmed' ? now() : null,
                 'confirmation_deadline' => $deadline,
             ]);
 

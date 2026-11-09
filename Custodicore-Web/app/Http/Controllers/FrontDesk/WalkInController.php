@@ -174,7 +174,34 @@ class WalkInController extends Controller
             'status' => $status,
             'assessment' => $this->walkIns->assessment($visitor),
             'checks' => $this->walkIns->checks($visitor),
+            'canRecordArrival' => in_array($status['key'], WalkInService::NEW_ARRIVAL_STATUSES, true),
+            'purposes' => WalkInAssessment::PURPOSES,
         ]);
+    }
+
+    /**
+     * A registered walk-in came back to visit: records the new arrival (its
+     * purpose) for the Record Officer's decision, without registering again.
+     */
+    public function storeArrival(Request $request, VisitorProfile $visitor): RedirectResponse
+    {
+        abort_unless($visitor->isWalkIn(), 404);
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $request->merge(['visit_purpose' => Sanitizer::text($request->input('visit_purpose'))]);
+        $data = $request->validate(
+            ['visit_purpose' => ['required', 'string', 'max:150']],
+            ['visit_purpose.required' => 'Enter the purpose of the visit.'],
+        );
+
+        $this->walkIns->newArrival($visitor, $data['visit_purpose'], $staffId);
+
+        return redirect()->route('frontdesk.walk-ins.show', $visitor)
+            ->with('status', "New arrival recorded. {$visitor->full_name} is waiting for the Records Officer's decision.");
     }
 
 

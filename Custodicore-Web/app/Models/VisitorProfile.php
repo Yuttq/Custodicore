@@ -49,6 +49,16 @@ class VisitorProfile extends Model
         return $this->registered_via === 'walk_in';
     }
 
+    /**
+     * A walk-in who has never signed in to the app (no phone, or never
+     * claimed the account): they cannot confirm a visit there, so a visit
+     * staff assign to them is confirmed at once (VisitAssignmentService).
+     */
+    public function usesNoApp(): bool
+    {
+        return $this->isWalkIn() && $this->account?->last_login_at === null;
+    }
+
     /** Visitor photo rules (mobile upload): a real JPG/PNG/WEBP picture, up to 5 MB. */
     public const PHOTO_RULES = ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
 

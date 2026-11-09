@@ -904,6 +904,8 @@ Route::prefix('front-desk')
         Route::get('/walk-ins/pdl-lookup', [WalkInController::class, 'pdlLookup'])->name('walk-ins.pdl-lookup');
         Route::post('/walk-ins', [WalkInController::class, 'store'])->name('walk-ins.store');
         Route::get('/walk-ins/{visitor}', [WalkInController::class, 'show'])->name('walk-ins.show');
+        // A registered walk-in came back: a new arrival for Records to decide on.
+        Route::post('/walk-ins/{visitor}/arrivals', [WalkInController::class, 'storeArrival'])->name('walk-ins.arrivals.store');
 
 
         /*

@@ -63,6 +63,9 @@
                 @case('inside')
                     The visitor is checked in. Check them out on the Check-In / Check-Out page when they leave.
                     @break
+                @case('returning')
+                    Registered walk-in. When they come back to visit, record a new arrival below; no need to register them again.
+                    @break
                 @default
                     The visitor has checked out. The visit is finished.
             @endswitch
@@ -94,6 +97,32 @@
             </div>
         @endif
     </div>
+
+    {{-- A registered walk-in came back: a new arrival for the Records Officer, no new registration. --}}
+    @if ($canRecordArrival)
+        <div class="cc-card">
+            <p class="text-card-title">New Arrival</p>
+            <p class="text-metadata text-text-secondary">
+                The visitor is back to visit. Their ID and PDL relationship are already verified; the Records Officer
+                only decides on this arrival, and approving it books today's visit.
+            </p>
+            <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md flex flex-wrap items-end gap-sm">
+                @csrf
+                <div class="min-w-[260px] flex-1">
+                    <label for="arrival_purpose" class="cc-label">Purpose of visit *</label>
+                    <input id="arrival_purpose" name="visit_purpose" list="arrivalPurposes" required maxlength="150"
+                           value="{{ old('visit_purpose') }}" placeholder="Choose or type the purpose" class="cc-input" />
+                    <datalist id="arrivalPurposes">
+                        @foreach ($purposes as $purpose)
+                            <option value="{{ $purpose }}"></option>
+                        @endforeach
+                    </datalist>
+                    @error('visit_purpose') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                </div>
+                <button type="submit" class="cc-btn-primary">Record New Arrival</button>
+            </form>
+        </div>
+    @endif
     {{-- The Records Officer's walk-in assessment (read-only here) --}}
     @if ($assessment)
         <div class="cc-card">

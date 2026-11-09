@@ -57,10 +57,7 @@ class VisitAssignmentController extends Controller
 
         return redirect()
             ->route('visitor.show', $visitor->visitor_id)
-            ->with(
-                'success',
-                "Visit assigned (pending confirmation). Request #{$visitRequest->visit_request_id}."
-            );
+            ->with('success', $this->assignedMessage($visitRequest, 'one session'));
     }
 
     /**
@@ -123,7 +120,15 @@ class VisitAssignmentController extends Controller
 
         return redirect()
             ->route('visitor.show', $visitor->visitor_id)
-            ->with('success', "Visit assigned ({$sessions}, pending the visitor's confirmation). Request #{$visitRequest->visit_request_id}.");
+            ->with('success', $this->assignedMessage($visitRequest, $sessions));
+    }
+
+    /** Confirmed at once for a walk-in without the app; otherwise waiting for the visitor. */
+    private function assignedMessage(\App\Models\VisitRequest $visitRequest, string $sessions): string
+    {
+        return $visitRequest->status === 'confirmed'
+            ? "Visit assigned and confirmed ({$sessions}): this walk-in has no app to confirm it. Tell them the date and time. Request #{$visitRequest->visit_request_id}."
+            : "Visit assigned ({$sessions}, pending the visitor's confirmation). Request #{$visitRequest->visit_request_id}.";
     }
 
     /** Why a session can't be assigned, in words for the officer. */
