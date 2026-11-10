@@ -7,11 +7,13 @@
   together with the account (one-step approval), or on the relationship
   checklist after the PDL is linked.
   Expects: $visitor — VisitorProfile with registrationDocuments loaded.
+  Optional: $allowReject (default true) — false on the Review Queue card, where
+  the decision is Approve or Return for the whole account.
 --}}
 @php
   $registrationDocs = $visitor->registrationDocuments->unique('requirement_key');
   // Walk-ins keep their own document review (WalkInAssessmentController).
-  $canRejectRegistrationDocs = $visitor->verification_status !== 'verified' && ! $visitor->isWalkIn();
+  $canRejectRegistrationDocs = ($allowReject ?? true) && $visitor->verification_status !== 'verified' && ! $visitor->isWalkIn();
 @endphp
 @if ($registrationDocs->isNotEmpty())
   <div class="req-panel" style="margin-top:12px;">

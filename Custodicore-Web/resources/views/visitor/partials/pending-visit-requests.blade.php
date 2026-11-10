@@ -87,7 +87,8 @@
               @endif
             @else
               <span class="muted-cell">Not assessed</span>
-              <form method="POST" action="{{ route('eligibility.run', $vr->visit_request_id) }}" style="margin-top:4px;">
+              <form method="POST" action="{{ route('eligibility.run', $vr->visit_request_id) }}" style="margin-top:4px;"
+                    data-confirm="Run the eligibility check for this visit request now? It re-checks the visitor's ID, relationship, flags and the PDL's restrictions." data-confirm-title="Run eligibility check" data-confirm-ok="Run check">
                 @csrf
                 <button type="submit" class="row-action">Run eligibility check</button>
               </form>
@@ -103,7 +104,9 @@
                   );
                 @endphp
                 @if ($canApprove)
-                  <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}">
+                  <form method="POST" action="{{ route('visitor.visit-requests.approve', [$vr->visitor_id, $vr->visit_request_id]) }}"
+                        data-confirm="Approve {{ $vr->visitor?->full_name ?? 'this visitor' }}'s visit to {{ $vr->pdl?->full_name ?? 'the PDL' }} on {{ $vr->schedule?->schedule_date?->format('M j, Y') }}? The visit is confirmed and the visitor is notified."
+                        data-confirm-title="Approve visit" data-confirm-ok="Approve">
                     @csrf
                     <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
                   </form>
@@ -116,7 +119,9 @@
               @endunless
               <details>
                 <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                <form method="POST" action="{{ route('visitor.visit-requests.reject', [$vr->visitor_id, $vr->visit_request_id]) }}" style="margin-top:10px;min-width:240px;">
+                <form method="POST" action="{{ route('visitor.visit-requests.reject', [$vr->visitor_id, $vr->visit_request_id]) }}" style="margin-top:10px;min-width:240px;"
+                      data-confirm="Reject {{ $vr->visitor?->full_name ?? 'this visitor' }}'s visit request? The reserved slot is released and the visitor sees your reason."
+                      data-confirm-title="Reject visit request" data-confirm-ok="Reject" data-confirm-danger>
                   @csrf
                   <div class="field-m">
                     <label>Reason (shown to the visitor)</label>

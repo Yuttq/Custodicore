@@ -22,35 +22,35 @@
       </div>
     </div>
     @include('partials.menu-toggle', ['class' => 'menu-toggle'])
-    <nav class="nav">
+    {{-- Badges (NavBadges service): what still needs doing; refreshed every minute below. --}}
+    @php $navBadges = app(\App\Services\NavBadges::class)->all(); @endphp
+    <nav class="nav" data-nav-badges-url="{{ route('nav-badges') }}">
       <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
         Dashboard
       </a>
-      <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*', 'visitation-tracking.*') ? 'active' : '' }}">
+      <a href="{{ route('pdl.index') }}" data-nav="pdls" class="{{ request()->routeIs('pdl.*', 'visitation-tracking.*') ? 'active' : '' }}">
         PDL Records
+        @include('partials.nav-badge', ['badge' => $navBadges['pdls']])
       </a>
-      <a href="{{ route('cell-blocks.index') }}" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
+      <a href="{{ route('cell-blocks.index') }}" data-nav="cells" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
         Cell Blocks
+        @include('partials.nav-badge', ['badge' => $navBadges['cells']])
       </a>
-      {{-- Count only: visitor-submitted visit requests (`assigned`) awaiting review. --}}
-      @php $pendingVisitRequestCount = \App\Models\VisitRequest::awaitingReview()->count(); @endphp
-      <a href="{{ route('visitor.index') }}#visit-requests" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
+      <a href="{{ route('visitor.index') }}#visit-requests" data-nav="visitors" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
         Visitor Records
-        @if ($pendingVisitRequestCount)<span class="nav-count" title="{{ $pendingVisitRequestCount }} visit {{ \Illuminate\Support\Str::plural('request', $pendingVisitRequestCount) }} awaiting review">{{ $pendingVisitRequestCount }}</span>@endif
+        @include('partials.nav-badge', ['badge' => $navBadges['visitors']])
       </a>
-      @php
-        // Review Queue = accounts waiting for approval + visit requests flagged for review.
-        $reviewQueueCount = array_sum(\App\Services\ReviewQueue::counts());
-      @endphp
-      <a href="{{ route('review-queue') }}" class="{{ request()->routeIs('review-queue', 'account-reviews.*', 'eligibility.*') ? 'active' : '' }}">
+      <a href="{{ route('review-queue') }}" data-nav="review" class="{{ request()->routeIs('review-queue', 'account-reviews.*', 'eligibility.*') ? 'active' : '' }}">
         Review Queue
-        @if ($reviewQueueCount)<span class="nav-count" title="{{ $reviewQueueCount }} waiting for review">{{ $reviewQueueCount }}</span>@endif
+        @include('partials.nav-badge', ['badge' => $navBadges['review']])
       </a>
-      <a href="{{ route('upcoming-visits.index') }}" class="{{ request()->routeIs('upcoming-visits.*') ? 'active' : '' }}">
+      <a href="{{ route('upcoming-visits.index') }}" data-nav="upcoming" class="{{ request()->routeIs('upcoming-visits.*') ? 'active' : '' }}">
         Upcoming Visits
+        @include('partials.nav-badge', ['badge' => $navBadges['upcoming']])
       </a>
-      <a href="{{ route('visitor-slots.index') }}" class="{{ request()->routeIs('visitor-slots.*') ? 'active' : '' }}">
+      <a href="{{ route('visitor-slots.index') }}" data-nav="slots" class="{{ request()->routeIs('visitor-slots.*') ? 'active' : '' }}">
         Manage Visitor Slots
+        @include('partials.nav-badge', ['badge' => $navBadges['slots']])
       </a>
       <a href="{{ route('activity-log.index') }}" class="{{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
         Activity History
@@ -70,7 +70,7 @@
           <div class="role">{{ \App\Models\Role::label(auth()->user()?->role?->role_name) ?: 'Records Officer' }}</div>
         </div>
       </a>
-      <form method="POST" action="{{ route('logout') }}" style="margin:0;">
+      <form method="POST" action="{{ route('logout') }}" style="margin:0;" data-confirm="Sign out of CustodiCore?" data-confirm-title="Sign out" data-confirm-ok="Sign out">
         @csrf
         <button type="submit" class="support-link" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font:inherit;color:inherit;">
           Sign out
@@ -142,6 +142,80 @@
     window.addEventListener('scroll', toggle, { passive: true });
     btn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
     toggle();
+  })();
+</script>
+{{-- Sidebar badges stay live without reloading: refreshed every 15 seconds and whenever the
+     tab or window comes back into view. A badge disappears as soon as its count reaches zero.
+     If the section you are on changes (new items, or items handled by someone else), a notice
+     offers a reload; the page itself is only reloaded when you choose to. --}}
+<div class="live-notice" data-live-notice hidden role="status">
+  <span data-live-notice-text></span>
+  <button type="button" class="live-notice-reload" data-live-notice-reload>Reload</button>
+  <button type="button" class="live-notice-close" data-live-notice-close aria-label="Dismiss">×</button>
+</div>
+<script>
+  (function () {
+    var nav = document.querySelector('[data-nav-badges-url]');
+    if (!nav) return;
+    var notice = document.querySelector('[data-live-notice]');
+    var noticeText = notice.querySelector('[data-live-notice-text]');
+    var dismissedAt = null;
+
+    // A badge's count: every badge title starts with it ("3 waiting for review").
+    function countOf(link) {
+      var badge = link && link.querySelector('.nav-count');
+      return badge ? (parseInt(badge.getAttribute('title'), 10) || 1) : 0;
+    }
+
+    // The section you are on, and its count when the page loaded.
+    var current = nav.querySelector('a.active[data-nav]');
+    var loadedCount = countOf(current);
+
+    function showNotice(count) {
+      if (!current || count === loadedCount || count === dismissedAt) { notice.hidden = true; return; }
+      noticeText.textContent = count > loadedCount
+        ? 'New items are waiting here.'
+        : 'Some items here were already handled by another officer.';
+      notice.hidden = false;
+    }
+
+    function refresh() {
+      if (document.hidden) return;
+      fetch(nav.dataset.navBadgesUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (badges) {
+          if (!badges) return;
+          Object.keys(badges).forEach(function (key) {
+            var link = nav.querySelector('[data-nav="' + key + '"]');
+            if (!link) return;
+            var old = link.querySelector('.nav-count');
+            if (old) old.remove();
+            if (badges[key]) link.insertAdjacentHTML('beforeend', badges[key]);
+          });
+          showNotice(countOf(current));
+        })
+        .catch(function () {});
+    }
+
+    // Clicking a badge opens the items it counts (the menu name still opens the full page).
+    nav.addEventListener('click', function (e) {
+      var badge = e.target.closest('.nav-count[data-href]');
+      if (!badge) return;
+      e.preventDefault();
+      location.href = badge.dataset.href;
+    });
+
+    notice.querySelector('[data-live-notice-reload]').addEventListener('click', function () { location.reload(); });
+    notice.querySelector('[data-live-notice-close]').addEventListener('click', function () {
+      dismissedAt = countOf(current);
+      notice.hidden = true;
+    });
+
+    setInterval(refresh, 15000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+    window.addEventListener('focus', refresh);
+    // Coming back with the browser's Back button shows a saved copy of the page: bring it up to date.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) refresh(); });
   })();
 </script>
 </body>

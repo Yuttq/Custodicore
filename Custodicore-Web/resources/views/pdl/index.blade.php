@@ -9,7 +9,15 @@
   </div>
 </div>
 
+@if ($hearing)
+  <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--blue-bg);color:var(--blue);">
+    <span>Showing only PDLs with a court hearing in the next 7 days.</span>
+    <a href="{{ route('pdl.index') }}" style="color:inherit;font-weight:700;">Show all PDLs</a>
+  </div>
+@endif
+
 <form class="filters" method="GET" action="{{ route('pdl.index') }}">
+  @if ($hearing)<input type="hidden" name="hearing" value="week">@endif
   <div class="field">
     <label for="q">Search Records</label>
     <div class="input">
@@ -67,7 +75,7 @@
     <button class="btn btn-blue" type="submit" style="width:100%;justify-content:center;">Apply Filters</button>
   </div>
 
-  @if ($query || $status || $cellBlock || $offense || $visits)
+  @if ($query || $status || $cellBlock || $offense || $visits || $hearing)
     <div class="field">
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}" style="width:100%;justify-content:center;">Clear</a>
     </div>
@@ -94,10 +102,17 @@
         <td>
           <div class="name-cell">
             @include('pdl.partials.avatar', ['pdl' => $pdl])
-            <a class="full-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">
-              {{ $pdl->full_name }}
-              @if ($pdl->alias) <span class="muted-cell">"{{ $pdl->alias }}"</span> @endif
-            </a>
+            <div>
+              <a class="full-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">
+                {{ $pdl->full_name }}
+                @if ($pdl->alias) <span class="muted-cell">"{{ $pdl->alias }}"</span> @endif
+              </a>
+              @if ($next = $nextHearings[$pdl->pdl_id] ?? null)
+                <a class="hearing-tag" href="{{ route('pdl.show', $pdl->pdl_id) }}#legal-records" title="Court hearing{{ $next->notes ? ': ' . $next->notes : '' }}">
+                  ⚖ Hearing {{ $next->hearing_at->format('D, M j') }} · {{ $next->hearing_at->format('H:i') }}
+                </a>
+              @endif
+            </div>
           </div>
         </td>
         <td class="muted-cell">{{ $pdl->gender }}</td>

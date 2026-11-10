@@ -85,7 +85,10 @@ class VisitSlotController extends Controller
 
         $filters = compact('from', 'to', 'classification', 'status');
 
-        return view('visitor-slots.index', compact('schedules', 'summaries', 'editable', 'stats', 'rules', 'filters', 'today', 'groups'));
+        // Weekly sessions in the next week with no published session (the sidebar "!").
+        $unpublished = app(\App\Services\NavBadges::class)->unpublishedSessions();
+
+        return view('visitor-slots.index', compact('schedules', 'summaries', 'editable', 'stats', 'rules', 'filters', 'today', 'groups', 'unpublished'));
     }
 
     /**

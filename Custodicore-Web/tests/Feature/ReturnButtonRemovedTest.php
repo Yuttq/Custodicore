@@ -14,9 +14,10 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * The overall Return button is gone from the Record Officer pages; the
- * individual Reject buttons and Approve stay. The backend Return route and
- * accounts that were returned before keep working.
+ * Review Queue card: the decision is Approve or Return for the whole account
+ * (no Reject on the ID or documents there). The visitor page has no Return
+ * button and keeps its individual Reject buttons. Accounts that were returned
+ * before keep working.
  */
 class ReturnButtonRemovedTest extends TestCase
 {
@@ -51,22 +52,30 @@ class ReturnButtonRemovedTest extends TestCase
         return $visitor;
     }
 
-    public function test_review_card_and_visitor_page_have_no_return_button_but_keep_reject_and_approve(): void
+    public function test_review_card_is_approve_or_return_and_visitor_page_keeps_reject(): void
     {
         $visitor = $this->visitorWithStatus('pending');
         $id = $visitor->idDocuments()->sole();
         $returnUrl = route('visitor.reject', $visitor->visitor_id);
+        $idRejectUrl = route('visitor.ids.reject', [$visitor->visitor_id, $id->visitor_id_doc_id]);
+
         $this->actingAs($this->recordOfficerAccount, 'web');
 
-        foreach (['/account-reviews', "/visitors/{$visitor->visitor_id}"] as $page) {
-            $this->get($page)->assertOk()
-                ->assertDontSee($returnUrl, false)
-                ->assertDontSee('Confirm return')
-                ->assertDontSee('Confirm Return')
-                ->assertDontSee('return the account')
-                ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $id->visitor_id_doc_id]), false)
-                ->assertSee(route('visitor.approve', $visitor->visitor_id), false);
-        }
+        // Review Queue card: Approve or Return the whole account, no item Reject.
+        $this->get('/account-reviews')->assertOk()
+            ->assertSee($returnUrl, false)
+            ->assertSee(route('visitor.approve', $visitor->visitor_id), false)
+            ->assertDontSee($idRejectUrl, false);
+
+        // Visitor page: no Return; the ID keeps its Reject.
+        $this->get("/visitors/{$visitor->visitor_id}")->assertOk()
+            ->assertDontSee($returnUrl, false)
+            ->assertSee($idRejectUrl, false)
+            ->assertSee(route('visitor.approve', $visitor->visitor_id), false);
+
+        // Returning from the card sends it back with what to fix.
+        $this->post($returnUrl, ['rejection_reason' => 'The ID photo is unreadable.'])->assertSessionHas('success');
+        $this->assertSame('rejected', $visitor->fresh()->verification_status);
     }
 
     public function test_previously_returned_account_is_still_listed_and_can_resubmit(): void

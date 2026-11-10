@@ -56,6 +56,13 @@ class PdlController extends Controller
         $offense = in_array($request->input('offense'), Offenses::codes(), true) ? $request->input('offense') : '';
         // Replaces the old Visitation Tracking page.
         $visits = in_array($request->input('visits'), ['stale', 'never'], true) ? $request->input('visits') : '';
+        // From the PDL Records badge: PDLs with a court hearing in the next week.
+        $hearing = $request->input('hearing') === 'week' ? 'week' : '';
+        $hearingPdlIds = \App\Services\NavBadges::hearingsAheadQuery()
+            ->with('legalRecord:legal_record_id,pdl_id')
+            ->orderBy('hearing_at')
+            ->get()
+            ->groupBy(fn ($h) => $h->legalRecord->pdl_id);
 
         // Last actual visit = latest front-desk check-in for this PDL.
         $checkins = fn () => \Illuminate\Support\Facades\DB::table('visit_checkins as vc')
@@ -84,6 +91,7 @@ class PdlController extends Controller
             ->when($visits === 'never', fn ($q) => $q->where('custody_status', 'active')->whereNotExists($checkins()->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->when($visits === 'stale', fn ($q) => $q->where('custody_status', 'active')
                 ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
+            ->when($hearing, fn ($q) => $q->whereIn('pdl_id', $hearingPdlIds->keys()))
             ->with(['legalRecords', 'restrictions'])
             ->orderBy('admission_date', 'desc')
             ->paginate(10)
@@ -105,7 +113,10 @@ class PdlController extends Controller
         // Every weekly visiting rule, loaded once for the "Visiting" column.
         $visitingRules = \App\Models\FacilityVisitationRule::orderBy('time_slot_start')->get();
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules'));
+        // Each PDL's next hearing this week, for the tag under their name.
+        $nextHearings = $hearingPdlIds->map->first();
+
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules', 'hearing', 'nextHearings'));
     }
 
     // -----------------------------------------------------------------

@@ -136,7 +136,8 @@
       @if (! $a)
         <div class="elig-note is-warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <span>The eligibility check hasn't run for this request yet.</span>
-          <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin:0;">
+          <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin:0;"
+                data-confirm="Run the eligibility check for this visit request now? It re-checks the visitor's ID, relationship, flags and the PDL's restrictions." data-confirm-title="Run eligibility check" data-confirm-ok="Run check">
             @csrf
             <button type="submit" class="btn btn-outline-neutral acct-small">Run eligibility check</button>
           </form>

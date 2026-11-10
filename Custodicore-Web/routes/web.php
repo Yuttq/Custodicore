@@ -471,6 +471,9 @@ Route::middleware([
     | facility_visitation_rules. Rules live in App\Services\VisitSlotService.
     */
 
+    // Sidebar badges, refreshed by the page every minute.
+    Route::get('/nav-badges', \App\Http\Controllers\NavBadgesController::class)->name('nav-badges');
+
     // Who is coming: confirmed / awaiting visits from today onward.
     Route::get(
         '/upcoming-visits',
