@@ -277,8 +277,6 @@
                         <input id="new-contact" type="tel" inputmode="tel" name="contact_number" value="{{ $isNew ? old('contact_number') : '' }}" required maxlength="20" class="cc-input" placeholder="0917 123 4567" />
                     </div>
                 </div>
-                <p class="text-metadata text-text-secondary">The officer's own email that they check. The setup link is sent there, and they sign in with this email or with the unique username they choose when they set up their account.</p>
-
                 <div class="rounded-sm bg-background p-sm text-metadata text-text-secondary">
                     <p class="font-semibold text-primary-navy">What happens next</p>
                     <ul style="margin:4px 0 0; padding-left:18px; list-style:disc;">
