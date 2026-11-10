@@ -279,10 +279,14 @@
                 </div>
                 <p class="text-metadata text-text-secondary">The officer's own email that they check. The setup link is sent there, and they sign in with this email or with the unique username they choose when they set up their account.</p>
 
-                <p class="rounded-sm bg-background p-sm text-metadata text-text-secondary">
-                    No password is set here. After you create the account, a one-time setup link is sent to the officer's
-                    personal email and mobile number so they choose their own password. The link expires in {{ config('auth.staff_invitation.expire_hours', 72) }} hours.
-                </p>
+                <div class="rounded-sm bg-background p-sm text-metadata text-text-secondary">
+                    <p class="font-semibold text-primary-navy">What happens next</p>
+                    <ul style="margin:4px 0 0; padding-left:18px; list-style:disc;">
+                        <li>After you create the account, a one-time setup link is sent to the officer's email.</li>
+                        <li>The officer uses the link to choose their own password.</li>
+                        <li>The link expires in {{ config('auth.staff_invitation.expire_hours', 72) }} hours.</li>
+                    </ul>
+                </div>
             </div>
 
             {{-- Step 1: review. Step 2: the Warden confirms, and only then is the account created and the email sent. --}}
