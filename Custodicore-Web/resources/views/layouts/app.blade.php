@@ -27,7 +27,7 @@
         Dashboard
       </a>
       <a href="{{ route('pdl.index') }}" class="{{ request()->routeIs('pdl.*', 'visitation-tracking.*') ? 'active' : '' }}">
-        PDL Management
+        PDL Records
       </a>
       <a href="{{ route('cell-blocks.index') }}" class="{{ request()->routeIs('cell-blocks.*') ? 'active' : '' }}">
         Cell Blocks
@@ -35,7 +35,7 @@
       {{-- Count only: visitor-submitted visit requests (`assigned`) awaiting review. --}}
       @php $pendingVisitRequestCount = \App\Models\VisitRequest::awaitingReview()->count(); @endphp
       <a href="{{ route('visitor.index') }}#visit-requests" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
-        Visitor Management
+        Visitor Records
         @if ($pendingVisitRequestCount)<span class="nav-count" title="{{ $pendingVisitRequestCount }} visit {{ \Illuminate\Support\Str::plural('request', $pendingVisitRequestCount) }} awaiting review">{{ $pendingVisitRequestCount }}</span>@endif
       </a>
       @php
@@ -53,7 +53,7 @@
         Manage Visitor Slots
       </a>
       <a href="{{ route('activity-log.index') }}" class="{{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
-        Activity Log
+        Activity History
       </a>
     </nav>
     <div class="sidebar-bottom">

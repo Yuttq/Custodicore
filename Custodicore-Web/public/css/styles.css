@@ -83,6 +83,9 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 .btn-outline-neutral{background:#fff;color:var(--text);border:1px solid var(--border);}
 .btn-blue{background:var(--green);color:#fff;}  /* name kept for existing views; it is the primary (green) action */
 .btn-primary:hover,.btn-blue:hover,.btn-export:hover{filter:brightness(.95);}
+/* Buttons sitting on the blue-teal page banner (e.g. Register New PDL, Add Cell Block, Create Session): white with navy text so they stand out from the gradient. */
+.topbar .btn-primary,.topbar .btn-blue{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(15,61,122,.18);}
+.topbar .btn-primary:hover,.topbar .btn-blue:hover{background:#EEF4FB;filter:none;}
 
 /* Stat cards (dashboard) */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
