@@ -102,15 +102,7 @@
 
         <div class="cc-card" id="two-step">
             <p class="text-card-title">Two-step verification</p>
-            @if ($mfaEnabled && ($mfaUsesEmail ?? false))
-                <p class="mt-xs text-body">
-                    <span class="font-semibold text-success">On (emailed codes).</span>
-                    Signing in needs your password and a 6-digit code we email you.
-                </p>
-                <p class="mt-xs text-metadata text-text-secondary">
-                    Want to use an authenticator app instead? Ask the system administrator to reset your two-step verification, then choose the app at your next sign-in.
-                </p>
-            @elseif ($mfaEnabled)
+            @if ($mfaEnabled)
                 <p class="mt-xs text-body">
                     <span class="font-semibold text-success">On.</span>
                     Signing in needs your password and a code from your authenticator app.

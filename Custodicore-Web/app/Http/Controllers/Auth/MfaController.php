@@ -19,8 +19,7 @@ use Illuminate\View\View;
  * is right. See App\Services\Auth\StaffMfaService for the rules.
  *
  * Routes (routes/web.php):
- *   guest:  login/mfa (challenge, verify, email), login/mfa/setup (+confirm), login/mfa/cancel,
- *           login/mfa/setup/email (+confirm) — the "use emailed codes instead of an app" choice
+ *   guest:  login/mfa (challenge, verify, email), login/mfa/setup (+confirm), login/mfa/cancel
  *   auth:   account/mfa/backup-codes (shown once), account/mfa/continue, account/mfa/regenerate
  */
 class MfaController extends Controller
@@ -42,22 +41,7 @@ class MfaController extends Controller
             return redirect()->route('mfa.setup');
         }
 
-        $usesEmail = $this->mfa->usesEmail($account);
-        $sendError = null;
-
-        // Email-code officers: send the code as soon as the page opens (once — a
-        // refresh keeps the code already sent; "Send a new code" asks for another).
-        if ($usesEmail && ! $this->mfa->hasLiveEmailCode($request) && ! session()->has('errors')) {
-            $result = $this->mfa->sendEmailCode($request, $account);
-            $sendError = $this->emailProblem($result, true);
-        }
-
-        return $this->noStore(view('auth.mfa-challenge', [
-            'account' => $account,
-            'usesEmail' => $usesEmail,
-            'emailTo' => StaffMfaService::maskEmail($this->mfa->emailTarget($account)),
-            'sendError' => $sendError,
-        ]));
+        return $this->noStore(view('auth.mfa-challenge', ['account' => $account]));
     }
 
     /** POST login/mfa */
@@ -73,10 +57,8 @@ class MfaController extends Controller
             return redirect()->route('mfa.setup');
         }
 
-        $usesEmail = $this->mfa->usesEmail($account);
-
         $input = (string) $request->validate(['code' => ['required', 'string', 'max:32']], [
-            'code.required' => $usesEmail ? 'Enter the 6-digit code we emailed you.' : 'Enter the code from your authenticator app.',
+            'code.required' => 'Enter the code from your authenticator app.',
         ])['code'];
 
         if ($this->mfa->tooManyAttempts($request, $account)) {
@@ -87,11 +69,11 @@ class MfaController extends Controller
 
         $digits = preg_replace('/\s+/', '', $input) ?? '';
         $ok = false;
-        $method = $usesEmail ? 'emailed code' : 'authenticator app';
+        $method = 'authenticator app';
 
         if (preg_match('/^\d{6}$/', $digits)) {
             // Either the authenticator code or the emailed one — both are 6 digits.
-            if (! $usesEmail && $this->mfa->verifyTotp($account, $digits)) {
+            if ($this->mfa->verifyTotp($account, $digits)) {
                 $ok = true;
             } elseif ($this->mfa->verifyEmailCode($request, $digits)) {
                 $ok = true;
@@ -107,9 +89,7 @@ class MfaController extends Controller
         if (! $ok) {
             $this->mfa->hitAttempts($request, $account);
 
-            return back()->withErrors(['code' => $usesEmail
-                ? 'That code is not right or has expired. Use the code in the newest email, or tap "Send a new code".'
-                : 'That code is not right or has expired. Try the newest code, or use a backup code.']);
+            return back()->withErrors(['code' => 'That code is not right or has expired. Try the newest code, or use a backup code.']);
         }
 
         $this->mfa->clearAttempts($request, $account);
@@ -144,8 +124,14 @@ class MfaController extends Controller
         }
 
         $result = $this->mfa->sendEmailCode($request, $account);
+        $to = $result['to'];
 
-        return $this->afterEmailSent($result, $this->mfa->usesEmail($account));
+        return match ($result['status']) {
+            'sent' => back()->with('status', "We emailed a 6-digit code to {$to}. It works for " . config('mfa.email_code_minutes') . ' minutes.'),
+            'log_only' => back()->with('status', "Email is not set up on this server yet, so no message reached {$to}. The code was only written to the application log. Use your authenticator app or a backup code, or ask the Admin."),
+            'throttled' => back()->withErrors(['code' => 'Too many emailed codes were requested. Try again in ' . max(1, (int) ceil(($result['wait'] ?? 60) / 60)) . ' minute(s), or use your authenticator app or a backup code.']),
+            default => back()->withErrors(['code' => "We could not send the email to {$to}. Use your authenticator app or a backup code, or ask the Admin."]),
+        };
     }
 
     /** GET login/mfa/cancel */
@@ -223,100 +209,6 @@ class MfaController extends Controller
         return redirect()->route('account.mfa.backup-codes');
     }
 
-    // ---------------------------------------------------------------- first-time setup: emailed codes
-
-    /** POST login/mfa/setup/email — "I don't want an authenticator app": email a first code. */
-    public function setupEmail(Request $request): RedirectResponse
-    {
-        $account = $this->mfa->pending($request);
-
-        if (! $account) {
-            return $this->backToLogin('Your sign-in took too long. Please sign in again.');
-        }
-
-        if ($this->mfa->isEnabled($account)) {
-            return redirect()->route('mfa.challenge');
-        }
-
-        $result = $this->mfa->sendEmailCode($request, $account);
-
-        if (in_array($result['status'], ['sent', 'log_only'], true)) {
-            $notice = $result['status'] === 'sent'
-                ? "We emailed a 6-digit code to {$result['to']}. It works for " . config('mfa.email_code_minutes') . ' minutes.'
-                : "Email is not set up on this server yet, so no message reached {$result['to']}. The code was only written to the application log.";
-
-            return redirect()->route('mfa.setup.email.form')->with('status', $notice);
-        }
-
-        return redirect()->route('mfa.setup')->withErrors(['email_option' => $this->emailProblem($result, false)]);
-    }
-
-    /** GET login/mfa/setup/email — type the emailed code to finish setup. */
-    public function setupEmailForm(Request $request): Response|RedirectResponse
-    {
-        $account = $this->mfa->pending($request);
-
-        if (! $account) {
-            return $this->backToLogin('Your sign-in took too long. Please sign in again.');
-        }
-
-        if ($this->mfa->isEnabled($account)) {
-            return redirect()->route('mfa.challenge');
-        }
-
-        if (! $this->mfa->hasLiveEmailCode($request)) {
-            return redirect()->route('mfa.setup');
-        }
-
-        return $this->noStore(view('auth.mfa-setup-email', [
-            'account' => $account,
-            'emailTo' => StaffMfaService::maskEmail($this->mfa->emailTarget($account)),
-        ]));
-    }
-
-    /** POST login/mfa/setup/email/confirm */
-    public function setupEmailConfirm(Request $request): RedirectResponse
-    {
-        $account = $this->mfa->pending($request);
-
-        if (! $account) {
-            return $this->backToLogin('Your sign-in took too long. Please sign in again.');
-        }
-
-        if ($this->mfa->isEnabled($account)) {
-            return redirect()->route('mfa.challenge');
-        }
-
-        $input = (string) $request->validate(['code' => ['required', 'string', 'max:10']], [
-            'code.required' => 'Enter the 6-digit code we emailed you.',
-        ])['code'];
-
-        if ($this->mfa->tooManyAttempts($request, $account)) {
-            $this->mfa->clearPending($request);
-
-            return $this->backToLogin('Too many wrong codes. Please wait a few minutes and sign in again.');
-        }
-
-        if (! $this->mfa->verifyEmailCode($request, $input)) {
-            $this->mfa->hitAttempts($request, $account);
-
-            return back()->withErrors(['code' => 'That code is not right or has expired. Use the code in the newest email, or send a new one.']);
-        }
-
-        $this->mfa->clearAttempts($request, $account);
-        $this->mfa->enableEmail($account);
-
-        if ($request->boolean('trust_device')) {
-            $this->mfa->trustDevice($request, $account);
-        }
-
-        $this->mfa->finishLogin($request, $account);
-        $this->mfa->audit($account, 'Two-step verification turned on (emailed codes).');
-
-        return redirect()->intended($this->homeFor($account))
-            ->with('status', 'Two-step verification is on. Each time you sign in, we will email you a 6-digit code.');
-    }
-
     // ---------------------------------------------------------------- backup codes (signed in)
 
     /** GET account/mfa/backup-codes — the codes are shown once, then gone. */
@@ -346,8 +238,7 @@ class MfaController extends Controller
     {
         $account = $request->user();
 
-        // Email-code officers have no backup codes (nothing to lose but their inbox).
-        if (! $this->mfa->isEnabled($account) || $this->mfa->usesEmail($account)) {
+        if (! $this->mfa->isEnabled($account)) {
             return redirect()->route('account.profile');
         }
 
@@ -361,36 +252,6 @@ class MfaController extends Controller
     }
 
     // ---------------------------------------------------------------- helpers
-
-    /** Redirect back with the right message after "Email me a code" / "Send a new code". */
-    private function afterEmailSent(array $result, bool $usesEmail): RedirectResponse
-    {
-        $to = $result['to'];
-
-        if ($result['status'] === 'sent') {
-            return back()->with('status', "We emailed a 6-digit code to {$to}. It works for " . config('mfa.email_code_minutes') . ' minutes.');
-        }
-
-        if ($result['status'] === 'log_only') {
-            return back()->with('status', "Email is not set up on this server yet, so no message reached {$to}. The code was only written to the application log. "
-                . ($usesEmail ? 'Ask the Admin.' : 'Use your authenticator app or a backup code, or ask the Admin.'));
-        }
-
-        return back()->withErrors(['code' => $this->emailProblem($result, $usesEmail)]);
-    }
-
-    /** Null when the email went out (or was logged); otherwise what to tell the officer. */
-    private function emailProblem(array $result, bool $usesEmail): ?string
-    {
-        $fallback = $usesEmail ? 'or ask the Admin.' : 'or use your authenticator app or a backup code.';
-
-        return match ($result['status']) {
-            'sent' => null,
-            'log_only' => "Email is not set up on this server yet, so no message reached {$result['to']}. The code was only written to the application log. Ask the Admin.",
-            'throttled' => 'Too many emailed codes were requested. Try again in ' . max(1, (int) ceil(($result['wait'] ?? 60) / 60)) . " minute(s), {$fallback}",
-            default => "We could not send the email to {$result['to']}. Try again in a minute, {$fallback}",
-        };
-    }
 
     private function backToLogin(string $message): RedirectResponse
     {
