@@ -79,7 +79,8 @@
             @else
               <span class="muted-cell">Not checked</span>
             @endif
-            <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin-top:4px;">
+            <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin-top:4px;"
+                    data-confirm="Run the eligibility check for this visit request now? It re-checks the visitor's ID, relationship, flags and the PDL's restrictions." data-confirm-title="Run eligibility check" data-confirm-ok="Run check">
               @csrf
               <button type="submit" class="row-action">
                 {{ $visit->eligibilityAssessment ? 'Re-run' : 'Run Check' }}

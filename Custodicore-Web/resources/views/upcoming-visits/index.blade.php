@@ -33,7 +33,7 @@
   Who is coming to visit. Approved requests show here as <strong>Confirmed</strong>; on the day, the front desk checks the visitor in with their QR pass.
 </p>
 
-<section class="stats" style="margin-bottom:18px;">
+<section class="stats" style="margin-bottom:18px;grid-template-columns:repeat(3,1fr);">
   <a class="stat-card stat-link accent-teal" href="{{ $link(['range' => 'today', 'status' => '']) }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Visits Today</div>
     <div class="stat-value">{{ $stats['today'] }}</div>
@@ -41,11 +41,6 @@
   <a class="stat-card stat-link accent-blue" href="{{ $link(['range' => 'week', 'status' => 'confirmed']) }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Confirmed, Next 7 Days</div>
     <div class="stat-value">{{ $stats['week'] }}</div>
-  </a>
-  <a class="stat-card stat-link accent-amber" href="{{ $link(['range' => 'month', 'status' => 'pending_confirmation']) }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-label">Waiting for Visitor to Confirm</div>
-    <div class="stat-value">{{ $stats['awaiting_visitor'] }}</div>
-    <div class="muted-cell">staff-assigned visits</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('eligibility.index') }}" style="border-left:3px solid var(--amber);text-decoration:none;color:inherit;" title="Open the Review Queue">
     <div class="stat-label">Waiting for Review</div>

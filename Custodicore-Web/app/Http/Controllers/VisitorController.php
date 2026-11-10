@@ -86,18 +86,6 @@ class VisitorController extends Controller
             'visitRequests' => fn ($q) => $q->with(['pdl', 'schedule', 'sessionSchedules'])->orderByDesc('assigned_at')->limit(10),
         ]);
 
-        $assignableRelationships = $visitor->relationships
-            ->filter(fn ($rel) => $rel->verification_status !== 'rejected' && $rel->pdl)
-            ->values();
-
-        // Visiting days and their sessions for the next 30 days, per verified
-        // relationship, from the PDL's visiting hours (slots are created on
-        // demand). The assign form offers morning, afternoon or both.
-        $assignDays = VisitAssignmentController::assignableDays(
-            $visitor,
-            $assignableRelationships->filter(fn ($rel) => $rel->isVerified())->values()
-        );
-
         // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
         $relatablePdls = Pdl::whereNotIn('pdl_id', $visitor->relationships->pluck('pdl_id'))
             ->orderBy('full_name')
@@ -109,7 +97,7 @@ class VisitorController extends Controller
 
         $activity = \App\Services\ActivityLog::forVisitor($visitor);
 
-        return view('visitor.show', compact('visitor', 'assignableRelationships', 'assignDays', 'relatablePdls', 'pendingVisitRequests', 'activity'));
+        return view('visitor.show', compact('visitor', 'relatablePdls', 'pendingVisitRequests', 'activity'));
     }
 
     /** Visitor-submitted visit requests (`assigned`) awaiting Record Officer review. */

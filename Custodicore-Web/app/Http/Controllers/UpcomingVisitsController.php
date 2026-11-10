@@ -10,17 +10,17 @@ use Illuminate\View\View;
 
 /**
  * Record Officer — who is coming: visits from today onward that are
- * confirmed, waiting for the visitor to confirm (staff-assigned) or waiting
- * for review, grouped by visit date. Today's list also keeps the visits the
+ * confirmed or waiting for review, grouped by visit date. Today's list also keeps the visits the
  * front desk has already finished (completed / no-show).
  */
 class UpcomingVisitsController extends Controller
 {
     public const RANGES = ['today' => 'Today', 'week' => 'Next 7 days', 'month' => 'Next 30 days'];
 
+    // Records Officers no longer assign visits, so staff-assigned visits
+    // waiting for the visitor to confirm are not listed here.
     public const STATUSES = [
         'confirmed' => 'Confirmed',
-        'pending_confirmation' => 'Waiting for visitor to confirm',
         'assigned' => 'Waiting for review',
     ];
 
@@ -47,7 +47,6 @@ class UpcomingVisitsController extends Controller
         $stats = [
             'today' => $this->visitsBetween($todayKey, $todayKey)->whereIn('visit_requests.status', ['confirmed', 'completed'])->count(),
             'week' => $this->visitsBetween($todayKey, $today->addDays(7)->toDateString())->where('visit_requests.status', 'confirmed')->count(),
-            'awaiting_visitor' => $this->visitsBetween($todayKey, null)->where('visit_requests.status', 'pending_confirmation')->count(),
             'awaiting_review' => ReviewQueue::counts()['visits'],
         ];
 

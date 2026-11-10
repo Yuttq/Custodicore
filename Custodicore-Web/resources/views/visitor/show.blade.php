@@ -197,7 +197,9 @@
                   </form>
                   <details class="acct-reject">
                     <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form">
+                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
+                        data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor sees your reason and must upload a new one."
+                        data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
                       @csrf
                       <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="Why the ID is rejected"></textarea>
                       <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
@@ -231,7 +233,9 @@
                   </form>
                   <details class="acct-reject">
                     <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                    <form method="POST" action="{{ route('visitor.walk-in-documents.reject', [$visitor->visitor_id, $doc->document_id]) }}" class="acct-reject-form">
+                    <form method="POST" action="{{ route('visitor.walk-in-documents.reject', [$visitor->visitor_id, $doc->document_id]) }}" class="acct-reject-form"
+                        data-confirm="Reject the {{ $doc->label() }}? The visitor must bring or upload a new one."
+                        data-confirm-title="Reject document" data-confirm-ok="Reject" data-confirm-danger>
                       @csrf
                       <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The names on the certificate do not match"></textarea>
                       <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
@@ -261,7 +265,9 @@
       </div>
     @endif
 
-    <form method="POST" action="{{ route('visitor.walk-in-assessment', $visitor->visitor_id) }}">
+    <form method="POST" action="{{ route('visitor.walk-in-assessment', $visitor->visitor_id) }}"
+          data-confirm="Save the walk-in decision for {{ $visitor->full_name }}? The Front Desk sees it right away."
+          data-confirm-title="Save walk-in decision" data-confirm-ok="Save">
       @csrf
       <fieldset @disabled($locked) style="border:none;padding:0;margin:0;">
         <div class="row cols-3">
@@ -559,190 +565,10 @@
   @include('visitor.partials.pending-visit-requests', ['showVisitor' => false])
 @endif
 
-{{-- ================= ASSIGN VISIT ================= --}}
-<div class="panel" style="margin-bottom:20px;">
-  <div class="panel-header"><h2>Assign Visit</h2></div>
-
-  @if ($visitor->verification_status === 'rejected')
-    <p class="empty-note">This visitor was rejected and cannot be assigned a visit.</p>
-  @elseif ($visitor->verification_status !== 'verified')
-    <p class="empty-note">Approve this visitor's account before assigning a visit.</p>
-  @elseif ($visitor->account && $visitor->account->status !== 'active')
-    <p class="empty-note">This visitor account is not active and cannot be assigned a visit.</p>
-  @elseif ($assignableRelationships->isEmpty())
-    <p class="empty-note">Add and approve a visitor↔PDL relationship before assigning a visit.</p>
-  @else
-    <form method="POST" action="{{ route('visitor.visits.assign', $visitor->visitor_id) }}" id="assignVisitForm"
-          data-confirm="Assign this visit to {{ $visitor->full_name }}? They will be asked to confirm it in the app."
-          data-confirm-title="Assign visit" data-confirm-ok="Assign">
-      @csrf
-
-      @php
-        $assignErrors = collect(['relationship_id', 'relationshipId', 'date', 'start_times', 'startTime', 'schedule_id', 'confirmation_deadline'])
-          ->flatMap(fn ($key) => $errors->get($key))->merge($errors->get('start_times.*'))->flatten()->unique();
-      @endphp
-      @if ($assignErrors->isNotEmpty())
-        <div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:var(--red-bg);color:var(--red-text);font-size:13px;">{{ $assignErrors->join(' ') }}</div>
-      @endif
-
-      <div class="row cols-2">
-        <div class="field-m">
-          <label>Relationship / PDL</label>
-          <select name="relationship_id" id="relationshipSelect" required>
-            <option value="">— Select relationship —</option>
-            @foreach ($assignableRelationships as $rel)
-              <option
-                value="{{ $rel->relationship_id }}"
-                {{ $rel->isVerified() ? '' : 'disabled' }}
-                {{ (string) old('relationship_id') === (string) $rel->relationship_id ? 'selected' : '' }}
-              >
-                {{ $rel->pdl->full_name }} — {{ $rel->relationshipLabel() }}{{ $rel->isVerified() ? '' : ' (not verified yet)' }}
-              </option>
-            @endforeach
-          </select>
-        </div>
-
-        <div class="field-m">
-          <label>Visiting Day</label>
-          <select name="date" id="assignDateSelect" required>
-            <option value="">— Select a relationship first —</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field-m" style="margin-bottom:14px;">
-        <label>Session</label>
-        <div id="assignSessions" class="muted-cell" style="display:flex;gap:10px;flex-wrap:wrap;">Select a visiting day first.</div>
-        <div id="assignSessionTimes"></div>
-        <div class="muted-cell" style="margin-top:6px;font-size:12px;">
-          Whole day is one visit with one QR code: the visitor visits in the morning, leaves for lunch, and the same QR lets them back in when the afternoon session opens (not before). It takes a seat in each session.
-        </div>
-      </div>
-
-      <div class="row cols-2">
-        <div class="field-m">
-          <label>Confirmation Deadline (optional)</label>
-          <input type="datetime-local" name="confirmation_deadline" value="{{ old('confirmation_deadline') }}">
-          <div class="muted-cell" style="margin-top:6px;font-size:12px;">
-            Leave blank to use the facility default confirmation window.
-          </div>
-        </div>
-        <div class="field-m">
-          <label>Initial Status</label>
-          <input type="text" value="pending_confirmation" disabled>
-        </div>
-      </div>
-
-      <button class="btn btn-blue" type="submit">Assign Visit</button>
-    </form>
-
-    <script type="application/json" id="assignDays">@json($assignDays ?? [])</script>
-    <script>
-      (function () {
-        const relationshipSelect = document.getElementById('relationshipSelect');
-        const dateSelect = document.getElementById('assignDateSelect');
-        const sessionsBox = document.getElementById('assignSessions');
-        const daysByRelationship = JSON.parse(document.getElementById('assignDays').textContent || '{}');
-        const oldDate = @json(old('date'));
-        const oldTimes = @json(old('start_times', []));
-
-        function option(value, text, disabled) {
-          const opt = document.createElement('option');
-          opt.value = value;
-          opt.textContent = text;
-          opt.disabled = !!disabled;
-          return opt;
-        }
-
-        function days() {
-          return daysByRelationship[relationshipSelect.value] || [];
-        }
-
-        function refreshDays() {
-          dateSelect.innerHTML = '';
-          if (!relationshipSelect.value) {
-            dateSelect.appendChild(option('', '— Select a relationship first —'));
-          } else if (!days().length) {
-            dateSelect.appendChild(option('', 'No visiting days for this PDL in the next 30 days', true));
-          } else {
-            dateSelect.appendChild(option('', '— Select a visiting day —'));
-            days().forEach(function (day) {
-              const opt = option(day.date, day.label + (day.available ? '' : ' (no open sessions)'), !day.available);
-              if (day.date === oldDate && day.available) opt.selected = true;
-              dateSelect.appendChild(opt);
-            });
-          }
-          refreshSessions();
-        }
-
-        // The chosen option's start times, posted as start_times[].
-        const timesBox = document.getElementById('assignSessionTimes');
-        function setTimes(times) {
-          timesBox.innerHTML = '';
-          times.forEach(function (t) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'start_times[]';
-            input.value = t;
-            timesBox.appendChild(input);
-          });
-        }
-
-        // Like the mobile app: each session, then "Whole day" (both sessions as one visit). Pick one.
-        function refreshSessions() {
-          const day = days().find(function (d) { return d.date === dateSelect.value; });
-          sessionsBox.innerHTML = '';
-          setTimes([]);
-          if (!day) {
-            sessionsBox.textContent = 'Select a visiting day first.';
-            return;
-          }
-          const choices = day.sessions.map(function (s) {
-            return { title: s.period, start: s.start, end: s.end, times: [s.start], available: s.available, seats: s.seats, reason: s.reason };
-          });
-          if (day.wholeDay) {
-            const w = day.wholeDay;
-            choices.push({ title: 'Whole day', start: w.start, end: w.end, times: w.startTimes, available: w.available, seats: w.seats, reason: w.reason });
-          }
-          choices.forEach(function (c) {
-            const label = document.createElement('label');
-            label.className = 'session-choice' + (c.available ? '' : ' is-disabled');
-            const radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = 'session_choice';
-            radio.required = true;
-            radio.disabled = !c.available;
-            radio.checked = c.available && oldTimes.slice().sort().join(',') === c.times.slice().sort().join(',');
-            radio.addEventListener('change', function () { setTimes(c.times); });
-            if (radio.checked) setTimes(c.times);
-            const text = document.createElement('span');
-            text.innerHTML = '<strong></strong><br><small></small>';
-            text.querySelector('strong').textContent = c.title + ' ' + c.start + '–' + c.end;
-            text.querySelector('small').textContent = c.available ? c.seats + ' seats left' : c.reason;
-            label.appendChild(radio);
-            label.appendChild(text);
-            sessionsBox.appendChild(label);
-          });
-        }
-
-        relationshipSelect.addEventListener('change', refreshDays);
-        dateSelect.addEventListener('change', refreshSessions);
-        refreshDays();
-      })();
-    </script>
-    <style>
-      .session-choice { display:flex; gap:8px; align-items:flex-start; border:1px solid var(--border); border-radius:8px; padding:8px 12px; cursor:pointer; color:var(--text); min-width:200px; }
-      .session-choice small { color:var(--muted); }
-      .session-choice:has(input:checked) { border-color:var(--teal); background:var(--teal-bg); }
-      .session-choice.is-disabled { opacity:.5; cursor:not-allowed; }
-    </style>
-  @endif
-</div>
-
-{{-- ================= RECENT ASSIGNMENTS ================= --}}
+{{-- ================= RECENT VISITS ================= --}}
 @if (($visitor->visitRequests ?? collect())->isNotEmpty())
 <div class="panel" style="margin-bottom:20px;">
-  <div class="panel-header"><h2>Recent Visit Assignments</h2></div>
+  <div class="panel-header"><h2>Recent Visits</h2></div>
   <div class="table-scroll">
   <table>
     <thead><tr><th>PDL</th><th>Schedule</th><th>Status</th><th>Assigned</th></tr></thead>

@@ -341,7 +341,7 @@
 </div>
 
 {{-- ================= LEGAL RECORDS ================= --}}
-<div class="panel" style="margin-bottom:20px;">
+<div class="panel" style="margin-bottom:20px;" id="legal-records">
   <div class="panel-header"><h2>Legal Records <span class="count-chip">{{ $pdl->legalRecords->count() }}</span></h2></div>
 
   @if ($pdl->legalRecords->isEmpty())

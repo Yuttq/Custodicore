@@ -177,11 +177,13 @@ class ApprovalFinalityAndPdlRejectionTest extends TestCase
         $approved = $this->id($visitor, 'verified', 'N-1');
         $pending = $this->id($visitor, 'pending', 'N-2');
 
-        foreach (['/account-reviews', "/visitors/{$visitor->visitor_id}"] as $page) {
-            $this->get($page)->assertOk()
-                ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false)
-                ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $approved->visitor_id_doc_id]), false);
-        }
+        $this->get("/visitors/{$visitor->visitor_id}")->assertOk()
+            ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false)
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $approved->visitor_id_doc_id]), false);
+
+        // The Review Queue card has no item Reject: Approve or Return the whole account.
+        $this->get('/account-reviews')->assertOk()
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
     }
 
     // ---------------------------------------------------------------

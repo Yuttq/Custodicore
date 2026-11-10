@@ -92,7 +92,7 @@ class StaffVisitRequestVisibilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('<a href="'.route('visitor.index').'#visit-requests"', false)
-            ->assertSee('<span class="nav-count" title="2 visit requests awaiting review">2</span>', false);
+            ->assertSee('<span class="nav-count" title="2 visit requests awaiting review" data-href="' . route('visitor.index') . '#visit-requests">2</span>', false);
     }
 
     public function test_sidebar_count_appears_on_every_record_officer_page(): void

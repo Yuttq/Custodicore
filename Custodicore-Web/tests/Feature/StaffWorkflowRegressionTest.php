@@ -55,15 +55,15 @@ class StaffWorkflowRegressionTest extends TestCase
         return [$visit, $token];
     }
 
-    public function test_record_officer_visitor_page_renders_assign_form(): void
+    public function test_visitor_page_has_no_assign_visit_form(): void
     {
         $this->actingAs($this->recordOfficerAccount, 'web');
 
+        // Visits are booked by the visitor (or at the Front Desk), not assigned from here.
         $this->get("/visitors/{$this->visitor->visitor_id}")
             ->assertOk()
-            ->assertSee('assignVisitForm', false)
-            ->assertSee('id="assignDays"', false)
-            ->assertSee($this->schedule->schedule_date->toDateString(), false);
+            ->assertDontSee('assignVisitForm', false)
+            ->assertDontSee('Assign Visit');
     }
 
     public function test_front_desk_checkout_scan_finds_active_checkin_for_used_qr(): void

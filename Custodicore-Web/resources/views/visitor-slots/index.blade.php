@@ -35,6 +35,51 @@
   </a>
 </div>
 
+{{-- Sessions visitors can't book yet: weekly sessions in the next 7 days with nothing published. --}}
+@if ($unpublished->isNotEmpty())
+  <div class="panel unpublished-panel" id="unpublished">
+    <div class="panel-header">
+      <h2>Not published yet <span class="count-chip">{{ $unpublished->count() }}</span></h2>
+      <span class="muted-cell">Visitors can only book published sessions. Publish these to open them for booking.</span>
+    </div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Date</th><th>Session</th><th>Visiting Group</th><th>Default Capacity</th><th></th></tr></thead>
+      <tbody>
+        @foreach ($unpublished as $item)
+          @php
+            $rule = $item['rule'];
+            $date = $item['date'];
+            $session = \App\Services\VisitSlotService::sessionOf($rule->time_slot_start);
+            $groupKey = $rule->groupKey();
+            $groupName = $groups[$groupKey] ?? $groupKey;
+          @endphp
+          <tr>
+            <td><strong>{{ $date->format('D, M j, Y') }}</strong></td>
+            <td>{{ ucfirst($session) }} <span class="muted-cell">{{ $rule->hoursLabel() }}</span></td>
+            <td>{{ str_starts_with($groupKey, 'dorm:') ? 'Dorm: ' . $groupName : $groupName }}</td>
+            <td>{{ $rule->max_capacity }}</td>
+            <td style="text-align:right;">
+              <form method="POST" action="{{ route('visitor-slots.store') }}" style="margin:0;"
+                    data-confirm="Publish the {{ $session }} session on {{ $date->format('M j, Y') }} for {{ $groupName }} with {{ $rule->max_capacity }} slots? Visitors can book it right away."
+                    data-confirm-title="Publish session" data-confirm-ok="Publish">
+                @csrf
+                <input type="hidden" name="schedule_date" value="{{ $date->toDateString() }}">
+                <input type="hidden" name="pdl_classification" value="{{ $groupKey }}">
+                <input type="hidden" name="session" value="{{ $session }}">
+                <input type="hidden" name="max_capacity" value="{{ $rule->max_capacity }}">
+                <input type="hidden" name="is_open" value="1">
+                <button type="submit" class="btn btn-blue" style="padding:6px 14px;">Publish</button>
+              </form>
+            </td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+    </div>
+  </div>
+@endif
+
 <form class="filters filters-5" method="GET" action="{{ route('visitor-slots.index') }}" id="sessions">
   <div class="field">
     <label for="from">From</label>

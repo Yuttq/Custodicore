@@ -171,27 +171,13 @@
                 @else
                   <span class="muted-cell">No picture (entered at front desk)</span>
                 @endif
-                {{-- Only an ID waiting for review: an approved ID stays approved. --}}
-                @if ($doc->verification_status === 'pending')
-                  <details class="acct-reject">
-                    <summary class="btn btn-outline-neutral acct-small elig-reject">Reject</summary>
-                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
-                          data-confirm="Reject {{ $visitor->full_name }}'s {{ $doc->typeLabel() }}? They will need to upload a new one."
-                          data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
-                      @csrf
-                      <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="Why the ID was rejected (shown to the visitor)"
-                                placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
-                      <button type="submit" class="btn btn-outline-neutral acct-small elig-reject">Confirm reject</button>
-                    </form>
-                  </details>
-                @endif
               </div>
             </div>
           @endforeach
         @endif
       </div>
 
-      @include('partials.registration-documents', ['visitor' => $visitor])
+      @include('partials.registration-documents', ['visitor' => $visitor, 'allowReject' => false])
 
       {{-- One-step approval: who they will visit, and what Approve will do. --}}
       @php
@@ -326,6 +312,18 @@
             @endif
           </div>
           <div class="elig-buttons">
+            {{-- Approve, or Return the whole account with what to fix; the visitor corrects it in the app and resubmits. --}}
+            <details class="acct-reject">
+              <summary class="btn btn-outline-neutral elig-reject">Return</summary>
+              <form method="POST" action="{{ route('visitor.reject', $visitor->visitor_id) }}" class="acct-reject-form"
+                    data-confirm="Return {{ $visitor->full_name }}'s account? They see what to fix in the app, correct it and resubmit. Nothing is approved."
+                    data-confirm-title="Return account" data-confirm-ok="Return" data-confirm-danger>
+                @csrf
+                <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="What to fix (shown to the visitor)"
+                          placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
+                <button type="submit" class="btn btn-outline-neutral elig-reject">Send back</button>
+              </form>
+            </details>
             <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}" id="{{ $approveForm }}"
                   data-confirm="{{ $visitor->isWalkIn() && ! $linked
                     ? "Approve {$visitor->full_name}? This approves their government ID and account. The PDL is then linked from the Front Desk details."
