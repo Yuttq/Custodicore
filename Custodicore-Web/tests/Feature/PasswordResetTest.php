@@ -400,14 +400,15 @@ class PasswordResetTest extends TestCase
         $this->assertTrue(Hash::check(self::OLD_PASSWORD, $this->recordOfficerAccount->fresh()->password_hash));
     }
 
-    public function test_web_forgot_form_never_emails_a_visitor_and_answers_the_same(): void
+    public function test_web_forgot_form_refuses_emails_not_registered_to_staff(): void
     {
-        $this->post('/forgot-password', ['email' => $this->visitorAccount->email])
-            ->assertRedirect(route('password.request'))
-            ->assertSessionHas('status');
-        $this->post('/forgot-password', ['email' => 'nobody@example.com'])
-            ->assertRedirect(route('password.request'))
-            ->assertSessionHas('status');
+        // A visitor's email and an unknown email are both refused with an error.
+        $this->from('/forgot-password')->post('/forgot-password', ['email' => $this->visitorAccount->email])
+            ->assertRedirect('/forgot-password')
+            ->assertSessionHasErrors('email');
+        $this->from('/forgot-password')->post('/forgot-password', ['email' => 'nobody@example.com'])
+            ->assertRedirect('/forgot-password')
+            ->assertSessionHasErrors('email');
 
         Mail::assertNothingSent();
     }

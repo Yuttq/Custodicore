@@ -744,8 +744,9 @@ table .flag{background:none;border:none;padding:0;text-align:left;font-size:12.5
 @media (max-width: 860px){.acct-approve-grid{grid-template-columns:1fr;}.acct-approve-summary{border-left:none;border-top:1px solid var(--border);border-radius:0 0 16px 16px;}}
 
 /* Sidebar badges: red = waiting for a decision, orange "!" = something to fix, blue = information */
-.nav .nav-count{background:var(--red-bg);color:var(--red-text);min-width:20px;text-align:center;}
-.nav .nav-count.is-warn{background:#FFEDD5;color:#C2410C;padding:1px 0;width:20px;}
+.nav .nav-count{background:var(--blue-bg);color:var(--blue);min-width:20px;text-align:center;}
+/* All sidebar badges are blue (counts and the "!" alike). */
+.nav .nav-count.is-warn{background:var(--blue-bg);color:var(--blue);padding:1px 0;width:20px;}
 .nav .nav-count.is-info{background:var(--blue-bg);color:var(--blue);}
 
 /* "This section changed" notice from the live sidebar badges */

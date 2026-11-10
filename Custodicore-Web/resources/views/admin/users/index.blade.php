@@ -119,7 +119,9 @@
 
                                     @if ($account['invite'] !== null)
                                         {{-- Not set up yet: Activate/Deactivate makes no sense (nobody knows the password). --}}
-                                        <form method="POST" action="{{ route('admin.users.resend-invite', $account['id']) }}">
+                                        <form method="POST" action="{{ route('admin.users.resend-invite', $account['id']) }}"
+                                              data-confirm="Send a new setup link to {{ $account['full_name'] }}'s email?"
+                                              data-confirm-title="Resend Invite" data-confirm-ok="Yes, send" data-confirm-cancel="No">
                                             @csrf
                                             <button type="submit" class="cc-btn-ghost">Resend Invite</button>
                                         </form>

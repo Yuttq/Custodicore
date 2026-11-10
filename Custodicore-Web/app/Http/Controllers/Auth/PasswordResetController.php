@@ -70,9 +70,9 @@ class PasswordResetController extends Controller
     }
 
     /**
-     * POST /forgot-password {email} — staff only. Same rule as the API: the
-     * answer never says whether the address has an account, and it is limited
-     * per IP (route throttle) and per address (here).
+     * POST /forgot-password {email} — staff only. Only an email registered to
+     * an active staff account is accepted; anything else gets an error and no
+     * email. Limited per IP (route throttle) and per address (here).
      */
     public function sendStaffLink(Request $request): RedirectResponse
     {
@@ -92,10 +92,15 @@ class PasswordResetController extends Controller
 
         RateLimiter::hit($key, self::REQUEST_DECAY_SECONDS);
 
+        if (! $this->passwords->isRegisteredStaffEmail($data['email'])) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => 'This email is not registered to an active staff account. Check the spelling, or contact your Admin.']);
+        }
+
         $this->passwords->request($data['email'], PasswordResetService::AUDIENCE_STAFF);
 
         return redirect()->route('password.request')
-            ->with('status', self::GENERIC_MESSAGE.' Check your inbox (and spam folder). The link expires in '.$this->passwords->expiresInMinutes().' minutes.');
+            ->with('status', 'We sent a password reset link to '.mb_strtolower(trim($data['email'])).'. Check your inbox (and spam folder). The link expires in '.$this->passwords->expiresInMinutes().' minutes.');
     }
 
     /** GET /password/reset/{token}?email= — the new-password form, or an error page for a dead link. */

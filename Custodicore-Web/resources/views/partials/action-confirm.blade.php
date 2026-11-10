@@ -9,6 +9,7 @@
       data-confirm="Question shown in the popup"      (required)
       data-confirm-title="Reject document"            (optional heading)
       data-confirm-ok="Reject"                        (optional button text)
+      data-confirm-cancel="No"                        (optional: cancel button text, default "Cancel")
       data-confirm-danger                             (optional: red button)
 
     The browser's own field checks (required, maxlength, ...) run first; the
@@ -214,6 +215,7 @@
         title.textContent = form.getAttribute('data-confirm-title') || 'Please confirm';
         msg.textContent = form.getAttribute('data-confirm');
         ok.textContent = form.getAttribute('data-confirm-ok') || 'Confirm';
+        document.getElementById('ccc-cancel').textContent = form.getAttribute('data-confirm-cancel') || 'Cancel';
         ok.classList.toggle('is-danger', form.hasAttribute('data-confirm-danger'));
 
         // Review of what was entered (forms with fields only).

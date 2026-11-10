@@ -1,6 +1,6 @@
 {{--
-  One sidebar badge (App\Services\NavBadges): red count = waiting for a
-  decision, orange "!" = something to fix, blue count = information.
+  One sidebar badge (App\Services\NavBadges), always blue: a count = waiting
+  for a decision or information, "!" = something to fix.
   Clicking the badge (not the menu name) opens data-href: the items it counts.
     $badge — ['kind' => count|warn|info, 'value' => int, 'title' => string, 'url' => ?string] or null
 --}}

@@ -50,7 +50,9 @@
                         <p class="text-[11px] text-text-secondary">{{ \App\Models\Role::label(auth()->user()->role?->role_name) }}</p>
                     </div>
                 </a>
-                <form method="POST" action="{{ route('logout') }}" data-confirm="Sign out of CustodiCore?">
+                <form method="POST" action="{{ route('logout') }}"
+                      data-confirm="Are you sure you want to sign out of CustodiCore?"
+                      data-confirm-title="Sign out" data-confirm-ok="Yes, sign out" data-confirm-cancel="No">
                     @csrf
                     <button type="submit" class="w-full px-[10px] text-left text-body font-medium text-[#4b5568]">Sign out</button>
                 </form>
@@ -105,6 +107,10 @@
          DOMContentLoaded before touching window.Chart — see dashboard's
          script block for the pattern. --}}
     @stack('scripts')
+
+    {{-- "Are you sure? Yes / No" popup for every admin form marked data-confirm (sign out,
+         resend invite, ...). Replaces the browser's plain confirm box on these pages. --}}
+    @include('partials.action-confirm')
 
     {{-- "Enter your password to finish" popup for forms marked data-password-confirm. --}}
     @include('partials.password-confirm', ['banner' => true])

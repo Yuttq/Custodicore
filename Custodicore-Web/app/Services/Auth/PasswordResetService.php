@@ -122,6 +122,12 @@ class PasswordResetService
         return self::isStaff($account) ? self::staffPasswordRules($account) : self::passwordRules($email);
     }
 
+    /** True when $email belongs to an active staff account that may reset its password. */
+    public function isRegisteredStaffEmail(string $email): bool
+    {
+        return self::isEligible($this->findByEmail($email), self::AUDIENCE_STAFF);
+    }
+
     /** True when $email belongs to a staff officer (decides which wording the reset page shows). */
     public function isStaffEmail(?string $email): bool
     {
