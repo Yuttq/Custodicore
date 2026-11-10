@@ -5,10 +5,23 @@
 @section('brand_gap', 'mb-md')
 
 @section('body')
+    @php $usesEmail = $usesEmail ?? false; @endphp
     <h1 class="text-card-title">Two-step verification</h1>
-    <p class="mb-md mt-xs text-body text-text-secondary">
-        Hello {{ $account->displayName() }}. Enter the 6-digit code from your authenticator app to finish signing in.
-    </p>
+    @if ($usesEmail)
+        @if (! empty($sendError))
+            <div class="mb-md mt-xs border-l-4 border-l-danger bg-danger/5 p-md rounded-sm">
+                <p class="text-body text-danger">{{ $sendError }}</p>
+            </div>
+        @endif
+        <p class="mb-md mt-xs text-body text-text-secondary">
+            Hello {{ $account->displayName() }}. We emailed a 6-digit code to <span class="font-semibold">{{ $emailTo }}</span>.
+            Enter it to finish signing in.
+        </p>
+    @else
+        <p class="mb-md mt-xs text-body text-text-secondary">
+            Hello {{ $account->displayName() }}. Enter the 6-digit code from your authenticator app to finish signing in.
+        </p>
+    @endif
 
     <form method="POST" action="{{ route('mfa.verify') }}" class="space-y-[12px]" autocomplete="off">
         @csrf
@@ -16,10 +29,14 @@
         <div>
             <label for="code" class="cc-label">Verification code</label>
             <input type="text" id="code" name="code" required autofocus
-                   inputmode="text" autocomplete="one-time-code" maxlength="32"
+                   inputmode="{{ $usesEmail ? 'numeric' : 'text' }}" autocomplete="one-time-code" maxlength="32"
                    placeholder="123456" class="cc-input h-[36px] text-center text-card-title tracking-widest" />
             <p class="mt-xs text-metadata text-text-secondary">
-                You can also type a backup code (like ABCDE-FGHJK) or the code we email you.
+                @if ($usesEmail)
+                    Not there? Check your spam folder. The code works for {{ config('mfa.email_code_minutes') }} minutes.
+                @else
+                    You can also type a backup code (like ABCDE-FGHJK) or the code we email you.
+                @endif
             </p>
         </div>
 
@@ -36,15 +53,19 @@
     </form>
 
     <div class="mt-md border-t border-border pt-[12px]">
-        <p class="text-metadata text-text-secondary">Authenticator app not with you?</p>
+        <p class="text-metadata text-text-secondary">{{ $usesEmail ? 'No email yet, or the code expired?' : 'Authenticator app not with you?' }}</p>
         <form method="POST" action="{{ route('mfa.email') }}" class="mt-xs">
             @csrf
-            <button type="submit" class="cc-btn-secondary h-[36px] w-full">Email me a code</button>
+            <button type="submit" class="cc-btn-secondary h-[36px] w-full">{{ $usesEmail ? 'Send a new code' : 'Email me a code' }}</button>
         </form>
     </div>
 
     <p class="mt-md text-center text-metadata text-text-secondary">
-        Lost your phone and your backup codes? Ask the system administrator to reset your two-step verification.
+        @if ($usesEmail)
+            Can't open your email? Ask the system administrator to reset your two-step verification.
+        @else
+            Lost your phone and your backup codes? Ask the system administrator to reset your two-step verification.
+        @endif
     </p>
     <p class="mt-xs text-center text-metadata">
         <a href="{{ route('mfa.cancel') }}" class="text-primary-navy underline">Back to sign in</a>

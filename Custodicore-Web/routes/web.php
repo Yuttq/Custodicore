@@ -56,6 +56,10 @@ Route::middleware('guest')->prefix('login/mfa')->name('mfa.')->group(function ()
     Route::post('/email', [MfaController::class, 'emailCode'])->middleware('throttle:6,1,mfa-email')->name('email');
     Route::get('/setup', [MfaController::class, 'setup'])->name('setup');
     Route::post('/setup', [MfaController::class, 'setupConfirm'])->middleware('throttle:10,1,mfa-setup')->name('setup.confirm');
+    // "No authenticator app" choice: emailed codes instead.
+    Route::post('/setup/email', [MfaController::class, 'setupEmail'])->middleware('throttle:6,1,mfa-email')->name('setup.email');
+    Route::get('/setup/email', [MfaController::class, 'setupEmailForm'])->name('setup.email.form');
+    Route::post('/setup/email/confirm', [MfaController::class, 'setupEmailConfirm'])->middleware('throttle:10,1,mfa-setup')->name('setup.email.confirm');
     Route::get('/cancel', [MfaController::class, 'cancel'])->name('cancel');
 });
 

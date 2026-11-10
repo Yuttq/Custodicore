@@ -6,8 +6,22 @@
 @section('body')
     <h1 class="text-card-title">Set up two-step verification</h1>
     <p class="mb-md mt-xs text-body text-text-secondary">
-        Hello {{ $account->displayName() }}. Staff accounts need a second step when signing in. It takes about two minutes.
+        Hello {{ $account->displayName() }}. Staff accounts need a second step when signing in. Choose how you want to get your codes.
     </p>
+
+    {{-- Option B (no app): emailed codes. Shown first so officers who don't want an app see it right away. --}}
+    <div class="mb-md rounded-card border border-border p-md">
+        <p class="font-semibold">Option 1 — Email me a code each time <span class="text-metadata font-normal text-text-secondary">(no app needed)</span></p>
+        <p class="mt-xs text-metadata text-text-secondary">
+            Every time you sign in on a new or untrusted computer, we send a 6-digit code to {{ \App\Services\Auth\StaffMfaService::maskEmail($account->staffProfile?->personal_email ?: $account->email) }}.
+        </p>
+        <form method="POST" action="{{ route('mfa.setup.email') }}" class="mt-sm">
+            @csrf
+            <button type="submit" class="cc-btn-secondary w-full">Use email codes</button>
+        </form>
+    </div>
+
+    <p class="mb-sm font-semibold">Option 2 — Use an authenticator app <span class="text-metadata font-normal text-text-secondary">(works even without email)</span></p>
 
     <ol class="space-y-md text-body">
         <li>

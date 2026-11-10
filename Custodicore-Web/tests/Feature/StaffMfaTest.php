@@ -148,6 +148,89 @@ class StaffMfaTest extends TestCase
 
     // ---------------------------------------------------------------- authenticator code
 
+    // ---------------------------------------------------------------- first-time setup: emailed codes (no app)
+
+    /** Picks "Use email codes" at first sign-in and returns the emailed code. */
+    private function chooseEmailCodes(): string
+    {
+        $this->staffLogin('r.salcedo')->assertRedirect(route('mfa.challenge'));
+        $this->get(route('mfa.setup'))->assertOk()->assertSee('Use email codes');
+
+        $this->post(route('mfa.setup.email'))->assertRedirect(route('mfa.setup.email.form'));
+        $this->get(route('mfa.setup.email.form'))->assertOk()->assertSee('Check your email');
+
+        return Mail::sent(StaffMfaCode::class)->last()->code;
+    }
+
+    public function test_first_sign_in_can_choose_emailed_codes_instead_of_an_app(): void
+    {
+        Mail::fake();
+        $code = $this->chooseEmailCodes();
+        Mail::assertSent(StaffMfaCode::class, fn (StaffMfaCode $m) => $m->hasTo('r.salcedo@bjmp.gov.ph'));
+
+        // A wrong code turns nothing on.
+        $this->post(route('mfa.setup.email.confirm'), ['code' => $code === '000000' ? '111111' : '000000'])->assertSessionHasErrors('code');
+        $this->assertGuest('web');
+        $this->assertNull($this->recordOfficerAccount->fresh()->mfa_enabled_at);
+
+        $this->post(route('mfa.setup.email.confirm'), ['code' => $code])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
+
+        $fresh = $this->recordOfficerAccount->fresh();
+        $this->assertSame('email', $fresh->mfa_method);
+        $this->assertNull($fresh->mfa_secret);
+        $this->assertNotNull($fresh->mfa_enabled_at);
+        $this->assertTrue(app(StaffMfaService::class)->isEnabled($fresh));
+    }
+
+    public function test_email_code_officers_get_a_code_automatically_at_each_sign_in(): void
+    {
+        Mail::fake();
+        $this->post(route('mfa.setup.email.confirm'), ['code' => $this->chooseEmailCodes()]);
+        $this->signOut();
+
+        // Next sign-in: the code page emails a fresh code by itself (a refresh does not resend).
+        $this->staffLogin('r.salcedo')->assertRedirect(route('mfa.challenge'));
+        $this->get(route('mfa.challenge'))->assertOk()->assertSee('We emailed a 6-digit code')->assertDontSee('authenticator app to finish');
+        $this->get(route('mfa.challenge'))->assertOk();
+        Mail::assertSent(StaffMfaCode::class, 2);
+
+        $code = Mail::sent(StaffMfaCode::class)->last()->code;
+        $this->post(route('mfa.verify'), ['code' => $code])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
+
+        // The code was single-use.
+        $this->signOut();
+        $this->staffLogin('r.salcedo');
+        $this->post(route('mfa.verify'), ['code' => $code])->assertSessionHasErrors('code');
+        $this->assertGuest('web');
+    }
+
+    public function test_email_code_officers_see_their_method_on_the_profile_and_have_no_backup_codes(): void
+    {
+        Mail::fake();
+        $this->post(route('mfa.setup.email.confirm'), ['code' => $this->chooseEmailCodes()]);
+
+        $this->get(route('account.profile'))->assertOk()
+            ->assertSee('On (emailed codes).')
+            ->assertDontSee('Make new backup codes');
+    }
+
+    public function test_reset_sends_an_email_code_officer_back_to_the_choice(): void
+    {
+        Mail::fake();
+        $this->post(route('mfa.setup.email.confirm'), ['code' => $this->chooseEmailCodes()]);
+
+        app(StaffMfaService::class)->reset($this->recordOfficerAccount->fresh());
+        $fresh = $this->recordOfficerAccount->fresh();
+        $this->assertNull($fresh->mfa_method);
+        $this->assertNull($fresh->mfa_enabled_at);
+
+        $this->signOut();
+        $this->staffLogin('r.salcedo');
+        $this->get(route('mfa.challenge'))->assertRedirect(route('mfa.setup'));
+    }
+
     public function test_a_wrong_code_is_refused(): void
     {
         $secret = $this->enrollStaffMfa($this->recordOfficerAccount);

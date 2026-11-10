@@ -38,6 +38,7 @@ class MyProfileController extends Controller
             'profile' => $account->staffProfile,
             // Status only: the secret and the backup codes themselves never reach this page.
             'mfaEnabled' => $mfaEnabled,
+            'mfaUsesEmail' => $mfaEnabled && $mfa->usesEmail($account),
             'backupCodesLeft' => $mfaEnabled ? $mfa->backupCodesLeft($account) : 0,
         ]);
     }
