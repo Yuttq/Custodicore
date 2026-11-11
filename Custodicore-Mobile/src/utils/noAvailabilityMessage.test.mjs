@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { noAvailabilityMessage } from './noAvailabilityMessage.js';
+import { noAvailabilityMessage, noAvailabilityReason } from './noAvailabilityMessage.js';
 
 const day = (date, ...reasons) => ({
   date,
@@ -39,6 +39,33 @@ test('each reason has its own message', () => {
   assert.match(noAvailabilityMessage(rel([day('d', 'already_scheduled')])), /already have a visit with Angel Low/);
   assert.match(noAvailabilityMessage(rel([day('d', 'closed')])), /Visiting is closed/);
   assert.match(noAvailabilityMessage(rel([day('d', 'not_eligible')])), /Angel Low has no visiting days/);
+});
+
+test('non-visiting days never outvote the real reason on visiting days', () => {
+  // A Thursday-only PDL over a month: many not_eligible days, few real ones.
+  const weeklyLimit = { limit: 2, weeks: { '2026-11-09': 2 } };
+  const days = [
+    ...['2026-11-11', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18', '2026-11-20']
+      .map((d) => day(d, 'not_eligible')),
+    day('2026-11-12', 'weekly_limit'),
+    day('2026-11-19', 'not_published'),
+    day('2026-11-26', 'not_published'),
+  ];
+  assert.match(noAvailabilityMessage(rel(days), weeklyLimit), /haven't been opened yet/);
+  assert.match(
+    noAvailabilityMessage(rel([day('a', 'not_eligible'), day('b', 'not_eligible'), day('c', 'weekly_limit')]), weeklyLimit),
+    /weekly visit limit/,
+  );
+  assert.match(
+    noAvailabilityMessage(rel([day('a', 'not_eligible'), day('b', 'not_in_effect')])),
+    /Angel Low has no visiting days/,
+  );
+});
+
+test('the main reason is exposed so screens can skip a repeated message', () => {
+  assert.equal(noAvailabilityReason(rel([day('a', 'not_eligible'), day('b', 'weekly_limit')])), 'weekly_limit');
+  assert.equal(noAvailabilityReason(rel([day('a', 'not_published')], { pdlAvailable: false })), 'pdl_unavailable');
+  assert.equal(noAvailabilityReason(rel([])), null);
 });
 
 test('an unavailable PDL is said first, whatever the days say', () => {

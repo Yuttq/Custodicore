@@ -235,13 +235,12 @@ export function weeklyUsageLabel(usage) {
  * @param {WeeklyUsage} usage
  */
 export function weeklyLimitReachedMessage(usage) {
-  const visits = `${usage.limit} ${usage.limit === 1 ? 'visit' : 'visits'}`;
+  // Short on purpose: the counter's heading already shows the week and "2 of 2 visits used".
   // "Monday, November 23, 2026" → "Monday, November 23"
   const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
   return (
-    `You've reached the limit of ${visits} for ${formatWeekRange(usage.weekStart)} (Monday–Sunday). ` +
-    'The limit counts visits with all your linked PDLs together, so you can’t request another visit ' +
-    `with any PDL that week. You can request again for the week starting ${nextMonday}.`
+    'Weekly limit reached. It counts visits with all your PDLs together. ' +
+    `You can book again from ${nextMonday}.`
   );
 }
 

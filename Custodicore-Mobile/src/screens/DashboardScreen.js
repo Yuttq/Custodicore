@@ -25,8 +25,8 @@ import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
-import { calendarDateHandoff } from '../utils/scheduleAvailability';
-import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
+import { calendarDateHandoff, weeklyUsageFor } from '../utils/scheduleAvailability';
+import { noAvailabilityMessage, noAvailabilityReason } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
@@ -195,7 +195,7 @@ function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
 
 /**
  * The visitor's verified PDLs as chips above the Home calendar, plus the
- * circular (+) that opens the Phase 5B "Add Another PDL" request form. One
+ * "+ Add PDL" chip that opens the Phase 5B "Add Another PDL" request form. One
  * chip is selected at a time and the calendar shows that PDL's dates;
  * tapping a chip stays on Home.
  * @param {object} props
@@ -232,20 +232,19 @@ function HomePdlChips({ relationships, selectedId, onSelect, canAdd, onAdd }) {
         );
       })}
       {canAdd ? (
-        <View style={styles.addPdlWrap}>
-          <Pressable
-            onPress={onAdd}
-            hitSlop={8}
-            style={({ pressed }) => [styles.addPdlButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Add another PDL. Ask facility staff to add another PDL to your account"
-          >
-            <Ionicons name="add" size={20} color={colors.primaryTeal} />
-          </Pressable>
-          {relationships.length === 0 ? (
-            <Text style={styles.addPdlHint}>Add Another PDL</Text>
-          ) : null}
-        </View>
+        // A labelled chip in the same row as the PDLs, so it never sits alone.
+        <Pressable
+          onPress={onAdd}
+          hitSlop={8}
+          style={({ pressed }) => [styles.pdlChip, styles.addPdlChip, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Add another PDL. Ask facility staff to add another PDL to your account"
+        >
+          <Ionicons name="add" size={16} color={colors.primaryTeal} />
+          <Text style={styles.addPdlText} numberOfLines={1}>
+            {relationships.length === 0 ? 'Add Another PDL' : 'Add PDL'}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -282,6 +281,9 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
   );
+  const weeklyLimitAlreadyShown =
+    Boolean(weeklyUsageFor(weeklyLimit, today)?.reached) &&
+    noAvailabilityReason(relationship) === 'weekly_limit';
 
   // Only a date the selected PDL has an available session on opens Schedule.
   const onSelectDate = useCallback(
@@ -314,7 +316,7 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
   } else {
     content = (
       <>
-        {/* The verified PDLs (one selected) and the (+) Add Another PDL button. */}
+        {/* The verified PDLs (one selected) and the "+ Add PDL" chip. */}
         <HomePdlChips
           relationships={relationships}
           selectedId={relationship.relationshipId}
@@ -322,15 +324,23 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
           canAdd={canAddPdl}
           onAdd={onAddPdl}
         />
+        {/* This week's visits across all linked PDLs. */}
+        <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={today} />
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
         ) : !hasAvailableDate && !loading ? (
-          <Text style={styles.calendarWarning}>{noAvailabilityMessage(relationship, weeklyLimit)}</Text>
+          // The counter above already explains a weekly limit reached this week.
+          weeklyLimitAlreadyShown ? null : (
+            <View style={styles.calendarNotice}>
+              <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.calendarNoticeText}>
+                {noAvailabilityMessage(relationship, weeklyLimit)}
+              </Text>
+            </View>
+          )
         ) : (
           <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>
         )}
-        {/* This week's visits across all linked PDLs. */}
-        <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={today} />
         {/* Tapping a date leaves Home, so no date stays selected here and the
             Selected legend stays hidden (showSelection={false}). */}
         <VisitCalendar
@@ -801,7 +811,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: spacing.sm,
   },
-  // Verified PDLs (display only) + the circular (+) Add Another PDL button.
+  // Verified PDLs (display only) + the "+ Add PDL" chip.
   pdlChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -831,25 +841,31 @@ const styles = StyleSheet.create({
   pdlChipTextActive: {
     color: colors.white,
   },
-  addPdlWrap: {
+  addPdlChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  addPdlButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
+    gap: spacing.xs,
+    paddingLeft: spacing.sm + spacing.xs,
+    borderStyle: 'dashed',
     borderColor: colors.primaryTeal,
     backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  addPdlHint: {
+  addPdlText: {
     ...typography.metadata,
     fontWeight: '600',
     color: colors.primaryTeal,
+  },
+  // Why no date can be booked: quiet, with an icon, not a bold warning.
+  calendarNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  calendarNoticeText: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    flex: 1,
   },
   announcementMeta: {
     flexDirection: 'row',

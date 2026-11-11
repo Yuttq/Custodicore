@@ -119,12 +119,12 @@ test('weekly usage comes from the response and is looked up by Monday–Sunday w
   assert.equal(normalizeAvailabilityResponse({ relationships: [] }).weeklyLimit, null);
 });
 
-test('the limit message names the Monday–Sunday range and all linked PDLs', () => {
+test('the limit message covers all PDLs and says when booking reopens', () => {
   const usage = weeklyUsageFor(normalizeAvailabilityResponse({ weeklyLimit: WEEKLY }).weeklyLimit, '2026-11-20');
   const message = weeklyLimitReachedMessage(usage);
-  assert.match(message, /limit of 2 visits for November 16–22 \(Monday–Sunday\)/);
-  assert.match(message, /all your linked PDLs together/);
-  assert.match(message, /week starting Monday, November 23\./);
+  assert.match(message, /Weekly limit reached/);
+  assert.match(message, /all your PDLs together/);
+  assert.match(message, /book again from Monday, November 23\./);
 });
 
 test('time and day formatting', () => {

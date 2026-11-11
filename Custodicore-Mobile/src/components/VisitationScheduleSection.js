@@ -11,11 +11,12 @@ import {
   formatSlotRange,
   formatVisitingDays,
   middayBreakLabel,
+  weeklyUsageFor,
   periodLabel,
   visitingWindows,
   WHOLE_DAY_PERIOD,
 } from '../utils/scheduleAvailability';
-import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
+import { noAvailabilityMessage, noAvailabilityReason } from '../utils/noAvailabilityMessage';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 
 /** What booking the whole day means at the gate. */
@@ -147,6 +148,10 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
   );
+  // The weekly counter under "Choose a Visit Date" already explains this week's limit.
+  const weeklyLimitAlreadyShown =
+    Boolean(weeklyUsageFor(weeklyLimit, selectedDate ?? today)?.reached) &&
+    noAvailabilityReason(relationship) === 'weekly_limit';
 
   let info;
   if (loading && !relationship) {
@@ -195,7 +200,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         ))}
         {relationship.message ? (
           <Text style={styles.scheduleWarning}>{relationship.message}</Text>
-        ) : !hasAvailableDate && !loading ? (
+        ) : !hasAvailableDate && !loading && !weeklyLimitAlreadyShown ? (
           <Text style={styles.scheduleWarning}>{noAvailabilityMessage(relationship, weeklyLimit)}</Text>
         ) : null}
       </>

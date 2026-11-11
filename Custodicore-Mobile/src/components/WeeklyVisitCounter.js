@@ -50,8 +50,8 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
         <Text style={styles.reached}>{weeklyLimitReachedMessage(usage)}</Text>
       ) : (
         <Text style={styles.note}>
-          Up to {usage.limit} {usage.limit === 1 ? 'visit' : 'visits'} per week (Monday–Sunday), counted
-          across all your linked PDLs.
+          Up to {usage.limit} {usage.limit === 1 ? 'visit' : 'visits'} a week (Mon–Sun), across all
+          your PDLs.
         </Text>
       )}
     </View>
@@ -96,7 +96,6 @@ const styles = StyleSheet.create({
   },
   reached: {
     ...typography.metadata,
-    fontWeight: '600',
     color: colors.warningText,
     marginTop: spacing.xs,
   },
