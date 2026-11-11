@@ -52,7 +52,8 @@
         {{-- ========================================================
             CHECK-IN HEADER + PROGRESS
         ========================================================= --}}
-        <div class="cc-card">
+        {{-- Shown once a QR pass is scanned (step 2 onwards); step 1 has its own title. --}}
+        <div id="checkinHeaderCard" class="cc-card hidden">
 
             <div class="flex items-center gap-sm">
 
@@ -73,7 +74,7 @@
 
 
             {{-- PROGRESS --}}
-            <div class="mt-lg">
+            <div id="checkinProgressBar" class="mt-lg">
                     @include('frontdesk.partials.step-progress', ['wizard' => 'qrci', 'class' => '', 'steps' => ['Scan QR', 'Visitor Info', 'Verify ID', 'Summary']])
 
             </div>
@@ -95,11 +96,11 @@
                     <div>
 
                         <p class="text-card-title">
-                            Scan Visitor QR Code
+                            Visitor Check-In
                         </p>
 
                         <p class="text-metadata text-text-secondary">
-                            Scan the visitor's QR code to retrieve the approved visit.
+                            Log the visitor’s arrival at the facility. Start the scanner and scan the visitor’s QR code.
                         </p>
 
                     </div>
@@ -167,6 +168,13 @@
 
                             <p class="text-card-title">
                                 Scanning Tips
+                            </p>
+
+
+                            <p class="text-metadata text-text-secondary">
+
+                                For a quick, clean scan of the visitor's QR pass.
+
                             </p>
 
 
@@ -377,6 +385,13 @@
                             </p>
 
 
+                            <p class="mt-xs text-metadata text-text-secondary" data-mci="3">
+
+                                Check the ID the visitor hands over and give the reason for checking in without a QR code.
+
+                            </p>
+
+
                             <div class="mt-md rounded-lg border border-border bg-background p-md" data-mci="3">
 
                                 <div class="grid grid-cols-1 gap-md md:grid-cols-2">
@@ -537,11 +552,6 @@
             <div class="cc-card">
 
                 <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        2
-                    </span>
-
                     <div>
 
                         <p class="text-card-title">
@@ -777,9 +787,7 @@
         ========================================================= --}}
         <div id="checkinStep3" class="checkin-step hidden mt-lg">
             <div class="cc-card">
-                <div class="flex items-center gap-sm">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">3</span>
-                    <div>
+                <div class="flex items-center gap-sm">                    <div>
                         <p class="text-card-title">ID Verification</p>
                         <p class="text-metadata text-text-secondary">Compare the presented physical ID with the registered ID before check-in.</p>
                     </div>
@@ -919,9 +927,7 @@
         ========================================================= --}}
         <div id="checkinStep4" class="checkin-step hidden mt-lg">
             <div class="cc-card">
-                <div class="flex items-center gap-sm">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">4</span>
-                    <div>
+                <div class="flex items-center gap-sm">                    <div>
                         <p class="text-card-title">Check-In Summary</p>
                         <p class="text-metadata text-text-secondary">Review all visit, visitor, PDL, and ID details before confirming check-in.</p>
                     </div>
@@ -1034,9 +1040,14 @@
                         <tbody class="divide-y divide-border">
                             @forelse ($todayHistory as $checkin)
                                 @php $visit = $checkin->visitRequest; @endphp
-                                <tr>
+                                @php $profileUrl = $visit?->visitor ? route('frontdesk.visitor-lookup.show', ['visitor' => $visit->visitor, 'q' => $visit->visitor->full_name]) : null; @endphp
+                                <tr @if ($profileUrl) data-row-href="{{ $profileUrl }}" class="cursor-pointer transition-colors hover:bg-background" title="Open in Visitor Lookup" @endif>
                                     <td class="py-sm pr-md">
-                                        <span class="font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</span>
+                                        @if ($profileUrl)
+                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->full_name }}</a>
+                                        @else
+                                            <span class="font-semibold">—</span>
+                                        @endif
                                         @if ($visit?->relationship)
                                             <span class="block text-metadata text-text-secondary">{{ $visit->relationship->relationshipLabel() }}</span>
                                         @endif
@@ -1089,7 +1100,8 @@
         {{-- ========================================================
             CHECK-OUT HEADER + PROGRESS
         ========================================================= --}}
-        <div class="cc-card">
+        {{-- Shown once a QR pass is scanned (step 2 onwards); step 1 has its own title. --}}
+        <div id="checkoutHeaderCard" class="cc-card hidden">
 
             <div class="flex items-center gap-sm">
 
@@ -1110,7 +1122,7 @@
 
 
             {{-- PROGRESS --}}
-            <div class="mt-lg">
+            <div id="checkoutProgressBar" class="mt-lg">
                     @include('frontdesk.partials.step-progress', ['wizard' => 'qrco', 'class' => '', 'steps' => ['Scan QR', 'Active Visit', 'Return ID', 'Summary']])
 
             </div>
@@ -1133,11 +1145,11 @@
                     <div>
 
                         <p class="text-card-title">
-                            Scan Visitor QR Code
+                            Visitor Check-Out
                         </p>
 
                         <p class="text-metadata text-text-secondary">
-                            Scan the visitor's QR code to retrieve the active visit.
+                            Log the visitor’s departure and close the visit. Start the scanner and scan the visitor’s QR code.
                         </p>
 
                     </div>
@@ -1200,6 +1212,13 @@
 
                             <p class="text-card-title">
                                 Scanning Tips
+                            </p>
+
+
+                            <p class="text-metadata text-text-secondary">
+
+                                For a quick, clean scan of the visitor's QR pass.
+
                             </p>
 
 
@@ -1783,11 +1802,6 @@
             <div class="cc-card">
 
                 <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        2
-                    </span>
-
                     <div>
 
                         <p class="text-card-title">
@@ -1876,11 +1890,6 @@
             <div class="cc-card">
 
                 <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        3
-                    </span>
-
                     <div>
 
                         <p class="text-card-title">
@@ -1972,11 +1981,6 @@
             <div class="cc-card">
 
                 <div class="flex items-center gap-sm">
-
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-blue text-sm font-bold text-white">
-                        4
-                    </span>
-
                     <div>
 
                         <p class="text-card-title">
@@ -2096,9 +2100,14 @@
                                         ? (int) $checkin->check_in_time->diffInMinutes($checkin->check_out_time)
                                         : null;
                                 @endphp
-                                <tr>
+                                @php $profileUrl = $visit?->visitor ? route('frontdesk.visitor-lookup.show', ['visitor' => $visit->visitor, 'q' => $visit->visitor->full_name]) : null; @endphp
+                                <tr @if ($profileUrl) data-row-href="{{ $profileUrl }}" class="cursor-pointer transition-colors hover:bg-background" title="Open in Visitor Lookup" @endif>
                                     <td class="py-sm pr-md">
-                                        <span class="font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</span>
+                                        @if ($profileUrl)
+                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->full_name }}</a>
+                                        @else
+                                            <span class="font-semibold">—</span>
+                                        @endif
                                         @if ($visit?->relationship)
                                             <span class="block text-metadata text-text-secondary">{{ $visit->relationship->relationshipLabel() }}</span>
                                         @endif
@@ -2198,6 +2207,7 @@ document.addEventListener('DOMContentLoaded', function () {
 ============================================================ */
 
 function updateCheckinProgress(step) {
+    document.getElementById('checkinHeaderCard')?.classList.toggle('hidden', step < 2);
     window.ccPaintSteps('qrci', step);
 }
 
@@ -2243,6 +2253,7 @@ function showCheckinStep(step) {
     ============================================================ */
 
     function updateCheckoutProgress(step) {
+        document.getElementById('checkoutHeaderCard')?.classList.toggle('hidden', step < 2);
         window.ccPaintSteps('qrco', step);
     }
 
@@ -4159,3 +4170,15 @@ function showCheckinStep(step) {
 @endpush
 
 @endsection
+@push('scripts')
+<script>
+    /* Today's Check-Ins / Check-Outs: clicking anywhere on a row opens the visitor in Visitor Lookup. */
+    document.addEventListener('click', e => {
+        const row = e.target.closest('tr[data-row-href]');
+        if (!row || e.target.closest('a, button, input, select, textarea, label')) return;
+        if (window.getSelection()?.toString()) return; // selecting text, not opening
+        if (e.ctrlKey || e.metaKey) window.open(row.dataset.rowHref, '_blank');
+        else window.location.href = row.dataset.rowHref;
+    });
+</script>
+@endpush

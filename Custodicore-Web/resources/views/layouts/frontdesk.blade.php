@@ -35,7 +35,7 @@
                         ['route' => 'frontdesk.checkin-checkout', 'label' => 'Check-In / Check-Out'],
                         ['route' => 'frontdesk.walk-ins.index', 'label' => 'Walk-in Visitors', 'active' => 'frontdesk.walk-ins.*'],
                         ['route' => 'frontdesk.schedule', 'label' => 'Visit Schedule'],
-                        ['route' => 'frontdesk.visitor-lookup', 'label' => 'Visitor Lookup'],
+                        ['route' => 'frontdesk.visitor-lookup', 'label' => 'Visitor Lookup', 'active' => 'frontdesk.visitor-lookup*'],
                         ['route' => 'frontdesk.attendance-log', 'label' => 'Activity Log'],
                     ];
                 @endphp
