@@ -59,14 +59,15 @@ class WalkInVisitorTest extends TestCase
             'last_name' => 'Reyes',
             'date_of_birth' => '1970-05-02',
             'gender' => 'female',
-            'address' => 'Brgy. San Isidro',
+            'contact_number' => '09171234567',
+            'address' => 'Brgy. San Isidro, Quezon City',
             'photo' => UploadedFile::fake()->image('face.jpg'),
             'id_type' => 'national_id',
-            'id_number' => 'PSN-1234-5678',
             'government_id' => UploadedFile::fake()->image('id.jpg'),
             'pdl_id' => $this->pdl->pdl_id,
             'requested_date' => self::FRIDAY,
             'requested_start_times' => ['09:00'],
+            'visit_purpose_type' => 'Family visit',
             'visit_purpose' => 'Family visit',
             'relationship_type' => 'spouse',
             'documents' => ['marriage_certificate' => UploadedFile::fake()->create('marriage.pdf', 200, 'application/pdf')],
@@ -240,7 +241,7 @@ class WalkInVisitorTest extends TestCase
 
     public function test_a_minor_needs_a_guardian_and_birth_certificate_but_no_id(): void
     {
-        $minor = ['date_of_birth' => '2015-01-10', 'relationship_type' => 'child', 'id_type' => null, 'id_number' => null, 'government_id' => null];
+        $minor = ['date_of_birth' => '2015-01-10', 'relationship_type' => 'child', 'id_type' => null, 'government_id' => null];
 
         $this->register($minor + ['documents' => ['visitor_birth_certificate' => UploadedFile::fake()->image('bc.jpg')]])
             ->assertSessionHasErrors(['guardian_full_name', 'guardian_relationship', 'guardian_contact_number']);
@@ -296,7 +297,7 @@ class WalkInVisitorTest extends TestCase
     {
         // A Friday Records has not opened.
         $this->register(['requested_date' => '2026-10-23'])
-            ->assertSessionHasErrors(['requested_start_times' => 'Records has not opened a session for this PDL on that date. Choose one of the dates shown.']);
+            ->assertSessionHasErrors(['requested_date' => 'Visits are not allowed on the selected day.']);
         // No session at that time.
         $this->register(['requested_start_times' => ['14:00']])->assertSessionHasErrors('requested_start_times');
         // No session chosen.
@@ -352,7 +353,6 @@ class WalkInVisitorTest extends TestCase
         $this->post(route('frontdesk.checkin-checkout.check-in', $visit), [
             'verification_method' => 'manual_override',
             'id_surrendered_type' => 'national_id',
-            'id_number' => 'PSN-1234-5678',
             'override_reason' => 'Walk-in visitor approved by Records.',
         ])->assertSessionHasNoErrors();
 
@@ -810,6 +810,58 @@ class WalkInVisitorTest extends TestCase
         $this->register(['contact_number' => '0917123456'])->assertSessionHasErrors('contact_number');
         $this->register(['contact_number' => '0917-123-4567'])->assertSessionHasNoErrors();
         $this->assertSame('09171234567', VisitorProfile::where('full_name', 'Lourdes Reyes')->value('contact_number'));
+    }
+
+    public function test_a_plus_63_mobile_number_is_accepted_and_stored_as_09(): void
+    {
+        $this->register(['contact_number' => '+639171234567'])->assertSessionHasNoErrors();
+        $this->assertSame('09171234567', VisitorProfile::where('full_name', 'Lourdes Reyes')->value('contact_number'));
+    }
+
+    public function test_registration_fields_show_the_front_desk_messages(): void
+    {
+        $this->register([
+            'first_name' => '   ',
+            'last_name' => 'R',
+            'gender' => '',
+            'contact_number' => '',
+            'address' => 'Abc',
+            'photo' => UploadedFile::fake()->create('face.gif', 50, 'image/gif'),
+            'relationship_type' => '',
+            'visit_purpose_type' => '',
+            'visit_purpose' => '',
+            'consent' => '',
+        ])->assertSessionHasErrors([
+            'first_name' => 'Please enter the visitor’s first name.',
+            'last_name' => 'Last name must be 2 to 50 characters.',
+            'gender' => 'Please select the visitor’s sex.',
+            'contact_number' => 'Please enter a contact number.',
+            'address' => 'Address must be 5 to 200 characters.',
+            'photo' => 'Photo must be a JPG or PNG file.',
+            'relationship_type' => 'Please select the visitor’s relationship to the PDL.',
+            'visit_purpose_type' => 'Please select the purpose of the visit.',
+            'consent' => 'The visitor must agree to the Terms and Conditions and the Privacy Policy before proceeding.',
+        ]);
+
+        $this->register(['first_name' => '<b>Lou</b>rdes1'])->assertSessionHasErrors([
+            'first_name' => 'First name can only contain letters, spaces, periods, hyphens, and apostrophes.',
+        ]);
+        $this->register(['first_name' => 'Niño', 'last_name' => "O'Brien-Dela Cruz Jr."])->assertSessionHasNoErrors();
+    }
+
+    public function test_dates_purpose_and_pdl_rules(): void
+    {
+        $this->register(['date_of_birth' => now()->addDay()->toDateString()])
+            ->assertSessionHasErrors(['date_of_birth' => 'Date of birth cannot be in the future.']);
+        $this->register(['requested_date' => now()->subDay()->toDateString()])
+            ->assertSessionHasErrors(['requested_date' => 'Visit date cannot be in the past.']);
+        $this->register(['visit_purpose_type' => 'other', 'visit_purpose' => ''])
+            ->assertSessionHasErrors(['visit_purpose' => 'Please specify the purpose of the visit.']);
+        $this->register(['pdl_id' => ''])
+            ->assertSessionHasErrors(['pdl_id' => 'Please select the PDL to be visited.']);
+
+        $this->pdl->forceFill(['custody_status' => 'released'])->save();
+        $this->register()->assertSessionHasErrors(['pdl_id' => 'The selected PDL was not found or is no longer detained.']);
     }
 
     // ---------------------------------------------- Phase 3: Records review

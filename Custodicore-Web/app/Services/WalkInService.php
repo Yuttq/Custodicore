@@ -67,7 +67,7 @@ class WalkInService
      *               guardian_full_name?:?string,guardian_relationship?:?string,guardian_contact_number?:?string,
      *               pdl_id:int,requested_date:string,requested_start_times:array<int,string>,
      *               visit_purpose:string,relationship_type:string,has_children_together?:?bool,
-     *               id_type?:?string,id_number?:?string}  $data
+     *               id_type?:?string}  $data
      * @param  array<string, UploadedFile>  $documents  relationship documents by requirement key
      */
     public function register(array $data, UploadedFile $photo, ?UploadedFile $governmentId, array $documents, int $staffId): VisitorProfile
@@ -129,7 +129,7 @@ class WalkInService
                     VisitorId::create([
                         'visitor_id' => $profile->visitor_id,
                         'id_type' => $data['id_type'],
-                        'id_number' => $data['id_number'] ?: 'PENDING',
+                        'id_number' => 'PENDING', // The Front Desk does not record ID numbers.
                         'file_path' => $path,
                         'verification_status' => 'pending',
                     ]);
@@ -552,7 +552,7 @@ class WalkInService
 
     /**
      * The automatic part of the walk-in assessment, from the records:
-     *   pdl_verification     verified when a PDL matches the name or ID number
+     *   pdl_verification     verified when a PDL matches the name or PDL number
      *                        the visitor gave (or one is already linked), else not_found;
      *   visitor_eligibility  verified when the account is approved, a government
      *                        ID is verified and no flag is active, else for_review;
@@ -595,7 +595,7 @@ class WalkInService
 
         $blockers = array_values(array_filter([
             $assessment && ! $assessment->hasRequestedVisit() ? 'The Front Desk has not chosen a visit date and session yet.' : null,
-            $pdlVerification === 'not_found' ? 'No PDL matches the name or ID number given. Find the PDL and link it.' : null,
+            $pdlVerification === 'not_found' ? 'No PDL matches the name or PDL number given. Find the PDL and link it.' : null,
             $linkedPdls->isEmpty() && $matches->count() === 1 ? 'Verify every document: the matched PDL is then linked automatically.' : null,
             $linkedPdls->isEmpty() && $matches->count() > 1 ? 'Several PDLs match: link the right one.' : null,
             $visitor->verification_status !== 'verified' ? 'Approve the visitor\'s account (after verifying their ID).' : null,

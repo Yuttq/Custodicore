@@ -1,13 +1,16 @@
 @extends('layouts.frontdesk')
 
-@section('title', 'Attendance Log')
+@section('title', 'Activity Log')
 
 @section('content')
     @php $period = $date->isToday() ? 'today' : $date->format('l, F j, Y'); @endphp
 
     <div class="cc-card">
         <div class="flex flex-wrap items-center justify-between gap-md">
-            <p class="text-card-title">Gate Activity</p>
+            <div>
+                <p class="text-card-title">Gate Activity</p>
+                <p class="text-metadata text-text-secondary">View the history of all recorded visits.</p>
+            </div>
 
             <form method="GET" action="{{ route('frontdesk.attendance-log') }}" class="flex flex-wrap items-center justify-end gap-sm">
                 @include('frontdesk.partials.search-input', ['id' => 'attendanceQuery', 'value' => $query, 'placeholder' => 'Search visitor, PDL or officer…'])

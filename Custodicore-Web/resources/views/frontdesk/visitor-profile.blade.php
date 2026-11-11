@@ -144,19 +144,12 @@
                 @forelse ($visitor->idDocuments as $doc)
                     @php
                         $hasPhoto = $doc->fileDisk() !== null;
-                        // 'PENDING' is stored when the visitor gave no number (not a real ID number).
-                        $idNumber = filled($doc->id_number) && strtoupper($doc->id_number) !== 'PENDING' ? $doc->id_number : null;
                     @endphp
                     <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
                         <div class="text-metadata">
                             <p class="font-semibold text-text-primary">{{ $doc->typeLabel() }}</p>
                             <p class="text-text-secondary">
-                                @if ($idNumber)
-                                    No. <span class="font-semibold text-text-primary">{{ $idNumber }}</span>
-                                @else
-                                    No number given
-                                @endif
-                                · Added {{ $doc->uploaded_at ? \Illuminate\Support\Carbon::parse($doc->uploaded_at)->format('M d, Y') : '—' }}
+                                Added {{ $doc->uploaded_at ? \Illuminate\Support\Carbon::parse($doc->uploaded_at)->format('M d, Y') : '—' }}
                             </p>
                         </div>
                         <div class="flex items-center gap-sm">

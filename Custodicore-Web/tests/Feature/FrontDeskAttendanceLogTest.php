@@ -12,7 +12,7 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * Front Desk Attendance Log: a read-only list of one day's gate entries,
+ * Front Desk Activity Log: a read-only list of one day's gate entries,
  * filterable by visitor or PDL, open to the Front Desk Officer only.
  */
 class FrontDeskAttendanceLogTest extends TestCase
@@ -217,7 +217,7 @@ class FrontDeskAttendanceLogTest extends TestCase
             ->get(route('frontdesk.dashboard'))
             ->assertOk()
             ->assertSee(route('frontdesk.attendance-log'))
-            ->assertSee('Attendance Log');
+            ->assertSee('Activity Log');
     }
 
     public function test_only_front_desk_officers_can_open_it(): void

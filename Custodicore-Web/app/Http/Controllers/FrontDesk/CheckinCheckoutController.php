@@ -140,7 +140,6 @@ class CheckinCheckoutController extends Controller
             return [
                 'visitRequestId' => $visit->visit_request_id,
                 'registeredIdType' => $registered['type_label'] ?? 'No verified ID on file',
-                'registeredIdNumber' => $registered['number'] ?? '—',
                 'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
                 'visitorId' => $visit->visitor?->visitor_id,
                 'visitorName' => $visit->visitor?->full_name ?? '—',
@@ -183,10 +182,8 @@ class CheckinCheckoutController extends Controller
                         : '—',
                     'status' => 'Inside Facility',
                     'registeredIdType' => $registered['type_label'] ?? '—',
-                    'registeredIdNumber' => $registered['number'] ?? '—',
                     'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
                     'idType' => $surrendered['type_label'],
-                    'idNumber' => $surrendered['number'],
                 ];
             })->values();
 
@@ -317,27 +314,18 @@ class CheckinCheckoutController extends Controller
     }
 
     /**
-     * The ID a visitor surrendered at check-in: the newest record of that
-     * type (a replacement ID is still pending review), as label + number.
+     * The type of ID a visitor surrendered at check-in, with its label.
+     * The Front Desk does not record ID numbers.
      *
-     * @return array{type: ?string, type_label: string, number: string}
+     * @return array{type: ?string, type_label: string}
      */
     private function surrenderedId(VisitCheckin $checkin): array
     {
         $type = $checkin->id_surrendered_type;
-        $visitorId = $checkin->visitRequest?->visitor_id;
-
-        $record = $type && $visitorId
-            ? VisitorId::where('visitor_id', $visitorId)
-                ->where('id_type', $type)
-                ->orderByDesc('uploaded_at')
-                ->first()
-            : null;
 
         return [
             'type' => $type,
             'type_label' => $type ? (new VisitorId(['id_type' => $type]))->typeLabel() : '—',
-            'number' => $record?->id_number ?? '—',
         ];
     }
 
@@ -354,7 +342,6 @@ class CheckinCheckoutController extends Controller
                 'id' => $id->visitor_id_doc_id,
                 'type' => $id->id_type,
                 'type_label' => $id->typeLabel(),
-                'number' => $id->id_number,
                 'status' => $id->verification_status,
                 'reason' => $id->reason,
             ])
@@ -517,7 +504,7 @@ class CheckinCheckoutController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' =>
-                        'This visitor is already checked in.',
+                        'This visitor is already checked in. Please record their check-out first.',
                 ], 422);
             }
 
@@ -649,7 +636,7 @@ class CheckinCheckoutController extends Controller
         QrCheckInRequest $request
     ): JsonResponse {
 
-        // Cleaned and validated by QrCheckInRequest (a different ID requires its type, number and reason).
+        // Cleaned and validated by QrCheckInRequest (a different ID requires its type and reason).
         $data = $request->validated();
 
         $staffId = $this->actingStaffId();
@@ -768,7 +755,7 @@ class CheckinCheckoutController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' =>
-                            'This visitor is already checked in.',
+                            'This visitor is already checked in. Please record their check-out first.',
                     ], 422);
                 }
 
@@ -842,7 +829,7 @@ class CheckinCheckoutController extends Controller
                             $data['new_id_type'],
 
                         'id_number' =>
-                            $data['new_id_number'],
+                            'PENDING',
 
                         'file_path' =>
                             $photoPath,
@@ -1106,7 +1093,7 @@ class CheckinCheckoutController extends Controller
                 if ($this->gate->activeCheckin($visitRequest)) {
                     return back()->with(
                         'error',
-                        'This visitor is already checked in.'
+                        'This visitor is already checked in. Please record their check-out first.'
                     );
                 }
 
@@ -1154,7 +1141,7 @@ class CheckinCheckoutController extends Controller
                             $data['new_id_type'],
 
                         'id_number' =>
-                            $data['new_id_number'],
+                            'PENDING',
 
                         'file_path' =>
                             null,
@@ -1275,7 +1262,7 @@ class CheckinCheckoutController extends Controller
                 $checkin->checkin_id,
 
                 "Manually checked in visitor {$visitRequest->visitor?->full_name} for visit request #{$visitRequest->visit_request_id} ({$this->gate->sessionName($session)}). "
-                    .'Surrendered '.(new VisitorId(['id_type' => $data['id_surrendered_type']]))->typeLabel()." {$data['id_number']}. Reason: {$data['override_reason']}",
+                    .'Surrendered '.(new VisitorId(['id_type' => $data['id_surrendered_type']]))->typeLabel().". Reason: {$data['override_reason']}",
 
                 Module::CODE_CHECKIN_CHECKOUT
             );

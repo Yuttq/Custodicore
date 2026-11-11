@@ -89,10 +89,10 @@
             <div><dt class="cc-label">Sex</dt><dd class="mt-xs font-semibold">{{ ucfirst($visitor->gender ?? '—') }}</dd></div>
             <div><dt class="cc-label">Contact number</dt><dd class="mt-xs font-semibold">{{ $visitor->contact_number && $visitor->contact_number !== 'N/A' ? $visitor->contact_number : '—' }}</dd></div>
             <div class="sm:col-span-2"><dt class="cc-label">Address</dt><dd class="mt-xs font-semibold">{{ $visitor->address ?: '—' }}</dd></div>
-            <div><dt class="cc-label">Valid ID</dt><dd class="mt-xs font-semibold">{{ $id ? $id->typeLabel().' · '.$id->id_number : '—' }}</dd></div>
+            <div><dt class="cc-label">Valid ID</dt><dd class="mt-xs font-semibold">{{ $id ? $id->typeLabel() : '—' }}</dd></div>
             <div><dt class="cc-label">Relationship to PDL</dt><dd class="mt-xs font-semibold">{{ $visitor->relationship_hint ?: '—' }}</dd></div>
             <div><dt class="cc-label">PDL name (as given)</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
-            <div><dt class="cc-label">PDL ID number (as given)</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
+            <div><dt class="cc-label">PDL number (as given)</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
             <div class="sm:col-span-2"><dt class="cc-label">Purpose of visit</dt><dd class="mt-xs font-semibold">{{ $assessment?->visit_purpose ?: '—' }}</dd></div>
             <div class="sm:col-span-2"><dt class="cc-label">PDL selected</dt><dd class="mt-xs font-semibold">{{ $assessment?->pdl ? $assessment->pdl->full_name.' · '.$assessment->pdl->pdl_number : '—' }}</dd></div>
             <div class="sm:col-span-2"><dt class="cc-label">Visit date and session</dt><dd class="mt-xs font-semibold">{{ $assessment?->requestedVisitLabel() ?? 'Not chosen yet' }}</dd></div>

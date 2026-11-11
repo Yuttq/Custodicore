@@ -105,7 +105,6 @@ class FrontDeskStaffAttributionTest extends TestCase
         return $this->post("/front-desk/checkin-checkout/{$visit->visit_request_id}/check-in", [
             'verification_method' => 'manual_override',
             'id_surrendered_type' => 'national_id',
-            'id_number' => 'N01-23-456789',
             'override_reason' => 'Phone battery dead',
         ]);
     }

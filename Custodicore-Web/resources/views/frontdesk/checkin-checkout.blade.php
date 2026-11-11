@@ -64,7 +64,7 @@
                     </p>
 
                     <p class="text-metadata text-text-secondary">
-                        Process the visitor's arrival step by step.
+                        Log the visitor’s arrival at the facility.
                     </p>
 
                 </div>
@@ -73,37 +73,8 @@
 
 
             {{-- PROGRESS --}}
-            <div class="mt-lg border-t border-border pt-lg">
-
-                <div class="flex items-start">
-
-                    <div id="checkinProgress1" class="checkin-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">1</div>
-                        <p class="mt-xs text-status-label font-semibold text-text-primary">Scan QR</p>
-                    </div>
-
-                    <span id="checkinConnector1" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkinProgress2" class="checkin-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">2</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Visitor Info</p>
-                    </div>
-
-                    <span id="checkinConnector2" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkinProgress3" class="checkin-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">3</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Verify ID</p>
-                    </div>
-
-                    <span id="checkinConnector3" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkinProgress4" class="checkin-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkin-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">4</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Summary</p>
-                    </div>
-
-                </div>
+            <div class="mt-lg">
+                    @include('frontdesk.partials.step-progress', ['wizard' => 'qrci', 'class' => '', 'steps' => ['Scan QR', 'Visitor Info', 'Verify ID', 'Summary']])
 
             </div>
 
@@ -299,7 +270,7 @@
                     id="manualBackupPanel"
                     class="hidden mt-lg border-t border-border pt-lg">
 
-                    @include('frontdesk.partials.manual-steps', ['wizard' => 'mci', 'steps' => ['Find Visitor', 'Visitor Info', 'Verify ID', 'Confirm']])
+                    @include('frontdesk.partials.step-progress', ['wizard' => 'mci', 'steps' => ['Find Visitor', 'Visitor Info', 'Verify ID', 'Confirm']])
 
 
                     <label
@@ -317,7 +288,7 @@
                             type="text"
                             id="manualVisitorSearch"
                             autocomplete="off"
-                            placeholder="Search by full name or Visitor ID number"
+                            placeholder="Search by visitor name or Visitor ID"
                             class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
 
                         <div
@@ -408,7 +379,7 @@
 
                             <div class="mt-md rounded-lg border border-border bg-background p-md" data-mci="3">
 
-                                <div class="grid grid-cols-1 gap-md md:grid-cols-3">
+                                <div class="grid grid-cols-1 gap-md md:grid-cols-2">
 
                                     <div>
 
@@ -418,21 +389,6 @@
 
                                         <p
                                             id="manualRegisteredIdType"
-                                            class="mt-xs text-body font-semibold">
-                                            —
-                                        </p>
-
-                                    </div>
-
-
-                                    <div>
-
-                                        <p class="text-section-label text-text-secondary">
-                                            ID NUMBER
-                                        </p>
-
-                                        <p
-                                            id="manualRegisteredIdNumber"
                                             class="mt-xs text-body font-semibold">
                                             —
                                         </p>
@@ -477,29 +433,6 @@
                                         <option value="{{ $idTypeValue }}">{{ $idTypeLabel }}</option>
                                     @endforeach
                                 </select>
-
-                            </div>
-
-
-                            <div class="mt-md" data-mci="3">
-
-                                <label
-                                    for="manualIdNumber"
-                                    class="text-section-label text-text-secondary">
-
-                                    ID NUMBER
-
-                                </label>
-
-                                <input
-                                    type="text"
-                                    id="manualIdNumber"
-                                    placeholder="Enter the visitor's physical ID number"
-                                    maxlength="50"
-                                    autocomplete="off"
-                                    spellcheck="false"
-                                    autocapitalize="characters"
-                                    class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
 
                             </div>
 
@@ -554,6 +487,7 @@
                             {{-- Confirm: what will be recorded. --}}
                             <div class="rounded-lg border border-border bg-background p-md" data-mci="4">
                                 <p class="text-card-title">Review &amp; Confirm</p>
+                                <p class="text-metadata text-text-secondary">Double-check all details before saving the visit.</p>
                                 <dl class="mt-md grid grid-cols-1 gap-md text-body md:grid-cols-2">
                                     <div><dt class="text-section-label text-text-secondary">VISITOR</dt><dd id="mciSumVisitor" class="mt-xs font-semibold">—</dd></div>
                                     <div><dt class="text-section-label text-text-secondary">VISIT</dt><dd id="mciSumVisit" class="mt-xs font-semibold">—</dd></div>
@@ -803,31 +737,16 @@
                             <div>
 
                                 <p class="text-section-label text-text-secondary">
-                                    ID NUMBER
+                                    ID STATUS
                                 </p>
 
                                 <p
-                                    id="registeredIdNumber"
-                                    class="mt-xs text-body font-semibold">
+                                    id="registeredIdStatus"
+                                    class="mt-xs text-body font-semibold text-primary-teal">
                                     —
                                 </p>
 
                             </div>
-
-                        </div>
-
-
-                        <div class="mt-md">
-
-                            <p class="text-section-label text-text-secondary">
-                                ID STATUS
-                            </p>
-
-                            <p
-                                id="registeredIdStatus"
-                                class="mt-xs text-body font-semibold text-primary-teal">
-                                —
-                            </p>
 
                         </div>
 
@@ -874,24 +793,32 @@
                             <p id="verifyRegisteredIdType" class="mt-xs text-body font-semibold">—</p>
                         </div>
                         <div>
-                            <p class="text-section-label text-text-secondary">ID NUMBER</p>
-                            <p id="verifyRegisteredIdNumber" class="mt-xs text-body font-semibold">—</p>
+                            <p class="text-section-label text-text-secondary">ID STATUS</p>
+                            <p id="verifyRegisteredIdStatus" class="mt-xs text-body font-semibold text-primary-teal">—</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="mt-lg rounded-xl border border-border bg-background p-md">
-                    <p class="text-card-title">Does the presented ID match the registered ID?</p>
-                    <p class="mt-xs text-metadata text-text-secondary">Select the result after physically checking the visitor's identification.</p>
+                    <p class="text-card-title">Is the visitor's ID the same as the one on file?</p>
+                    <p class="mt-xs text-metadata text-text-secondary">Check the physical ID the visitor handed over, then choose one.</p>
 
                     <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
-                        <button type="button" id="idMatchesBtn" aria-pressed="false" class="group cursor-pointer rounded-xl border-2 border-border bg-surface p-md text-left transition-all duration-150 hover:border-primary-blue hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2">
-                            <div class="flex items-start gap-sm"><span id="idMatchesIndicator" class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border text-xs font-bold text-white"></span><div><p class="text-body font-semibold">ID Matches Registered ID</p>
-                            <p class="mt-xs text-metadata text-text-secondary">The ID type and number correspond to the registered record.</p></div></div>
+                        <button type="button" id="idMatchesBtn" aria-pressed="false" class="group flex cursor-pointer items-center gap-md rounded-xl border-2 border-border bg-surface p-md text-left shadow-sm transition-all duration-150 hover:border-success hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue focus-visible:ring-offset-2 aria-pressed:border-success aria-pressed:bg-success/10 aria-pressed:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-success bg-surface text-xl font-bold text-success transition-colors group-aria-pressed:bg-success group-aria-pressed:text-white" aria-hidden="true">✓</span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-body font-bold text-text-primary">Yes, same ID</span>
+                                <span class="mt-xs block text-metadata text-text-secondary">The ID type matches the one registered.</span>
+                            </span>
+                            <span class="hidden shrink-0 rounded-full bg-success px-sm py-0.5 text-xs font-bold text-white group-aria-pressed:inline">Selected</span>
                         </button>
-                        <button type="button" id="idDoesNotMatchBtn" aria-pressed="false" class="group cursor-pointer rounded-xl border-2 border-border bg-surface p-md text-left transition-all duration-150 hover:border-primary-blue hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2">
-                            <div class="flex items-start gap-sm"><span id="idDoesNotMatchIndicator" class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border text-xs font-bold text-white"></span><div><p class="text-body font-semibold">ID Does Not Match</p>
-                            <p class="mt-xs text-metadata text-text-secondary">The visitor presented a different identification document.</p></div></div>
+                        <button type="button" id="idDoesNotMatchBtn" aria-pressed="false" class="group flex cursor-pointer items-center gap-md rounded-xl border-2 border-border bg-surface p-md text-left shadow-sm transition-all duration-150 hover:border-danger hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue focus-visible:ring-offset-2 aria-pressed:border-danger aria-pressed:bg-danger/10 aria-pressed:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-danger bg-surface text-xl font-bold text-danger transition-colors group-aria-pressed:bg-danger group-aria-pressed:text-white" aria-hidden="true">✕</span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-body font-bold text-text-primary">No, different ID</span>
+                                <span class="mt-xs block text-metadata text-text-secondary">The visitor brought another type of ID.</span>
+                            </span>
+                            <span class="hidden shrink-0 rounded-full bg-danger px-sm py-0.5 text-xs font-bold text-white group-aria-pressed:inline">Selected</span>
                         </button>
                     </div>
                 </div>
@@ -911,21 +838,16 @@
                             </select>
                         </div>
                         <div>
-                            <label for="new_id_number" class="text-section-label text-text-secondary">NEW ID NUMBER</label>
-                            <input type="text" id="new_id_number" placeholder="e.g. 0111-2233-4455" maxlength="50" autocomplete="off" spellcheck="false" autocapitalize="characters" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                            <label for="new_id_reason" class="text-section-label text-text-secondary">REASON</label>
+                            <select id="new_id_reason" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
+                                <option value="">Select reason</option>
+                                <option value="lost">Lost / Misplaced</option>
+                                <option value="expired">Expired</option>
+                                <option value="damaged">Damaged</option>
+                                <option value="updated">Updated / Replaced</option>
+                                <option value="other">Other</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div class="mt-md">
-                        <label for="new_id_reason" class="text-section-label text-text-secondary">REASON</label>
-                        <select id="new_id_reason" class="mt-xs w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
-                            <option value="">Select reason</option>
-                            <option value="lost">Lost / Misplaced</option>
-                            <option value="expired">Expired</option>
-                            <option value="damaged">Damaged</option>
-                            <option value="updated">Updated / Replaced</option>
-                            <option value="other">Other</option>
-                        </select>
                     </div>
 
                     <div id="otherReasonContainer" class="hidden mt-md">
@@ -1061,9 +983,8 @@
 
                 <div class="mt-lg rounded-xl border border-border bg-background p-md">
                     <p class="text-section-label text-text-secondary">IDENTIFICATION</p>
-                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-3">
+                    <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
                         <div><p class="text-section-label text-text-secondary">ID TYPE</p><p id="summaryIdType" class="mt-xs text-body font-semibold">—</p></div>
-                        <div><p class="text-section-label text-text-secondary">ID NUMBER</p><p id="summaryIdNumber" class="mt-xs text-body font-semibold">—</p></div>
                         <div><p class="text-section-label text-text-secondary">STATUS</p><p id="summaryIdStatus" class="mt-xs text-body font-semibold">—</p></div>
                     </div>
                 </div>
@@ -1180,7 +1101,7 @@
                     </p>
 
                     <p class="text-metadata text-text-secondary">
-                        Process the visitor's departure step by step.
+                        Log the visitor’s departure and close the visit.
                     </p>
 
                 </div>
@@ -1189,37 +1110,8 @@
 
 
             {{-- PROGRESS --}}
-            <div class="mt-lg border-t border-border pt-lg">
-
-                <div class="flex items-start">
-
-                    <div id="checkoutProgress1" class="checkout-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary-navy text-sm font-semibold text-white">1</div>
-                        <p class="mt-xs text-status-label font-semibold text-text-primary">Scan QR</p>
-                    </div>
-
-                    <span id="checkoutConnector1" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkoutProgress2" class="checkout-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">2</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Active Visit</p>
-                    </div>
-
-                    <span id="checkoutConnector2" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkoutProgress3" class="checkout-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">3</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Return ID</p>
-                    </div>
-
-                    <span id="checkoutConnector3" class="mt-4 h-0.5 flex-1 bg-border"></span>
-
-                    <div id="checkoutProgress4" class="checkout-progress-step min-w-0 flex-1 text-center">
-                        <div class="checkout-progress-circle mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-secondary">4</div>
-                        <p class="mt-xs text-status-label text-text-secondary">Summary</p>
-                    </div>
-
-                </div>
+            <div class="mt-lg">
+                    @include('frontdesk.partials.step-progress', ['wizard' => 'qrco', 'class' => '', 'steps' => ['Scan QR', 'Active Visit', 'Return ID', 'Summary']])
 
             </div>
 
@@ -1413,7 +1305,7 @@
                     id="manualCheckoutSection"
                     class="hidden mt-lg border-t border-border pt-lg">
 
-                    @include('frontdesk.partials.manual-steps', ['wizard' => 'mco', 'steps' => ['Find Visitor', 'Active Visit', 'Return ID', 'Confirm']])
+                    @include('frontdesk.partials.step-progress', ['wizard' => 'mco', 'steps' => ['Find Visitor', 'Active Visit', 'Return ID', 'Confirm']])
 
 
                     <label
@@ -1431,7 +1323,7 @@
                             type="text"
                             id="manualCheckoutVisitorSearch"
                             autocomplete="off"
-                            placeholder="Search by full name or Visitor ID number"
+                            placeholder="Search by visitor name or Visitor ID"
                             class="w-full rounded-lg border border-border bg-surface px-md py-sm text-body">
 
 
@@ -1731,21 +1623,6 @@
 
                                 </div>
 
-
-                                <div>
-
-                                    <p class="text-section-label text-text-secondary">
-                                        ID NUMBER
-                                    </p>
-
-                                    <p
-                                        id="checkoutInfoRegisteredIdNumber"
-                                        class="mt-xs text-body font-semibold">
-                                        —
-                                    </p>
-
-                                </div>
-
                             </div>
 
 
@@ -1834,21 +1711,6 @@
 
                                 </div>
 
-
-                                <div>
-
-                                    <p class="text-section-label text-text-secondary">
-                                        ID NUMBER
-                                    </p>
-
-                                    <p
-                                        id="checkoutIdNumber"
-                                        class="mt-xs text-body font-semibold">
-                                        —
-                                    </p>
-
-                                </div>
-
                             </div>
 
 
@@ -1877,6 +1739,7 @@
                         {{-- Confirm: what will be recorded. --}}
                         <div class="mt-lg rounded-lg border border-border bg-background p-md" data-mco="4">
                             <p class="text-card-title">Review &amp; Confirm</p>
+                            <p class="text-metadata text-text-secondary">Double-check all details before saving the visit.</p>
                             <dl class="mt-md grid grid-cols-1 gap-md text-body md:grid-cols-2">
                                 <div><dt class="text-section-label text-text-secondary">VISITOR</dt><dd id="mcoSumVisitor" class="mt-xs font-semibold">—</dd></div>
                                 <div><dt class="text-section-label text-text-secondary">PDL</dt><dd id="mcoSumPdl" class="mt-xs font-semibold">—</dd></div>
@@ -2045,21 +1908,6 @@
 
                             <p
                                 id="qrCheckoutIdType"
-                                class="mt-xs text-body font-semibold">
-                                —
-                            </p>
-
-                        </div>
-
-
-                        <div>
-
-                            <p class="text-section-label text-text-secondary">
-                                ID NUMBER
-                            </p>
-
-                            <p
-                                id="qrCheckoutIdNumber"
                                 class="mt-xs text-body font-semibold">
                                 —
                             </p>
@@ -2350,236 +2198,10 @@ document.addEventListener('DOMContentLoaded', function () {
 ============================================================ */
 
 function updateCheckinProgress(step) {
-
-    /*
-     * Connected horizontal stepper
-     *
-     * Step 1 = Scan QR
-     * Step 2 = Visitor & PDL
-     * Step 3 = Verify ID
-     * Step 4 = Summary
-     */
-
-    for (let i = 1; i <= 4; i++) {
-
-        const wrapper =
-            document.getElementById(
-                'checkinProgress' + i
-            );
-
-        if (!wrapper) {
-            continue;
-        }
-
-        const circle =
-            wrapper.querySelector(
-                '.checkin-progress-circle'
-            );
-
-        const label =
-            wrapper.querySelector('p');
-
-
-        /*
-         * COMPLETED STEP
-         */
-        if (i < step) {
-
-            wrapper.classList.remove(
-                'checkin-progress-current'
-            );
-
-            wrapper.classList.add(
-                'checkin-progress-completed'
-            );
-
-
-            circle?.classList.remove(
-                'border',
-                'border-border',
-                'bg-surface',
-                'text-text-secondary',
-                'bg-primary-navy'
-            );
-
-            circle?.classList.add(
-                'bg-primary-navy',
-                'text-white'
-            );
-
-
-            /*
-             * Show check mark instead of number
-             */
-            if (circle) {
-
-                circle.innerHTML = '✓';
-
-                circle.classList.add(
-                    'font-bold'
-                );
-
-            }
-
-
-            label?.classList.remove(
-                'text-text-secondary'
-            );
-
-            label?.classList.add(
-                'font-semibold',
-                'text-text-primary'
-            );
-
-        }
-
-
-        /*
-         * CURRENT STEP
-         */
-        else if (i === step) {
-
-            wrapper.classList.remove(
-                'checkin-progress-completed'
-            );
-
-            wrapper.classList.add(
-                'checkin-progress-current'
-            );
-
-
-            circle?.classList.remove(
-                'border',
-                'border-border',
-                'bg-surface',
-                'text-text-secondary',
-                'bg-primary-navy'
-            );
-
-            circle?.classList.add(
-                'bg-primary-navy',
-                'text-white'
-            );
-
-
-            /*
-             * Keep the original step number
-             */
-            if (circle) {
-
-                circle.innerHTML = i;
-
-                circle.classList.remove(
-                    'font-bold'
-                );
-
-            }
-
-
-            label?.classList.remove(
-                'text-text-secondary'
-            );
-
-            label?.classList.add(
-                'font-semibold',
-                'text-text-primary'
-            );
-
-        }
-
-
-        /*
-         * UPCOMING STEP
-         */
-        else {
-
-            wrapper.classList.remove(
-                'checkin-progress-completed',
-                'checkin-progress-current'
-            );
-
-
-            circle?.classList.remove(
-                'bg-primary-navy',
-                'text-white',
-                'font-bold'
-            );
-
-            circle?.classList.add(
-                'border',
-                'border-border',
-                'bg-surface',
-                'text-text-secondary'
-            );
-
-
-            /*
-             * Restore the step number
-             */
-            if (circle) {
-
-                circle.innerHTML = i;
-
-            }
-
-
-            label?.classList.remove(
-                'font-semibold',
-                'text-text-primary'
-            );
-
-            label?.classList.add(
-                'text-text-secondary'
-            );
-
-        }
-
-    }
-
-
-    /*
-     * Update the connecting lines.
-     *
-     * Each connector represents the progress between
-     * the four steps.
-     */
-    for (let i = 1; i <= 3; i++) {
-
-        const connector =
-            document.getElementById(
-                'checkinConnector' + i
-            );
-
-        if (!connector) {
-            continue;
-        }
-
-
-        if (i < step) {
-
-            connector.classList.remove(
-                'bg-border'
-            );
-
-            connector.classList.add(
-                'bg-primary-navy'
-            );
-
-        } else {
-
-            connector.classList.remove(
-                'bg-primary-navy'
-            );
-
-            connector.classList.add(
-                'bg-border'
-            );
-
-        }
-
-    }
-
+    window.ccPaintSteps('qrci', step);
 }
+
+
 
 
 function showCheckinStep(step) {
@@ -2621,195 +2243,10 @@ function showCheckinStep(step) {
     ============================================================ */
 
     function updateCheckoutProgress(step) {
-
-        /*
-         * CHECK-OUT PROGRESS
-         *
-         * This matches the actual checkout markup:
-         * checkoutProgress1 ... checkoutProgress4
-         * .checkout-progress-circle
-         */
-
-        for (let i = 1; i <= 4; i++) {
-
-            const wrapper =
-                document.getElementById(
-                    'checkoutProgress' + i
-                );
-
-            if (!wrapper) {
-                continue;
-            }
-
-            const circle =
-                wrapper.querySelector(
-                    '.checkout-progress-circle'
-                );
-
-            const label =
-                wrapper.querySelector('p');
-
-
-            /* COMPLETED STEP */
-            if (i < step) {
-
-                wrapper.classList.remove(
-                    'checkout-progress-current'
-                );
-
-                wrapper.classList.add(
-                    'checkout-progress-completed'
-                );
-
-                circle?.classList.remove(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
-                );
-
-                circle?.classList.add(
-                    'bg-primary-navy',
-                    'text-white'
-                );
-
-                if (circle) {
-                    circle.textContent = '✓';
-
-                    circle.classList.add(
-                        'font-bold'
-                    );
-                }
-
-                label?.classList.remove(
-                    'text-text-secondary'
-                );
-
-                label?.classList.add(
-                    'font-semibold',
-                    'text-text-primary'
-                );
-            }
-
-
-            /* CURRENT STEP */
-            else if (i === step) {
-
-                wrapper.classList.remove(
-                    'checkout-progress-completed'
-                );
-
-                wrapper.classList.add(
-                    'checkout-progress-current'
-                );
-
-                circle?.classList.remove(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
-                );
-
-                circle?.classList.add(
-                    'bg-primary-navy',
-                    'text-white'
-                );
-
-                if (circle) {
-                    circle.textContent = String(i);
-
-                    circle.classList.remove(
-                        'font-bold'
-                    );
-                }
-
-                label?.classList.remove(
-                    'text-text-secondary'
-                );
-
-                label?.classList.add(
-                    'font-semibold',
-                    'text-text-primary'
-                );
-            }
-
-
-            /* UPCOMING STEP */
-            else {
-
-                wrapper.classList.remove(
-                    'checkout-progress-completed',
-                    'checkout-progress-current'
-                );
-
-                circle?.classList.remove(
-                    'bg-primary-navy',
-                    'text-white',
-                    'font-bold'
-                );
-
-                circle?.classList.add(
-                    'border',
-                    'border-border',
-                    'bg-surface',
-                    'text-text-secondary'
-                );
-
-                if (circle) {
-                    circle.textContent = String(i);
-                }
-
-                label?.classList.remove(
-                    'font-semibold',
-                    'text-text-primary'
-                );
-
-                label?.classList.add(
-                    'text-text-secondary'
-                );
-            }
-        }
-
-
-        /*
-         * Connected horizontal lines.
-         * These are optional; the code simply ignores them
-         * if the Blade does not contain connector elements.
-         */
-
-        for (let i = 1; i <= 3; i++) {
-
-            const connector =
-                document.getElementById(
-                    'checkoutConnector' + i
-                );
-
-            if (!connector) {
-                continue;
-            }
-
-            if (i < step) {
-
-                connector.classList.remove(
-                    'bg-border'
-                );
-
-                connector.classList.add(
-                    'bg-primary-navy'
-                );
-
-            } else {
-
-                connector.classList.remove(
-                    'bg-primary-navy'
-                );
-
-                connector.classList.add(
-                    'bg-border'
-                );
-            }
-        }
+        window.ccPaintSteps('qrco', step);
     }
+
+
 
 
     function showCheckoutStep(step) {
@@ -3186,12 +2623,12 @@ function showCheckinStep(step) {
 
     document.getElementById('visitorInfoNextBtn')?.addEventListener('click', function () {
         const verifyType = document.getElementById('verifyRegisteredIdType');
-        const verifyNumber = document.getElementById('verifyRegisteredIdNumber');
+        const verifyStatus = document.getElementById('verifyRegisteredIdStatus');
         const registeredType = document.getElementById('registeredIdType')?.textContent.trim() || '—';
-        const registeredNumber = document.getElementById('registeredIdNumber')?.textContent.trim() || '—';
+        const registeredStatus = document.getElementById('registeredIdStatus')?.textContent.trim() || '—';
 
         if (verifyType) verifyType.textContent = registeredType;
-        if (verifyNumber) verifyNumber.textContent = registeredNumber;
+        if (verifyStatus) verifyStatus.textContent = registeredStatus;
 
         showCheckinStep(3);
     });
@@ -3258,21 +2695,17 @@ function showCheckinStep(step) {
         set('summaryVisitStatus', text('resultVisitStatus'));
 
         let idType = '—';
-        let idNumber = '—';
         let idStatus = 'Verified';
 
         if (idMatchStatus === 'replaced') {
             idType = document.getElementById('new_id_type')?.selectedOptions?.[0]?.textContent.trim() || '—';
-            idNumber = document.getElementById('new_id_number')?.value.trim() || '—';
             idStatus = 'Different ID verified & surrendered';
         } else {
             idType = text('verifyRegisteredIdType');
-            idNumber = text('verifyRegisteredIdNumber');
             idStatus = 'Matched & surrendered';
         }
 
         set('summaryIdType', idType);
-        set('summaryIdNumber', idNumber);
         set('summaryIdStatus', idStatus);
 
         /*
@@ -3883,12 +3316,6 @@ function showCheckinStep(step) {
             )?.textContent.trim() || '—';
 
 
-        const idNumber =
-            document.getElementById(
-                'qrCheckoutIdNumber'
-            )?.textContent.trim() || '—';
-
-
         const fields = {
 
             checkoutInfoVisitor: visitorName,
@@ -3901,9 +3328,7 @@ function showCheckinStep(step) {
 
             checkoutInfoCheckinTime: checkinTime,
 
-            checkoutIdType: idType,
-
-            checkoutIdNumber: idNumber
+            checkoutIdType: idType
 
         };
 
@@ -4164,10 +3589,7 @@ function showCheckinStep(step) {
                     data.status,
 
                 qrCheckoutIdType:
-                    data.idType,
-
-                qrCheckoutIdNumber:
-                    data.idNumber
+                    data.idType
 
             };
 
@@ -4399,9 +3821,6 @@ function showCheckinStep(step) {
                 checkoutIdType:
                     data.idType,
 
-                checkoutIdNumber:
-                    data.idNumber,
-
                 checkoutInfoVisitorDetails:
                     data.pdlName
                         ? `Visiting ${data.pdlName} (${data.pdlNumber})`
@@ -4430,9 +3849,6 @@ function showCheckinStep(step) {
 
                 checkoutInfoRegisteredIdType:
                     data.registeredIdType,
-
-                checkoutInfoRegisteredIdNumber:
-                    data.registeredIdNumber,
 
                 checkoutInfoRegisteredIdStatus:
                     data.registeredIdStatus,
@@ -4639,17 +4055,10 @@ function showCheckinStep(step) {
      * is unchanged (frontdesk-checkin.js and the checkout script above).
      */
     (() => {
-        const tone = {
-            done: ['border-success', 'bg-success', 'text-white'],
-            current: ['border-warning', 'bg-warning/10', 'text-warning'],
-            todo: ['border-border', 'bg-white', 'text-text-secondary'],
-        };
-        const text = { done: 'text-success', current: 'text-warning', todo: 'text-text-secondary' };
         const $ = id => document.getElementById(id);
         const value = id => ($(id)?.textContent || '').replace(/\s+/g, ' ').trim() || '—';
 
         function wizard(name, { canLeave, onEnter } = {}) {
-            const progress = document.querySelector(`[data-wizard-progress="${name}"]`);
             let step = 1;
 
             const show = n => {
@@ -4657,21 +4066,7 @@ function showCheckinStep(step) {
                 document.querySelectorAll(`[data-${name}]`).forEach(el => {
                     el.style.display = Number(el.dataset[name]) === step ? '' : 'none';
                 });
-                progress?.querySelectorAll('[data-wizard-step]').forEach(li => {
-                    const i = Number(li.dataset.wizardStep);
-                    const state = i < step ? 'done' : (i === step ? 'current' : 'todo');
-                    const circle = li.querySelector('[data-wizard-circle]');
-                    const label = li.querySelector('[data-wizard-label]');
-                    const line = li.querySelector('[data-wizard-line]');
-                    circle.classList.remove(...tone.done, ...tone.current, ...tone.todo);
-                    circle.classList.add(...tone[state]);
-                    circle.textContent = state === 'done' ? '✓' : i;
-                    label.classList.remove(...Object.values(text));
-                    label.classList.add(text[state]);
-                    line?.classList.toggle('bg-success', i < step);
-                    line?.classList.toggle('bg-border', i >= step);
-                    if (state === 'current') li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
-                });
+                window.ccPaintSteps(name, step);
                 onEnter?.(step);
             };
 
@@ -4707,11 +4102,9 @@ function showCheckinStep(step) {
         const checkin = wizard('mci', {
             canLeave(step) {
                 if (step !== 3) return true;
-                const idNumber = ($('manualIdNumber')?.value || '').replace(/[^A-Za-z0-9]/g, '');
                 const reason = ($('overrideReason')?.value || '').replace(/\s+/g, ' ').trim();
                 const problem =
                     !$('manualIdType')?.value ? 'Select the type of ID the visitor surrendered.'
-                    : idNumber.length < 4 ? "Enter the visitor's ID number."
                     : reason.length < 10 ? 'Describe the reason for the manual check-in in at least 10 characters.'
                     : !$('manualIdVerified')?.checked ? "Confirm that you physically verified the visitor's ID."
                     : null;
@@ -4723,7 +4116,7 @@ function showCheckinStep(step) {
                 const type = $('manualIdType');
                 $('mciSumVisitor').textContent = `${value('selectedVisitorName')} · ${value('selectedVisitorId')}`;
                 $('mciSumVisit').textContent = `${value('selectedVisitorDetails')} · ${value('selectedVisitorSchedule')}`;
-                $('mciSumId').textContent = `${type?.selectedOptions[0]?.textContent.trim() || '—'} · ${($('manualIdNumber')?.value || '—').toUpperCase()}`;
+                $('mciSumId').textContent = `${type?.selectedOptions[0]?.textContent.trim() || '—'}`;
                 $('mciSumReason').textContent = ($('overrideReason')?.value || '—').trim();
             },
         });
@@ -4742,7 +4135,7 @@ function showCheckinStep(step) {
                 $('mcoSumVisitor').textContent = value('checkoutInfoVisitor');
                 $('mcoSumPdl').textContent = `${value('checkoutInfoPdl')} (${value('checkoutInfoPdlNumber')})`;
                 $('mcoSumCheckin').textContent = value('checkoutInfoCheckinTime');
-                $('mcoSumId').textContent = `${value('checkoutIdType')} · ${value('checkoutIdNumber')}`;
+                $('mcoSumId').textContent = `${value('checkoutIdType')}`;
             },
         });
         followSelection('selectedCheckoutVisitor', checkout);

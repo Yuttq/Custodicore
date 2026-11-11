@@ -332,7 +332,7 @@ class WholeDayVisitTest extends TestCase
 
         // While inside: no second entry, no QR re-issue (the visitor keeps
         // the same pass to show at check-out).
-        $this->scan($token)->assertStatus(422)->assertJsonPath('message', 'This visitor is already checked in.');
+        $this->scan($token)->assertStatus(422)->assertJsonPath('message', 'This visitor is already checked in. Please record their check-out first.');
         Sanctum::actingAs($this->visitorAccount);
         $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")
             ->assertOk()
@@ -653,7 +653,6 @@ class WholeDayVisitTest extends TestCase
         return [
             'verification_method' => 'manual_override',
             'id_surrendered_type' => 'national_id',
-            'id_number' => 'N01-23-456789',
             'override_reason' => 'Phone battery dead',
         ];
     }

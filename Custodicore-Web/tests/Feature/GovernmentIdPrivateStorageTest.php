@@ -84,16 +84,17 @@ class GovernmentIdPrivateStorageTest extends TestCase
             'last_name' => 'Reyes',
             'date_of_birth' => '1970-05-02',
             'gender' => 'female',
-            'address' => 'Brgy. San Isidro',
+            'contact_number' => '09171234567',
+            'address' => 'Brgy. San Isidro, Quezon City',
             // create() rather than image(): image() needs the GD extension.
             'photo' => UploadedFile::fake()->create('face.jpg', 50, 'image/jpeg'),
             'id_type' => 'national_id',
-            'id_number' => 'PSN-1234-5678',
             'government_id' => UploadedFile::fake()->create('id.jpg', 50, 'image/jpeg'),
             'pdl_id' => $this->pdl->pdl_id,
             // The fixture's open session (next Friday), which Records opened.
             'requested_date' => $this->schedule->schedule_date->toDateString(),
             'requested_start_times' => ['09:00'],
+            'visit_purpose_type' => 'Family visit',
             'visit_purpose' => 'Family visit',
             'relationship_type' => 'spouse',
             'documents' => ['marriage_certificate' => UploadedFile::fake()->create('marriage.pdf', 50, 'application/pdf')],
@@ -125,15 +126,44 @@ class GovernmentIdPrivateStorageTest extends TestCase
             'id_surrendered_type' => 'passport',
             'id_match_status' => 'replaced',
             'new_id_type' => 'passport',
-            'new_id_number' => 'P1234567',
             'new_id_reason' => 'Lost the old ID',
             'new_id_photo' => 'data:image/png;base64,'.self::PNG,
         ])->assertOk()->assertJsonPath('success', true);
 
-        $path = VisitorId::where('id_number', 'P1234567')->value('file_path');
+        $path = VisitorId::where('id_type', 'passport')->latest('visitor_id_doc_id')->value('file_path');
         $this->assertStringStartsWith('visitor-ids/', $path);
         Storage::disk('local')->assertExists($path);
         $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_a_different_id_can_be_recorded_at_the_gate_without_an_id_number(): void
+    {
+        $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
+        $visit = app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $this->relationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+        $this->travelTo($this->schedule->schedule_date->copy()->setTime(9, 30));
+        Sanctum::actingAs($this->visitorAccount);
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertOk();
+        $token = $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertOk()->json('qrToken');
+
+        $this->actingAs($this->frontDeskAccount, 'web')->postJson('/front-desk/checkin-checkout/confirm', [
+            'qr_token' => $token,
+            'id_surrendered_type' => 'passport',
+            'id_match_status' => 'replaced',
+            'new_id_type' => 'passport',
+            'new_id_reason' => 'Lost the old ID',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('visitor_ids', [
+            'visitor_id' => $this->visitor->visitor_id,
+            'id_type' => 'passport',
+            'id_number' => 'PENDING',
+            'verification_status' => 'pending',
+        ]);
     }
 
     // ---------------------------------------------------------------- Viewing
@@ -193,7 +223,7 @@ class GovernmentIdPrivateStorageTest extends TestCase
             ->assertDontSee('/storage/visitor-ids', false);
     }
 
-    public function test_front_desk_profile_shows_no_number_given_instead_of_the_pending_placeholder(): void
+    public function test_front_desk_profile_shows_no_id_number(): void
     {
         $id = $this->idWithFile();
         $id->forceFill(['id_number' => 'PENDING'])->save();
@@ -201,8 +231,9 @@ class GovernmentIdPrivateStorageTest extends TestCase
         $this->actingAs($this->frontDeskAccount, 'web')
             ->get("/front-desk/visitor-lookup/{$this->visitor->visitor_id}")
             ->assertOk()
-            ->assertSee('No number given')
-            ->assertDontSee('No. <span class="font-semibold text-text-primary">PENDING', false)
+            ->assertSee('National ID')
+            ->assertDontSee('PENDING')
+            ->assertDontSee('No number given')
             // Empty gate history is one line, not an empty table.
             ->assertSee('No gate records yet.')
             ->assertDontSee('ID Held');

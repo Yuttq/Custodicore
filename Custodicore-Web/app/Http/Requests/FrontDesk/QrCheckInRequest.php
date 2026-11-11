@@ -20,7 +20,6 @@ class QrCheckInRequest extends FrontDeskRequest
             'id_match_status' => Sanitizer::text($this->input('id_match_status')),
             'id_surrendered_type' => VisitorId::resolveType(Sanitizer::text($this->input('id_surrendered_type'))),
             'new_id_type' => VisitorId::resolveType(Sanitizer::text($this->input('new_id_type'))),
-            'new_id_number' => Sanitizer::idNumber($this->input('new_id_number')),
             'new_id_reason' => Sanitizer::text($this->input('new_id_reason')),
         ]);
     }
@@ -32,7 +31,6 @@ class QrCheckInRequest extends FrontDeskRequest
             'id_match_status' => ['required', Rule::in(['matched', 'replaced'])],
             'id_surrendered_type' => ['required', Rule::in(VisitorId::TYPES)],
             'new_id_type' => ['nullable', 'required_if:id_match_status,replaced', Rule::in(VisitorId::TYPES)],
-            'new_id_number' => ['nullable', 'required_if:id_match_status,replaced', 'string', 'min:4', 'max:50', 'regex:'.Sanitizer::ID_NUMBER_REGEX],
             'new_id_reason' => ['nullable', 'required_if:id_match_status,replaced', 'string', 'min:3', 'max:255'],
             'new_id_photo' => ['nullable', 'string', 'max:7000000'],
         ];
@@ -48,10 +46,6 @@ class QrCheckInRequest extends FrontDeskRequest
             'id_surrendered_type.in' => 'Select a valid ID type from the list.',
             'new_id_type.required_if' => 'Select the type of the new ID.',
             'new_id_type.in' => 'Select a valid ID type from the list.',
-            'new_id_number.required_if' => 'Enter the new ID number.',
-            'new_id_number.min' => 'The ID number is too short. Check it against the physical ID.',
-            'new_id_number.max' => 'The ID number may not be longer than 50 characters.',
-            'new_id_number.regex' => 'The ID number may only contain letters, numbers, spaces, hyphens and slashes.',
             'new_id_reason.required_if' => 'Select or describe the reason for the new ID.',
             'new_id_reason.min' => 'Describe the reason for the new ID in a few words.',
             'new_id_reason.max' => 'Keep the reason under 255 characters.',

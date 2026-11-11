@@ -85,9 +85,6 @@ function initializeFrontDeskScanner() {
     const registeredIdType =
         document.getElementById("registeredIdType");
 
-    const registeredIdNumber =
-        document.getElementById("registeredIdNumber");
-
     const registeredIdStatus =
         document.getElementById("registeredIdStatus");
 
@@ -115,9 +112,6 @@ function initializeFrontDeskScanner() {
 
     const newIdType =
         document.getElementById("new_id_type");
-
-    const newIdNumber =
-        document.getElementById("new_id_number");
 
     const newIdReason =
         document.getElementById("new_id_reason");
@@ -173,9 +167,6 @@ function initializeFrontDeskScanner() {
 
     const manualIdType =
         document.getElementById("manualIdType");
-
-    const manualIdNumber =
-        document.getElementById("manualIdNumber");
 
     const overrideReason =
         document.getElementById("overrideReason");
@@ -311,11 +302,6 @@ function initializeFrontDeskScanner() {
             "qrCheckoutIdType"
         );
 
-    const qrCheckoutIdNumber =
-        document.getElementById(
-            "qrCheckoutIdNumber"
-        );
-
     const qrCheckoutIdReturned =
         document.getElementById(
             "qrCheckoutIdReturned"
@@ -366,11 +352,6 @@ function initializeFrontDeskScanner() {
     const checkoutIdType =
         document.getElementById(
             "checkoutIdType"
-        );
-
-    const checkoutIdNumber =
-        document.getElementById(
-            "checkoutIdNumber"
         );
 
     const checkoutIdReturned =
@@ -554,38 +535,6 @@ function initializeFrontDeskScanner() {
     | Sanitizer), so the officer sees every problem on its field before the
     | request is sent. The server still validates everything.
     */
-
-    const ID_NUMBER_PATTERN =
-        /^[A-Z0-9](?:[A-Z0-9 /-]*[A-Z0-9])?$/;
-
-    /** "a12 - 345  678" -> "A12-345 678", like Sanitizer::idNumber(). */
-    function cleanIdNumber(value) {
-
-        return String(value ?? "")
-            .replace(/<[^>]*>/g, "")
-            .toUpperCase()
-            .replace(/\s+/g, " ")
-            .replace(/\s*([/-])\s*/g, "$1")
-            .trim();
-    }
-
-    /** Problem with an ID number, or null when it is fine. */
-    function idNumberProblem(value) {
-
-        if (!value) {
-            return "Enter the ID number.";
-        }
-
-        if (value.length < 4) {
-            return "The ID number is too short. Check it against the physical ID.";
-        }
-
-        if (!ID_NUMBER_PATTERN.test(value)) {
-            return "Use only letters, numbers, spaces, hyphens and slashes.";
-        }
-
-        return null;
-    }
 
     function setFieldError(input, message) {
 
@@ -864,11 +813,6 @@ function initializeFrontDeskScanner() {
         );
 
         setText(
-            registeredIdNumber,
-            "—"
-        );
-
-        setText(
             registeredIdStatus,
             "—"
         );
@@ -893,6 +837,9 @@ function initializeFrontDeskScanner() {
             "ring-offset-2"
         );
 
+        idMatchesBtn?.setAttribute("aria-pressed", "false");
+        idDoesNotMatchBtn?.setAttribute("aria-pressed", "false");
+
 
         if (idSurrenderedType) {
             idSurrenderedType.value =
@@ -903,12 +850,6 @@ function initializeFrontDeskScanner() {
             newIdType.value =
                 "";
         }
-
-        if (newIdNumber) {
-            newIdNumber.value =
-                "";
-        }
-
         if (newIdReason) {
             newIdReason.value =
                 "";
@@ -969,7 +910,7 @@ function initializeFrontDeskScanner() {
         newIdSaved =
             false;
 
-        [newIdType, newIdNumber, newIdReason, newIdOtherReason, newIdVerified].forEach(clearFieldError);
+        [newIdType, newIdReason, newIdOtherReason, newIdVerified].forEach(clearFieldError);
 
         clearNewIdPhoto();
 
@@ -1002,11 +943,6 @@ function initializeFrontDeskScanner() {
             );
 
             setText(
-                registeredIdNumber,
-                "—"
-            );
-
-            setText(
                 registeredIdStatus,
                 "No registered ID"
             );
@@ -1023,13 +959,6 @@ function initializeFrontDeskScanner() {
             registeredIdType,
             id.type_label ||
             id.type ||
-            "—"
-        );
-
-
-        setText(
-            registeredIdNumber,
-            id.number ||
             "—"
         );
 
@@ -1942,7 +1871,6 @@ function initializeFrontDeskScanner() {
 
         const visitorIdValue =
             visitor.visitor_id ||
-            visitor.id_number ||
             data.visitor_id ||
             activeVisit.visitor_id ||
             "—";
@@ -1997,13 +1925,6 @@ function initializeFrontDeskScanner() {
             "—";
 
 
-        const idNumberValue =
-            surrenderedId.number ||
-            data.id_number ||
-            activeVisit.id_number ||
-            "—";
-
-
         /*
          * New scanner result panel.
          */
@@ -2047,12 +1968,6 @@ function initializeFrontDeskScanner() {
         setText(
             qrCheckoutIdType,
             idTypeValue
-        );
-
-
-        setText(
-            qrCheckoutIdNumber,
-            idNumberValue
         );
 
 
@@ -2102,12 +2017,6 @@ function initializeFrontDeskScanner() {
         );
 
 
-        setText(
-            checkoutIdNumber,
-            idNumberValue
-        );
-
-
         /*
          * Visit details (relationship, PDL status, schedule) on both
          * checkout panels.
@@ -2146,11 +2055,6 @@ function initializeFrontDeskScanner() {
         setText(
             document.getElementById("checkoutInfoRegisteredIdType"),
             registeredId.type_label || registeredId.type
-        );
-
-        setText(
-            document.getElementById("checkoutInfoRegisteredIdNumber"),
-            registeredId.number
         );
 
         setText(
@@ -2579,6 +2483,9 @@ function initializeFrontDeskScanner() {
                 "ring-offset-2"
             );
 
+            idMatchesBtn.setAttribute("aria-pressed", "true");
+            idDoesNotMatchBtn?.setAttribute("aria-pressed", "false");
+
 
             idDoesNotMatchBtn?.classList.remove(
                 "ring-2",
@@ -2604,12 +2511,6 @@ function initializeFrontDeskScanner() {
                 newIdType.value =
                     "";
             }
-
-            if (newIdNumber) {
-                newIdNumber.value =
-                    "";
-            }
-
             if (newIdReason) {
                 newIdReason.value =
                     "";
@@ -2703,6 +2604,9 @@ function initializeFrontDeskScanner() {
                 "ring-2",
                 "ring-offset-2"
             );
+
+            idDoesNotMatchBtn.setAttribute("aria-pressed", "true");
+            idMatchesBtn?.setAttribute("aria-pressed", "false");
 
 
             idMatchesBtn?.classList.remove(
@@ -2828,17 +2732,11 @@ function initializeFrontDeskScanner() {
 
     /** Checks the "Different ID Presented" form; marks every problem. */
     function validateNewIdFields() {
-
-        if (newIdNumber) {
-            newIdNumber.value = cleanIdNumber(newIdNumber.value);
-        }
-
         const otherReason =
             newIdOtherReason?.value.trim() ?? "";
 
         return checkFields([
             [newIdType, newIdType?.value ? null : "Select the type of the new ID."],
-            [newIdNumber, idNumberProblem(newIdNumber?.value)],
             [newIdReason, newIdReason?.value ? null : "Select the reason for the new ID."],
             [
                 newIdOtherReason,
@@ -2908,21 +2806,12 @@ function initializeFrontDeskScanner() {
     |--------------------------------------------------------------------------
     */
 
-    [newIdNumber, manualIdNumber].forEach((input) => {
-
-        input?.addEventListener("blur", () => {
-            input.value = cleanIdNumber(input.value);
-        });
-    });
-
     [
         newIdType,
-        newIdNumber,
         newIdReason,
         newIdOtherReason,
         newIdVerified,
         manualIdType,
-        manualIdNumber,
         overrideReason,
         document.getElementById("manualIdVerified"),
     ].forEach((input) => {
@@ -3340,12 +3229,6 @@ function initializeFrontDeskScanner() {
                                             ? newIdType.value
                                             : null,
 
-                                    new_id_number:
-                                        idMatchStatus ===
-                                        "replaced"
-                                            ? newIdNumber.value.trim()
-                                            : null,
-
                                     new_id_reason:
                                         idMatchStatus ===
                                         "replaced"
@@ -3374,7 +3257,6 @@ function initializeFrontDeskScanner() {
                     // Server validation: mark the fields it rejected.
                     const fieldFor = {
                         new_id_type: newIdType,
-                        new_id_number: newIdNumber,
                         new_id_reason: newIdReason,
                     };
 
@@ -3930,13 +3812,6 @@ function initializeFrontDeskScanner() {
         }
 
 
-        if (manualIdNumber) {
-
-            manualIdNumber.value =
-                "";
-        }
-
-
         if (overrideReason) {
 
             overrideReason.value =
@@ -3953,11 +3828,10 @@ function initializeFrontDeskScanner() {
 
         [
             "manualRegisteredIdType",
-            "manualRegisteredIdNumber",
             "manualRegisteredIdStatus",
         ].forEach((id) => setText(document.getElementById(id), "—"));
 
-        [manualIdType, manualIdNumber, overrideReason, manualIdVerified].forEach(clearFieldError);
+        [manualIdType, overrideReason, manualIdVerified].forEach(clearFieldError);
 
         const reasonCount =
             document.getElementById("overrideReasonCount");
@@ -4009,7 +3883,6 @@ function initializeFrontDeskScanner() {
 
 
         setText(document.getElementById("manualRegisteredIdType"), visitor.registeredIdType);
-        setText(document.getElementById("manualRegisteredIdNumber"), visitor.registeredIdNumber);
         setText(document.getElementById("manualRegisteredIdStatus"), visitor.registeredIdStatus);
 
 
@@ -4328,15 +4201,8 @@ function initializeFrontDeskScanner() {
             }
 
 
-            if (manualIdNumber) {
-                manualIdNumber.value = cleanIdNumber(manualIdNumber.value);
-            }
-
             const idType =
                 manualIdType?.value;
-
-            const idNumber =
-                manualIdNumber?.value ?? "";
 
             const reason =
                 (overrideReason?.value ?? "").replace(/\s+/g, " ").trim();
@@ -4347,7 +4213,6 @@ function initializeFrontDeskScanner() {
             const fieldsOk =
                 checkFields([
                     [manualIdType, idType ? null : "Select the type of ID the visitor surrendered."],
-                    [manualIdNumber, idNumberProblem(idNumber)],
                     [
                         overrideReason,
                         reason.length < 10
@@ -4462,30 +4327,6 @@ function initializeFrontDeskScanner() {
                 form.appendChild(
                     idInput
                 );
-
-
-                const idNumberInput =
-                    document.createElement(
-                        "input"
-                    );
-
-
-                idNumberInput.type =
-                    "hidden";
-
-
-                idNumberInput.name =
-                    "id_number";
-
-
-                idNumberInput.value =
-                    idNumber;
-
-
-                form.appendChild(
-                    idNumberInput
-                );
-
 
                 const reasonInput =
                     document.createElement(
