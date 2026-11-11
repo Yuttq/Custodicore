@@ -59,7 +59,8 @@ export default function MyPdlsList({
       ) : null}
       {pdls.length > 0 ? (
         <>
-          {onScreen ? <Text style={styles.eyebrow}>Linked PDLs</Text> : null}
+          {/* Only needed to separate the list from a request card above it. */}
+          {onScreen && pdlRequest ? <Text style={styles.eyebrow}>Linked PDLs</Text> : null}
           <View style={[styles.list, styles.block]}>
             {pdls.map((pdl, index) => {
               const needsDocs =
@@ -91,7 +92,8 @@ export default function MyPdlsList({
                       {pdl.statusLabel}
                     </Text>
                   </View>
-                  {pdl.statusHint && !needsDocs ? (
+                  {/* Approved needs no next step: the green status says it. */}
+                  {pdl.statusHint && !needsDocs && pdl.status !== 'approved' ? (
                     <Text style={[styles.meta, styles.hint]}>{pdl.statusHint}</Text>
                   ) : null}
                   {canRequestAgain ? (
