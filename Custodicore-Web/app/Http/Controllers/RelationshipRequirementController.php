@@ -155,6 +155,49 @@ class RelationshipRequirementController extends Controller
     }
 
     // -----------------------------------------------------------------
+    // Return a pending relationship: one decision instead of a Reject per
+    // file. The files under review are marked for replacement (so the app
+    // asks the visitor for new ones), the link stays pending, and the
+    // visitor gets one notice with what to fix.
+    // -----------------------------------------------------------------
+    public function returnRelationship(Request $request, VisitorProfile $visitor, VisitorPdlRelationship $relationship)
+    {
+        abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
+
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'rejection_reason.required' => 'Tell the visitor what to fix.',
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
+        ]);
+
+        if ($relationship->verification_status !== 'pending') {
+            return back()->with('error', 'Only a pending relationship can be returned.');
+        }
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $reason = trim($validated['rejection_reason']);
+        $returned = RelationshipDocument::where('relationship_id', $relationship->relationship_id)
+            ->where('status', 'pending')
+            ->update(['status' => 'rejected', 'rejection_reason' => $reason, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+
+        $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
+        $this->logAudit('visitor_pdl_relationships', $relationship->relationship_id,
+            "Returned relationship {$visitor->full_name} → {$pdlName} for changes"
+            . ($returned ? " ({$returned} " . ($returned === 1 ? 'file' : 'files') . ' to replace)' : '') . ": {$reason}");
+
+        VisitorController::notifyAdditionalPdl($visitor, $relationship, 'relationship_returned', 'PDL Relationship Needs Changes',
+            "Staff reviewed your relationship to {$pdlName} ({$relationship->relationshipLabel()}) and need a few changes: {$reason} "
+            . 'Upload the corrected documents in the app and staff will review them again.');
+
+        return back()->with('success', "Returned to {$visitor->full_name} with what to fix. The link stays pending until they send the corrected documents.");
+    }
+
+    // -----------------------------------------------------------------
     // Officer confirmations (no file involved)
     // -----------------------------------------------------------------
     public function confirm(Request $request, VisitorProfile $visitor, VisitorPdlRelationship $relationship, string $key)

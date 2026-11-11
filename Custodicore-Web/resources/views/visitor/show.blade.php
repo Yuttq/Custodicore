@@ -457,7 +457,9 @@
         @foreach ($visitor->relationships as $rel)
         @php
           $relRequirements = \App\Services\RelationshipRequirements::for($rel);
-          $relReady = \App\Services\RelationshipRequirements::allMet($relRequirements);
+          // Ready once only documents waiting for review are left: Approve approves them too.
+          $relReady = \App\Services\RelationshipApproval::ready($relRequirements);
+          $relBlockers = \App\Services\RelationshipApproval::blockers($relRequirements);
           // An approved relationship is finished: its requirements (and Reject) fold into one line.
           $relApproved = $rel->verification_status === 'verified';
           $relMet = collect($relRequirements)->where('status', 'met')->count();
@@ -489,20 +491,11 @@
             <div style="display:flex;gap:8px;">
               {{-- Only a pending relationship: a rejected one is reopened by a new Add Another PDL request. --}}
               @if ($rel->verification_status === 'pending')
-                <form method="POST" action="{{ route('visitor.relationships.verify', [$visitor->visitor_id, $rel->relationship_id]) }}"
-                      data-confirm="Approve {{ $visitor->full_name }} as {{ $rel->relationshipLabel() }} of {{ $rel->pdl?->full_name ?? 'this PDL' }}? Its requirements will be locked."
-                      data-confirm-title="Approve relationship" data-confirm-ok="Approve">
-                  @csrf
-                  @if ($relReady)
-                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-                  @else
-                    <button type="submit" class="row-action" style="color:var(--green);opacity:.45;cursor:not-allowed;" disabled title="Complete all requirements below first">Approve</button>
-                  @endif
-                </form>
+                @include('visitor.partials.relationship-approve', ['rel' => $rel])
               @endif
-              {{-- Pending: Reject next to Approve. Approved: Reject sits in the folded details below. --}}
+              {{-- Pending: Approve or Return (what to fix). Approved: Revoke Approval sits in the folded details below. --}}
               @if ($rel->verification_status === 'pending')
-                @include('visitor.partials.relationship-reject', ['rel' => $rel])
+                @include('visitor.partials.relationship-return', ['rel' => $rel])
               @elseif ($relApproved)
                 <span class="muted-cell">{{ $relMet }} of {{ count($relRequirements) }} met</span>
               @endif

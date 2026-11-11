@@ -453,7 +453,7 @@ class VisitorController extends Controller
             ->with('success', 'Relationship added. It is pending verification.');
     }
 
-    public function verifyRelationship(VisitorProfile $visitor, VisitorPdlRelationship $relationship)
+    public function verifyRelationship(Request $request, VisitorProfile $visitor, VisitorPdlRelationship $relationship)
     {
         abort_unless($relationship->visitor_id === $visitor->visitor_id, 404);
 
@@ -466,30 +466,29 @@ class VisitorController extends Controller
             return back()->with('error', 'This relationship was rejected and cannot be approved directly. The visitor must send a new Add Another PDL request.');
         }
 
-        $requirements = RelationshipRequirements::for($relationship);
-        if (! RelationshipRequirements::allMet($requirements)) {
-            return back()->with('error', 'This relationship cannot be verified yet. Still needed: '
-                . implode(', ', RelationshipRequirements::unmetLabels($requirements)) . '.');
-        }
-
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
+        // One Approve: the documents waiting for review and the relationship together.
         try {
-            $relationship->update([
-                'verification_status' => 'verified',
-                'verified_by' => $staffId,
-                'verified_at' => now(),
-            ]);
+            // Approve is also the officer's confirmation (stated in its pop-up). A minor's companion
+            // comes from registration; the form only asks when none was given.
+            $result = app(\App\Services\RelationshipApproval::class)->approve(
+                $relationship, $staffId, \App\Support\Sanitizer::text($request->input('accompanying_adult'))
+            );
         } catch (\Throwable $e) {
-            Log::error('Relationship verification failed: ' . $e->getMessage());
-            return back()->with('error', 'Could not verify this relationship. ' . $e->getMessage());
+            Log::error('Relationship approval failed: ' . $e->getMessage());
+            return back()->with('error', 'Could not approve this relationship. ' . $e->getMessage());
+        }
+        if (! $result['approved']) {
+            return back()->with('error', 'This relationship cannot be approved yet. Still needed: ' . implode(', ', $result['missing']) . '.');
         }
 
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
-            "Verified relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}");
+            "Approved relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}"
+            . ($result['documents'] ? " (with {$result['documents']} " . ($result['documents'] === 1 ? 'document' : 'documents') . ')' : ''));
 
         $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
         $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_approved', 'PDL Relationship Approved',

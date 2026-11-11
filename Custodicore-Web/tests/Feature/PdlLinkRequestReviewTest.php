@@ -271,11 +271,12 @@ class PdlLinkRequestReviewTest extends TestCase
         $this->assertSame($relationship->relationship_id, (int) $notice->related_record_id);
         $this->assertStringContainsString('Juan Dela Cruz', $notice->message);
 
-        // Not approved automatically: it waits in PDL Links and is reviewed on the
-        // visitor page with the existing document and relationship actions.
+        // Incomplete (no approved ID yet), so not approved: it waits in PDL Links. The
+        // visitor page has one relationship Approve that covers its documents; no Approve per document.
         $this->assertSame(1, ReviewQueue::pdlLinksQuery()->count());
         $this->get(route('visitor.show', $this->visitor->visitor_id))->assertOk()
-            ->assertSee(route('relationship-documents.verify', $requestDocument->document_id), false);
+            ->assertSee(route('visitor.relationships.verify', [$this->visitor->visitor_id, $relationship->relationship_id]), false)
+            ->assertDontSee(route('relationship-documents.verify', $requestDocument->document_id), false);
 
         VisitorId::create([
             'visitor_id' => $this->visitor->visitor_id, 'id_type' => 'national_id', 'id_number' => 'N-1',
@@ -569,5 +570,45 @@ class PdlLinkRequestReviewTest extends TestCase
         Sanctum::actingAs($this->recordOfficerAccount);
         $this->postJson($url)->assertForbidden();
         $this->assertTrue($request->fresh()->isOpen());
+    }
+
+    public function test_link_and_approve_approves_a_complete_request_in_one_step(): void
+    {
+        // An approved ID plus the request's PDL birth certificate: everything a parent needs.
+        \App\Models\VisitorId::create([
+            'visitor_id' => $this->visitor->visitor_id, 'id_type' => 'national_id', 'id_number' => 'N-1',
+            'file_path' => 'x.png', 'verification_status' => 'verified',
+        ]);
+        $request = $this->openRequest();
+        $document = $request->documents()->sole();
+
+        $this->link($request)
+            ->assertRedirect(route('pdl-links.index'))
+            ->assertSessionHas('success', fn ($m) => str_starts_with($m, 'Linked and approved'));
+
+        $relationship = VisitorPdlRelationship::where('visitor_id', $this->visitor->visitor_id)->where('pdl_id', $this->other->pdl_id)->sole();
+        $this->assertSame('verified', $relationship->verification_status);
+        $this->assertSame('verified', $document->fresh()->status);
+        $this->assertTrue(Notification::where('account_id', $this->visitor->account_id)->where('notification_type', 'relationship_approved')->exists());
+    }
+
+    public function test_pending_link_is_approved_from_the_list_with_its_documents(): void
+    {
+        \App\Models\VisitorId::create([
+            'visitor_id' => $this->visitor->visitor_id, 'id_type' => 'national_id', 'id_number' => 'N-1',
+            'file_path' => 'x.png', 'verification_status' => 'verified',
+        ]);
+        $relationship = $this->relationshipWith($this->other, 'pending');
+        $document = $this->storedDocument(['relationship_id' => $relationship->relationship_id]);
+        $approve = route('visitor.relationships.verify', [$this->visitor->visitor_id, $relationship->relationship_id]);
+
+        // One Approve per link in the list; no Approve per document anywhere.
+        $this->get(route('pdl-links.index'))->assertOk()->assertSee($approve, false);
+        $this->get(route('visitor.show', $this->visitor->visitor_id))->assertOk()
+            ->assertDontSee(route('relationship-documents.verify', $document->document_id), false);
+
+        $this->post($approve)->assertSessionHas('success');
+        $this->assertSame('verified', $relationship->fresh()->verification_status);
+        $this->assertSame('verified', $document->fresh()->status);
     }
 }

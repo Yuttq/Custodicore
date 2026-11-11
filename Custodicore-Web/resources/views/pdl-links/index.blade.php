@@ -8,8 +8,8 @@
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Visitor Requests</h2></div>
   <p class="muted-cell queue-help" style="margin-top:0;">
-    Approved visitors asking to add another PDL. Open a request to check its documents, find the actual PDL and link it,
-    or reject it. Linking creates a pending relationship; you then approve it on the visitor page as usual.
+    Approved visitors asking to add another PDL. Open a request to check its documents, find the actual PDL, then
+    <strong>Link &amp; Approve</strong> in one step, or reject it.
   </p>
   @if ($pdlRequests->isEmpty())
     <p class="empty-note">No visitor requests are waiting.</p>
@@ -43,8 +43,9 @@
 
 <h2 style="margin:0 0 6px;">Pending Relationship Links</h2>
 <p class="muted-cell queue-help">
-  Additional PDLs linked to visitors whose account is already approved. Open a row to review the
-  relationship's documents and confirmations on the visitor page, then approve or reject it there.
+  Additional PDLs linked to visitors whose account is already approved. <strong>Approve</strong> approves the
+  relationship and its documents together; <strong>Return</strong> sends it back with what to fix;
+  <strong>Review</strong> opens the visitor page to look closer.
 </p>
 
 @if ($links->isEmpty())
@@ -69,8 +70,19 @@
               <td><span class="badge transferred"><span class="dot"></span>Pending</span></td>
               {{-- created_at is not cast to a date on this model. --}}
               <td class="muted-cell">{{ $link->created_at ? \Illuminate\Support\Carbon::parse($link->created_at)->format('M j, Y') : '—' }}</td>
+              @php
+                $linkItems = \App\Services\RelationshipRequirements::for($link);
+                $linkReady = \App\Services\RelationshipApproval::ready($linkItems);
+              @endphp
               <td>
-                <a class="row-action" href="{{ route('visitor.show', $link->visitor_id) }}#relationships">Review</a>
+                <div style="display:flex;gap:14px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
+                  <a class="row-action" href="{{ route('visitor.show', $link->visitor_id) }}#relationships">Review</a>
+                  @include('visitor.partials.relationship-return', ['rel' => $link, 'visitor' => $link->visitor])
+                  @include('visitor.partials.relationship-approve', ['rel' => $link, 'visitor' => $link->visitor, 'compact' => true])
+                </div>
+                @unless ($linkReady)
+                  <div class="muted-cell" style="font-size:12px;margin-top:4px;text-align:right;">Still needed: {{ implode(', ', \App\Services\RelationshipApproval::blockers($linkItems)) }}</div>
+                @endunless
               </td>
             </tr>
           @endforeach

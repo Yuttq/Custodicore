@@ -644,6 +644,12 @@ Route::middleware([
         [App\Http\Controllers\VisitorController::class, 'rejectRelationship']
     )->name('visitor.relationships.reject');
 
+    // Send a pending relationship back with what to fix (instead of a Reject per file).
+    Route::post(
+        '/visitors/{visitor}/relationships/{relationship}/return',
+        [App\Http\Controllers\RelationshipRequirementController::class, 'returnRelationship']
+    )->name('visitor.relationships.return');
+
     // BJMP requirements per relationship (documents the visitor uploads
     // from the app, officer confirmations, relationship details).
     Route::patch(

@@ -61,39 +61,11 @@
 
         @unless ($locked)
           <div class="req-actions">
-            @if ($item['kind'] === 'document' && $item['status'] === 'pending_review')
-              <form method="POST" action="{{ route('relationship-documents.verify', $item['document']->document_id) }}"
-                    data-confirm="Approve the {{ $item['label'] }}? Only do this after checking the file is genuine and readable."
-                    data-confirm-title="Approve document" data-confirm-ok="Approve">
-                @csrf
-                <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-              </form>
-              <details class="req-inline">
-                <summary class="row-action" style="color:var(--red);">Reject</summary>
-                <form method="POST" action="{{ route('relationship-documents.reject', $item['document']->document_id) }}" class="req-inline-form"
-                      data-confirm="Reject the {{ $item['label'] }}? The visitor will see your reason and must upload a new one."
-                      data-confirm-title="Reject document" data-confirm-ok="Reject" data-confirm-danger>
-                  @csrf
-                  <input type="text" name="rejection_reason" data-label="Reason (shown to the visitor)" minlength="5" maxlength="500" required placeholder="Reason shown to the visitor">
-                  <button type="submit" class="btn btn-outline-neutral" style="padding:7px 12px;">Reject</button>
-                </form>
-              </details>
-            @elseif ($item['kind'] === 'confirmation' && $item['status'] !== 'met')
-              <form method="POST" action="{{ route('visitor.relationships.confirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}" class="req-inline-form"
-                    data-confirm="Confirm: {{ $item['label'] }}?" data-confirm-title="Confirm requirement" data-confirm-ok="Confirm">
-                @csrf
-                @if ($item['key'] === 'accompanying_guardian')
-                  <input type="text" name="note" data-label="Accompanying parent/guardian" maxlength="150" required placeholder="Name of parent/guardian">
-                @endif
-                <button type="submit" class="btn btn-outline-neutral" style="padding:7px 12px;">Confirm</button>
-              </form>
-            @elseif ($item['kind'] === 'confirmation')
-              <form method="POST" action="{{ route('visitor.relationships.unconfirm', [$visitorId, $relationship->relationship_id, $item['key']]) }}"
-                    data-confirm="Remove the confirmation for {{ $item['label'] }}?" data-confirm-title="Undo confirmation" data-confirm-ok="Undo" data-confirm-danger>
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="row-action" style="color:var(--muted);">Undo</button>
-              </form>
+            {{-- Files have no buttons of their own: the relationship's Approve approves them,
+                 and its Return sends them back with what to fix. --}}
+            {{-- Officer confirmations: approving the relationship confirms them (its pop-up says so). --}}
+            @if ($item['kind'] === 'confirmation' && $item['status'] !== 'met')
+              <span class="muted-cell" style="font-size:12px;">Confirmed when you approve</span>
             @elseif ($item['key'] === 'children_together')
               <form method="POST" action="{{ route('visitor.relationships.update', [$visitorId, $relationship->relationship_id]) }}" class="req-inline-form"
                     data-confirm="Save whether they have children together? This decides which documents are required." data-confirm-title="Save details" data-confirm-ok="Save">

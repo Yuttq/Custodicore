@@ -108,8 +108,27 @@ class PdlLinkReviewController extends Controller
             'reopened' => 'The rejected relationship was reopened as pending and its rejected documents were removed (approved ones were kept)',
         ][$result['outcome']];
 
+        // Link & Approve: the documents the visitor sent and the relationship, in one step.
+        // Something only an officer can confirm (e.g. "no immediate family") is left for the
+        // list's Approve, whose pop-up states it; it is never confirmed silently here.
+        $toConfirm = \App\Services\RelationshipApproval::confirmationsNeeded(\App\Services\RelationshipRequirements::for($relationship));
+        $approval = $toConfirm
+            ? ['approved' => false, 'missing' => array_map(fn ($label) => "{$label} (confirm it with Approve in PDL Links)", array_values($toConfirm)), 'documents' => 0]
+            : app(\App\Services\RelationshipApproval::class)->approve($relationship, $staffId);
+        if ($approval['approved']) {
+            \App\Models\AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
+                "Approved relationship: {$relationship->visitor->full_name} as {$relationship->relationshipLabel()} to {$pdlName} (linked from request #{$pdlLinkRequest->request_id})",
+                \App\Models\Module::CODE_VISITOR_MANAGEMENT);
+            VisitorController::notifyAdditionalPdl($relationship->visitor, $relationship, 'relationship_approved', 'PDL Relationship Approved',
+                "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) has been approved. "
+                . 'You can now select this PDL on the Visitation Calendar when requesting a visit.');
+
+            return redirect()->route('pdl-links.index')
+                ->with('success', "Linked and approved: {$relationship->visitor->full_name} can now visit {$pdlName}.");
+        }
+
         return redirect()->route('visitor.show', $relationship->visitor_id)
-            ->with('success', "{$done}. Review its documents below and approve the relationship when every requirement is met.");
+            ->with('success', "{$done}. It stays pending until: " . implode(', ', $approval['missing']) . '. Finish it below, then approve.');
     }
 
     public function reject(Request $request, PdlLinkRequest $pdlLinkRequest)

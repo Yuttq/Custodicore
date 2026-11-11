@@ -118,8 +118,8 @@
     <p class="empty-note">This visitor's account is not approved right now, so the PDL cannot be linked. You can still reject the request.</p>
   @else
     <form method="POST" action="{{ route('pdl-requests.link', $pdlRequest->request_id) }}"
-          data-confirm="Link this request to the selected PDL? The relationship starts (or stays) pending until you approve it on the visitor page."
-          data-confirm-title="Link PDL" data-confirm-ok="Link">
+          data-confirm="Link this request to the selected PDL and approve it? This approves the documents the visitor sent and the relationship in one step. If something only an officer can confirm is missing, it stays pending."
+          data-confirm-title="Link & Approve" data-confirm-ok="Link & Approve">
       @csrf
       <div class="row cols-3">
         <div class="field-m pdl-search" data-pdl-search data-include-related="1" data-url="{{ route('visitor.relatable-pdls', $visitor->visitor_id) }}">
@@ -153,9 +153,10 @@
       <div class="muted-cell" style="margin-bottom:12px;font-size:12px;">
         The visitor's answers are pre-filled; correct them if the documents show otherwise. No existing link: a new pending
         relationship is created. Pending link: it is reused. Rejected link: it is reopened as pending, its rejected documents are
-        deleted (approved ones are kept). An already approved link cannot be linked again. The request's documents move to the relationship for review.
+        deleted (approved ones are kept). An already approved link cannot be linked again. The request's documents move to the
+        relationship and are approved with it, so nothing needs approving again on the visitor page.
       </div>
-      <button class="btn btn-blue" type="submit">Link PDL</button>
+      <button class="btn btn-blue" type="submit">Link &amp; Approve</button>
     </form>
   @endif
 </div>

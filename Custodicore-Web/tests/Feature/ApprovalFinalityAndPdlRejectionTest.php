@@ -245,13 +245,15 @@ class ApprovalFinalityAndPdlRejectionTest extends TestCase
         $this->assertCount(1, $this->notifications($this->visitor, 'relationship_rejected'));
     }
 
-    public function test_the_relationship_reject_form_asks_for_a_reason(): void
+    public function test_a_pending_relationship_is_returned_with_a_reason_not_rejected(): void
     {
         $pdlB = $this->pdlB();
 
+        // Pending: Approve or Return (what to fix); no Reject button.
         $this->get("/visitors/{$this->visitor->visitor_id}")->assertOk()
-            ->assertSee(route('visitor.relationships.reject', [$this->visitor->visitor_id, $pdlB->relationship_id]), false)
-            ->assertSee('Why the relationship was rejected (shown to the visitor)');
+            ->assertSee(route('visitor.relationships.return', [$this->visitor->visitor_id, $pdlB->relationship_id]), false)
+            ->assertSee('What to fix (shown to the visitor)')
+            ->assertDontSee(route('visitor.relationships.reject', [$this->visitor->visitor_id, $pdlB->relationship_id]), false);
     }
 
     public function test_a_rejected_relationship_cannot_be_approved_directly(): void

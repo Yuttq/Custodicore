@@ -84,7 +84,8 @@ class RecordOfficerVisitorPageLayoutTest extends TestCase
         $this->page()
             ->assertDontSee('Show requirements and files')
             ->assertSee(route('visitor.relationships.verify', [$this->visitor->visitor_id, $this->relationship->relationship_id]), false)
-            ->assertSee(route('visitor.relationships.reject', [$this->visitor->visitor_id, $this->relationship->relationship_id]), false);
+            ->assertSee(route('visitor.relationships.return', [$this->visitor->visitor_id, $this->relationship->relationship_id]), false)
+            ->assertDontSee(route('visitor.relationships.reject', [$this->visitor->visitor_id, $this->relationship->relationship_id]), false);
     }
 
     public function test_sign_up_hints_show_only_while_a_relationship_is_pending(): void
