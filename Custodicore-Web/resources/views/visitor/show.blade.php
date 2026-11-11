@@ -2,16 +2,31 @@
 @section('title', 'Visitor Profile — CustodiCore')
 
 @section('content')
+@php
+  $reviewStatus = $visitor->verification_status;
+  $reviewBadge = $reviewStatus === 'verified' ? 'active' : ($reviewStatus === 'rejected' ? 'rejected' : 'transferred');
+  $reviewLabel = ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$reviewStatus] ?? strtoupper($reviewStatus);
+  // The sign-up hints only help while a PDL still has to be linked or reviewed.
+  $showSignUpHints = $visitor->relationships->isEmpty()
+      || $visitor->relationships->contains(fn ($r) => $r->verification_status === 'pending');
+  // Pending visit requests are listed at the top; Recent Visits shows the rest.
+  $pendingVisitIds = $pendingVisitRequests->pluck('visit_request_id')->all();
+  $otherVisits = ($visitor->visitRequests ?? collect())->reject(fn ($vr) => in_array($vr->visit_request_id, $pendingVisitIds, true));
+@endphp
 <div class="topbar">
   <div class="pdl-header">
     @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'pdl-photo-lg visitor-photo-lg'])
     <div>
       <h1 style="margin:0;">{{ $visitor->full_name }}</h1>
-      @if ($visitor->isWalkIn())
-        <span class="badge transferred" style="margin-top:6px;"><span class="dot"></span>Walk-in · registered at the Front Desk</span>
-      @endif
-      <div class="muted-cell">
-        Visitor Profile
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+        <span class="badge {{ $reviewBadge }}"><span class="dot"></span>{{ $reviewLabel }}</span>
+        @if ($visitor->isWalkIn())
+          <span class="badge transferred"><span class="dot"></span>Walk-in · registered at the Front Desk</span>
+        @endif
+      </div>
+      <div class="muted-cell" style="margin-top:4px;">
+        {{ $visitor->account?->email ?? 'No email on file' }}{{ $visitor->account ? ($visitor->account->email_verified_at ? ' (verified)' : ' (not verified yet)') : '' }}
+        @if ($visitor->verified_at) · Reviewed {{ $visitor->verified_at->format('M d, Y H:i') }} @endif
         @if ($visitor->photo_uploaded_at) · photo taken {{ $visitor->photo_uploaded_at->format('M j, Y H:i') }} @else · no photo yet (taken in the app when the account is created) @endif
       </div>
     </div>
@@ -21,26 +36,33 @@
   </div>
 </div>
 
+{{-- ================= VISIT REQUESTS AWAITING REVIEW (first: they need the officer) ================= --}}
+@if ($pendingVisitRequests->isNotEmpty())
+  @include('visitor.partials.pending-visit-requests', ['showVisitor' => false])
+@endif
+
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Profile</h2></div>
-  <div class="row cols-3" style="margin-bottom:0;">
-    <div><div class="stat-label">Date of Birth</div><div>{{ $visitor->date_of_birth->format('M d, Y') }}</div></div>
+  <div class="row cols-4" style="margin-bottom:0;">
+    <div><div class="stat-label">Date of Birth</div><div>{{ $visitor->date_of_birth->format('M d, Y') }} ({{ $visitor->date_of_birth->age }})</div></div>
     <div><div class="stat-label">Gender</div><div>{{ $visitor->gender ? ucfirst($visitor->gender) : 'Prefer not to say' }}</div></div>
     <div><div class="stat-label">Contact Number</div><div>{{ $visitor->contact_number }}</div></div>
-  </div>
-  <div class="row cols-2" style="margin-top:16px;margin-bottom:0;">
     <div><div class="stat-label">Address</div><div>{{ $visitor->address ?? '—' }}</div></div>
+  </div>
+  @if ($visitor->emergency_contact_name || $visitor->emergency_contact_number)
+  <div class="row" style="margin-top:12px;margin-bottom:0;">
     <div><div class="stat-label">Emergency Contact</div><div>{{ $visitor->emergency_contact_name ?? '—' }} {{ $visitor->emergency_contact_number ? '('.$visitor->emergency_contact_number.')' : '' }}</div></div>
   </div>
-  @if ($visitor->relationship_hint)
-  <div class="row" style="margin-top:16px;margin-bottom:0;">
-    <div><div class="stat-label">Relationship Hint (from registration)</div><div>{{ $visitor->relationship_hint }}</div></div>
-  </div>
   @endif
-  @if ($visitor->intended_pdl_name)
+  @if ($showSignUpHints && ($visitor->relationship_hint || $visitor->intended_pdl_name))
   {{-- Typed by the visitor; a search hint only. Link the PDL with "Add PDL Relationship" below. --}}
-  <div class="row" style="margin-top:16px;margin-bottom:0;">
-    <div><div class="stat-label">PDL Name Given at Registration (unverified)</div><div>{{ $visitor->intended_pdl_name }}</div></div>
+  <div class="row cols-2" style="margin-top:12px;margin-bottom:0;">
+    @if ($visitor->relationship_hint)
+      <div><div class="stat-label">Relationship Hint (from registration)</div><div>{{ $visitor->relationship_hint }}</div></div>
+    @endif
+    @if ($visitor->intended_pdl_name)
+      <div><div class="stat-label">PDL Name Given at Registration (unverified)</div><div>{{ $visitor->intended_pdl_name }}</div></div>
+    @endif
   </div>
   @endif
   @if ($visitor->hasGuardianDetails())
@@ -174,7 +196,7 @@
         </tr>
         @foreach ($checks['ids'] as $doc)
           <tr>
-            <td>{{ $doc->typeLabel() }} · {{ $doc->id_number }}</td>
+            <td>{{ $doc->typeLabel() }} · {{ filled($doc->id_number) && strtoupper($doc->id_number) !== 'PENDING' ? $doc->id_number : 'No number given' }}</td>
             <td><span class="badge released"><span class="dot"></span>Identity</span></td>
             <td><span class="badge {{ $statusBadge($doc->verification_status) }}"><span class="dot"></span>{{ ucfirst($doc->verification_status) }}</span></td>
             <td class="muted-cell">
@@ -309,6 +331,8 @@
 @endif
 
 {{-- ================= ACCOUNT REVIEW ================= --}}
+{{-- Only while there is something to do; an approved account's status, email and date are in the header. --}}
+@if ($reviewStatus !== 'verified')
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Account Review</h2></div>
   <div class="row cols-3" style="margin-bottom:0;">
@@ -357,6 +381,7 @@
     @endif
   </div>
 </div>
+@endif
 
 {{-- ================= IDENTITY VERIFICATION ================= --}}
 <div class="panel" id="identity" style="margin-bottom:20px;">
@@ -372,7 +397,8 @@
         @foreach ($visitor->idDocuments as $doc)
         <tr>
           <td>{{ $doc->typeLabel() }}</td>
-          <td class="muted-cell">{{ $doc->id_number }}</td>
+          {{-- 'PENDING' is stored when the visitor gave no number; it is not an ID number. --}}
+          <td class="muted-cell">{{ filled($doc->id_number) && strtoupper($doc->id_number) !== 'PENDING' ? $doc->id_number : 'No number given' }}</td>
           <td>
             <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
               <span class="dot"></span>{{ strtoupper($doc->verification_status === 'verified' ? 'approved' : $doc->verification_status) }}
@@ -432,6 +458,9 @@
         @php
           $relRequirements = \App\Services\RelationshipRequirements::for($rel);
           $relReady = \App\Services\RelationshipRequirements::allMet($relRequirements);
+          // An approved relationship is finished: its requirements (and Reject) fold into one line.
+          $relApproved = $rel->verification_status === 'verified';
+          $relMet = collect($relRequirements)->where('status', 'met')->count();
         @endphp
         <tr>
           <td>
@@ -471,28 +500,30 @@
                   @endif
                 </form>
               @endif
-              @if ($rel->verification_status !== 'rejected')
-                {{-- The reason goes to the visitor, who is told to send a new
-                     Add Another PDL request; nothing else on the account changes. --}}
-                <details class="acct-reject">
-                  <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                  <form method="POST" action="{{ route('visitor.relationships.reject', [$visitor->visitor_id, $rel->relationship_id]) }}" class="acct-reject-form"
-                        data-confirm="Reject this relationship? The visitor will not be able to visit {{ $rel->pdl?->full_name ?? 'this PDL' }}.{{ $visitor->verification_status === 'verified' ? ' They will be asked to send a new request with corrected documents. Their account and other PDLs are not affected.' : '' }}"
-                        data-confirm-title="Reject relationship" data-confirm-ok="Reject" data-confirm-danger>
-                    @csrf
-                    <textarea name="rejection_reason" required minlength="5" maxlength="500" aria-label="Why the relationship was rejected (shown to the visitor)"
-                              data-label="Why the relationship was rejected (shown to the visitor)"
-                              placeholder="e.g. The names on the marriage certificate do not match."></textarea>
-                    <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
-                  </form>
-                </details>
+              {{-- Pending: Reject next to Approve. Approved: Reject sits in the folded details below. --}}
+              @if ($rel->verification_status === 'pending')
+                @include('visitor.partials.relationship-reject', ['rel' => $rel])
+              @elseif ($relApproved)
+                <span class="muted-cell">{{ $relMet }} of {{ count($relRequirements) }} met</span>
               @endif
             </div>
           </td>
         </tr>
         <tr class="req-row">
           <td colspan="5">
-            @include('partials.relationship-requirements', ['relationship' => $rel, 'items' => $relRequirements])
+            @if ($relApproved)
+              <details>
+                <summary class="row-action" style="cursor:pointer;">Show requirements and files</summary>
+                <div style="margin-top:10px;">
+                  @include('partials.relationship-requirements', ['relationship' => $rel, 'items' => $relRequirements])
+                  <div style="margin-top:10px;">
+                    @include('visitor.partials.relationship-reject', ['rel' => $rel])
+                  </div>
+                </div>
+              </details>
+            @else
+              @include('partials.relationship-requirements', ['relationship' => $rel, 'items' => $relRequirements])
+            @endif
           </td>
         </tr>
         @endforeach
@@ -560,20 +591,15 @@
 
 @include('partials.pdl-search-script')
 
-{{-- ================= VISIT REQUESTS AWAITING REVIEW ================= --}}
-@if ($pendingVisitRequests->isNotEmpty())
-  @include('visitor.partials.pending-visit-requests', ['showVisitor' => false])
-@endif
-
-{{-- ================= RECENT VISITS ================= --}}
-@if (($visitor->visitRequests ?? collect())->isNotEmpty())
+{{-- ================= RECENT VISITS (pending requests are listed at the top) ================= --}}
+@if ($otherVisits->isNotEmpty())
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Recent Visits</h2></div>
   <div class="table-scroll">
   <table>
     <thead><tr><th>PDL</th><th>Schedule</th><th>Status</th><th>Assigned</th></tr></thead>
     <tbody>
-      @foreach ($visitor->visitRequests as $vr)
+      @foreach ($otherVisits as $vr)
       <tr>
         <td>{{ $vr->pdl?->full_name ?? '—' }}</td>
         <td class="muted-cell">
@@ -602,11 +628,14 @@
 
 {{-- ================= VISITOR HISTORY / FLAGS ================= --}}
 <div class="panel" id="flags">
-  <div class="panel-header"><h2>History &amp; Flags</h2></div>
+  <div class="panel-header">
+    <h2>Flags</h2>
+    @if ($visitor->flags->isEmpty())
+      <span class="muted-cell">None — clean history.</span>
+    @endif
+  </div>
 
-  @if ($visitor->flags->isEmpty())
-    <p class="empty-note">No flags on file — clean history.</p>
-  @else
+  @if ($visitor->flags->isNotEmpty())
     <div class="table-scroll">
     <table>
       <thead><tr><th>Type</th><th>Description</th><th>Status</th><th>How Long</th><th>Flagged By</th><th>Date</th><th></th></tr></thead>
@@ -639,7 +668,7 @@
     </div>
   @endif
 
-  <details style="margin-top:14px;">
+  <details style="{{ $visitor->flags->isNotEmpty() ? 'margin-top:14px;' : '' }}">
     <summary class="row-action" style="cursor:pointer;">Flag This Visitor</summary>
     <form method="POST" action="{{ route('visitor.flags.store', $visitor->visitor_id) }}" style="margin-top:12px;"
           data-confirm="Flag {{ $visitor->full_name }}? Active flags send their visit requests to eligibility review."
@@ -683,8 +712,17 @@
     <h2>Activity History</h2>
     <a class="row-action" href="{{ route('activity-log.index', ['q' => $visitor->full_name]) }}">Open in Activity Log</a>
   </div>
-  <div class="timeline-scroll">
+  {{-- Latest 5 events; the rest (and "Registered") behind Show all. --}}
+  @if ($activity->count() <= 5)
     @include('partials.activity-timeline', ['entries' => $activity, 'registeredAt' => $visitor->created_at])
-  </div>
+  @else
+    @include('partials.activity-timeline', ['entries' => $activity->take(5)])
+    <details style="margin-top:8px;">
+      <summary class="row-action" style="cursor:pointer;">Show {{ $activity->count() - 5 + 1 }} older</summary>
+      <div class="timeline-scroll" style="margin-top:8px;">
+        @include('partials.activity-timeline', ['entries' => $activity->slice(5)->values(), 'registeredAt' => $visitor->created_at])
+      </div>
+    </details>
+  @endif
 </div>
 @endsection

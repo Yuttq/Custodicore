@@ -243,6 +243,7 @@ tbody tr:last-child td{border-bottom:none;}
 .row{display:grid;gap:16px;margin-bottom:16px;}
 .row.cols-3{grid-template-columns:1fr 1fr 1fr;}
 .row.cols-2{grid-template-columns:1fr 1fr;}
+.row.cols-4{grid-template-columns:repeat(4,1fr);}
 .field-m label{display:block;font-size:11.5px;font-weight:600;color:var(--text);margin-bottom:7px;}
 .field-m input,.field-m select,.field-m textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--field-bg);font-size:13px;color:var(--text);font-family:inherit;}
 .field-m input:focus,.field-m select:focus,.field-m textarea:focus,.field .input:focus-within{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,165,138,.2);}
@@ -377,7 +378,7 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .add-record[open] > summary{background:var(--gray-bg);}
 @media (max-width: 720px){
   .pdl-facts > div{border-right:none;border-bottom:1px solid var(--border);}
-  .row.cols-3,.row.cols-2{grid-template-columns:1fr;}
+  .row.cols-4,.row.cols-3,.row.cols-2{grid-template-columns:1fr;}
 }
 
 /* ===================== ELIGIBILITY REVIEW ===================== */
