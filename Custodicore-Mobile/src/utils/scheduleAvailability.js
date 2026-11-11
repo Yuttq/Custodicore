@@ -224,10 +224,22 @@ export function weeklyUsageFor(weeklyLimit, date) {
   };
 }
 
-/** "0 of 2 visits used" */
+/**
+ * "0 of 2 weekly slots used". "Slots", not "visits": the count includes
+ * pending requests, so "visits used" read as if both had already happened.
+ */
 export function weeklyUsageLabel(usage) {
-  return `${usage.used} of ${usage.limit} ${usage.limit === 1 ? 'visit' : 'visits'} used`;
+  return `${usage.used} of ${usage.limit} weekly ${usage.limit === 1 ? 'slot' : 'slots'} used`;
 }
+
+/**
+ * What uses a weekly slot. Mirrors VisitAssignmentService::CAPACITY_STATUSES
+ * on the server (assigned, pending_confirmation, confirmed, completed,
+ * no_show); wording only, the server does the counting.
+ */
+export const WEEKLY_SLOTS_COUNTED_NOTE =
+  'Includes pending requests, confirmed visits, completed visits, and no-shows. ' +
+  'Rejected and cancelled requests don’t count.';
 
 /**
  * Plain-language explanation of a week at the limit, naming the
@@ -235,13 +247,10 @@ export function weeklyUsageLabel(usage) {
  * @param {WeeklyUsage} usage
  */
 export function weeklyLimitReachedMessage(usage) {
-  // Short on purpose: the counter's heading already shows the week and "2 of 2 visits used".
+  // Short on purpose: the counter's heading already shows the week and "2 of 2 weekly slots used".
   // "Monday, November 23, 2026" → "Monday, November 23"
   const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
-  return (
-    'Weekly limit reached. It counts visits with all your PDLs together. ' +
-    `You can book again from ${nextMonday}.`
-  );
+  return `Weekly limit reached across all your PDLs. You can book again from ${nextMonday}.`;
 }
 
 /** ['thu', 'sat'] → "Thursday and Saturday" */

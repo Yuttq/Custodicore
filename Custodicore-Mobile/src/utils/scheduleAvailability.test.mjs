@@ -104,14 +104,14 @@ test('weekly usage comes from the response and is looked up by Monday–Sunday w
 
   const sunday = weeklyUsageFor(weeklyLimit, '2026-11-15');
   assert.equal(sunday.weekStart, '2026-11-09');
-  assert.equal(weeklyUsageLabel(sunday), '1 of 2 visits used');
+  assert.equal(weeklyUsageLabel(sunday), '1 of 2 weekly slots used');
   assert.equal(sunday.reached, false);
 
   const thursday = weeklyUsageFor(weeklyLimit, '2026-11-19');
   assert.deepEqual(thursday, { weekStart: '2026-11-16', weekEnd: '2026-11-22', used: 2, limit: 2, reached: true });
-  assert.equal(weeklyUsageLabel(thursday), '2 of 2 visits used');
+  assert.equal(weeklyUsageLabel(thursday), '2 of 2 weekly slots used');
 
-  assert.equal(weeklyUsageLabel(weeklyUsageFor(weeklyLimit, '2026-11-26')), '0 of 2 visits used');
+  assert.equal(weeklyUsageLabel(weeklyUsageFor(weeklyLimit, '2026-11-26')), '0 of 2 weekly slots used');
 
   // A week the backend did not report is unknown, not 0.
   assert.equal(weeklyUsageFor(weeklyLimit, '2026-12-03'), null);
@@ -123,7 +123,7 @@ test('the limit message covers all PDLs and says when booking reopens', () => {
   const usage = weeklyUsageFor(normalizeAvailabilityResponse({ weeklyLimit: WEEKLY }).weeklyLimit, '2026-11-20');
   const message = weeklyLimitReachedMessage(usage);
   assert.match(message, /Weekly limit reached/);
-  assert.match(message, /all your PDLs together/);
+  assert.match(message, /across all your PDLs/);
   assert.match(message, /book again from Monday, November 23\./);
 });
 
@@ -388,4 +388,11 @@ test('Home calendar: each PDL shows only its own dates, and only they open Sched
   assert.equal(calendarDateHandoff(dogie, null), null);
   assert.equal(calendarDateHandoff(null, '2026-11-06'), null);
   assert.equal(calendarDateHandoff({ daysByDate: dogie.daysByDate }, '2026-11-06'), null);
+});
+
+test('weekly slot wording: singular, and what counts', async () => {
+  const { WEEKLY_SLOTS_COUNTED_NOTE } = await import('./scheduleAvailability.js');
+  assert.equal(weeklyUsageLabel({ used: 1, limit: 1 }), '1 of 1 weekly slot used');
+  assert.match(WEEKLY_SLOTS_COUNTED_NOTE, /pending requests, confirmed visits, completed visits, and no-shows/);
+  assert.match(WEEKLY_SLOTS_COUNTED_NOTE, /Rejected and cancelled requests don’t count/);
 });

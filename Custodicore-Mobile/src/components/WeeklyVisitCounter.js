@@ -4,13 +4,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, layout, spacing, typography } from '../designSystem';
 import {
   formatWeekRange,
+  WEEKLY_SLOTS_COUNTED_NOTE,
   weeklyLimitReachedMessage,
   weeklyUsageFor,
   weeklyUsageLabel,
 } from '../utils/scheduleAvailability';
 
 /**
- * "Week of November 16–22 · 1 of 2 visits used" for the Monday–Sunday week
+ * "Week of November 16–22 · 1 of 2 weekly slots used" for the Monday–Sunday week
  * holding `date`. The count is the backend's (GET /api/schedules/availability
  * `weeklyLimit`) and covers ALL the visitor's linked PDLs together, so it
  * refreshes whenever availability reloads (e.g. after a request is sent).
@@ -33,8 +34,9 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
       style={[styles.box, usage.reached && styles.boxReached]}
       accessible
       accessibilityLabel={
-        `Weekly visits, ${range}: ${label}, across all your linked PDLs.` +
-        (usage.reached ? ` ${weeklyLimitReachedMessage(usage)}` : '')
+        `Weekly slots, ${range}: ${label}, across all your linked PDLs.` +
+        (usage.reached ? ` ${weeklyLimitReachedMessage(usage)}` : '') +
+        ` ${WEEKLY_SLOTS_COUNTED_NOTE}`
       }
     >
       <View style={styles.row}>
@@ -50,10 +52,10 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
         <Text style={styles.reached}>{weeklyLimitReachedMessage(usage)}</Text>
       ) : (
         <Text style={styles.note}>
-          Up to {usage.limit} {usage.limit === 1 ? 'visit' : 'visits'} a week (Mon–Sun), across all
-          your PDLs.
+          Up to {usage.limit} a week (Mon–Sun), across all your PDLs.
         </Text>
       )}
+      <Text style={styles.note}>{WEEKLY_SLOTS_COUNTED_NOTE}</Text>
     </View>
   );
 }
