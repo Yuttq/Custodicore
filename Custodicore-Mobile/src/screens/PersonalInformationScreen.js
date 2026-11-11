@@ -1,11 +1,6 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CustomInput, LoadingSpinner } from '../components';
 import {
@@ -21,7 +16,6 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { formatDate } from '../utils';
 import { validateProfileFields } from '../utils/profileValidation';
-import { getRelationshipLabel } from '../utils/registrationRequirements';
 
 const inputLabelStyle = { color: colors.textSecondary };
 
@@ -35,13 +29,14 @@ const SERVER_FIELD_TO_FORM = {
 };
 
 /**
- * @param {{ label: string; value: string }} props
+ * Label left, value right, one compact row.
+ * @param {{ label: string; value: string; last?: boolean }} props
  */
-function InfoField({ label, value }) {
+function InfoRow({ label, value, last = false }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoFieldLabel}>{label}</Text>
-      <Text style={styles.infoFieldValue} accessibilityLabel={`${label}: ${value}`}>
+    <View style={[styles.row, last && styles.rowLast]}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue} accessibilityLabel={`${label}: ${value}`}>
         {value}
       </Text>
     </View>
@@ -49,11 +44,31 @@ function InfoField({ label, value }) {
 }
 
 /**
- * Visitor personal information — GET /api/me, edits via PATCH /api/me (v2.1 / BJMP).
- * Email, verification status and relationship are read-only (staff-controlled).
+ * Card title with an optional right-hand element (lock icon or Edit link).
+ * @param {{ title: string; right?: React.ReactNode }} props
+ */
+function SectionHeader({ title, right }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      {right}
+    </View>
+  );
+}
+
+/**
+ * Visitor personal information — GET /api/me, edits via PATCH /api/me.
+ *
+ * Two cards: Personal Details (name, email, date of birth, gender — a lock
+ * icon once staff have verified the visitor, when the backend refuses name
+ * and date-of-birth changes) and Contact (phone and address, the fields the
+ * visitor can edit). Before verification the name is editable too. Email is
+ * never editable here. The PDLs and their relationships are on My PDLs.
  */
 export default function PersonalInformationScreen({ navigation }) {
-  const { user, registrationSummary, refreshUser, updateProfile } = useAuth();
+  const { user, refreshUser, updateProfile } = useAuth();
   const [loading, setLoading] = useState(!user);
   const [loadError, setLoadError] = useState(/** @type {string | null} */ (null));
   const [isEditing, setIsEditing] = useState(false);
@@ -63,10 +78,6 @@ export default function PersonalInformationScreen({ navigation }) {
   const [fieldErrors, setFieldErrors] = useState(/** @type {Record<string, string>} */ ({}));
 
   const isVerified = user?.verificationStatus === 'verified';
-  const relationshipLabel =
-    user?.relationshipHint?.trim() ||
-    (registrationSummary?.relationship ? getRelationshipLabel(registrationSummary.relationship) : '') ||
-    '—';
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -124,7 +135,7 @@ export default function PersonalInformationScreen({ navigation }) {
       address: draft.address.trim(),
     };
     // Name is locked after verification — only send it when it actually changed.
-    if (draft.fullName.trim() !== (user?.fullName ?? '')) {
+    if (!isVerified && draft.fullName.trim() !== (user?.fullName ?? '')) {
       fields.fullName = draft.fullName.trim();
     }
 
@@ -149,10 +160,11 @@ export default function PersonalInformationScreen({ navigation }) {
     } finally {
       setSaving(false);
     }
-  }, [saving, draft, user, updateProfile]);
+  }, [saving, draft, user, isVerified, updateProfile]);
 
   const genderLabel = user?.gender ? GENDER_LABELS[user.gender] ?? user.gender : 'Not specified';
   const dobLabel = user?.dateOfBirth ? formatDate(user.dateOfBirth) || user.dateOfBirth : '—';
+  const editingName = isEditing && !isVerified;
 
   return (
     <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
@@ -171,18 +183,24 @@ export default function PersonalInformationScreen({ navigation }) {
             <Button title="Retry" onPress={load} accessibilityLabel="Retry loading profile" />
           </Card>
         ) : (
-        <Card style={styles.card}>
-          {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
-          {isEditing ? (
-            <>
-              {isVerified ? (
-                <>
-                  <InfoField label="Full Name" value={user.fullName || '—'} />
-                  <Text style={styles.lockedHint}>
-                    Your name is locked after verification. Contact facility staff to correct it.
-                  </Text>
-                </>
-              ) : (
+          <>
+            {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
+
+            <Card style={styles.card}>
+              <SectionHeader
+                title="Personal Details"
+                right={
+                  isVerified ? (
+                    <Ionicons
+                      name="lock-closed"
+                      size={16}
+                      color={colors.textSecondary}
+                      accessibilityLabel="Locked after verification"
+                    />
+                  ) : null
+                }
+              />
+              {editingName ? (
                 <CustomInput
                   label="Full Name"
                   value={draft.fullName}
@@ -197,89 +215,102 @@ export default function PersonalInformationScreen({ navigation }) {
                   style={styles.inputSpacing}
                   accessibilityLabel="Full name"
                 />
+              ) : (
+                <InfoRow label="Full Name" value={user.fullName || '—'} />
               )}
-              <InfoField label="Email" value={user.email || '—'} />
-              <CustomInput
-                label="Phone"
-                value={draft.phone}
-                onChangeText={(t) => {
-                  setDraft((d) => ({ ...d, phone: t }));
-                  setFieldErrors((e) => ({ ...e, phone: '' }));
-                }}
-                placeholder="+63 917 000 0000"
-                keyboardType="phone-pad"
-                autoCorrect={false}
-                error={fieldErrors.phone}
-                labelStyle={inputLabelStyle}
-                style={styles.inputSpacing}
-                accessibilityLabel="Phone number"
+              <InfoRow label="Email" value={user.email || '—'} />
+              <InfoRow label="Date of Birth" value={dobLabel} />
+              <InfoRow label="Gender" value={genderLabel} last />
+            </Card>
+
+            <Card style={[styles.card, styles.cardGap]}>
+              <SectionHeader
+                title="Contact"
+                right={
+                  isEditing ? null : (
+                    <Pressable
+                      onPress={startEditing}
+                      hitSlop={10}
+                      style={styles.editLink}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit contact details"
+                    >
+                      <Ionicons name="create-outline" size={16} color={colors.primaryTealDark} />
+                      <Text style={styles.editLinkText}>Edit</Text>
+                    </Pressable>
+                  )
+                }
               />
-              <CustomInput
-                label="Address"
-                value={draft.address}
-                onChangeText={(t) => {
-                  setDraft((d) => ({ ...d, address: t }));
-                  setFieldErrors((e) => ({ ...e, address: '' }));
-                }}
-                placeholder="Street, city, province"
-                autoCapitalize="words"
-                error={fieldErrors.address}
-                labelStyle={inputLabelStyle}
-                style={styles.inputSpacing}
-                accessibilityLabel="Address"
-              />
-              <InfoField label="Relationship to PDL" value={relationshipLabel} />
-              {saveError ? (
-                <Text style={styles.errorText} accessibilityRole="alert">
-                  {saveError}
-                </Text>
-              ) : null}
-              <View style={styles.editActionsRow}>
-                <View style={styles.editActionGrow}>
-                  <Button
-                    title={saving ? 'Saving…' : 'Save'}
-                    onPress={saveProfile}
-                    loading={saving}
-                    disabled={saving}
-                    accessibilityLabel="Save profile"
+              {isEditing ? (
+                <>
+                  <CustomInput
+                    label="Phone"
+                    value={draft.phone}
+                    onChangeText={(t) => {
+                      setDraft((d) => ({ ...d, phone: t }));
+                      setFieldErrors((e) => ({ ...e, phone: '' }));
+                    }}
+                    placeholder="+63 917 000 0000"
+                    keyboardType="phone-pad"
+                    autoCorrect={false}
+                    error={fieldErrors.phone}
+                    labelStyle={inputLabelStyle}
+                    style={styles.inputSpacing}
+                    accessibilityLabel="Phone number"
                   />
-                </View>
-                <View style={styles.editActionGrow}>
-                  <Pressable
-                    onPress={cancelEditing}
-                    disabled={saving}
-                    style={({ pressed }) => [
-                      styles.cancelButton,
-                      pressed && styles.cancelButtonPressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cancel editing"
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <InfoField label="Full Name" value={user.fullName || '—'} />
-              <InfoField label="Email" value={user.email || '—'} />
-              <InfoField label="Date of Birth" value={dobLabel} />
-              <InfoField label="Gender" value={genderLabel} />
-              <InfoField label="Phone" value={user.contactNumber || '—'} />
-              <InfoField label="Address" value={user.address || '—'} />
-              <InfoField label="Relationship to PDL" value={relationshipLabel} />
-              <View style={styles.editProfileWrap}>
-                <Button
-                  title="Edit Profile"
-                  variant="secondary"
-                  onPress={startEditing}
-                  accessibilityLabel="Edit profile"
-                />
-              </View>
-            </>
-          )}
-        </Card>
+                  <CustomInput
+                    label="Address"
+                    value={draft.address}
+                    onChangeText={(t) => {
+                      setDraft((d) => ({ ...d, address: t }));
+                      setFieldErrors((e) => ({ ...e, address: '' }));
+                    }}
+                    placeholder="Street, city, province"
+                    autoCapitalize="words"
+                    error={fieldErrors.address}
+                    labelStyle={inputLabelStyle}
+                    style={styles.inputSpacing}
+                    accessibilityLabel="Address"
+                  />
+                  {saveError ? (
+                    <Text style={styles.errorText} accessibilityRole="alert">
+                      {saveError}
+                    </Text>
+                  ) : null}
+                  <View style={styles.editActionsRow}>
+                    <View style={styles.editActionGrow}>
+                      <Button
+                        title={saving ? 'Saving…' : 'Save'}
+                        onPress={saveProfile}
+                        loading={saving}
+                        disabled={saving}
+                        accessibilityLabel="Save profile"
+                      />
+                    </View>
+                    <View style={styles.editActionGrow}>
+                      <Pressable
+                        onPress={cancelEditing}
+                        disabled={saving}
+                        style={({ pressed }) => [
+                          styles.cancelButton,
+                          pressed && styles.cancelButtonPressed,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel editing"
+                      >
+                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <InfoRow label="Phone" value={user.contactNumber || '—'} />
+                  <InfoRow label="Address" value={user.address || '—'} last />
+                </>
+              )}
+            </Card>
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -289,43 +320,64 @@ export default function PersonalInformationScreen({ navigation }) {
 const styles = StyleSheet.create({
   card: {
     borderRadius: layout.cardRadius,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  cardGap: {
+    marginTop: spacing.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  sectionTitle: {
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: colors.textSecondary,
+  },
+  editLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editLinkText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.primaryTealDark,
   },
   errorText: {
     ...typography.metadata,
-    color: colors.danger,
+    color: colors.dangerStrong,
     marginBottom: spacing.sm,
   },
-  lockedHint: {
-    ...typography.metadata,
-    color: colors.textSecondary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.md,
-  },
-  // Label left, value right, one line each (same as the registration review).
-  infoField: {
+  // Label left, value right, one line each.
+  row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    marginBottom: spacing.xs,
   },
-  infoFieldLabel: {
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
     ...typography.metadata,
     color: colors.textSecondary,
     width: '38%',
   },
-  infoFieldValue: {
+  rowValue: {
     ...typography.metadata,
     color: colors.textPrimary,
     fontWeight: '600',
     flex: 1,
     textAlign: 'right',
-  },
-  editProfileWrap: {
-    marginTop: spacing.sm,
   },
   inputSpacing: {
     marginBottom: spacing.sm,
@@ -333,7 +385,8 @@ const styles = StyleSheet.create({
   editActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
   },
   editActionGrow: {
     flex: 1,
