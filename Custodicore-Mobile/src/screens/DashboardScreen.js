@@ -14,6 +14,7 @@ import {
   typography,
 } from '../designSystem';
 import VisitCalendar from '../components/VisitCalendar';
+import WeeklyVisitCounter from '../components/WeeklyVisitCounter';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useAnnouncements from '../hooks/useAnnouncements';
@@ -271,6 +272,7 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     today,
     from,
     to,
+    weeklyLimit,
     relationships,
     relationship,
     selectRelationship,
@@ -323,10 +325,12 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
         ) : !hasAvailableDate && !loading ? (
-          <Text style={styles.calendarWarning}>{noAvailabilityMessage(relationship)}</Text>
+          <Text style={styles.calendarWarning}>{noAvailabilityMessage(relationship, weeklyLimit)}</Text>
         ) : (
           <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>
         )}
+        {/* This week's visits across all linked PDLs. */}
+        <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={today} />
         {/* Tapping a date leaves Home, so no date stays selected here and the
             Selected legend stays hidden (showSelection={false}). */}
         <VisitCalendar

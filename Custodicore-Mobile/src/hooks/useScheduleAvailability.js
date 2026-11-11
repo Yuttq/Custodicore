@@ -164,6 +164,8 @@ export default function useScheduleAvailability({
     today: data?.today ?? null,
     from: data?.from ?? null,
     to: data?.to ?? null,
+    // Visitor-wide (all PDLs) usage per Monday–Sunday week; see weeklyUsageFor().
+    weeklyLimit: data?.weeklyLimit ?? null,
     relationships,
     relationship,
     selectRelationship,

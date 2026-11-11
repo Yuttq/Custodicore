@@ -160,6 +160,34 @@ class ScheduleAvailabilityService
         return $counts;
     }
 
+    /**
+     * The visitor's weekly-limit usage for every Monday–Sunday week touching
+     * [from, to], for the app's "1 of 2 visits used" counter. Read-only; it
+     * uses the same counts as the `weekly_limit` slot reason and the booking
+     * re-check (weeklyVisitCounts), so all three always agree.
+     *
+     * @return array{limit:int, weeks:array<int, array{weekStart:string, weekEnd:string, used:int, remaining:int}>}
+     */
+    public function weeklySummary(VisitorProfile $visitor, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $limit = $this->maxVisitsPerWeek();
+        $counts = $this->weeklyVisitCounts($visitor, $from, $to);
+
+        $weeks = [];
+        $last = $this->weekStart($to);
+        for ($week = CarbonImmutable::parse($this->weekStart($from)); $week->toDateString() <= $last; $week = $week->addWeek()) {
+            $used = $counts[$week->toDateString()] ?? 0;
+            $weeks[] = [
+                'weekStart' => $week->toDateString(),
+                'weekEnd' => $week->addDays(6)->toDateString(),
+                'used' => $used,
+                'remaining' => max($limit - $used, 0),
+            ];
+        }
+
+        return ['limit' => $limit, 'weeks' => $weeks];
+    }
+
     /** The Monday (Y-m-d) of $date's Monday–Sunday week. */
     public function weekStart(CarbonImmutable $date): string
     {

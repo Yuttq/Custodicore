@@ -60,3 +60,20 @@ test('no reason to go on keeps the general message', () => {
   assert.match(noAvailabilityMessage({ days: [day('d', 'full')] }), /for this PDL are full/);
   assert.equal(noAvailabilityMessage(null), 'No visit dates are available in the coming weeks. Please check again later.');
 });
+
+test('the weekly limit message names the full weeks and covers all linked PDLs', () => {
+  const weeklyLimit = { limit: 2, weeks: { '2026-11-09': 2, '2026-11-16': 2, '2026-11-23': 1 } };
+  const days = [
+    day('2026-11-15', 'weekly_limit'), // Sunday: week of Nov 9–15
+    day('2026-11-19', 'weekly_limit'), // Thursday: week of Nov 16–22
+    day('2026-11-22', 'weekly_limit'),
+  ];
+  const message = noAvailabilityMessage(rel(days), weeklyLimit);
+  assert.match(message, /weekly visit limit of 2 visits for November 9–15 and November 16–22 \(Monday–Sunday\)/);
+  assert.match(message, /all your linked PDLs together/);
+});
+
+test('without weekly usage data the weekly limit message still explains the rule', () => {
+  const message = noAvailabilityMessage(rel([day('2026-11-19', 'weekly_limit')]));
+  assert.match(message, /weekly visit limit\. The limit counts visits with all your linked PDLs together/);
+});

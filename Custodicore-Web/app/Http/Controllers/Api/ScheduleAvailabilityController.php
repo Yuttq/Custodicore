@@ -81,6 +81,8 @@ class ScheduleAvailabilityController extends Controller
                 ? 'A verified PDL relationship is required to view visit availability. Your relationship to the PDL must be verified by facility staff first.'
                 : null,
             'relationships' => $results,
+            // One count per visitor across ALL linked PDLs, per Monday–Sunday week.
+            'weeklyLimit' => $this->availability->weeklySummary($visitor, $from, $to),
         ]);
     }
 }

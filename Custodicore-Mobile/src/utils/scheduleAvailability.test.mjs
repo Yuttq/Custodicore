@@ -12,6 +12,7 @@ import {
   formatSlotRange,
   formatTime24,
   formatVisitingDays,
+  formatWeekRange,
   manilaTodayIso,
   middayBreakLabel,
   normalizeAvailabilityResponse,
@@ -22,6 +23,11 @@ import {
   slotReasonLabel,
   toVisitRequestParams,
   visitingWindows,
+  WEEKDAY_SHORT,
+  weekStartIso,
+  weeklyLimitReachedMessage,
+  weeklyUsageFor,
+  weeklyUsageLabel,
 } from './scheduleAvailability.js';
 
 test('date helpers work in UTC regardless of device timezone', () => {
@@ -40,12 +46,85 @@ test('Manila "today" rolls over at 16:00 UTC', () => {
   assert.equal(manilaTodayIso(new Date('2026-10-07T16:00:00Z')), '2026-10-08');
 });
 
-test('month grid is Sunday-first with null padding', () => {
+test('month grid is Monday-first with null padding', () => {
+  assert.deepEqual(WEEKDAY_SHORT, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   const weeks = buildMonthGrid(2026, 10); // Oct 1 2026 is a Thursday
   assert.ok(weeks.every((w) => w.length === 7));
-  assert.deepEqual(weeks[0].slice(0, 5), [null, null, null, null, '2026-10-01']);
+  assert.deepEqual(weeks[0].slice(0, 4), [null, null, null, '2026-10-01']);
+  assert.equal(weeks[0][6], '2026-10-04'); // first row ends on Sunday
+  assert.equal(weeks[1][0], '2026-10-05'); // next row starts on Monday
   assert.equal(weeks.flat().filter(Boolean).length, 31);
   assert.equal(weeks.flat().filter(Boolean).at(-1), '2026-10-31');
+});
+
+test('every grid row is one Monday–Sunday week', () => {
+  for (const [year, month] of [[2026, 11], [2026, 2], [2027, 3], [2026, 6]]) {
+    for (const week of buildMonthGrid(year, month)) {
+      week.forEach((date, i) => {
+        if (date) assert.equal((dayOfWeekIso(date) + 6) % 7, i, `${date} in column ${i}`);
+      });
+    }
+  }
+  // A month starting on Monday has no padding; one starting on Sunday has six.
+  assert.equal(buildMonthGrid(2026, 6)[0][0], '2026-06-01'); // Monday
+  assert.equal(buildMonthGrid(2026, 11)[0][6], '2026-11-01'); // Sunday
+  assert.deepEqual(buildMonthGrid(2026, 11)[0].slice(0, 6), [null, null, null, null, null, null]);
+});
+
+test('week start is the Monday; Sunday belongs to the week before Monday', () => {
+  assert.equal(weekStartIso('2026-11-16'), '2026-11-16'); // Monday
+  assert.equal(weekStartIso('2026-11-19'), '2026-11-16'); // Thursday
+  assert.equal(weekStartIso('2026-11-22'), '2026-11-16'); // Sunday ends that week
+  assert.equal(weekStartIso('2026-11-15'), '2026-11-09'); // Sunday before is the previous week
+  assert.equal(weekStartIso('2027-01-03'), '2026-12-28'); // across a year
+  assert.equal(weekStartIso('not-a-date'), null);
+});
+
+test('week ranges read Monday–Sunday', () => {
+  assert.equal(formatWeekRange('2026-11-16'), 'November 16–22');
+  assert.equal(formatWeekRange('2026-11-30'), 'November 30 – December 6');
+  assert.equal(formatWeekRange('2026-12-28'), 'December 28, 2026 – January 3, 2027');
+});
+
+const WEEKLY = {
+  limit: 2,
+  weeks: [
+    { weekStart: '2026-11-09', weekEnd: '2026-11-15', used: 1, remaining: 1 },
+    { weekStart: '2026-11-16', weekEnd: '2026-11-22', used: 2, remaining: 0 },
+    { weekStart: '2026-11-23', weekEnd: '2026-11-29', used: 0, remaining: 2 },
+  ],
+};
+
+test('weekly usage comes from the response and is looked up by Monday–Sunday week', () => {
+  const { weeklyLimit } = normalizeAvailabilityResponse({ relationships: [], weeklyLimit: WEEKLY });
+  assert.deepEqual(weeklyLimit, {
+    limit: 2,
+    weeks: { '2026-11-09': 1, '2026-11-16': 2, '2026-11-23': 0 },
+  });
+
+  const sunday = weeklyUsageFor(weeklyLimit, '2026-11-15');
+  assert.equal(sunday.weekStart, '2026-11-09');
+  assert.equal(weeklyUsageLabel(sunday), '1 of 2 visits used');
+  assert.equal(sunday.reached, false);
+
+  const thursday = weeklyUsageFor(weeklyLimit, '2026-11-19');
+  assert.deepEqual(thursday, { weekStart: '2026-11-16', weekEnd: '2026-11-22', used: 2, limit: 2, reached: true });
+  assert.equal(weeklyUsageLabel(thursday), '2 of 2 visits used');
+
+  assert.equal(weeklyUsageLabel(weeklyUsageFor(weeklyLimit, '2026-11-26')), '0 of 2 visits used');
+
+  // A week the backend did not report is unknown, not 0.
+  assert.equal(weeklyUsageFor(weeklyLimit, '2026-12-03'), null);
+  assert.equal(weeklyUsageFor(null, '2026-11-19'), null);
+  assert.equal(normalizeAvailabilityResponse({ relationships: [] }).weeklyLimit, null);
+});
+
+test('the limit message names the Monday–Sunday range and all linked PDLs', () => {
+  const usage = weeklyUsageFor(normalizeAvailabilityResponse({ weeklyLimit: WEEKLY }).weeklyLimit, '2026-11-20');
+  const message = weeklyLimitReachedMessage(usage);
+  assert.match(message, /limit of 2 visits for November 16–22 \(Monday–Sunday\)/);
+  assert.match(message, /all your linked PDLs together/);
+  assert.match(message, /week starting Monday, November 23\./);
 });
 
 test('time and day formatting', () => {

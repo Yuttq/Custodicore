@@ -5,6 +5,7 @@ import { Button, Card, colors, layout, spacing, typography } from '../designSyst
 import RelationshipPicker from './RelationshipPicker';
 import TimeSlotList from './TimeSlotList';
 import VisitCalendar from './VisitCalendar';
+import WeeklyVisitCounter from './WeeklyVisitCounter';
 import {
   formatDateLong,
   formatSlotRange,
@@ -61,6 +62,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     today,
     from,
     to,
+    weeklyLimit,
     relationships,
     relationship,
     selectRelationship,
@@ -133,6 +135,9 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
             ? e.message
             : 'Could not submit your visit request. Please try again.',
       });
+      // A rejection (e.g. the weekly limit was reached meanwhile) means the
+      // loaded availability is stale; refresh the calendar and weekly counter.
+      reload({ silent: true });
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -191,7 +196,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         {relationship.message ? (
           <Text style={styles.scheduleWarning}>{relationship.message}</Text>
         ) : !hasAvailableDate && !loading ? (
-          <Text style={styles.scheduleWarning}>{noAvailabilityMessage(relationship)}</Text>
+          <Text style={styles.scheduleWarning}>{noAvailabilityMessage(relationship, weeklyLimit)}</Text>
         ) : null}
       </>
     );
@@ -206,6 +211,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         <>
           <Text style={styles.sectionLabel}>Choose a Visit Date</Text>
           <Card style={styles.visitCard}>
+            {/* Visitor-wide weekly usage for the chosen date's week (else this week). */}
+            <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={selectedDate ?? today} />
             <VisitCalendar
               key={relationship.relationshipId}
               daysByDate={daysByDate}

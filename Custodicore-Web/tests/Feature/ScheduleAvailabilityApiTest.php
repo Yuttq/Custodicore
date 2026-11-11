@@ -586,6 +586,149 @@ class ScheduleAvailabilityApiTest extends TestCase
         $this->assertTrue($this->slot($relationship, '2026-10-11', '13:00')['available']);
     }
 
+    // ------------------------------------- Weekly limit summary (counter)
+
+    /** weekStart => used, from the response's visitor-wide `weeklyLimit`. */
+    private function weeklyUsed(\Illuminate\Testing\TestResponse $response): array
+    {
+        return collect($response->json('weeklyLimit.weeks'))->pluck('used', 'weekStart')->all();
+    }
+
+    private function makeSecondNonDrugRelationship(): VisitorPdlRelationship
+    {
+        $pdl = Pdl::create([
+            'pdl_number' => 'PDL-TEST-NONDRUG-2',
+            'full_name' => 'Third PDL',
+            'date_of_birth' => '1992-02-02',
+            'gender' => 'male',
+            'classification' => 'non_drug_related',
+            'admission_date' => '2024-01-01',
+            'custody_status' => 'active',
+            'registered_by' => StaffProfile::first()->staff_id,
+        ]);
+
+        return VisitorPdlRelationship::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $pdl->pdl_id,
+            'relationship_type' => 'immediate_family',
+            'priority_tier' => 'high_priority',
+            'verification_status' => 'verified',
+        ]);
+    }
+
+    public function test_weekly_summary_lists_each_monday_to_sunday_week_of_the_range(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        $response = $this->availability(['from' => '2026-10-07', 'to' => '2026-10-19'])->assertOk();
+
+        $this->assertSame(2, $response->json('weeklyLimit.limit'));
+        $this->assertSame([
+            ['weekStart' => '2026-10-05', 'weekEnd' => '2026-10-11', 'used' => 0, 'remaining' => 2],
+            ['weekStart' => '2026-10-12', 'weekEnd' => '2026-10-18', 'used' => 0, 'remaining' => 2],
+            ['weekStart' => '2026-10-19', 'weekEnd' => '2026-10-25', 'used' => 0, 'remaining' => 2],
+        ], $response->json('weeklyLimit.weeks'));
+    }
+
+    public function test_weekly_summary_counts_one_pdls_visits(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        $this->visitOn($this->relationship, '2026-10-11', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $used = $this->weeklyUsed($this->availability()->assertOk());
+
+        $this->assertSame(2, $used['2026-10-05']);
+        $this->assertSame(0, $used['2026-10-12']);
+    }
+
+    public function test_weekly_summary_counts_visits_across_all_linked_pdls(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');           // PDL 1, Fri
+        $this->visitOn($this->makeDrugRelatedRelationship(), '2026-10-08', '09:00'); // PDL 2, Thu
+        Sanctum::actingAs($this->visitorAccount);
+
+        $response = $this->availability()->assertOk();
+
+        // One count for the visitor, whichever PDL each visit is with.
+        $this->assertSame(2, $this->weeklyUsed($response)['2026-10-05']);
+        $this->assertSame(0, $response->json('weeklyLimit.weeks.0.remaining'));
+        // Filtering availability to one PDL never narrows the visitor-wide count.
+        $filtered = $this->availability(['relationshipId' => $this->relationship->relationship_id])->assertOk();
+        $this->assertSame(2, $this->weeklyUsed($filtered)['2026-10-05']);
+    }
+
+    public function test_a_third_linked_pdl_cannot_get_a_third_visit_in_the_week(): void
+    {
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');                    // PDL 1, Fri
+        $this->visitOn($this->makeDrugRelatedRelationship(), '2026-10-08', '09:00'); // PDL 2, Thu
+        $third = $this->makeSecondNonDrugRelationship();                                // PDL 3, no visits
+        Sanctum::actingAs($this->visitorAccount);
+
+        $relationship = collect($this->availability()->assertOk()->json('relationships'))
+            ->firstWhere('relationshipId', (string) $third->relationship_id);
+        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-11', '09:00')['reason']);
+
+        // Sent straight to the API, bypassing the app's calendar.
+        $this->postJson('/api/visit-requests', [
+            'relationshipId' => $third->relationship_id,
+            'date' => '2026-10-11',
+            'startTime' => '09:00',
+        ])->assertStatus(422)->assertJsonValidationErrors(['schedule_id']);
+
+        $this->assertSame(2, $this->weeklyUsed($this->availability()->assertOk())['2026-10-05']);
+        $this->assertSame(0, VisitRequest::where('relationship_id', $third->relationship_id)->count());
+    }
+
+    public function test_sunday_and_the_next_monday_week_are_counted_separately(): void
+    {
+        // The reported case: two Thu/Fri visits with one PDL, and a Sunday
+        // visit with another. Sun 10-11 ends the week of Oct 5–11; Thu 10-15
+        // and Fri 10-16 are in the week of Oct 12–18.
+        $drug = $this->makeDrugRelatedRelationship();
+        $this->visitOn($this->relationship, '2026-10-11', '09:00'); // Sunday
+        $this->visitOn($drug, '2026-10-15', '09:00');                // Thursday
+        $this->visitOn($this->relationship, '2026-10-16', '09:00'); // Friday
+        Sanctum::actingAs($this->visitorAccount);
+
+        $response = $this->availability()->assertOk();
+        $used = $this->weeklyUsed($response);
+        $this->assertSame(1, $used['2026-10-05']);
+        $this->assertSame(2, $used['2026-10-12']);
+
+        // So the Sunday after (10-18) is at the limit, but 10-09 is not.
+        $own = $response->json('relationships.0');
+        $this->assertSame('weekly_limit', $this->slot($own, '2026-10-18', '09:00')['reason']);
+        $this->assertTrue($this->slot($own, '2026-10-09', '09:00')['available']);
+    }
+
+    public function test_weekly_counter_updates_after_each_request_and_the_third_is_rejected(): void
+    {
+        $drug = $this->makeDrugRelatedRelationship();
+        Sanctum::actingAs($this->visitorAccount);
+        $this->assertSame(0, $this->weeklyUsed($this->availability()->assertOk())['2026-10-12']);
+
+        $this->postJson('/api/visit-requests', [
+            'relationshipId' => $this->relationship->relationship_id, 'date' => '2026-10-16', 'startTime' => '09:00',
+        ])->assertCreated();
+        $this->assertSame(1, $this->weeklyUsed($this->availability()->assertOk())['2026-10-12']);
+
+        $this->postJson('/api/visit-requests', [
+            'relationshipId' => $drug->relationship_id, 'date' => '2026-10-15', 'startTime' => '09:00',
+        ])->assertCreated();
+        $this->assertSame(2, $this->weeklyUsed($this->availability()->assertOk())['2026-10-12']);
+
+        $this->postJson('/api/visit-requests', [
+            'relationshipId' => $drug->relationship_id, 'date' => '2026-10-17', 'startTime' => '09:00',
+        ])->assertStatus(422)->assertJsonValidationErrors(['schedule_id']);
+
+        $response = $this->availability()->assertOk();
+        $this->assertSame(2, $this->weeklyUsed($response)['2026-10-12']);
+        // The rest of the range is untouched.
+        $this->assertSame(0, $this->weeklyUsed($response)['2026-10-05']);
+        $this->assertSame(0, $this->weeklyUsed($response)['2026-10-19']);
+    }
+
     // ------------------------------------------------------- Announcements
 
     public function test_announcements_endpoint_returns_config_content(): void

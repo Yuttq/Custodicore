@@ -13,7 +13,8 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Calendar column headers, Monday first: the weekly visit limit runs Monday–Sunday. */
+export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /** Backend `reason` codes (ScheduleAvailabilityService) → visitor-facing text. */
 export const SLOT_REASON_LABELS = {
@@ -96,7 +97,9 @@ export function manilaTodayIso(now = new Date()) {
 }
 
 /**
- * Sunday-first month grid. Each week has 7 cells; padding cells are null.
+ * Monday-first month grid, so each row is one Monday–Sunday week — the same
+ * week the backend counts visit.max_per_week in. Each week has 7 cells;
+ * padding cells are null.
  * @param {number} year
  * @param {number} month 1-12
  * @returns {(string | null)[][]}
@@ -105,7 +108,8 @@ export function buildMonthGrid(year, month) {
   const first = new Date(Date.UTC(year, month - 1, 1));
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const cells = [];
-  for (let i = 0; i < first.getUTCDay(); i += 1) cells.push(null);
+  const leading = (first.getUTCDay() + 6) % 7; // Monday = 0 … Sunday = 6
+  for (let i = 0; i < leading; i += 1) cells.push(null);
   for (let d = 1; d <= daysInMonth; d += 1) cells.push(toIsoDate(year, month, d));
   while (cells.length % 7 !== 0) cells.push(null);
 
@@ -140,6 +144,105 @@ export function formatDateLong(iso) {
   const p = parseIsoDate(iso);
   if (!p) return String(iso ?? '');
   return `${DAY_NAMES[dayOfWeekIso(iso)]}, ${MONTH_NAMES[p.month - 1]} ${p.day}, ${p.year}`;
+}
+
+/**
+ * The Monday ("YYYY-MM-DD") of the Monday–Sunday week containing `iso`,
+ * matching the backend's ScheduleAvailabilityService::weekStart().
+ * @param {string} iso
+ * @returns {string | null}
+ */
+export function weekStartIso(iso) {
+  if (!parseIsoDate(iso)) return null;
+  return addDaysIso(iso, -((dayOfWeekIso(iso) + 6) % 7));
+}
+
+/**
+ * Monday–Sunday range for the week starting `weekStart`:
+ * "November 16–22", "November 30 – December 6",
+ * "December 28, 2026 – January 3, 2027".
+ * @param {string} weekStart YYYY-MM-DD (a Monday)
+ */
+export function formatWeekRange(weekStart) {
+  const s = parseIsoDate(weekStart);
+  const e = parseIsoDate(addDaysIso(weekStart, 6));
+  if (!s || !e) return String(weekStart ?? '');
+  if (s.year !== e.year) {
+    return `${MONTH_NAMES[s.month - 1]} ${s.day}, ${s.year} – ${MONTH_NAMES[e.month - 1]} ${e.day}, ${e.year}`;
+  }
+  if (s.month !== e.month) {
+    return `${MONTH_NAMES[s.month - 1]} ${s.day} – ${MONTH_NAMES[e.month - 1]} ${e.day}`;
+  }
+  return `${MONTH_NAMES[s.month - 1]} ${s.day}–${e.day}`;
+}
+
+/**
+ * @typedef {object} WeeklyUsage
+ * @property {string} weekStart Monday, YYYY-MM-DD
+ * @property {string} weekEnd Sunday, YYYY-MM-DD
+ * @property {number} used visits counted that week, across ALL linked PDLs
+ * @property {number} limit visit.max_per_week
+ * @property {boolean} reached used >= limit
+ */
+
+/**
+ * Normalizes the response's `weeklyLimit` ({ limit, weeks[] }), or null when
+ * the backend did not send one.
+ * @param {unknown} raw
+ * @returns {{ limit: number; weeks: Record<string, number> } | null}
+ */
+function normalizeWeeklyLimit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const limit = Number(raw.limit);
+  if (!Number.isInteger(limit) || limit < 0) return null;
+  /** @type {Record<string, number>} */
+  const weeks = {};
+  for (const w of Array.isArray(raw.weeks) ? raw.weeks : []) {
+    if (w && parseIsoDate(w.weekStart)) weeks[w.weekStart] = Math.max(Number(w.used) || 0, 0);
+  }
+  return { limit, weeks };
+}
+
+/**
+ * The visitor's usage of the weekly limit in the Monday–Sunday week holding
+ * `date`. A week the backend did not report (outside the loaded range) is
+ * null rather than a guessed 0.
+ * @param {{ limit: number; weeks: Record<string, number> } | null | undefined} weeklyLimit
+ * @param {string | null | undefined} date YYYY-MM-DD
+ * @returns {WeeklyUsage | null}
+ */
+export function weeklyUsageFor(weeklyLimit, date) {
+  const weekStart = weekStartIso(/** @type {string} */ (date));
+  if (!weeklyLimit || !weekStart || !(weekStart in weeklyLimit.weeks)) return null;
+  const used = weeklyLimit.weeks[weekStart];
+  return {
+    weekStart,
+    weekEnd: /** @type {string} */ (addDaysIso(weekStart, 6)),
+    used,
+    limit: weeklyLimit.limit,
+    reached: used >= weeklyLimit.limit,
+  };
+}
+
+/** "0 of 2 visits used" */
+export function weeklyUsageLabel(usage) {
+  return `${usage.used} of ${usage.limit} ${usage.limit === 1 ? 'visit' : 'visits'} used`;
+}
+
+/**
+ * Plain-language explanation of a week at the limit, naming the
+ * Monday–Sunday range and that it covers every linked PDL.
+ * @param {WeeklyUsage} usage
+ */
+export function weeklyLimitReachedMessage(usage) {
+  const visits = `${usage.limit} ${usage.limit === 1 ? 'visit' : 'visits'}`;
+  // "Monday, November 23, 2026" → "Monday, November 23"
+  const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
+  return (
+    `You've reached the limit of ${visits} for ${formatWeekRange(usage.weekStart)} (Monday–Sunday). ` +
+    'The limit counts visits with all your linked PDLs together, so you can’t request another visit ' +
+    `with any PDL that week. You can request again for the week starting ${nextMonday}.`
+  );
 }
 
 /** ['thu', 'sat'] → "Thursday and Saturday" */
@@ -289,6 +392,7 @@ export function normalizeAvailabilityResponse(data) {
     to: parseIsoDate(body.to) ? body.to : null,
     message: typeof body.message === 'string' && body.message.trim() ? body.message.trim() : null,
     relationships,
+    weeklyLimit: normalizeWeeklyLimit(body.weeklyLimit),
   };
 }
 
