@@ -264,6 +264,25 @@ export async function updateMe(fields) {
 }
 
 /**
+ * Changes the signed-in visitor's password — POST /api/me/password.
+ * Other devices are signed out; this one stays signed in. 422 for a wrong
+ * current password or a new one that fails the policy, 429 when locked.
+ * @param {{ currentPassword: string; password: string; passwordConfirmation: string }} fields
+ */
+export async function changePassword({ currentPassword, password, passwordConfirmation }) {
+  try {
+    const { data } = await client.post('/me/password', {
+      currentPassword,
+      password,
+      password_confirmation: passwordConfirmation,
+    });
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Uploads a government ID — POST /api/documents (multipart: documentType, file, idNumber?)
  * @param {FormData} formData
  */

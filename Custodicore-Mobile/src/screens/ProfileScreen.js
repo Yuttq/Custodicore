@@ -270,10 +270,7 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
       if (key === 'security') {
-        Alert.alert(
-          'Security Settings',
-          'Password change and account security options will be available in a future update.',
-        );
+        navigation.navigate('SecuritySettings');
         return;
       }
       if (key === 'help') {

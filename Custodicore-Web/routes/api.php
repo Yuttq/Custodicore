@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AnnouncementApiController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationApiController;
+use App\Http\Controllers\Api\PasswordChangeController;
 use App\Http\Controllers\Api\RegistrationRequirementsController;
 use App\Http\Controllers\Api\ScheduleAvailabilityController;
 use App\Http\Controllers\Api\VisitorApiController;
@@ -66,6 +67,9 @@ Route::get('/registration/requirements', [RegistrationRequirementsController::cl
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me',[AuthController::class, 'me']);
     Route::patch('/me', [AuthController::class, 'updateMe']);
+    // Change password (Security Settings). Needs the current password; wrong
+    // ones are also limited per account inside the controller.
+    Route::post('/me/password', [PasswordChangeController::class, 'update'])->middleware('throttle:10,1');
     // The visitor's own photo (taken in the app after creating the account).
     Route::post('/me/photo', [VisitorPhotoController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/me/photo', [VisitorPhotoController::class, 'show']);

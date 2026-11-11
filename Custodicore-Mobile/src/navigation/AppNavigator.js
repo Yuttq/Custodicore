@@ -20,6 +20,7 @@ import LinkGoogleAccountScreen from '../screens/LinkGoogleAccountScreen';
 import LoginScreen from '../screens/LoginScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import PersonalInformationScreen from '../screens/PersonalInformationScreen';
+import SecuritySettingsScreen from '../screens/SecuritySettingsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRCodeScreen from '../screens/QRCodeScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -220,6 +221,7 @@ function AuthenticatedStack() {
       <AppStack.Screen name="VisitHistory" component={VisitHistoryScreen} />
       <AppStack.Screen name="VisitHistoryDetail" component={VisitHistoryDetailScreen} />
       <AppStack.Screen name="PersonalInformation" component={PersonalInformationScreen} />
+      <AppStack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
       <AppStack.Screen name="HelpCenter" component={HelpCenterScreen} />
       <AppStack.Screen name="VisitDetails" component={VisitDetailsScreen} />
       <AppStack.Screen name="UnableToAttend" component={UnableToAttendScreen} />
