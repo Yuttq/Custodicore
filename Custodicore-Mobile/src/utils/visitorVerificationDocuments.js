@@ -108,7 +108,7 @@ export function groupVerificationDocuments(documents, pdls) {
   const sections = [];
   const account = docs.filter((d) => !d?.relationshipRecordId);
   if (account.length) {
-    sections.push({ key: 'account', title: 'Account Verification', kind: 'account', documents: account });
+    sections.push({ key: 'account', title: 'Your Account', kind: 'account', documents: account });
   }
 
   /** @type {Map<string, any[]>} */
@@ -128,9 +128,11 @@ export function groupVerificationDocuments(documents, pdls) {
       const fromDetail = String(relDocs[0]?.detail ?? '').replace(/^For\s+/, '').trim();
       const name = (listed?.pdlName && listed.pdlName !== 'PDL' ? listed.pdlName : '') || fromDetail || 'PDL';
       const first = id === firstId;
+      // The visitor knows their PDLs by name, not as "first" or "additional".
+      const relationshipLabel = typeof listed?.relationshipLabel === 'string' ? listed.relationshipLabel.trim() : '';
       sections.push({
         key: `relationship-${id}`,
-        title: `${first ? 'First PDL' : 'Additional PDL'}: ${name}`,
+        title: relationshipLabel ? `${name} · ${relationshipLabel}` : name,
         kind: first ? 'first_pdl' : 'additional_pdl',
         documents: relDocs,
       });

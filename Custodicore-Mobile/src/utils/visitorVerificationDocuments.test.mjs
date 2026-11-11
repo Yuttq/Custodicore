@@ -76,17 +76,17 @@ test('documents are grouped: account, first PDL, additional PDLs', () => {
     { key: 'rel-3:cenomar_visitor', relationshipRecordId: '3', detail: 'For Ana Lim' },
   ];
   const pdls = [
-    { id: '20', pdlName: 'Ben Cruz' },
-    { id: '3', pdlName: 'Ana Lim' },
+    { id: '20', pdlName: 'Ben Cruz', relationshipLabel: 'Parent' },
+    { id: '3', pdlName: 'Ana Lim', relationshipLabel: 'Spouse' },
   ];
 
   const sections = groupVerificationDocuments(docs, pdls);
   assert.deepEqual(
     sections.map((s) => [s.title, s.kind, s.documents.map((d) => d.key)]),
     [
-      ['Account Verification', 'account', ['reg:birth_certificate', 'government_id']],
-      ['First PDL: Ana Lim', 'first_pdl', ['rel-3:marriage_certificate', 'rel-3:cenomar_visitor']],
-      ['Additional PDL: Ben Cruz', 'additional_pdl', ['rel-20:birth_certificate']],
+      ['Your Account', 'account', ['reg:birth_certificate', 'government_id']],
+      ['Ana Lim · Spouse', 'first_pdl', ['rel-3:marriage_certificate', 'rel-3:cenomar_visitor']],
+      ['Ben Cruz · Parent', 'additional_pdl', ['rel-20:birth_certificate']],
     ],
   );
 });
@@ -97,6 +97,6 @@ test('the first PDL stays first when it has no documents listed (e.g. rejected)'
     [{ id: '2', pdlName: 'Old PDL' }, { id: '8', pdlName: 'PDL' }],
   );
   // Name falls back to the document's "For …" detail.
-  assert.deepEqual(sections.map((s) => [s.title, s.kind]), [['Additional PDL: Cy Reyes', 'additional_pdl']]);
+  assert.deepEqual(sections.map((s) => [s.title, s.kind]), [['Cy Reyes', 'additional_pdl']]);
   assert.deepEqual(groupVerificationDocuments(undefined, undefined), []);
 });

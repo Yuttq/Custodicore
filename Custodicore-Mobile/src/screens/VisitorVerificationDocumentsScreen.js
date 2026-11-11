@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +18,6 @@ import useMyPdlActions from '../hooks/useMyPdlActions';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { replaceRegistrationPhoto } from '../repositories/verificationRepository';
 import { BASE_URL, getStoredToken } from '../services/api';
-import { summarizeMyPdls } from '../utils/myPdls';
 import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 import {
   getAccountStatusMessage,
@@ -183,25 +181,19 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
   const pdls = useMemo(() => verification?.pdlRelationships ?? [], [verification]);
   const pdlRequest = verification?.pdlRequest ?? null;
   const hasPdlInfo = pdls.length > 0 || Boolean(pdlRequest);
-  const pdlSummary = useMemo(() => summarizeMyPdls(pdls, pdlRequest), [pdls, pdlRequest]);
   const sections = useMemo(() => groupVerificationDocuments(documents, pdls), [documents, pdls]);
-  const initialDocuments = useMemo(() => {
-    const initial = sections
-      .filter((s) => s.kind !== 'additional_pdl')
-      .flatMap((s) => s.documents);
-    return initial.length ? initial : documents;
-  }, [sections, documents]);
-  const accountMessage = getAccountStatusMessage(verification?.backendStatus);
+  // "Complete" is already said by the progress card; only the steps to take stay.
+  const accountMessage =
+    verification?.backendStatus === 'verified' ? null : getAccountStatusMessage(verification?.backendStatus);
   const { cancelling, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
     navigation,
     verification,
     reload,
   });
 
-  // Approved visitors have Profile → My PDLs, so this screen links there.
+  // Approved visitors have Profile → My PDLs, so the list is not repeated here.
   // Pending / returned visitors (review stack, no Profile tab) keep the list here.
   const hasMyPdlsScreen = Boolean(navigation.getState?.()?.routeNames?.includes('MyPdls'));
-  const openMyPdls = useCallback(() => navigation.navigate('MyPdls'), [navigation]);
 
   return (
     <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
@@ -242,10 +234,9 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               </View>
             ) : null}
 
-            {/* Progress of the account's own verification; additional PDLs
-                have their own sections and status under My PDLs. */}
+            {/* Counts every document listed below, so the number matches the list. */}
             <VerificationProgressCard
-              documents={initialDocuments}
+              documents={documents}
               overallStatus={verification.verificationStatus}
             />
 
@@ -265,27 +256,7 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               </Text>
             ) : null}
 
-            {hasPdlInfo && hasMyPdlsScreen ? (
-              <Pressable
-                onPress={openMyPdls}
-                style={({ pressed }) => [
-                  styles.docList,
-                  styles.docRow,
-                  styles.myPdlsLink,
-                  pressed && styles.docRowPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`My PDLs${pdlSummary.full ? `, ${pdlSummary.full}` : ''}. Opens My PDLs.`}
-              >
-                <View style={styles.pdlText}>
-                  <Text style={styles.docRowLabel}>My PDLs</Text>
-                  {pdlSummary.full ? (
-                    <Text style={styles.docRowMeta}>{pdlSummary.full}</Text>
-                  ) : null}
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-              </Pressable>
-            ) : hasPdlInfo ? (
+            {hasPdlInfo && !hasMyPdlsScreen ? (
               <MyPdlsList
                 variant="inline"
                 pdls={pdls}
@@ -304,11 +275,16 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                 onSaved={reload}
               />
             ) : null}
-            {/* Account verification, then the first PDL, then each additional PDL. */}
-            {sections.map((section) => (
-              <View key={section.key} style={styles.section}>
-                <Text style={styles.sectionEyebrow}>{section.title}</Text>
-                <View style={styles.docList}>
+            {/* One card: the account's documents, then each PDL's, under a small label. */}
+            <View style={styles.docList}>
+              {sections.map((section, sectionIndex) => (
+                <View key={section.key}>
+                  <Text
+                    style={[styles.groupLabel, sectionIndex > 0 && styles.groupLabelDivider]}
+                    accessibilityRole="header"
+                  >
+                    {section.title}
+                  </Text>
                   {section.documents.map((doc, index) => (
                     <DocumentCompactRow
                       key={doc.key}
@@ -318,8 +294,8 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                     />
                   ))}
                 </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </>
         )}
       </ScrollView>
@@ -359,9 +335,6 @@ const styles = StyleSheet.create({
   statusMessage: {
     ...typography.body,
     color: colors.textPrimary,
-    marginBottom: spacing.md,
-  },
-  section: {
     marginBottom: spacing.md,
   },
   documentsEmpty: {
@@ -425,13 +398,18 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: colors.background,
   },
-  // One compact row linking to Profile → My PDLs (approved visitors).
-  myPdlsLink: {
-    marginBottom: spacing.md,
-  },
-  docRowMeta: {
-    ...typography.metadata,
+  // Small label above each group of documents inside the one card.
+  groupLabel: {
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
     color: colors.textSecondary,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  groupLabelDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   requestText: {
     ...typography.metadata,

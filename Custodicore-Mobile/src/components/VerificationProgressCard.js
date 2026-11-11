@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, layout, spacing, typography } from '../designSystem';
@@ -24,6 +25,18 @@ export default function VerificationProgressCard({ documents, overallStatus }) {
   const progressColor =
     percent === 100 ? colors.success : percent > 0 ? colors.primaryTeal : colors.border;
 
+  // Everything verified: one line instead of a title, a full bar and 100%.
+  if (total > 0 && verifiedCount === total) {
+    return (
+      <View style={[styles.card, styles.doneRow]} accessible accessibilityLabel={`All ${total} documents verified`}>
+        <Ionicons name="checkmark-circle" size={20} color={colors.successStrong} />
+        <Text style={styles.doneText}>
+          {total === 1 ? 'Your document is verified' : `All ${total} documents verified`}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
@@ -47,6 +60,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + spacing.xs,
     marginBottom: spacing.sm + spacing.xs,
+  },
+  doneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  doneText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.successStrong,
   },
   title: {
     ...typography.cardTitle,
