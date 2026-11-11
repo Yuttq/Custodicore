@@ -3,6 +3,12 @@
     "name": "CustodiCore",
     "slug": "custodicore",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/91bdab4f-6989-4532-90f8-0f99edcf0708"
+    },
     "orientation": "portrait",
     "scheme": "custodicore",
     "userInterfaceStyle": "light",

@@ -9,6 +9,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "node --test src/utils/registrationValidation.test.mjs src/utils/formatDate.test.mjs src/utils/scheduleAvailability.test.mjs src/utils/visitProgressSnapshot.test.mjs src/utils/activeVisits.test.mjs src/utils/visitStatusChip.test.mjs src/utils/visitCalendarMarkers.test.mjs src/utils/announcementDisplay.test.mjs src/utils/scheduleHandoff.test.mjs src/utils/passwordResetCooldown.test.mjs src/utils/documentImageRules.test.mjs src/utils/registrationRequirements.test.mjs src/utils/registrationErrors.test.mjs src/utils/registrationRequest.test.mjs src/utils/relationshipRequirementDocuments.test.mjs src/utils/pdlLinkRequest.test.mjs src/utils/notificationFilters.test.mjs src/utils/notificationActions.test.mjs src/utils/myPdls.test.mjs src/utils/intendedPdlName.test.mjs src/utils/visitGuidance.test.mjs src/utils/verificationStatusUi.test.mjs src/utils/verificationReviewStatus.test.mjs src/utils/visitorVerificationDocuments.test.mjs src/utils/apiBaseUrl.test.mjs src/utils/requestError.test.mjs src/utils/photoQualityRules.test.mjs src/utils/autoCapture.test.mjs src/utils/autoRefresh.test.mjs src/utils/changePassword.test.mjs src/utils/facilityContact.test.mjs src/utils/noAvailabilityMessage.test.mjs src/designSystem/tokens/colors.test.mjs",
+    "update:preview": "npx eas-cli update --channel preview --environment preview",
+    "update:production": "npx eas-cli update --channel production --environment production",
     "generate-icons": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-app-icons.ps1",
     "generate-splash": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-splash-assets.ps1"
   },
@@ -38,6 +40,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
+    "expo-updates": "~29.0.20",
     "expo-web-browser": "~15.0.10",
     "jpeg-js": "0.4.4",
     "moment": "^2.30.1",
