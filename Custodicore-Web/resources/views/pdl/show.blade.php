@@ -52,17 +52,15 @@
     </div>
   </div>
 
+  {{-- Everything the old read-only "Profile Details" panel showed lives here now;
+       the full-width items (offense, visiting hours) go last so they can span both columns on phones. --}}
   <dl class="pdl-facts">
     <div><dt>Cell/Block</dt><dd>{{ $pdl->cell_block ?? 'Not assigned' }}</dd></div>
-    <div><dt>Offense</dt><dd>{{ $pdl->primaryOffense() ?? 'No case on file' }}@if ($pdl->legalRecords->count() > 1) <span class="muted-cell">+{{ $pdl->legalRecords->count() - 1 }} more</span>@endif</dd></div>
     <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }}</dd></div>
-    <div>
-      <dt>Visiting Hours</dt>
-      <dd>{{ $visiting['weekly'] ?: 'No schedule set' }}<div class="muted-cell" style="font-weight:500;font-size:11.5px;">{{ $visiting['source'] }}</div></dd>
-    </div>
+    <div><dt>Gender</dt><dd>{{ $pdl->gender ? ucfirst($pdl->gender) : '—' }}</dd></div>
     <div>
       <dt>Age</dt>
-      <dd>{{ $pdl->date_of_birth ? $pdl->date_of_birth->age . ' years old' : '—' }}</dd>
+      <dd>{{ $pdl->date_of_birth ? $pdl->date_of_birth->age . ' yrs' : '—' }}@if ($pdl->date_of_birth) <span class="muted-cell">· {{ $pdl->date_of_birth->format('M j, Y') }}</span>@endif</dd>
     </div>
     <div>
       <dt>Admitted</dt>
@@ -74,35 +72,26 @@
       </dd>
     </div>
     <div><dt>Registered By</dt><dd>{{ $pdl->registeredBy?->full_name ?? '—' }}</dd></div>
-  </dl>
-</div>
-
-{{-- ================= PROFILE DETAILS (view / edit) ================= --}}
-<div class="panel" style="margin-bottom:20px;" id="profile">
-  <div class="panel-header">
-    <h2>Profile Details</h2>
-    <span class="muted-cell" data-edit-hint {{ $editing ? '' : 'hidden' }}>Editing. Changes are saved after you confirm with your password.</span>
-  </div>
-
-  {{-- Read-only view --}}
-  <dl class="pdl-details" data-profile-view {{ $editing ? 'hidden' : '' }}>
-    <div><dt>First Name</dt><dd>{{ $nameParts['first'] ?: '—' }}</dd></div>
-    <div><dt>Middle Name</dt><dd>{{ $nameParts['middle'] ?: '—' }}</dd></div>
-    <div><dt>Last Name</dt><dd>{{ $nameParts['last'] ?: '—' }}</dd></div>
-    <div><dt>Alias</dt><dd>{{ $pdl->alias ?: '—' }}</dd></div>
-    <div><dt>Gender</dt><dd>{{ ucfirst($pdl->gender ?? '—') }}</dd></div>
-    <div><dt>Date of Birth</dt><dd>{{ $pdl->date_of_birth?->format('M j, Y') ?? '—' }}</dd></div>
-    <div><dt>Classification</dt><dd>{{ $classificationLabels[$pdl->classification] ?? '—' }} <span class="muted-cell">(from offense)</span></dd></div>
-    <div><dt>Admission Date</dt><dd>{{ $pdl->admission_date?->format('M j, Y') ?? '—' }}</dd></div>
-    <div><dt>Cell/Block</dt><dd>{{ $pdl->cell_block ?? 'Not assigned' }}</dd></div>
-    <div><dt>Custody Status</dt><dd>{{ $statusLabels[$pdl->custody_status] ?? ucfirst($pdl->custody_status) }}</dd></div>
+    <div class="is-wide"><dt>Offense</dt><dd>{{ $pdl->primaryOffense() ?? 'No case on file' }}@if ($pdl->legalRecords->count() > 1) <span class="muted-cell">+{{ $pdl->legalRecords->count() - 1 }} more</span>@endif</dd></div>
+    <div class="is-wide">
+      <dt>Visiting Hours</dt>
+      <dd>{{ $visiting['weekly'] ?: 'No schedule set' }}<div class="muted-cell" style="font-weight:500;font-size:11.5px;">{{ $visiting['source'] }}</div></dd>
+    </div>
   </dl>
   @if ($pdl->first_name === null && $pdl->last_name === null)
-    <p class="field-hint" data-profile-view {{ $editing ? 'hidden' : '' }}>Only a full name is on file for this record. Open <strong>Edit Profile</strong> to confirm the first, middle and last name.</p>
+    <p class="field-hint" style="margin:10px 0 0;">Only a full name is on file for this record. Open <strong>Edit Profile</strong> to confirm the first, middle and last name.</p>
   @endif
+</div>
 
-  {{-- Edit form. Final step on save: the officer re-enters their own password (data-password-confirm → partials/password-confirm). --}}
-  <form method="POST" action="{{ route('pdl.update', $pdl->pdl_id) }}" enctype="multipart/form-data" data-profile-edit {{ $editing ? '' : 'hidden' }}
+{{-- ================= EDIT PROFILE (shown only while editing) ================= --}}
+<div class="panel" style="margin-bottom:14px;" id="profile" data-profile-panel {{ $editing ? '' : 'hidden' }}>
+  <div class="panel-header">
+    <h2>Edit Profile</h2>
+    <span class="muted-cell">Changes are saved after you confirm with your password.</span>
+  </div>
+
+  {{-- Final step on save: the officer re-enters their own password (data-password-confirm → partials/password-confirm). --}}
+  <form method="POST" action="{{ route('pdl.update', $pdl->pdl_id) }}" enctype="multipart/form-data" data-profile-edit
         data-password-confirm="Save changes to {{ $pdl->full_name }}'s profile? Enter your password to confirm.">
     @csrf
     @method('PUT')
@@ -185,69 +174,48 @@
   @if ($rels->isEmpty())
     <p class="empty-note">No visitors are linked to {{ $pdl->full_name }} yet. Visitors are linked when their account is approved in the Review Queue.</p>
   @else
-    <div class="table-scroll">
-    <table>
-      <thead><tr><th>Visitor</th><th>Relationship</th><th>Status</th><th>Next Visit</th><th>Last Visit</th><th></th></tr></thead>
-      <tbody>
-        @foreach ($rels as $rel)
-          @php
-            $visitor = $rel->visitor;
-            [$badgeClass, $badgeText] = $relBadge[$rel->verification_status] ?? ['released', ucfirst($rel->verification_status)];
-            $vv = $visitorVisits[$rel->visitor_id] ?? null;
-            $next = $vv['next'] ?? null;
-            $last = $vv['last'] ?? null;
-          @endphp
-          <tr>
-            <td>
-              <div class="name-cell">
-                @include('partials.visitor-avatar', ['visitor' => $visitor])
-                <div>
-                  @if ($visitor)
-                    <a class="full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">{{ $visitor->full_name }}</a>
-                    <div class="muted-cell" style="font-size:12px;">
-                      Account {{ $visitor->verification_status === 'verified' ? 'approved' : ($visitor->verification_status === 'rejected' ? 'returned' : 'pending') }}
-                      @if ($visitor->contact_number && $visitor->contact_number !== 'N/A') · {{ $visitor->contact_number }} @endif
-                    </div>
-                  @else
-                    <span class="muted-cell">Visitor not found</span>
-                  @endif
-                </div>
-              </div>
-            </td>
-            <td>
-              {{ $rel->relationshipLabel() }}
-              @if ($rel->isHighPriority())
-                <div><span class="pill" style="background:var(--blue-bg);color:var(--blue);font-size:10.5px;">HIGH PRIORITY</span></div>
-              @endif
-            </td>
-            <td><span class="badge {{ $badgeClass }}"><span class="dot"></span>{{ $badgeText }}</span></td>
-            <td>
-              @if ($next)
-                <strong>{{ $next->schedule->schedule_date->format('M j, Y') }}</strong>
-                <div class="muted-cell" style="font-size:12px;">
-                  {{ substr((string) $next->schedule->time_slot_start, 0, 5) }} · {{ $next->status === 'confirmed' ? 'confirmed' : 'waiting for review/confirmation' }}
-                </div>
-              @else
-                <span class="muted-cell">None booked</span>
-              @endif
-            </td>
-            <td>
-              @if ($last)
-                {{ $last->schedule?->schedule_date?->format('M j, Y') }}
-                <div class="muted-cell" style="font-size:12px;">{{ $vv['completed'] }} {{ $vv['completed'] === 1 ? 'visit' : 'visits' }} in total</div>
-              @else
-                <span class="muted-cell">No visits yet</span>
-              @endif
-            </td>
-            <td style="text-align:right;">
+    <div class="rec-list">
+      @foreach ($rels as $rel)
+        @php
+          $visitor = $rel->visitor;
+          [$badgeClass, $badgeText] = $relBadge[$rel->verification_status] ?? ['released', ucfirst($rel->verification_status)];
+          $vv = $visitorVisits[$rel->visitor_id] ?? null;
+          $next = $vv['next'] ?? null;
+          $last = $vv['last'] ?? null;
+        @endphp
+        <div class="rec rec-person">
+          @include('partials.visitor-avatar', ['visitor' => $visitor])
+          <div class="rec-body">
+            <div class="rec-head">
               @if ($visitor)
-                <a class="row-action" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">Open</a>
+                <a class="rec-title full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">{{ $visitor->full_name }}</a>
+              @else
+                <span class="rec-title muted-cell">Visitor not found</span>
               @endif
-            </td>
-          </tr>
-        @endforeach
-      </tbody>
-    </table>
+              <span class="badge {{ $badgeClass }}"><span class="dot"></span>{{ $badgeText }}</span>
+            </div>
+            <div class="rec-meta">
+              {{ $rel->relationshipLabel() }}
+              @if ($rel->isHighPriority()) <span class="rec-tag">High priority</span>@endif
+              @if ($visitor && $visitor->contact_number && $visitor->contact_number !== 'N/A') · {{ $visitor->contact_number }}@endif
+            </div>
+            <div class="rec-meta">
+              @if ($next)
+                Next: <strong>{{ $next->schedule->schedule_date->format('M j') }}, {{ substr((string) $next->schedule->time_slot_start, 0, 5) }}</strong>
+                ({{ $next->status === 'confirmed' ? 'confirmed' : 'awaiting review' }})
+              @else
+                No visit booked
+              @endif
+              ·
+              @if ($last)
+                Last: {{ $last->schedule?->schedule_date?->format('M j, Y') }} ({{ $vv['completed'] }} {{ $vv['completed'] === 1 ? 'visit' : 'visits' }})
+              @else
+                No visits yet
+              @endif
+            </div>
+          </div>
+        </div>
+      @endforeach
     </div>
   @endif
 </div>
@@ -280,36 +248,30 @@
   @if ($pdl->restrictions->isEmpty())
     <p class="empty-note">No restrictions on file.</p>
   @else
-    <div class="table-scroll">
-    <table>
-      <thead><tr><th>Type</th><th>Status</th><th>Start</th><th>End</th><th>Reason</th><th></th></tr></thead>
-      <tbody>
-        @foreach ($pdl->restrictions->sortByDesc(fn ($r) => $r->isActive()) as $restriction)
-        <tr>
-          <td><strong>{{ $restrictionLabel($restriction->restriction_type) }}</strong></td>
-          <td>
+    <div class="rec-list">
+      @foreach ($pdl->restrictions->sortByDesc(fn ($r) => $r->isActive()) as $restriction)
+        <div class="rec">
+          <div class="rec-head">
+            <span class="rec-title">{{ $restrictionLabel($restriction->restriction_type) }}</span>
             <span class="badge {{ $restriction->isActive() ? 'restricted' : 'released' }}">
               <span class="dot"></span>{{ $restriction->isActive() ? 'Active' : 'Lifted' }}
             </span>
-          </td>
-          <td class="muted-cell">{{ $restriction->start_date->format('M d, Y') }}</td>
-          <td class="muted-cell">{{ optional($restriction->end_date)->format('M d, Y') ?? 'Until lifted' }}</td>
-          <td class="muted-cell">{{ $restriction->reason }}</td>
-          <td style="text-align:right;">
-            @if ($restriction->isActive())
-              <form method="POST" action="{{ route('pdl.restrictions.lift', [$pdl->pdl_id, $restriction->restriction_id]) }}"
-                    data-confirm="Lift this {{ str_replace('_', ' ', $restriction->restriction_type) }} restriction? It ends today and visitation may resume."
-                    data-confirm-title="Lift restriction" data-confirm-ok="Lift">
-                @csrf
-                @method('PATCH')
-                <button type="submit" class="row-action">Lift</button>
-              </form>
-            @endif
-          </td>
-        </tr>
-        @endforeach
-      </tbody>
-    </table>
+          </div>
+          <div class="rec-meta">
+            {{ $restriction->start_date->format('M j, Y') }} – {{ optional($restriction->end_date)->format('M j, Y') ?? 'until lifted' }}
+          </div>
+          <div class="rec-text">{{ $restriction->reason }}</div>
+          @if ($restriction->isActive())
+            <form class="rec-actions" method="POST" action="{{ route('pdl.restrictions.lift', [$pdl->pdl_id, $restriction->restriction_id]) }}"
+                  data-confirm="Lift this {{ str_replace('_', ' ', $restriction->restriction_type) }} restriction? It ends today and visitation may resume."
+                  data-confirm-title="Lift restriction" data-confirm-ok="Lift">
+              @csrf
+              @method('PATCH')
+              <button type="submit" class="row-action">Lift restriction</button>
+            </form>
+          @endif
+        </div>
+      @endforeach
     </div>
   @endif
 
@@ -347,11 +309,8 @@
   @if ($pdl->legalRecords->isEmpty())
     <p class="empty-note">No legal records on file yet.</p>
   @else
-    <div class="table-scroll">
-    <table>
-      <thead><tr><th>Case Number</th><th>Offense</th><th>Court</th><th>Status</th><th>Next Hearing</th><th>Remarks</th><th>Recorded</th><th></th></tr></thead>
-      <tbody>
-        @foreach ($pdl->legalRecords as $record)
+    <div class="rec-list">
+      @foreach ($pdl->legalRecords as $record)
         @php
           $caseBadge = match (true) {
             $record->isConvicted() => 'rejected',
@@ -360,59 +319,52 @@
           };
           $next = $record->nextHearing();
           $past = $record->pastHearings();
-          // Re-open this record's Update form after a failed save.
-          $editingThis = (string) old('editing_record') === (string) $record->legal_record_id;
         @endphp
-        <tr>
-          <td><strong>{{ $record->case_number }}</strong>
-            @if ($record->date_filed)<div class="muted-cell" style="font-size:12px;">Filed {{ $record->date_filed->format('M j, Y') }}</div>@endif
-          </td>
-          <td>{{ $record->offense }}@if ($record->isDrugRelated()) <span class="pill drug-pill">RA 9165</span>@endif</td>
-          <td class="muted-cell">{{ $record->court ?? '—' }}</td>
-          <td>
+        <div class="rec">
+          <div class="rec-head">
+            <span class="rec-title">{{ $record->offense }}@if ($record->isDrugRelated()) <span class="pill drug-pill">RA 9165</span>@endif</span>
             @if ($record->case_status)
               <span class="badge {{ $caseBadge }}"><span class="dot"></span>{{ $record->case_status }}</span>
-            @else
-              <span class="muted-cell">—</span>
             @endif
-            @if ($record->isConvicted())
-              <div style="font-size:12px;margin-top:4px;">
-                {{ $record->convicted_on?->format('M j, Y') }} · {{ $record->sentenceLabel() ?? 'no sentence entered' }}
-              </div>
+          </div>
+          <div class="rec-meta">
+            Case <strong>{{ $record->case_number }}</strong>
+            · {{ $record->court ?: 'Court not recorded' }}
+            · {{ $record->date_filed ? 'Filed ' . $record->date_filed->format('M j, Y') : 'Recorded ' . $record->created_at->format('M j, Y') }}
+          </div>
+          @if ($record->isConvicted())
+            <div class="rec-meta">
+              Convicted {{ $record->convicted_on?->format('M j, Y') }} · {{ $record->sentenceLabel() ?? 'no sentence entered' }}
               @if ($release = $record->estimatedRelease())
-                <div class="muted-cell" style="font-size:12px;" title="Admission date plus the sentence, before good conduct time allowance and other credits">
-                  Est. release {{ $release->format('M j, Y') }}
-                </div>
+                · <span title="Admission date plus the sentence, before good conduct time allowance and other credits">Est. release {{ $release->format('M j, Y') }}</span>
               @endif
-            @endif
-          </td>
-          <td>
+            </div>
+          @endif
+          <div class="rec-meta">
             @if ($next)
-              <strong>{{ $next->hearing_at->format('M j, Y') }}</strong>
-              <div class="muted-cell" style="font-size:12px;">{{ $next->hearing_at->format('H:i') }}@if ($next->notes) · {{ $next->notes }}@endif</div>
+              Next hearing: <strong>{{ $next->hearing_at->format('M j, Y H:i') }}</strong>@if ($next->notes) · {{ $next->notes }}@endif
             @else
-              <span class="muted-cell">{{ $record->isClosed() ? 'Case closed' : 'None set' }}</span>
+              {{ $record->isClosed() ? 'Case closed' : 'No hearing set' }}
             @endif
-            @if ($past->isNotEmpty())
-              <details class="past-hearings">
-                <summary>{{ $past->count() }} past {{ $past->count() === 1 ? 'hearing' : 'hearings' }}</summary>
-                <ul>
-                  @foreach ($past as $hearing)
-                    <li>{{ $hearing->hearing_at->format('M j, Y H:i') }}@if ($hearing->notes) · {{ $hearing->notes }}@endif</li>
-                  @endforeach
-                </ul>
-              </details>
-            @endif
-          </td>
-          <td class="muted-cell">{{ $record->remarks ?? '—' }}</td>
-          <td class="muted-cell">{{ $record->created_at->format('M d, Y') }}</td>
-          <td>
-            <button type="button" class="row-action" data-open-record="record-update-{{ $record->legal_record_id }}">Update</button>
-          </td>
-        </tr>
-        @endforeach
-      </tbody>
-    </table>
+          </div>
+          @if ($record->remarks)
+            <div class="rec-text">{{ $record->remarks }}</div>
+          @endif
+          @if ($past->isNotEmpty())
+            <details class="past-hearings">
+              <summary>{{ $past->count() }} past {{ $past->count() === 1 ? 'hearing' : 'hearings' }}</summary>
+              <ul>
+                @foreach ($past as $hearing)
+                  <li>{{ $hearing->hearing_at->format('M j, Y H:i') }}@if ($hearing->notes) · {{ $hearing->notes }}@endif</li>
+                @endforeach
+              </ul>
+            </details>
+          @endif
+          <div class="rec-actions">
+            <button type="button" class="row-action" data-open-record="record-update-{{ $record->legal_record_id }}">Update case</button>
+          </div>
+        </div>
+      @endforeach
     </div>
   @endif
 
@@ -479,20 +431,21 @@
   @if ($pdl->disciplinaryRecords->isEmpty())
     <p class="empty-note">No disciplinary records on file.</p>
   @else
-    <div class="table-scroll">
-    <table>
-      <thead><tr><th>Incident Date</th><th>Description</th><th>Action Taken</th><th>Triggers Restriction</th></tr></thead>
-      <tbody>
-        @foreach ($pdl->disciplinaryRecords as $record)
-        <tr>
-          <td class="muted-cell">{{ $record->incident_date->format('M d, Y') }}</td>
-          <td>{{ $record->description }}</td>
-          <td class="muted-cell">{{ $record->action_taken ?? '—' }}</td>
-          <td>{{ $record->triggers_restriction ? 'Yes' : 'No' }}</td>
-        </tr>
-        @endforeach
-      </tbody>
-    </table>
+    <div class="rec-list">
+      @foreach ($pdl->disciplinaryRecords as $record)
+        <div class="rec">
+          <div class="rec-head">
+            <span class="rec-title">{{ $record->incident_date->format('M j, Y') }}</span>
+            @if ($record->triggers_restriction)
+              <span class="badge restricted"><span class="dot"></span>Triggers restriction</span>
+            @else
+              <span class="badge released"><span class="dot"></span>No restriction</span>
+            @endif
+          </div>
+          <div class="rec-text">{{ $record->description }}</div>
+          <div class="rec-meta">Action taken: {{ $record->action_taken ?: '—' }}</div>
+        </div>
+      @endforeach
     </div>
   @endif
 
@@ -517,18 +470,15 @@
 </div>
 
 <script>
-  // Edit Profile: swap the read-only details for the form, and back.
+  // Edit Profile: show the edit panel under the summary, and hide it again on Cancel.
   (function () {
+    var panel = document.querySelector('[data-profile-panel]');
     var form = document.querySelector('[data-profile-edit]');
-    var views = document.querySelectorAll('[data-profile-view]');
     var openBtn = document.querySelector('[data-edit-open]');
-    var hint = document.querySelector('[data-edit-hint]');
 
     function setEditing(on) {
-      form.hidden = !on;
-      views.forEach(function (v) { v.hidden = on; });
+      panel.hidden = !on;
       openBtn.hidden = on;
-      hint.hidden = !on;
       if (on) {
         document.getElementById('profile').scrollIntoView({ behavior: 'smooth', block: 'start' });
         var first = form.querySelector('input[name="first_name"]');

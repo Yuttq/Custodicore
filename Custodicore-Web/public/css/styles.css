@@ -376,9 +376,39 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .add-record > summary{list-style:none;display:inline-flex;}
 .add-record > summary::-webkit-details-marker{display:none;}
 .add-record[open] > summary{background:var(--gray-bg);}
+/* Stacked record lists (visitors, restrictions, legal, disciplinary): no sideways scrolling on phones. */
+.rec-list{border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.rec{padding:10px 14px;}
+.rec + .rec{border-top:1px solid var(--border);}
+.rec-person{display:flex;align-items:flex-start;gap:10px;}
+.rec-body{flex:1;min-width:0;}
+.rec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.rec-title{font-size:14px;font-weight:700;color:var(--text);min-width:0;overflow-wrap:anywhere;}
+.rec-meta{color:var(--muted);font-size:12.5px;margin-top:3px;overflow-wrap:anywhere;}
+.rec-meta strong{color:var(--text);font-weight:600;}
+.rec-text{font-size:13px;color:var(--text);margin-top:4px;overflow-wrap:anywhere;}
+.rec-tag{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:9999px;background:var(--blue-bg);color:var(--blue);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.rec-actions{margin-top:6px;}
+
 @media (max-width: 720px){
-  .pdl-facts > div{border-right:none;border-bottom:1px solid var(--border);}
   .row.cols-4,.row.cols-3,.row.cols-2{grid-template-columns:1fr;}
+
+  /* Hero: small photo beside the name, buttons share one row. */
+  .pdl-hero{padding:14px;}
+  .pdl-hero-main{gap:12px;align-items:flex-start;}
+  .pdl-hero .pdl-photo-lg{width:72px;height:72px;border-radius:14px;font-size:22px;}
+  .pdl-hero-text{min-width:0;}
+  .pdl-hero-name{font-size:20px;}
+  .pdl-hero-badges{gap:6px;margin-top:8px;}
+  .pdl-hero-actions{width:100%;}
+  .pdl-hero-actions > .btn{flex:1;justify-content:center;}
+
+  /* Facts: two columns; offense and visiting hours take a full row. */
+  .pdl-facts{grid-template-columns:1fr 1fr;margin-top:14px;}
+  .pdl-facts > div{padding:10px 12px;border-right:none;border-bottom:1px solid var(--border);}
+  .pdl-facts > div:not(.is-wide):nth-child(odd){border-right:1px solid var(--border);}
+  .pdl-facts > div.is-wide{grid-column:1 / -1;}
+  .pdl-facts > div:last-child{border-bottom:none;}
 }
 
 /* ===================== ELIGIBILITY REVIEW ===================== */

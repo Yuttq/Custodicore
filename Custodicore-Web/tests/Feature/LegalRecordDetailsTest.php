@@ -109,7 +109,7 @@ class LegalRecordDetailsTest extends TestCase
 
         // After the hearing date it moves to the history.
         $this->travelTo(CarbonImmutable::parse('2026-11-02 09:00:00', 'Asia/Manila'));
-        $this->get("/pdls/{$record->pdl_id}")->assertSee('None set')->assertSee('1 past hearing');
+        $this->get("/pdls/{$record->pdl_id}")->assertSee('No hearing set')->assertSee('1 past hearing');
     }
 
     public function test_update_records_a_conviction_and_the_next_hearing_and_logs_it(): void

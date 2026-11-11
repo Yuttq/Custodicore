@@ -120,7 +120,7 @@ class MergedPdlPagesTest extends TestCase
             ->assertSee($this->visitor->full_name)
             ->assertSee(route('visitor.show', $this->visitor->visitor_id) . '#relationships', false)
             ->assertSee('1 approved · 0 pending')
-            ->assertSee('None booked');
+            ->assertSee('No visit booked');
 
         // A PDL nobody is linked to says so.
         $this->get("/pdls/{$this->otherPdl()->pdl_id}")->assertOk()

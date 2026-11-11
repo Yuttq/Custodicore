@@ -105,8 +105,7 @@ class RecordOfficerValidationTest extends TestCase
         $this->get("/pdls/{$this->pdl->pdl_id}")
             ->assertOk()
             ->assertSee('Edit Profile')
-            ->assertSee('<dl class="pdl-details" data-profile-view >', false)
-            ->assertSee('data-profile-edit hidden', false)
+            ->assertSee('data-profile-panel hidden', false)
             ->assertSeeInOrder(['Cell/Block', 'Dorm 1']);
 
         // After a failed save the form comes back open, with the officer's input.
@@ -114,7 +113,7 @@ class RecordOfficerValidationTest extends TestCase
             ->put("/pdls/{$this->pdl->pdl_id}", ['first_name' => 'Ex4mple', 'current_password' => 'password'])
             ->assertRedirect("/pdls/{$this->pdl->pdl_id}");
         $this->get("/pdls/{$this->pdl->pdl_id}")
-            ->assertDontSee('data-profile-edit hidden', false)
+            ->assertDontSee('data-profile-panel hidden', false)
             ->assertSee('value="Ex4mple"', false);
     }
 
