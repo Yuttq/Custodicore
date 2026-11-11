@@ -18,6 +18,7 @@ class PdlRestriction extends Model
 
     protected $fillable = [
         'pdl_id',
+        'disciplinary_record_id',
         'restriction_type',
         'status',
         'start_date',
@@ -41,6 +42,12 @@ class PdlRestriction extends Model
     public function pdl()
     {
         return $this->belongsTo(Pdl::class, 'pdl_id', 'pdl_id');
+    }
+
+    // The disciplinary incident that led to this restriction, if any.
+    public function disciplinaryRecord()
+    {
+        return $this->belongsTo(PdlDisciplinaryRecord::class, 'disciplinary_record_id', 'disciplinary_record_id');
     }
 
     public function imposedBy()

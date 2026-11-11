@@ -31,6 +31,24 @@ class PdlDisciplinaryRecord extends Model
         return $this->belongsTo(Pdl::class, 'pdl_id', 'pdl_id');
     }
 
+    // Restrictions linked to this incident. "Led to restriction" is shown
+    // from these, not from the legacy triggers_restriction column.
+    public function restrictions()
+    {
+        return $this->hasMany(PdlRestriction::class, 'disciplinary_record_id', 'disciplinary_record_id');
+    }
+
+    public function ledToRestriction(): bool
+    {
+        return $this->restrictions->isNotEmpty();
+    }
+
+    // Short label for pickers and the restriction list.
+    public function shortLabel(): string
+    {
+        return $this->incident_date->format('M j, Y') . ' — ' . \Illuminate\Support\Str::limit($this->description, 50);
+    }
+
     public function recordedBy()
     {
         return $this->belongsTo(Account::class, 'recorded_by');

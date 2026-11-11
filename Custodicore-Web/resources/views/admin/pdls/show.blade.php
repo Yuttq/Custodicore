@@ -114,7 +114,7 @@
                                 <div class="px-md py-sm">
                                     <div class="flex flex-wrap items-center justify-between gap-xs">
                                         <p class="text-body font-semibold">{{ $record->incident_date?->format('M j, Y') ?? '—' }}</p>
-                                        @if ($record->triggers_restriction)
+                                        @if ($record->ledToRestriction())
                                             <span class="cc-chip cc-chip-danger">Led to restriction</span>
                                         @else
                                             <span class="cc-chip cc-chip-neutral">No restriction</span>

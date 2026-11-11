@@ -16,7 +16,7 @@
   $openLegal = ! old('editing_record') && $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'date_filed',
     'next_hearing_at', 'hearing_notes', 'convicted_on', 'sentence_years', 'sentence_months', 'sentence_days', 'remarks']);
   $openDisciplinary = $errors->hasAny(['incident_date', 'description', 'action_taken']);
-  $openRestriction = $errors->hasAny(['restriction_type', 'start_date', 'end_date', 'reason']);
+  $openRestriction = $errors->hasAny(['restriction_type', 'start_date', 'end_date', 'reason', 'disciplinary_record_id']);
 @endphp
 
 @section('content')
@@ -261,6 +261,9 @@
             {{ $restriction->start_date->format('M j, Y') }} – {{ optional($restriction->end_date)->format('M j, Y') ?? 'until lifted' }}
           </div>
           <div class="rec-text">{{ $restriction->reason }}</div>
+          @if ($restriction->disciplinaryRecord)
+            <div class="rec-meta">From incident: <a href="#disciplinary-records" class="row-action">{{ $restriction->disciplinaryRecord->shortLabel() }}</a></div>
+          @endif
           @if ($restriction->isActive())
             <form class="rec-actions" method="POST" action="{{ route('pdl.restrictions.lift', [$pdl->pdl_id, $restriction->restriction_id]) }}"
                   data-confirm="Lift this {{ str_replace('_', ' ', $restriction->restriction_type) }} restriction? It ends today and visitation may resume."
@@ -296,6 +299,21 @@
         <div class="row">
           <div class="field-m"><label>Reason</label><input type="text" name="reason" value="{{ old('reason') }}" required minlength="5" maxlength="255"></div>
         </div>
+        @if ($pdl->disciplinaryRecords->isNotEmpty())
+          <div class="row">
+            <div class="field-m">
+              <label>Related incident (optional)</label>
+              <select name="disciplinary_record_id">
+                <option value="">None — not caused by an incident</option>
+                @foreach ($pdl->disciplinaryRecords as $incident)
+                  <option value="{{ $incident->disciplinary_record_id }}" {{ (string) old('disciplinary_record_id') === (string) $incident->disciplinary_record_id ? 'selected' : '' }}>{{ $incident->shortLabel() }}</option>
+                @endforeach
+              </select>
+              <p class="field-hint">Pick the disciplinary record that led to this restriction. That record will then show "Led to restriction".</p>
+              @error('disciplinary_record_id')<p class="field-hint" style="color:var(--red-text);">{{ $message }}</p>@enderror
+            </div>
+          </div>
+        @endif
         <button class="btn btn-blue" type="submit">Add Restriction</button>
       </form>
     </details>
@@ -425,7 +443,7 @@
 </div>
 
 {{-- ================= DISCIPLINARY RECORDS ================= --}}
-<div class="panel">
+<div class="panel" id="disciplinary-records">
   <div class="panel-header"><h2>Disciplinary Records <span class="count-chip">{{ $pdl->disciplinaryRecords->count() }}</span></h2></div>
 
   @if ($pdl->disciplinaryRecords->isEmpty())
@@ -436,8 +454,8 @@
         <div class="rec">
           <div class="rec-head">
             <span class="rec-title">{{ $record->incident_date->format('M j, Y') }}</span>
-            @if ($record->triggers_restriction)
-              <span class="badge restricted"><span class="dot"></span>Triggers restriction</span>
+            @if ($record->ledToRestriction())
+              <a href="#restrictions" class="badge restricted" style="text-decoration:none;"><span class="dot"></span>Led to restriction</a>
             @else
               <span class="badge released"><span class="dot"></span>No restriction</span>
             @endif
@@ -461,9 +479,7 @@
       <div class="row">
         <div class="field-m"><label>Description</label><textarea name="description" required minlength="10" maxlength="2000">{{ old('description') }}</textarea></div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;">
-        <input type="checkbox" name="triggers_restriction" value="1" {{ old('triggers_restriction') ? 'checked' : '' }}> This incident should trigger a restriction
-      </label>
+      <p class="field-hint" style="margin:0 0 14px;">To block visits because of this incident, add a restriction under <a href="#restrictions">Restrictions</a> and pick this incident as the related incident.</p>
       <button class="btn btn-blue" type="submit">Add Disciplinary Record</button>
     </form>
   </details>

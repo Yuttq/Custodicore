@@ -89,7 +89,7 @@ class PdlController extends Controller
     /** View one PDL: profile, legal records, disciplinary records. */
     public function show(Pdl $pdl): View
     {
-        $pdl->load(['legalRecords', 'disciplinaryRecords', 'visitorRelationships.visitor']);
+        $pdl->load(['legalRecords', 'disciplinaryRecords.restrictions', 'visitorRelationships.visitor']);
 
         // Authorized visitors: people whose relationship to this PDL has been
         // verified by the Records Officer AND whose own account is verified.

@@ -353,7 +353,7 @@ class PdlController extends Controller
     // -----------------------------------------------------------------
     public function show(Pdl $pdl)
     {
-        $pdl->load(['legalRecords.hearings', 'disciplinaryRecords', 'restrictions', 'registeredBy']);
+        $pdl->load(['legalRecords.hearings', 'disciplinaryRecords.restrictions', 'restrictions.disciplinaryRecord', 'registeredBy']);
 
         // Visitation eligibility status, shown on the PDL's own page — this
         // is PDL-side information (is *this PDL* currently clear to
@@ -647,13 +647,11 @@ class PdlController extends Controller
             'incident_date' => ['required', 'date', 'before_or_equal:today', "after_or_equal:{$admitted}"],
             'description' => ['required', 'string', 'min:10', 'max:2000'],
             'action_taken' => ['nullable', 'string', 'max:255'],
-            'triggers_restriction' => ['nullable', 'boolean'],
         ], [
             'incident_date.before_or_equal' => 'The incident date cannot be in the future.',
             'incident_date.after_or_equal' => 'The incident date cannot be before the PDL\'s admission (' . $pdl->admission_date->format('M j, Y') . ').',
             'description.min' => 'Describe the incident in at least 10 characters.',
         ]);
-        $validated['triggers_restriction'] = $request->boolean('triggers_restriction');
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
@@ -697,7 +695,13 @@ class PdlController extends Controller
             'start_date' => ['required', 'date', "after_or_equal:{$admitted}"],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date', 'after_or_equal:today'],
             'reason' => ['required', 'string', 'min:5', 'max:255'],
+            // Optional: the incident that led to it — must be one of this PDL's records.
+            'disciplinary_record_id' => [
+                'nullable', 'integer',
+                Rule::exists('pdl_disciplinary_records', 'disciplinary_record_id')->where('pdl_id', $pdl->pdl_id),
+            ],
         ], [
+            'disciplinary_record_id.exists' => 'Pick one of this PDL\'s disciplinary records, or leave it empty.',
             'restriction_type.unique' => 'This PDL already has an active restriction of this type. Lift it first or edit that one.',
             'start_date.after_or_equal' => 'The start date cannot be before the PDL\'s admission (' . $pdl->admission_date->format('M j, Y') . ').',
             'end_date.after_or_equal' => 'The end date must be on or after the start date and not in the past.',
@@ -729,7 +733,8 @@ class PdlController extends Controller
         }
 
         $this->logAudit('create', 'pdl_restrictions', $restriction->restriction_id,
-            'Added ' . str_replace('_', ' ', $restriction->restriction_type) . " restriction for {$pdl->full_name}: {$restriction->reason}");
+            'Added ' . str_replace('_', ' ', $restriction->restriction_type) . " restriction for {$pdl->full_name}: {$restriction->reason}"
+            . ($restriction->disciplinaryRecord ? ' (from the incident on ' . $restriction->disciplinaryRecord->incident_date->format('M j, Y') . ')' : ''));
 
         return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', 'Restriction added.');
     }
