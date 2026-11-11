@@ -192,6 +192,25 @@ class VisitorAccountStatusTest extends TestCase
         $scan()->assertOk();
     }
 
+    public function test_profile_keeps_disabling_behind_a_popup_and_drops_the_sign_up_guess(): void
+    {
+        $this->visitor->forceFill(['relationship_hint' => 'Spouse'])->save();
+
+        $page = $this->actingAs($this->warden, 'web')->get(route('admin.visitors.show', $this->visitor->visitor_id))
+            ->assertOk()
+            ->assertSee('disable-account-modal', false)
+            ->assertSee('Reason (required)')
+            ->assertDontSee('Said at sign-up');
+
+        // The popup only opens on its own after a rejected reason.
+        $this->assertStringNotContainsString("getElementById('disable-account-modal').showModal();</script>", $page->getContent());
+
+        $this->setStatus('deactivate', ['reason' => ''])->assertSessionHasErrors('reason');
+        $this->actingAs($this->warden, 'web')->withSession(['errors' => session('errors')])
+            ->get(route('admin.visitors.show', $this->visitor->visitor_id))
+            ->assertSee("getElementById('disable-account-modal').showModal();</script>", false);
+    }
+
     public function test_the_visitor_pages_show_the_account_status_separately(): void
     {
         $this->setStatus('deactivate', ['reason' => 'Test']);

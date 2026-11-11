@@ -182,6 +182,7 @@ class GuardianRegistrationDetailsTest extends TestCase
 
     public function test_admin_visitor_page_shows_guardian_details(): void
     {
+        $this->withoutVite();
         $this->postJson('/api/auth/register', $this->form(self::GUARDIAN))->assertCreated();
 
         $role = Role::firstOrCreate(
