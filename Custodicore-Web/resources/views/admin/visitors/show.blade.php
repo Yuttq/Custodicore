@@ -36,9 +36,13 @@
 @endphp
 
 @section('content')
+    <div>
+        <a href="{{ route('admin.visitors.index') }}" class="cc-btn-secondary">Back</a>
+    </div>
+
     {{-- One profile card: header with photo, name and status; details left; PDLs, visits and flags right. --}}
     <div class="overflow-hidden rounded-card border border-border bg-card shadow-card">
-        <div class="flex flex-wrap items-center gap-md bg-primary-navy px-lg py-md">
+        <div class="flex items-center gap-md bg-primary-navy px-md py-md sm:px-lg">
             {{-- The visitor's own photo (taken in the mobile app), served from private storage
                  through the staff-only visitor.photo route. Click to open it full size. --}}
             <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white/10">
@@ -61,21 +65,20 @@
             </div>
 
             <div class="min-w-0 flex-1">
-                <p class="text-card-title text-white">{{ $visitor->full_name }}</p>
+                <p class="break-words text-card-title text-white">{{ $visitor->full_name }}</p>
                 <p class="break-all text-metadata text-white/70">{{ $visitor->account?->email ?? 'No email on file' }}</p>
-            </div>
 
-            <div class="flex flex-wrap items-center gap-sm">
-                @include('admin.partials.status-chip', ['status' => $status])
-                @if ($accountStatus === 'active')
-                    @include('admin.partials.status-chip', ['status' => 'active'])
-                @elseif ($accountStatus)
-                    <span class="cc-chip cc-chip-danger">Account {{ $accountStatus === 'inactive' ? 'deactivated' : $accountStatus }}</span>
-                @endif
-                @if ($activeFlags > 0)
-                    <span class="cc-chip cc-chip-danger">{{ $activeFlags }} active {{ \Illuminate\Support\Str::plural('flag', $activeFlags) }}</span>
-                @endif
-                <a href="{{ route('admin.visitors.index') }}" class="cc-btn-secondary">Back</a>
+                <div class="mt-sm flex flex-wrap items-center gap-xs">
+                    @include('admin.partials.status-chip', ['status' => $status])
+                    @if ($accountStatus === 'active')
+                        @include('admin.partials.status-chip', ['status' => 'active'])
+                    @elseif ($accountStatus)
+                        <span class="cc-chip cc-chip-danger">Account {{ $accountStatus === 'inactive' ? 'deactivated' : $accountStatus }}</span>
+                    @endif
+                    @if ($activeFlags > 0)
+                        <span class="cc-chip cc-chip-danger">{{ $activeFlags }} active {{ \Illuminate\Support\Str::plural('flag', $activeFlags) }}</span>
+                    @endif
+                </div>
             </div>
         </div>
 
