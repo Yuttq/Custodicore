@@ -35,8 +35,9 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
       accessible
       accessibilityLabel={
         `Weekly slots, ${range}: ${label}, across all your linked PDLs.` +
-        (usage.reached ? ` ${weeklyLimitReachedMessage(usage)}` : '') +
-        ` ${WEEKLY_SLOTS_COUNTED_NOTE}`
+        (usage.reached
+          ? ` ${weeklyLimitReachedMessage(usage)} ${WEEKLY_SLOTS_COUNTED_NOTE}`
+          : ` Up to ${usage.limit} a week, Monday to Sunday.`)
       }
     >
       <View style={styles.row}>
@@ -49,13 +50,16 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
         <Text style={[styles.count, usage.reached && styles.countReached]}>{label}</Text>
       </View>
       {usage.reached ? (
-        <Text style={styles.reached}>{weeklyLimitReachedMessage(usage)}</Text>
+        <>
+          <Text style={styles.reached}>{weeklyLimitReachedMessage(usage)}</Text>
+          {/* Only here: a visitor at the limit may not have visited yet. */}
+          <Text style={styles.note}>{WEEKLY_SLOTS_COUNTED_NOTE}</Text>
+        </>
       ) : (
         <Text style={styles.note}>
           Up to {usage.limit} a week (Mon–Sun), across all your PDLs.
         </Text>
       )}
-      <Text style={styles.note}>{WEEKLY_SLOTS_COUNTED_NOTE}</Text>
     </View>
   );
 }

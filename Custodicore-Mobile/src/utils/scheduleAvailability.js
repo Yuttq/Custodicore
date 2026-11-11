@@ -233,13 +233,14 @@ export function weeklyUsageLabel(usage) {
 }
 
 /**
- * What uses a weekly slot. Mirrors VisitAssignmentService::CAPACITY_STATUSES
+ * What uses a weekly slot, shown only once the limit is reached (when a
+ * visitor wonders why). Mirrors VisitAssignmentService::CAPACITY_STATUSES
  * on the server (assigned, pending_confirmation, confirmed, completed,
- * no_show); wording only, the server does the counting.
+ * no_show); wording only, the server does the counting. Pending requests
+ * are named because they are the surprising part.
  */
 export const WEEKLY_SLOTS_COUNTED_NOTE =
-  'Includes pending requests, confirmed visits, completed visits, and no-shows. ' +
-  'Rejected and cancelled requests don’t count.';
+  'Pending requests count too; rejected and cancelled ones don’t.';
 
 /**
  * Plain-language explanation of a week at the limit, naming the

@@ -393,6 +393,5 @@ test('Home calendar: each PDL shows only its own dates, and only they open Sched
 test('weekly slot wording: singular, and what counts', async () => {
   const { WEEKLY_SLOTS_COUNTED_NOTE } = await import('./scheduleAvailability.js');
   assert.equal(weeklyUsageLabel({ used: 1, limit: 1 }), '1 of 1 weekly slot used');
-  assert.match(WEEKLY_SLOTS_COUNTED_NOTE, /pending requests, confirmed visits, completed visits, and no-shows/);
-  assert.match(WEEKLY_SLOTS_COUNTED_NOTE, /Rejected and cancelled requests don’t count/);
+  assert.equal(WEEKLY_SLOTS_COUNTED_NOTE, 'Pending requests count too; rejected and cancelled ones don’t.');
 });
