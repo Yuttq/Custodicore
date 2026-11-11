@@ -472,12 +472,38 @@
     <form method="POST" action="{{ route('pdl.disciplinary-records.store', $pdl->pdl_id) }}" style="margin-top:14px;"
           data-confirm="Add this disciplinary record to {{ $pdl->full_name }}'s file? Records cannot be deleted afterwards." data-confirm-title="Add disciplinary record" data-confirm-ok="Add">
       @csrf
-      <div class="row cols-2">
-        <div class="field-m"><label>Incident Date</label><input type="date" name="incident_date" value="{{ old('incident_date') }}" required min="{{ $pdl->admission_date->toDateString() }}" max="{{ now()->toDateString() }}"></div>
-        <div class="field-m"><label>Action Taken</label><input type="text" name="action_taken" value="{{ old('action_taken') }}" maxlength="255"></div>
+      {{-- In the order an officer thinks about it: when → what happened → what was done. --}}
+      <div class="row">
+        <div class="field-m">
+          <label>Incident Date</label>
+          <input type="date" name="incident_date" value="{{ old('incident_date') }}" required min="{{ $pdl->admission_date->toDateString() }}" max="{{ now()->toDateString() }}">
+          <p class="field-hint">The day the incident happened (not today, if it was earlier).</p>
+        </div>
       </div>
       <div class="row">
-        <div class="field-m"><label>Description</label><textarea name="description" required minlength="10" maxlength="2000">{{ old('description') }}</textarea></div>
+        <div class="field-m">
+          <label>What happened</label>
+          <textarea name="description" required minlength="10" maxlength="2000"
+                    placeholder="e.g. Found with a mobile phone during the 8 AM cell inspection in Dorm 1.">{{ old('description') }}</textarea>
+          <p class="field-hint">Describe the rule violation: what, where, and who was involved. At least 10 characters.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field-m">
+          <label>Action Taken (optional)</label>
+          <input type="text" name="action_taken" value="{{ old('action_taken') }}" maxlength="255" list="disciplinary-actions"
+                 placeholder="e.g. Verbal warning, item confiscated">
+          <datalist id="disciplinary-actions">
+            <option value="Verbal warning">
+            <option value="Written warning">
+            <option value="Item confiscated">
+            <option value="Loss of privileges">
+            <option value="Transferred to another cell">
+            <option value="Referred to the disciplinary board">
+            <option value="Under investigation">
+          </datalist>
+          <p class="field-hint">What the facility did in response. Pick a common one or type your own. Leave empty if no action yet.</p>
+        </div>
       </div>
       <p class="field-hint" style="margin:0 0 14px;">To block visits because of this incident, add a restriction under <a href="#restrictions">Restrictions</a> and pick this incident as the related incident.</p>
       <button class="btn btn-blue" type="submit">Add Disciplinary Record</button>
