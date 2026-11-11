@@ -26,7 +26,13 @@ class SystemSetting extends Model
      * qr.expiry_minutes: a QR pass is valid until the visit's last session
      * ends (QrCode::validUntil).
      */
-    const HIDDEN = ['qr.expiry_minutes'];
+    const HIDDEN = [
+        'qr.expiry_minutes',
+        // Edited in their own Facility Contact card (App\Support\FacilityContact).
+        'facility_contact.name',
+        'facility_contact.phone',
+        'facility_contact.hours',
+    ];
 
     public static function value(string $key, ?string $default = null): ?string
     {

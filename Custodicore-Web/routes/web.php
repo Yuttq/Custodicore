@@ -318,6 +318,10 @@ Route::prefix('admin')
 
         Route::get('/settings', [SettingsController::class, 'index'])
             ->name('settings.index');
+        // Help Center contact shown in the visitor app; admin re-enters their password.
+        Route::put('/settings/facility-contact', [SettingsController::class, 'updateFacilityContact'])
+            ->middleware('reauth')
+            ->name('settings.facility-contact');
     });
 
 

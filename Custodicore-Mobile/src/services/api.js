@@ -264,6 +264,19 @@ export async function updateMe(fields) {
 }
 
 /**
+ * Help Center contact set by the Admin — GET /api/facility-contact.
+ * Returns `{ contact: { name, phone, hours } | null }`.
+ */
+export async function getFacilityContact() {
+  try {
+    const { data } = await client.get('/facility-contact');
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Changes the signed-in visitor's password — POST /api/me/password.
  * Other devices are signed out; this one stays signed in. 422 for a wrong
  * current password or a new one that fails the policy, 429 when locked.

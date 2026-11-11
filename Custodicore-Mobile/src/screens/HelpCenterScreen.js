@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Card,
@@ -11,48 +11,42 @@ import {
   spacing,
   typography,
 } from '../designSystem';
-import { getMockFacilityContact } from '../mock/assignedVisits.mock';
-
-/** Shown until the facility confirms its official contact information. */
-const SAMPLE_CONTACT_NOTICE =
-  'Sample contact details. These will be replaced once the facility confirms its official contact information.';
-
-const CHECK_IN_REMINDER = 'Bring your valid ID. Present both QR code and ID during check-in.';
+import { getFacilityContact } from '../services/api';
+import { normalizeFacilityContact, telLink } from '../utils/facilityContact';
 
 /**
- * Answers describe how the app works today (email verification, staff
- * review, Verification Documents, My Visits, QR Pass) — no new policies.
+ * Short answers describing how the app works today — no new policies.
  */
 const FAQS = [
   {
-    question: 'How does account verification work?',
+    question: 'How does verification work?',
     answer:
-      'Verifying your email and getting your account approved are separate steps. First, open the link sent to your email to verify your address, then sign in. Facility staff then review your information and approve your account after they verify your government ID; you will get a notification once it is approved. As a separate step, staff review your relationship documents and connect your account to the PDL you want to visit.',
+      'First open the link we email you, then sign in. Facility staff review your details and government ID and approve your account; you will get a notification. Your relationship to each PDL is reviewed separately.',
   },
   {
     question: 'What if a document is rejected?',
     answer:
-      'Go to Profile → Verification Documents and open the document. If staff gave a reason for the rejection, it is shown there. If the app lets you upload a replacement, upload a new, clear photo (JPG, PNG or WEBP, up to 10 MB) and staff will review it again. Verified documents cannot be replaced. If your whole account was not approved, check your documents or contact facility staff.',
+      'Open Profile → Verification Documents to see the staff reason. Upload a new, clear photo (JPG, PNG or WEBP, up to 10 MB) and staff will review it again.',
   },
   {
     question: 'How do I schedule a visit?',
     answer:
-      'You can request a visit after staff approve your account and verify your relationship to the PDL. Open My Visits, or tap Request a Visit on Home, choose an available date, and submit. Staff review the request, and you will be notified when it is approved or not approved. Staff may also assign you a visit, which you confirm or decline in My Visits. Some dates may be full or unavailable because of the weekly visit limit.',
+      'Once your account and PDL relationship are approved, tap Request a Visit on Home, pick an available date and submit. You will be notified when staff approve it. Visits staff assign to you are confirmed in My Visits.',
   },
   {
-    question: 'How do I use the QR pass at check-in?',
+    question: 'How do I use the QR pass?',
     answer:
-      'Your QR pass appears in the QR Pass tab on the day of your confirmed visit. At the facility, show the QR code together with your valid ID. The pass is valid only for your visit window; once it is no longer valid, the app says so.',
+      'Your pass appears in the QR Pass tab on the day of your confirmed visit. Show it together with your valid ID at the facility.',
   },
 ];
 
 /**
- * One FAQ: the question is a heading holding a toggle button; the answer is
- * shown only while expanded.
+ * One FAQ row: the question is a heading holding a toggle button; the answer
+ * is shown only while expanded.
  */
-function FaqItem({ question, answer, expanded, onToggle }) {
+function FaqItem({ question, answer, expanded, onToggle, last }) {
   return (
-    <Card style={[styles.card, styles.faqCard]}>
+    <View style={[styles.faqItem, !last && styles.faqDivider]}>
       <View accessibilityRole="header">
         <Pressable
           onPress={onToggle}
@@ -60,26 +54,45 @@ function FaqItem({ question, answer, expanded, onToggle }) {
           accessibilityLabel={question}
           accessibilityState={{ expanded }}
           accessibilityHint={expanded ? 'Hides the answer' : 'Shows the answer'}
-          style={({ pressed }) => [styles.questionRow, pressed && styles.questionRowPressed]}
+          style={({ pressed }) => [styles.questionRow, pressed && styles.pressed]}
         >
           <Text style={styles.question}>{question}</Text>
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
+            size={18}
             color={colors.textSecondary}
           />
         </Pressable>
       </View>
-      {expanded ? <Text style={[styles.body, styles.answer]}>{answer}</Text> : null}
-    </Card>
+      {expanded ? <Text style={styles.answer}>{answer}</Text> : null}
+    </View>
   );
 }
 
-/** Profile → Help Center: facility contact, check-in reminder and FAQs (static). */
+/**
+ * Profile → Help Center: the facility contact the Admin set on the web
+ * Settings page (hidden until there is a phone number) and FAQs.
+ */
 export default function HelpCenterScreen({ navigation }) {
-  const contact = getMockFacilityContact();
+  const [contact, setContact] = useState(
+    /** @type {{ name: string | null; phone: string; hours: string | null } | null} */ (null),
+  );
   // Questions whose answers are open; all start closed, several may be open.
   const [openQuestions, setOpenQuestions] = useState(() => new Set());
+
+  useEffect(() => {
+    let active = true;
+    getFacilityContact()
+      .then((data) => {
+        if (active) setContact(normalizeFacilityContact(data));
+      })
+      .catch(() => {
+        // No contact card rather than an error: the FAQs still help.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const toggleQuestion = useCallback((question) => {
     setOpenQuestions((prev) => {
@@ -90,73 +103,128 @@ export default function HelpCenterScreen({ navigation }) {
     });
   }, []);
 
+  const callHref = contact ? telLink(contact.phone) : null;
+
   return (
     <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
       <StackScreenHeader title="Help Center" navigation={navigation} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Card style={styles.card}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">
-            Facility Contact
-          </Text>
-          <View style={styles.noticeBox}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.primaryNavy} />
-            <Text style={styles.noticeText}>{SAMPLE_CONTACT_NOTICE}</Text>
-          </View>
-          <Text style={styles.body}>
-            For visit scheduling, verification, or facility questions, contact:
-          </Text>
-          <Text style={styles.contactName}>{contact.facilityName}</Text>
-          <Text style={styles.body}>{contact.contactNumber}</Text>
-          <Text style={styles.metadata}>{contact.officeAvailability}</Text>
-        </Card>
+      <ScrollView contentContainerStyle={commonStyles.scrollContent} showsVerticalScrollIndicator={false}>
+        {contact ? (
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              Contact the Facility
+            </Text>
+            <View style={styles.contactRow}>
+              <View style={styles.contactIcon}>
+                <Ionicons name="call-outline" size={18} color={colors.primaryTealDark} />
+              </View>
+              <View style={styles.contactText}>
+                <Text style={styles.phone} selectable>
+                  {contact.phone}
+                </Text>
+                {contact.name || contact.hours ? (
+                  <Text style={styles.meta}>
+                    {[contact.name, contact.hours].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
+              {callHref ? (
+                <Pressable
+                  onPress={() => Linking.openURL(callHref).catch(() => {})}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call ${contact.phone}`}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.callButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.callText}>Call</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
 
-        <Card style={styles.card}>
+        <Card style={[styles.card, contact ? styles.cardGap : null]}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
-            Check-in Reminder
+            FAQs
           </Text>
-          <Text style={styles.body}>{CHECK_IN_REMINDER}</Text>
+          {FAQS.map((faq, i) => (
+            <FaqItem
+              key={faq.question}
+              question={faq.question}
+              answer={faq.answer}
+              expanded={openQuestions.has(faq.question)}
+              onToggle={() => toggleQuestion(faq.question)}
+              last={i === FAQS.length - 1}
+            />
+          ))}
         </Card>
-
-        <Text style={styles.groupTitle} accessibilityRole="header">
-          Frequently Asked Questions
-        </Text>
-        {FAQS.map((faq) => (
-          <FaqItem
-            key={faq.question}
-            question={faq.question}
-            answer={faq.answer}
-            expanded={openQuestions.has(faq.question)}
-            onToggle={() => toggleQuestion(faq.question)}
-          />
-        ))}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
   card: {
-    marginBottom: spacing.sm + spacing.xs,
+    borderRadius: layout.cardRadius,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  // FAQ cards: slimmer than the info cards; the row keeps a 44dp touch target.
-  faqCard: {
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.sm,
+  cardGap: {
+    marginTop: spacing.sm,
   },
   sectionTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
+    ...typography.statusLabel,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: colors.textSecondary,
+    paddingVertical: spacing.xs,
   },
-  groupTitle: {
-    ...typography.sectionTitle,
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  contactIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  contactText: {
+    flex: 1,
+  },
+  phone: {
+    ...typography.body,
+    fontWeight: '600',
     color: colors.textPrimary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
+  },
+  meta: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+  },
+  callButton: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: layout.buttonRadius,
+    backgroundColor: colors.primaryTealDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callText: {
+    ...typography.metadata,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  faqItem: {
+    paddingVertical: 2,
+  },
+  faqDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   questionRow: {
     flexDirection: 'row',
@@ -164,48 +232,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: 44,
   },
-  questionRowPressed: {
+  pressed: {
     opacity: 0.7,
   },
   question: {
-    ...typography.cardTitle,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.metadata,
+    fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,
   },
   answer: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  metadata: {
     ...typography.metadata,
     color: colors.textSecondary,
-  },
-  contactName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: spacing.sm,
-  },
-  noticeBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: layout.buttonRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-  },
-  noticeText: {
-    ...typography.metadata,
-    color: colors.textPrimary,
-    flex: 1,
+    paddingBottom: spacing.sm,
   },
 });

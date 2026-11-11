@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AnnouncementApiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\FacilityContactController;
 use App\Http\Controllers\Api\NotificationApiController;
 use App\Http\Controllers\Api\PasswordChangeController;
 use App\Http\Controllers\Api\RegistrationRequirementsController;
@@ -73,6 +74,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // The visitor's own photo (taken in the app after creating the account).
     Route::post('/me/photo', [VisitorPhotoController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/me/photo', [VisitorPhotoController::class, 'show']);
+
+    // Help Center contact (set by the Admin on Settings); null until a phone number is saved.
+    Route::get('/facility-contact', FacilityContactController::class);
 
     Route::get('/documents', [VisitorApiController::class, 'documents']);
     Route::post('/documents', [VisitorApiController::class, 'storeDocument']);

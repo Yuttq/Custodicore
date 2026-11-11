@@ -10,6 +10,42 @@
     </div>
 
     <div class="cc-card">
+        <p class="text-card-title">Facility Contact</p>
+        <p class="text-metadata text-text-secondary">
+            Shown to visitors in the app's Help Center, with a Call button. Leave the phone number empty to hide it.
+        </p>
+
+        <form method="POST" action="{{ route('admin.settings.facility-contact') }}" class="mt-md"
+              data-password-confirm="Update the facility contact shown to visitors? Enter your password to confirm.">
+            @csrf
+            @method('PUT')
+            <div class="grid grid-cols-1 gap-sm sm:grid-cols-3">
+                <div>
+                    <label class="cc-label" for="facility-contact-name">Name <span class="normal-case">(optional)</span></label>
+                    <input id="facility-contact-name" type="text" name="name" maxlength="{{ \App\Support\FacilityContact::NAME_MAX }}"
+                           value="{{ old('name', $facilityContact['name']) }}" class="cc-input" placeholder="e.g. Visiting Area Desk" />
+                    @error('name') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="cc-label" for="facility-contact-phone">Phone Number</label>
+                    <input id="facility-contact-phone" type="tel" name="phone" maxlength="20"
+                           value="{{ old('phone', $facilityContact['phone']) }}" class="cc-input" placeholder="e.g. (032) 123-4567" />
+                    @error('phone') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="cc-label" for="facility-contact-hours">Hours <span class="normal-case">(optional)</span></label>
+                    <input id="facility-contact-hours" type="text" name="hours" maxlength="{{ \App\Support\FacilityContact::HOURS_MAX }}"
+                           value="{{ old('hours', $facilityContact['hours']) }}" class="cc-input" placeholder="e.g. Mon–Fri, 8:00 AM – 5:00 PM" />
+                    @error('hours') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                </div>
+            </div>
+            <div class="mt-md flex justify-end">
+                <button type="submit" class="cc-btn-primary">Save Contact</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="cc-card">
         <p class="text-card-title">System Settings</p>
 
         <div class="mt-md overflow-x-auto">
