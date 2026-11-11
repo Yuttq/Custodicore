@@ -25,6 +25,7 @@ import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
 import { calendarDateHandoff } from '../utils/scheduleAvailability';
+import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
@@ -322,9 +323,7 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
         ) : !hasAvailableDate && !loading ? (
-          <Text style={styles.calendarWarning}>
-            No visit dates are available in the coming weeks. Please check again later.
-          </Text>
+          <Text style={styles.calendarWarning}>{noAvailabilityMessage(relationship)}</Text>
         ) : (
           <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>
         )}

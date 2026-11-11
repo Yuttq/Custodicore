@@ -14,6 +14,7 @@ import {
   visitingWindows,
   WHOLE_DAY_PERIOD,
 } from '../utils/scheduleAvailability';
+import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 
 /** What booking the whole day means at the gate. */
@@ -190,9 +191,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         {relationship.message ? (
           <Text style={styles.scheduleWarning}>{relationship.message}</Text>
         ) : !hasAvailableDate && !loading ? (
-          <Text style={styles.scheduleWarning}>
-            No visit dates are available in the coming weeks. Please check again later.
-          </Text>
+          <Text style={styles.scheduleWarning}>{noAvailabilityMessage(relationship)}</Text>
         ) : null}
       </>
     );
