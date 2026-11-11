@@ -91,6 +91,9 @@ export function extractRejectedDocumentLabel(body) {
  * - `relationship_rejected` → "Request Again", same rule: a rejected
  *   relationship takes no new documents, so the visitor sends a new request,
  *   prefilled from that relationship while it is still rejected.
+ * - `relationship_linked` → "Upload Documents" opens Verification Documents
+ *   (where the documents for the new PDL go), while that relationship is
+ *   still pending.
  * - `relationship_approved` → "Book a Visit" opens Home (Visitation
  *   Calendar), while that relationship is still approved.
  * - `document_rejected` → "Replace Document" opens the upload screen for
@@ -136,6 +139,14 @@ export function resolveNotificationAction(notification, verification) {
     return prefill
       ? { label: 'Request Again', route: 'AddPdlRequest', params: { prefill } }
       : { label: 'Request Again', route: 'AddPdlRequest' };
+  }
+
+  if (type === 'relationship_linked') {
+    const relationshipId = relatedIdOf(notification, 'visitor_pdl_relationships');
+    const stillPending = relationshipId
+      ? pdls.some((p) => String(p?.id) === relationshipId && p.status === 'pending')
+      : pdls.some((p) => p?.status === 'pending');
+    return stillPending ? { label: 'Upload Documents', route: 'VisitorVerificationDocuments' } : null;
   }
 
   if (type === 'relationship_approved') {

@@ -36,5 +36,5 @@ test('input is capped at 150 characters', () => {
 });
 
 test('placeholder text', () => {
-  assert.equal(INTENDED_PDL_NAME_PLACEHOLDER, 'Enter the name of the PDL you want to visit.');
+  assert.equal(INTENDED_PDL_NAME_PLACEHOLDER, 'Full name of the PDL');
 });

@@ -12,7 +12,7 @@ import { normalizeName, stripControlChars } from './registrationValidation.js';
 
 export const INTENDED_PDL_NAME_LIMITS = { min: 2, max: 150 };
 
-export const INTENDED_PDL_NAME_PLACEHOLDER = 'Enter the name of the PDL you want to visit.';
+export const INTENDED_PDL_NAME_PLACEHOLDER = 'Full name of the PDL';
 
 export const INTENDED_PDL_NAME_REQUIRED_MESSAGE = 'Please enter the name of the PDL you want to visit.';
 

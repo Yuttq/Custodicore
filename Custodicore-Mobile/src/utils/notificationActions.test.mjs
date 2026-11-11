@@ -299,6 +299,26 @@ test('relationship approval opens the Visitation Calendar while it is still appr
   assert.equal(resolveNotificationAction(n, { ...state, backendStatus: 'rejected' }), null);
 });
 
+test('a linked PDL opens Verification Documents while it still awaits documents', () => {
+  const n = {
+    category: 'relationship_linked',
+    body: 'Facility staff linked Ana Cruz to your account as your Parent.',
+    relatedType: 'visitor_pdl_relationships',
+    relatedId: '5',
+  };
+  const pendingPdl = { ...approvedPdl, status: 'pending' };
+  const state = { ...approved, pdlRelationships: [pendingPdl] };
+  assert.deepEqual(resolveNotificationAction(n, state), {
+    label: 'Upload Documents',
+    route: 'VisitorVerificationDocuments',
+  });
+  assert.equal(resolveNotificationAction(n, { ...state, pdlRelationships: [approvedPdl] }), null);
+  assert.equal(
+    resolveNotificationAction(n, { ...state, pdlRelationships: [{ ...pendingPdl, status: 'rejected' }] }),
+    null,
+  );
+});
+
 test('PDL request rejection matches its request by record before the body text', () => {
   // The body names another PDL, but the record is the rejected request.
   const n = {
