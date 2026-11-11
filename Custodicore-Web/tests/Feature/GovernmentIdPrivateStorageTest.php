@@ -193,6 +193,21 @@ class GovernmentIdPrivateStorageTest extends TestCase
             ->assertDontSee('/storage/visitor-ids', false);
     }
 
+    public function test_front_desk_profile_shows_no_number_given_instead_of_the_pending_placeholder(): void
+    {
+        $id = $this->idWithFile();
+        $id->forceFill(['id_number' => 'PENDING'])->save();
+
+        $this->actingAs($this->frontDeskAccount, 'web')
+            ->get("/front-desk/visitor-lookup/{$this->visitor->visitor_id}")
+            ->assertOk()
+            ->assertSee('No number given')
+            ->assertDontSee('No. <span class="font-semibold text-text-primary">PENDING', false)
+            // Empty gate history is one line, not an empty table.
+            ->assertSee('No gate records yet.')
+            ->assertDontSee('ID Held');
+    }
+
     public function test_a_missing_file_is_a_404(): void
     {
         $id = VisitorId::create([
