@@ -46,8 +46,22 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
           size={18}
           color={usage.reached ? colors.warningText : colors.primaryNavy}
         />
-        <Text style={styles.week}>Week of {range}</Text>
-        <Text style={[styles.count, usage.reached && styles.countReached]}>{label}</Text>
+        <Text
+          style={styles.week}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+          maxFontSizeMultiplier={1.3}
+        >
+          Week of {range}
+        </Text>
+        <Text
+          style={[styles.count, usage.reached && styles.countReached]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+        >
+          {label}
+        </Text>
       </View>
       {usage.reached ? (
         <>
@@ -85,12 +99,15 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontWeight: '600',
     color: colors.textPrimary,
-    flex: 1,
+    flexShrink: 0,
+    maxWidth: '100%',
   },
   count: {
     ...typography.metadata,
     fontWeight: '700',
     color: colors.primaryNavy,
+    flexShrink: 0,
+    maxWidth: '100%',
   },
   countReached: {
     color: colors.warningText,

@@ -11,7 +11,7 @@
 
 import { formatWeekRange, weeklyUsageFor } from './scheduleAvailability.js';
 
-const GENERIC = 'No visit dates are available in the coming weeks. Please check again later.';
+const GENERIC = 'No visit dates are available soon. Check again later.';
 
 /** Tie-break order: the reason the visitor can do least about comes first. */
 const REASON_ORDER = [
@@ -39,22 +39,22 @@ function weeklyLimitMessage(weekStarts, limit) {
     : '';
   const of = limit != null ? ` of ${limit} ${limit === 1 ? 'visit' : 'visits'}` : '';
   return (
-    `You've reached your weekly visit limit${of}${which}. ` +
-    'The limit counts visits with all your linked PDLs together, so you can book again next week.'
+    `Weekly limit${of} reached${which}. ` +
+    'It applies across all your linked PDLs, so book again next week.'
   );
 }
 
 /** @type {Record<string, (pdl: string) => string>} */
 const MESSAGES = {
-  pdl_unavailable: (pdl) => `Visits with ${pdl} aren't available right now. Contact the facility for details.`,
-  not_published: (pdl) => `Visit dates for ${pdl} haven't been opened yet. Facility staff open them ahead of time, so check again in a few days.`,
-  closed: (pdl) => `Visiting is closed on ${pdl}'s upcoming visiting days. Please check again later.`,
-  full: (pdl) => `All upcoming visit dates for ${pdl} are full. Please check again later.`,
+  pdl_unavailable: (pdl) => `Visits with ${pdl} aren't available right now. Contact the facility.`,
+  not_published: (pdl) => `Visit dates for ${pdl} aren't open yet. Check again in a few days.`,
+  closed: (pdl) => `Visiting is closed on ${pdl}'s upcoming days. Check again later.`,
+  full: (pdl) => `Upcoming visit dates for ${pdl} are full. Check again later.`,
   weekly_limit: () => weeklyLimitMessage([], null),
-  daily_limit: (pdl) => `You already have visits with another PDL on ${pdl}'s visiting days. Only one PDL can be visited per day.`,
+  daily_limit: (pdl) => `You have a visit with another PDL on ${pdl}'s visiting days. Only one PDL per day.`,
   already_scheduled: (pdl) => `You already have a visit with ${pdl} on every open date.`,
-  not_eligible: (pdl) => `${pdl} has no visiting days in the coming weeks.`,
-  not_in_effect: (pdl) => `${pdl} has no visiting days in the coming weeks.`,
+  not_eligible: (pdl) => `No visiting days for ${pdl} in the coming weeks.`,
+  not_in_effect: (pdl) => `No visiting days for ${pdl} in the coming weeks.`,
 };
 
 const IGNORED = new Set(['past', 'ended']);

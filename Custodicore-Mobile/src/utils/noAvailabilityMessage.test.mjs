@@ -14,7 +14,7 @@ const rel = (days, extra = {}) => ({ pdlName: 'Angel Low', pdlAvailable: true, d
 test('unpublished sessions say the dates are not opened yet', () => {
   assert.match(
     noAvailabilityMessage(rel([day('2026-11-26', 'not_published', 'not_published'), day('2026-12-03', 'not_published')])),
-    /Visit dates for Angel Low haven't been opened yet/,
+    /Visit dates for Angel Low aren't open yet/,
   );
 });
 
@@ -26,7 +26,7 @@ test('the most common reason wins over a few blocked days', () => {
     day('2026-12-03', 'not_published'),
     day('2026-12-10', 'not_published'),
   ];
-  assert.match(noAvailabilityMessage(rel(days)), /haven't been opened yet/);
+  assert.match(noAvailabilityMessage(rel(days)), /aren't open yet/);
 });
 
 test('past days are ignored', () => {
@@ -34,11 +34,11 @@ test('past days are ignored', () => {
 });
 
 test('each reason has its own message', () => {
-  assert.match(noAvailabilityMessage(rel([day('d', 'weekly_limit')])), /weekly visit limit/);
-  assert.match(noAvailabilityMessage(rel([day('d', 'daily_limit')])), /Only one PDL can be visited per day/);
+  assert.match(noAvailabilityMessage(rel([day('d', 'weekly_limit')])), /Weekly limit reached/);
+  assert.match(noAvailabilityMessage(rel([day('d', 'daily_limit')])), /Only one PDL per day/);
   assert.match(noAvailabilityMessage(rel([day('d', 'already_scheduled')])), /already have a visit with Angel Low/);
   assert.match(noAvailabilityMessage(rel([day('d', 'closed')])), /Visiting is closed/);
-  assert.match(noAvailabilityMessage(rel([day('d', 'not_eligible')])), /Angel Low has no visiting days/);
+  assert.match(noAvailabilityMessage(rel([day('d', 'not_eligible')])), /No visiting days for Angel Low/);
 });
 
 test('non-visiting days never outvote the real reason on visiting days', () => {
@@ -51,14 +51,14 @@ test('non-visiting days never outvote the real reason on visiting days', () => {
     day('2026-11-19', 'not_published'),
     day('2026-11-26', 'not_published'),
   ];
-  assert.match(noAvailabilityMessage(rel(days), weeklyLimit), /haven't been opened yet/);
+  assert.match(noAvailabilityMessage(rel(days), weeklyLimit), /aren't open yet/);
   assert.match(
     noAvailabilityMessage(rel([day('a', 'not_eligible'), day('b', 'not_eligible'), day('c', 'weekly_limit')]), weeklyLimit),
-    /weekly visit limit/,
+    /Weekly limit.*reached/,
   );
   assert.match(
     noAvailabilityMessage(rel([day('a', 'not_eligible'), day('b', 'not_in_effect')])),
-    /Angel Low has no visiting days/,
+    /No visiting days for Angel Low/,
   );
 });
 
@@ -76,16 +76,16 @@ test('an unavailable PDL is said first, whatever the days say', () => {
 });
 
 test('a tie goes to the reason the visitor can do least about', () => {
-  assert.match(noAvailabilityMessage(rel([day('a', 'daily_limit'), day('b', 'not_published')])), /haven't been opened yet/);
+  assert.match(noAvailabilityMessage(rel([day('a', 'daily_limit'), day('b', 'not_published')])), /aren't open yet/);
 });
 
 test('no reason to go on keeps the general message', () => {
   assert.equal(
     noAvailabilityMessage(rel([])),
-    'No visit dates are available in the coming weeks. Please check again later.',
+    'No visit dates are available soon. Check again later.',
   );
   assert.match(noAvailabilityMessage({ days: [day('d', 'full')] }), /for this PDL are full/);
-  assert.equal(noAvailabilityMessage(null), 'No visit dates are available in the coming weeks. Please check again later.');
+  assert.equal(noAvailabilityMessage(null), 'No visit dates are available soon. Check again later.');
 });
 
 test('the weekly limit message names the full weeks and covers all linked PDLs', () => {
@@ -96,11 +96,11 @@ test('the weekly limit message names the full weeks and covers all linked PDLs',
     day('2026-11-22', 'weekly_limit'),
   ];
   const message = noAvailabilityMessage(rel(days), weeklyLimit);
-  assert.match(message, /weekly visit limit of 2 visits for November 9–15 and November 16–22 \(Monday–Sunday\)/);
-  assert.match(message, /all your linked PDLs together/);
+  assert.match(message, /Weekly limit of 2 visits reached for November 9–15 and November 16–22 \(Monday–Sunday\)/);
+  assert.match(message, /across all your linked PDLs/);
 });
 
 test('without weekly usage data the weekly limit message still explains the rule', () => {
   const message = noAvailabilityMessage(rel([day('2026-11-19', 'weekly_limit')]));
-  assert.match(message, /weekly visit limit\. The limit counts visits with all your linked PDLs together/);
+  assert.match(message, /Weekly limit reached\. It applies across all your linked PDLs/);
 });
