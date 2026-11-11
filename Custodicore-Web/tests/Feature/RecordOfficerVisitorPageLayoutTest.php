@@ -46,6 +46,37 @@ class RecordOfficerVisitorPageLayoutTest extends TestCase
             ->assertSee(route('visitor.relationships.reject', [$this->visitor->visitor_id, $this->relationship->relationship_id]), false);
     }
 
+    public function test_an_approved_relationship_offers_revoke_approval_not_reject(): void
+    {
+        $this->completeRequirements();
+
+        $this->page()
+            ->assertSee('Revoke Approval')
+            ->assertSee('Revoke this approved relationship?')
+            ->assertDontSee('>Reject</summary>', false);
+    }
+
+    public function test_revoking_an_approved_relationship_is_worded_as_a_revocation(): void
+    {
+        $this->completeRequirements();
+
+        $this->actingAs($this->recordOfficerAccount, 'web')
+            ->from(route('visitor.show', $this->visitor->visitor_id))
+            ->post(route('visitor.relationships.reject', [$this->visitor->visitor_id, $this->relationship->relationship_id]),
+                ['rejection_reason' => 'The certificate was found to be false.'])
+            ->assertSessionHas('success', 'Relationship approval revoked.');
+
+        $this->assertSame('rejected', $this->relationship->fresh()->verification_status);
+
+        $notice = \App\Models\Notification::where('account_id', $this->visitor->account_id)
+            ->where('notification_type', 'relationship_rejected')->sole();
+        $this->assertSame('PDL Relationship Approval Revoked', $notice->title);
+        $this->assertStringContainsString('is no longer approved', $notice->message);
+        $this->assertStringContainsString('Reason: The certificate was found to be false.', $notice->message);
+
+        $this->assertDatabaseHas('audit_logs', ['record_type' => 'visitor_pdl_relationships', 'record_id' => $this->relationship->relationship_id]);
+    }
+
     public function test_a_pending_relationship_stays_open_with_its_actions(): void
     {
         $this->relationship->forceFill(['verification_status' => 'pending'])->save();

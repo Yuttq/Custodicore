@@ -523,6 +523,10 @@ class VisitorController extends Controller
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
+        // An approved relationship taken back later (e.g. a document found to
+        // be false) is a revoked approval, worded as such for staff and visitor.
+        $revoking = $relationship->verification_status === 'verified';
+
         try {
             $relationship->update([
                 'verification_status' => 'rejected',
@@ -535,18 +539,24 @@ class VisitorController extends Controller
         }
 
         $this->logAudit('update', 'visitor_pdl_relationships', $relationship->relationship_id,
-            "Rejected relationship: {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}: {$reason}");
+            ($revoking ? 'Revoked approved relationship' : 'Rejected relationship')
+            . ": {$visitor->full_name} as {$relationship->relationshipLabel()} to PDL #{$relationship->pdl_id}: {$reason}");
 
         // Only this relationship changes: the account and every other PDL stay
         // as they are. A rejected relationship takes no new documents, so the
         // visitor sends a new Add Another PDL request (staff then reopen it).
+        // Same notification type either way: the app reads "Reason:" from it
+        // and offers "Request Again" (notificationActions.js).
         $pdlName = $relationship->pdl?->full_name ?? 'the PDL';
-        $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_rejected', 'PDL Relationship Not Approved',
-            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) was not approved by facility staff. Reason: {$reason}"
+        $this->notifyAdditionalPdl($visitor, $relationship, 'relationship_rejected',
+            $revoking ? 'PDL Relationship Approval Revoked' : 'PDL Relationship Not Approved',
+            "Your relationship to {$pdlName} ({$relationship->relationshipLabel()}) "
+            . ($revoking ? 'is no longer approved by facility staff' : 'was not approved by facility staff')
+            . ". Reason: {$reason}"
             . (preg_match('/[.!?]$/', $reason) ? ' ' : '. ')
             . 'To visit this PDL, send a new Add Another PDL request with corrected documents.');
 
-        return back()->with('success', 'Relationship rejected.');
+        return back()->with('success', $revoking ? 'Relationship approval revoked.' : 'Relationship rejected.');
     }
 
     /**
