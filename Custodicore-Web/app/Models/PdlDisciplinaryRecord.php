@@ -22,6 +22,9 @@ class PdlDisciplinaryRecord extends Model
     protected $casts = [
         'incident_date' => 'date',
         'triggers_restriction' => 'boolean',
+        // $timestamps is off, so Laravel doesn't cast this by itself; without
+        // it, created_at is a plain string and ->format() crashes the pages.
+        'created_at' => 'datetime',
     ];
 
     const CREATED_AT = 'created_at';
