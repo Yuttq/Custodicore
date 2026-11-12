@@ -260,15 +260,15 @@ export function weeklyLimitNote(limit) {
  * Plain-language explanation of a week at the limit, naming the
  * Monday–Sunday range and that it covers every linked PDL. The limit is
  * per week of the VISIT date, so later weeks can be booked right away —
- * never "book again on Monday".
+ * never "book again on Monday". No day is named: Monday is usually not a
+ * visiting day, and later dates may not be opened yet, so it promises only
+ * the open dates.
  * @param {WeeklyUsage} usage
  */
 export function weeklyLimitReachedMessage(usage) {
-  // "Monday, November 23, 2026" → "Monday, November 23"
-  const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
   return (
     `That's your limit for ${formatWeekRange(usage.weekStart)} across all your PDLs. ` +
-    `You can still book dates from ${nextMonday} onward.`
+    'You can still book open dates in later weeks.'
   );
 }
 

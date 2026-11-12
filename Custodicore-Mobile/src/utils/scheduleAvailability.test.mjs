@@ -1,5 +1,5 @@
-// Run with: npm test  (node --test, no extra dependencies)
 import { test } from 'node:test';
+// Run with: npm test  (node --test, no extra dependencies)
 import assert from 'node:assert/strict';
 
 import {
@@ -129,10 +129,11 @@ test('the limit message names the full week and that later dates can be booked n
   const message = weeklyLimitReachedMessage(usage);
   assert.equal(
     message,
-    "That's your limit for November 16–22 across all your PDLs. You can still book dates from Monday, November 23 onward.",
+    "That's your limit for November 16–22 across all your PDLs. You can still book open dates in later weeks.",
   );
-  // The limit follows the visit date's week, not the day of booking.
-  assert.doesNotMatch(message, /book again on/);
+  // The limit follows the visit date's week, not the day of booking; no
+  // day is named (Monday is usually not a visiting day).
+  assert.doesNotMatch(message, /book again on|Monday/);
 });
 
 test('time and day formatting', () => {
