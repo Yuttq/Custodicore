@@ -47,7 +47,7 @@ function weeklyLimitMessage(weekStarts, limit) {
 /** @type {Record<string, (pdl: string) => string>} */
 const MESSAGES = {
   pdl_unavailable: (pdl) => `Visits with ${pdl} aren't available right now. Contact the facility.`,
-  not_published: (pdl) => `Visit dates for ${pdl} aren't open yet. Check again in a few days.`,
+  not_published: (pdl) => `Visitation dates haven't been opened for ${pdl} yet.`,
   closed: (pdl) => `Visiting is closed on ${pdl}'s upcoming days. Check again later.`,
   full: (pdl) => `Upcoming visit dates for ${pdl} are full. Check again later.`,
   weekly_limit: () => weeklyLimitMessage([], null),

@@ -240,7 +240,7 @@ export function weeklyUsageLabel(usage) {
  * are named because they are the surprising part.
  */
 export const WEEKLY_SLOTS_COUNTED_NOTE =
-  'Pending requests count too; rejected and cancelled ones don’t.';
+  'Pending requests count toward the limit. Rejected and cancelled ones don’t.';
 
 /**
  * Plain-language explanation of a week at the limit, naming the
@@ -251,7 +251,7 @@ export function weeklyLimitReachedMessage(usage) {
   // Short on purpose: the counter's heading already shows the week and "2 of 2 weekly slots used".
   // "Monday, November 23, 2026" → "Monday, November 23"
   const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
-  return `Weekly limit reached across all your PDLs. You can book again from ${nextMonday}.`;
+  return `That's your limit across all your PDLs. You can book again on ${nextMonday}.`;
 }
 
 /** ['thu', 'sat'] → "Thursday and Saturday" */

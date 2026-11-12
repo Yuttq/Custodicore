@@ -122,9 +122,7 @@ test('weekly usage comes from the response and is looked up by Monday–Sunday w
 test('the limit message covers all PDLs and says when booking reopens', () => {
   const usage = weeklyUsageFor(normalizeAvailabilityResponse({ weeklyLimit: WEEKLY }).weeklyLimit, '2026-11-20');
   const message = weeklyLimitReachedMessage(usage);
-  assert.match(message, /Weekly limit reached/);
-  assert.match(message, /across all your PDLs/);
-  assert.match(message, /book again from Monday, November 23\./);
+  assert.equal(message, "That's your limit across all your PDLs. You can book again on Monday, November 23.");
 });
 
 test('time and day formatting', () => {
@@ -393,5 +391,5 @@ test('Home calendar: each PDL shows only its own dates, and only they open Sched
 test('weekly slot wording: singular, and what counts', async () => {
   const { WEEKLY_SLOTS_COUNTED_NOTE } = await import('./scheduleAvailability.js');
   assert.equal(weeklyUsageLabel({ used: 1, limit: 1 }), '1 of 1 weekly slot used');
-  assert.equal(WEEKLY_SLOTS_COUNTED_NOTE, 'Pending requests count too; rejected and cancelled ones don’t.');
+  assert.equal(WEEKLY_SLOTS_COUNTED_NOTE, 'Pending requests count toward the limit. Rejected and cancelled ones don’t.');
 });

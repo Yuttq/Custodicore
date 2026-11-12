@@ -14,7 +14,7 @@ const rel = (days, extra = {}) => ({ pdlName: 'Angel Low', pdlAvailable: true, d
 test('unpublished sessions say the dates are not opened yet', () => {
   assert.match(
     noAvailabilityMessage(rel([day('2026-11-26', 'not_published', 'not_published'), day('2026-12-03', 'not_published')])),
-    /Visit dates for Angel Low aren't open yet/,
+    /^Visitation dates haven't been opened for Angel Low yet\.$/,
   );
 });
 
@@ -26,7 +26,7 @@ test('the most common reason wins over a few blocked days', () => {
     day('2026-12-03', 'not_published'),
     day('2026-12-10', 'not_published'),
   ];
-  assert.match(noAvailabilityMessage(rel(days)), /aren't open yet/);
+  assert.match(noAvailabilityMessage(rel(days)), /haven't been opened/);
 });
 
 test('past days are ignored', () => {
@@ -51,7 +51,7 @@ test('non-visiting days never outvote the real reason on visiting days', () => {
     day('2026-11-19', 'not_published'),
     day('2026-11-26', 'not_published'),
   ];
-  assert.match(noAvailabilityMessage(rel(days), weeklyLimit), /aren't open yet/);
+  assert.match(noAvailabilityMessage(rel(days), weeklyLimit), /haven't been opened/);
   assert.match(
     noAvailabilityMessage(rel([day('a', 'not_eligible'), day('b', 'not_eligible'), day('c', 'weekly_limit')]), weeklyLimit),
     /Weekly limit.*reached/,
@@ -76,7 +76,7 @@ test('an unavailable PDL is said first, whatever the days say', () => {
 });
 
 test('a tie goes to the reason the visitor can do least about', () => {
-  assert.match(noAvailabilityMessage(rel([day('a', 'daily_limit'), day('b', 'not_published')])), /aren't open yet/);
+  assert.match(noAvailabilityMessage(rel([day('a', 'daily_limit'), day('b', 'not_published')])), /haven't been opened/);
 });
 
 test('no reason to go on keeps the general message', () => {

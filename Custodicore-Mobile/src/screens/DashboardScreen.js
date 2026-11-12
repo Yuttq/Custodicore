@@ -26,7 +26,7 @@ import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
 import { calendarDateHandoff, weeklyUsageFor } from '../utils/scheduleAvailability';
-import { noAvailabilityMessage, noAvailabilityReason } from '../utils/noAvailabilityMessage';
+import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
@@ -281,9 +281,9 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
   );
-  const weeklyLimitAlreadyShown =
-    Boolean(weeklyUsageFor(weeklyLimit, today)?.reached) &&
-    noAvailabilityReason(relationship) === 'weekly_limit';
+  // At this week's limit the counter is the only notice: it already says why
+  // the visitor cannot book, whichever PDL is selected.
+  const weeklyLimitReached = Boolean(weeklyUsageFor(weeklyLimit, today)?.reached);
 
   // Only a date the selected PDL has an available session on opens Schedule.
   const onSelectDate = useCallback(
@@ -328,16 +328,13 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
         <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={today} />
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
-        ) : !hasAvailableDate && !loading ? (
-          // The counter above already explains a weekly limit reached this week.
-          weeklyLimitAlreadyShown ? null : (
-            <View style={styles.calendarNotice}>
-              <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
-              <Text style={styles.calendarNoticeText}>
-                {noAvailabilityMessage(relationship, weeklyLimit)}
-              </Text>
-            </View>
-          )
+        ) : weeklyLimitReached ? null : !hasAvailableDate && !loading ? (
+          <View style={styles.calendarNotice}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.calendarNoticeText}>
+              {noAvailabilityMessage(relationship, weeklyLimit)}
+            </Text>
+          </View>
         ) : (
           <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>
         )}
