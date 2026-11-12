@@ -1,7 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Linking from 'expo-linking';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, layout, spacing, typography } from '../designSystem';
 import { useAuth } from '../hooks/useAuth';
@@ -47,14 +55,6 @@ export default function CheckEmailScreen({ navigation, route }) {
     const id = setTimeout(() => setCooldown((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [cooldown]);
-
-  const onOpenEmail = useCallback(async () => {
-    try {
-      await Linking.openURL('mailto:');
-    } catch {
-      Alert.alert('Open Email', 'Open your email app and look for the message from CustodiCore.');
-    }
-  }, []);
 
   const onResend = useCallback(async () => {
     if (resending || cooldown > 0 || !email) return;
@@ -102,42 +102,46 @@ export default function CheckEmailScreen({ navigation, route }) {
 
         <Text style={styles.title}>Check your email</Text>
         <Text style={styles.message}>
-          {fromLogin
-            ? 'Please verify your email address before logging in.'
-            : 'Your account has been created.'}
-          {'\n\n'}
-          We sent a verification link to:
+          {fromLogin ? 'Please verify your email address before logging in.\n' : ''}
+          We sent a verification link to
         </Text>
         {email ? <Text style={styles.email}>{email}</Text> : null}
         <Text style={styles.message}>
-          Please verify your email before logging in. If you don&apos;t see the message, check
-          your spam folder.
+          Tap the link to verify, then log in.{'\n'}Can&apos;t find it? Check your spam folder.
         </Text>
 
         <View style={styles.actions}>
-          <Button title="Open Email" onPress={onOpenEmail} accessibilityLabel="Open email app" />
-          <View style={styles.secondaryWrap}>
-            <Button
-              variant="secondary"
-              title={
-                cooldown > 0
-                  ? `Resend Verification Email (${cooldown}s)`
-                  : 'Resend Verification Email'
-              }
+          <Button
+            title="Back to Login"
+            onPress={() => goToLogin(false)}
+            accessibilityLabel="Back to login"
+          />
+          {email ? (
+            <Pressable
               onPress={onResend}
-              loading={resending}
-              disabled={resending || cooldown > 0 || !email}
-              accessibilityLabel="Resend verification email"
-            />
-          </View>
-          <View style={styles.secondaryWrap}>
-            <Button
-              variant="secondary"
-              title="Back to Login"
-              onPress={() => goToLogin(false)}
-              accessibilityLabel="Back to login"
-            />
-          </View>
+              disabled={resending || cooldown > 0}
+              hitSlop={8}
+              style={({ pressed }) => [styles.resendLink, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                cooldown > 0
+                  ? `Resend verification email, available in ${cooldown} seconds`
+                  : 'Resend verification email'
+              }
+              accessibilityState={{ disabled: resending || cooldown > 0, busy: resending }}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color={colors.primaryTeal} />
+              ) : (
+                <Text style={styles.resendText}>
+                  Didn&apos;t get it?{' '}
+                  <Text style={cooldown > 0 ? styles.resendWait : styles.resendAction}>
+                    {cooldown > 0 ? `Resend email (${cooldown}s)` : 'Resend email'}
+                  </Text>
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -155,7 +159,7 @@ const styles = StyleSheet.create({
   },
   illustrationWrap: {
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   illustrationOuter: {
     width: 96,
@@ -207,9 +211,27 @@ const styles = StyleSheet.create({
   },
   actions: {
     width: '100%',
-    marginTop: spacing.md,
-  },
-  secondaryWrap: {
     marginTop: spacing.sm,
   },
+  resendLink: {
+    alignSelf: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  resendText: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  resendAction: {
+    fontWeight: '600',
+    color: colors.primaryTeal,
+  },
+  resendWait: {
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  pressed: { opacity: 0.7 },
 });
