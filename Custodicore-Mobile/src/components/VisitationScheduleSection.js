@@ -10,7 +10,10 @@ import {
   formatDateLong,
   formatSlotRange,
   formatVisitingDays,
+  isWeeklyLimitError,
   middayBreakLabel,
+  WEEKLY_LIMIT_REACHED_TITLE,
+  weeklyLimitReachedNotice,
   weeklyUsageFor,
   periodLabel,
   visitingWindows,
@@ -91,7 +94,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
   const [submitting, setSubmitting] = useState(false);
   // An API error belongs to the slot it was raised for; another choice hides it.
   const [submitError, setSubmitError] = useState(
-    /** @type {{ key: string; message: string } | null} */ (null),
+    /** @type {{ key: string; title: string | null; message: string } | null} */ (null),
   );
   // The last successfully submitted slot, shown until a new slot is chosen.
   const [submitted, setSubmitted] = useState(
@@ -100,8 +103,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
   useEffect(() => {
     if (selectionKey) setSubmitted(null);
   }, [selectionKey]);
-  const errorMessage =
-    submitError && submitError.key === selectionKey ? submitError.message : null;
+  const shownError = submitError && submitError.key === selectionKey ? submitError : null;
+  const errorMessage = shownError?.message ?? null;
 
   const handleSubmit = async () => {
     if (submittingRef.current || !requestParams || !selection) return;
@@ -129,13 +132,23 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
       // The slot's remaining capacity changed; show the backend's view of it.
       reload();
     } catch (e) {
-      setSubmitError({
-        key,
-        message:
-          e instanceof Error && e.message.trim()
-            ? e.message
-            : 'Could not submit your visit request. Please try again.',
-      });
+      // The backend refused a booking past the weekly limit: say so plainly.
+      setSubmitError(
+        isWeeklyLimitError(e)
+          ? {
+              key,
+              title: WEEKLY_LIMIT_REACHED_TITLE,
+              message: weeklyLimitReachedNotice(weeklyLimit?.limit),
+            }
+          : {
+              key,
+              title: null,
+              message:
+                e instanceof Error && e.message.trim()
+                  ? e.message
+                  : 'Could not submit your visit request. Please try again.',
+            },
+      );
       // A rejection (e.g. the weekly limit was reached meanwhile) means the
       // loaded availability is stale; refresh the calendar and weekly counter.
       reload({ silent: true });
@@ -275,7 +288,12 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
                   accessibilityRole="alert"
                 >
                   <Ionicons name="alert-circle" size={20} color={colors.danger} />
-                  <Text style={styles.selectionErrorText}>{errorMessage}</Text>
+                  <View style={styles.selectionErrorBody}>
+                    {shownError?.title ? (
+                      <Text style={styles.selectionErrorTitle}>{shownError.title}</Text>
+                    ) : null}
+                    <Text style={styles.selectionErrorText}>{errorMessage}</Text>
+                  </View>
                 </View>
               ) : null}
               <Text style={[styles.noVisit, styles.selectionNote]}>
@@ -434,6 +452,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: layout.buttonRadius,
     backgroundColor: 'rgba(220, 38, 38, 0.08)',
+  },
+  selectionErrorBody: {
+    flexShrink: 1,
+  },
+  selectionErrorTitle: {
+    ...typography.metadata,
+    fontWeight: '700',
+    color: colors.danger,
+    marginBottom: spacing.xs,
   },
   selectionErrorText: {
     ...typography.metadata,

@@ -13,6 +13,9 @@ import {
   formatTime24,
   formatVisitingDays,
   formatWeekRange,
+  isWeeklyLimitDay,
+  isWeeklyLimitError,
+  weeklyLimitReachedNotice,
   manilaTodayIso,
   middayBreakLabel,
   normalizeAvailabilityResponse,
@@ -392,4 +395,29 @@ test('weekly slot wording: singular, and what counts', async () => {
   const { WEEKLY_SLOTS_COUNTED_NOTE } = await import('./scheduleAvailability.js');
   assert.equal(weeklyUsageLabel({ used: 1, limit: 1 }), '1 of 1 weekly slot used');
   assert.equal(WEEKLY_SLOTS_COUNTED_NOTE, 'Pending requests count toward the limit. Rejected and cancelled ones don’t.');
+});
+
+test('weeklyLimitReachedNotice uses the backend limit, falling back to 2', () => {
+  assert.equal(
+    weeklyLimitReachedNotice(2),
+    "You've already used your 2 allowed visits for this week. You can book another visit when the next weekly period begins.",
+  );
+  assert.match(weeklyLimitReachedNotice(null), /your 2 allowed visits/);
+  assert.match(weeklyLimitReachedNotice(1), /your 1 allowed visit for/);
+});
+
+test('isWeeklyLimitDay is true only for unavailable days blocked by weekly_limit', () => {
+  assert.equal(isWeeklyLimitDay({ available: false, slots: [{ reason: 'weekly_limit' }] }), true);
+  assert.equal(isWeeklyLimitDay({ available: false, slots: [{ reason: 'full' }] }), false);
+  assert.equal(isWeeklyLimitDay({ available: true, slots: [{ reason: 'weekly_limit' }] }), false);
+  assert.equal(isWeeklyLimitDay(null), false);
+});
+
+test('isWeeklyLimitError matches the backend weekly-limit rejection', () => {
+  assert.equal(
+    isWeeklyLimitError(new Error('You have reached the maximum number of visits allowed for this calendar week.')),
+    true,
+  );
+  assert.equal(isWeeklyLimitError(new Error('This visiting slot is full.')), false);
+  assert.equal(isWeeklyLimitError(null), false);
 });

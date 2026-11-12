@@ -45,6 +45,10 @@ function monthIndex(year, month) {
  *   visitor's own visits; passing it adds Pending / Confirmed to the legend
  * @param {boolean} [props.showSelection=true] — false hides the Selected legend
  * @param {boolean} [props.compact=false] — smaller day cells
+ * @param {Record<string, boolean>} [props.blockedDates] — unavailable dates
+ *   that stay tappable (still drawn as unavailable) to explain why, e.g. the
+ *   weekly visit limit; tapping one calls `onBlockedDatePress`
+ * @param {(date: string) => void} [props.onBlockedDatePress]
  */
 export default function VisitCalendar({
   daysByDate,
@@ -56,6 +60,8 @@ export default function VisitCalendar({
   markedDates,
   showSelection = true,
   compact = false,
+  blockedDates,
+  onBlockedDatePress,
 }) {
   const [visible, setVisible] = useState(() => {
     const start =
@@ -93,6 +99,8 @@ export default function VisitCalendar({
     const inRange = (!minDate || date >= minDate) && (!maxDate || date <= maxDate);
     const isPast = Boolean(today) && date < today;
     const isAvailable = inRange && !isPast && Boolean(daysByDate[date]?.available);
+    const isBlocked =
+      !isAvailable && inRange && !isPast && Boolean(blockedDates?.[date] && onBlockedDatePress);
     const isSelected = date === selectedDate && isAvailable;
     const isToday = date === today;
     const marker = markedDates?.[date];
@@ -105,11 +113,11 @@ export default function VisitCalendar({
       <Pressable
         key={date}
         style={styles.cell}
-        onPress={() => onSelectDate(date)}
-        disabled={!isAvailable}
+        onPress={() => (isAvailable ? onSelectDate(date) : onBlockedDatePress?.(date))}
+        disabled={!isAvailable && !isBlocked}
         accessibilityRole="button"
         accessibilityLabel={`${formatDateLong(date)}, ${markerLabel ? `${markerLabel}, ` : ''}${isAvailable ? 'available' : 'unavailable'}`}
-        accessibilityState={{ disabled: !isAvailable, selected: isSelected }}
+        accessibilityState={{ disabled: !isAvailable && !isBlocked, selected: isSelected }}
       >
         {({ pressed }) => (
           <View

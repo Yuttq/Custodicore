@@ -3,7 +3,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import useAutoRefresh from '../hooks/useAutoRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Card,
@@ -14,7 +14,6 @@ import {
   typography,
 } from '../designSystem';
 import VisitCalendar from '../components/VisitCalendar';
-import WeeklyVisitCounter from '../components/WeeklyVisitCounter';
 import { useAuth } from '../hooks/useAuth';
 import { useVisits } from '../context/VisitsContext';
 import useAnnouncements from '../hooks/useAnnouncements';
@@ -25,7 +24,12 @@ import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
 import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
-import { calendarDateHandoff, weeklyUsageFor } from '../utils/scheduleAvailability';
+import {
+  calendarDateHandoff,
+  isWeeklyLimitDay,
+  WEEKLY_LIMIT_REACHED_TITLE,
+  weeklyLimitReachedNotice,
+} from '../utils/scheduleAvailability';
 import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
@@ -281,9 +285,21 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     () => Object.values(daysByDate).some((d) => d.available),
     [daysByDate],
   );
-  // At this week's limit the counter is the only notice: it already says why
-  // the visitor cannot book, whichever PDL is selected.
-  const weeklyLimitReached = Boolean(weeklyUsageFor(weeklyLimit, today)?.reached);
+  // Dates blocked only by the visitor-wide weekly limit stay tappable so the
+  // visitor learns why they cannot book (the backend still enforces it).
+  const weeklyLimitDates = useMemo(() => {
+    /** @type {Record<string, boolean>} */
+    const out = {};
+    for (const [date, day] of Object.entries(daysByDate)) {
+      if (isWeeklyLimitDay(day)) out[date] = true;
+    }
+    return out;
+  }, [daysByDate]);
+  const onWeeklyLimitDatePress = useCallback(() => {
+    Alert.alert(WEEKLY_LIMIT_REACHED_TITLE, weeklyLimitReachedNotice(weeklyLimit?.limit), [
+      { text: 'OK' },
+    ]);
+  }, [weeklyLimit]);
 
   // Only a date the selected PDL has an available session on opens Schedule.
   const onSelectDate = useCallback(
@@ -324,11 +340,9 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
           canAdd={canAddPdl}
           onAdd={onAddPdl}
         />
-        {/* This week's visits across all linked PDLs. */}
-        <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={today} />
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
-        ) : weeklyLimitReached ? null : !hasAvailableDate && !loading ? (
+        ) : !hasAvailableDate && !loading ? (
           <View style={styles.calendarNotice}>
             <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
             <Text style={styles.calendarNoticeText}>
@@ -349,6 +363,8 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
           onSelectDate={onSelectDate}
           markedDates={markedDates}
           showSelection={false}
+          blockedDates={weeklyLimitDates}
+          onBlockedDatePress={onWeeklyLimitDatePress}
         />
       </>
     );

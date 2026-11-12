@@ -254,6 +254,42 @@ export function weeklyLimitReachedMessage(usage) {
   return `That's your limit across all your PDLs. You can book again on ${nextMonday}.`;
 }
 
+/** Title of the notice shown when a booking would exceed the weekly limit. */
+export const WEEKLY_LIMIT_REACHED_TITLE = 'Weekly Visit Limit Reached';
+
+/**
+ * Body of that notice. The limit comes from the backend (visit.max_per_week);
+ * 2 is only the fallback when it was not reported.
+ * @param {number | null | undefined} [limit]
+ */
+export function weeklyLimitReachedNotice(limit) {
+  const n = Number.isInteger(limit) && /** @type {number} */ (limit) > 0 ? limit : 2;
+  return (
+    `You've already used your ${n} allowed ${n === 1 ? 'visit' : 'visits'} for this week. ` +
+    'You can book another visit when the next weekly period begins.'
+  );
+}
+
+/**
+ * True when `day` has no bookable session because the visitor's weekly
+ * limit is reached (some session reports `weekly_limit`).
+ * @param {{ available: boolean; slots?: { reason: string | null }[] } | null | undefined} day
+ */
+export function isWeeklyLimitDay(day) {
+  if (!day || day.available) return false;
+  return (Array.isArray(day.slots) ? day.slots : []).some((s) => s?.reason === 'weekly_limit');
+}
+
+/**
+ * True when a POST /api/visit-requests rejection is the backend's weekly
+ * limit check (VisitAssignmentService::WEEKLY_LIMIT_MESSAGE).
+ * @param {unknown} error
+ */
+export function isWeeklyLimitError(error) {
+  const message = error instanceof Error ? error.message : '';
+  return /maximum number of visits allowed for this calendar week/i.test(message);
+}
+
 /** ['thu', 'sat'] → "Thursday and Saturday" */
 export function formatVisitingDays(dayKeys) {
   const names = (Array.isArray(dayKeys) ? dayKeys : [])
