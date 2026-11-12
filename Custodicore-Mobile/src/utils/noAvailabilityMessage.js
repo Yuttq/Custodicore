@@ -84,7 +84,37 @@ export function noAvailabilityMessage(relationship, weeklyLimit = null) {
     }
     return weeklyLimitMessage([...limitWeeks].sort(), weeklyLimit?.limit ?? null);
   }
+  // The later dates are unopened, but the visitor already booked the open
+  // ones: "haven't been opened" alone would read as if nothing was ever open.
+  if (
+    reason === 'not_published' &&
+    unavailableDays(relationship).some((d) => d.reason === 'already_scheduled')
+  ) {
+    return `You've already booked the open dates for ${pdl}. Later dates haven't been opened yet.`;
+  }
   return reason ? MESSAGES[reason](pdl) : GENERIC;
+}
+
+/**
+ * True when the relationship has at least one bookable (available) day.
+ * @param {Parameters<typeof noAvailabilityMessage>[0]} relationship
+ */
+export function hasBookableDate(relationship) {
+  return (Array.isArray(relationship?.days) ? relationship.days : []).some((d) => d?.available);
+}
+
+/**
+ * The notice Home and Schedule show above the calendar when nothing is
+ * bookable, or null when a date can be booked. It reads only the loaded
+ * days, so it always matches the calendar on screen (also while a refresh
+ * runs in the background).
+ * @param {Parameters<typeof noAvailabilityMessage>[0]} relationship
+ * @param {Parameters<typeof noAvailabilityMessage>[1]} [weeklyLimit]
+ * @returns {string | null}
+ */
+export function noAvailabilityNotice(relationship, weeklyLimit = null) {
+  if (!relationship || hasBookableDate(relationship)) return null;
+  return noAvailabilityMessage(relationship, weeklyLimit);
 }
 
 /**

@@ -30,7 +30,7 @@ import {
   WEEKLY_LIMIT_REACHED_TITLE,
   weeklyLimitReachedNotice,
 } from '../utils/scheduleAvailability';
-import { noAvailabilityMessage } from '../utils/noAvailabilityMessage';
+import { noAvailabilityNotice } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
@@ -281,9 +281,12 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     selectRelationship,
     daysByDate,
   } = schedule;
-  const hasAvailableDate = useMemo(
-    () => Object.values(daysByDate).some((d) => d.available),
-    [daysByDate],
+  // Null while a date is bookable. Read from the loaded days only (not
+  // `loading`), so a background refresh never swaps in the "Tap an
+  // available date" hint over a calendar with nothing to tap.
+  const availabilityNotice = useMemo(
+    () => noAvailabilityNotice(relationship, weeklyLimit),
+    [relationship, weeklyLimit],
   );
   // Dates blocked only by the visitor-wide weekly limit stay tappable so the
   // visitor learns why they cannot book (the backend still enforces it).
@@ -342,12 +345,10 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
         />
         {relationship.message ? (
           <Text style={styles.calendarWarning}>{relationship.message}</Text>
-        ) : !hasAvailableDate && !loading ? (
+        ) : availabilityNotice ? (
           <View style={styles.calendarNotice}>
             <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
-            <Text style={styles.calendarNoticeText}>
-              {noAvailabilityMessage(relationship, weeklyLimit)}
-            </Text>
+            <Text style={styles.calendarNoticeText}>{availabilityNotice}</Text>
           </View>
         ) : (
           <Text style={styles.noVisit}>Tap an available date to choose a time slot.</Text>

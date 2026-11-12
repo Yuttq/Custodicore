@@ -19,7 +19,7 @@ import {
   visitingWindows,
   WHOLE_DAY_PERIOD,
 } from '../utils/scheduleAvailability';
-import { noAvailabilityMessage, noAvailabilityReason } from '../utils/noAvailabilityMessage';
+import { noAvailabilityNotice, noAvailabilityReason } from '../utils/noAvailabilityMessage';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 
 /** What booking the whole day means at the gate. */
@@ -157,9 +157,11 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
       setSubmitting(false);
     }
   };
-  const hasAvailableDate = useMemo(
-    () => Object.values(daysByDate).some((d) => d.available),
-    [daysByDate],
+  // Null while a date is bookable; same rule as the Home calendar. Read from
+  // the loaded days only (not `loading`), so it matches the calendar shown.
+  const availabilityNotice = useMemo(
+    () => noAvailabilityNotice(relationship, weeklyLimit),
+    [relationship, weeklyLimit],
   );
   // The weekly counter under "Choose a Visit Date" already explains this week's limit.
   const weeklyLimitAlreadyShown =
@@ -213,8 +215,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         ))}
         {relationship.message ? (
           <Text style={styles.scheduleWarning}>{relationship.message}</Text>
-        ) : !hasAvailableDate && !loading && !weeklyLimitAlreadyShown ? (
-          <Text style={styles.scheduleWarning}>{noAvailabilityMessage(relationship, weeklyLimit)}</Text>
+        ) : availabilityNotice && !weeklyLimitAlreadyShown ? (
+          <Text style={styles.scheduleWarning}>{availabilityNotice}</Text>
         ) : null}
       </>
     );

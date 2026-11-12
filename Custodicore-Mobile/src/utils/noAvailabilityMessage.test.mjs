@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { noAvailabilityMessage, noAvailabilityReason } from './noAvailabilityMessage.js';
+import {
+  hasBookableDate,
+  noAvailabilityMessage,
+  noAvailabilityNotice,
+  noAvailabilityReason,
+} from './noAvailabilityMessage.js';
 
 const day = (date, ...reasons) => ({
   date,
@@ -27,6 +32,62 @@ test('the most common reason wins over a few blocked days', () => {
     day('2026-12-10', 'not_published'),
   ];
   assert.match(noAvailabilityMessage(rel(days)), /haven't been opened/);
+});
+
+test('booked open dates plus unopened later dates say both', () => {
+  const days = [
+    day('2026-11-14', 'already_scheduled', 'already_scheduled'),
+    day('2026-11-19', 'already_scheduled', 'already_scheduled'),
+    day('2026-11-21', 'not_published', 'not_published'),
+    day('2026-11-26', 'not_published', 'not_published'),
+    day('2026-11-28', 'not_published', 'not_published'),
+  ];
+  assert.equal(
+    noAvailabilityMessage(rel(days)),
+    "You've already booked the open dates for Angel Low. Later dates haven't been opened yet.",
+  );
+});
+
+test('the notice is null while any date is bookable, opened or not elsewhere', () => {
+  const open = { date: '2026-11-21', available: true, slots: [{ available: true, reason: null }] };
+  const relationship = rel([day('2026-11-19', 'already_scheduled'), open, day('2026-11-26', 'not_published')]);
+  assert.equal(hasBookableDate(relationship), true);
+  assert.equal(noAvailabilityNotice(relationship), null);
+});
+
+test('the notice explains why when no date is bookable', () => {
+  // Nov 12, 14 and 19 booked; every later visiting day not opened yet.
+  const relationship = rel([
+    day('2026-11-12', 'past', 'already_scheduled'),
+    day('2026-11-14', 'already_scheduled', 'already_scheduled'),
+    day('2026-11-19', 'already_scheduled', 'already_scheduled'),
+    day('2026-11-21', 'not_published', 'not_published'),
+    day('2026-11-26', 'not_published', 'not_published'),
+    day('2026-11-28', 'not_published', 'not_published'),
+  ]);
+  assert.equal(hasBookableDate(relationship), false);
+  assert.match(noAvailabilityNotice(relationship), /already booked the open dates.*haven't been opened/);
+  // Nothing opened at all.
+  assert.match(
+    noAvailabilityNotice(rel([day('2026-11-26', 'not_published')])),
+    /^Visitation dates haven't been opened for Angel Low yet\.$/,
+  );
+  // Opened but full: says so, not "haven't been opened".
+  assert.match(noAvailabilityNotice(rel([day('2026-11-26', 'full')])), /are full/);
+});
+
+test('the weekly limit notice is kept when it is the main reason', () => {
+  const weeklyLimit = { limit: 2, weeks: { '2026-11-09': 2 } };
+  assert.match(
+    noAvailabilityNotice(rel([day('2026-11-14', 'weekly_limit')]), weeklyLimit),
+    /Weekly limit of 2 visits reached for November 9–15/,
+  );
+});
+
+test('no relationship or no days gives no notice to the calendar screens', () => {
+  assert.equal(noAvailabilityNotice(null), null);
+  assert.equal(hasBookableDate(rel([])), false);
+  assert.equal(noAvailabilityNotice(rel([])), 'No visit dates are available soon. Check again later.');
 });
 
 test('past days are ignored', () => {
