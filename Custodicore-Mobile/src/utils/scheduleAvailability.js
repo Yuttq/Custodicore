@@ -243,6 +243,20 @@ export const WEEKLY_SLOTS_COUNTED_NOTE =
   'Pending requests count toward the limit. Rejected, declined and cancelled ones don’t.';
 
 /**
+ * The weekly counter's note below the limit: "Up to 2 visits per week,
+ * across all your PDLs. Pending requests count too." The heading already
+ * names the week's dates, so no "Mon–Sun" here; pending requests are named
+ * because a visitor may not expect them to use a slot yet.
+ * @param {number} limit visit.max_per_week from the backend
+ */
+export function weeklyLimitNote(limit) {
+  return (
+    `Up to ${limit} ${limit === 1 ? 'visit' : 'visits'} per week, across all your PDLs. ` +
+    'Pending requests count too.'
+  );
+}
+
+/**
  * Plain-language explanation of a week at the limit, naming the
  * Monday–Sunday range and that it covers every linked PDL. The limit is
  * per week of the VISIT date, so later weeks can be booked right away —

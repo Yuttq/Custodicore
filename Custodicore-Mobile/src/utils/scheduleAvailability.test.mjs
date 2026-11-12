@@ -29,6 +29,7 @@ import {
   visitingWindows,
   WEEKDAY_SHORT,
   weekStartIso,
+  weeklyLimitNote,
   weeklyLimitReachedMessage,
   weeklyUsageFor,
   weeklyUsageLabel,
@@ -425,6 +426,16 @@ test('weeklyLimitReachedNotice uses the backend limit, falling back to 2', () =>
     weeklyLimitReachedNotice(0, '2026-11-14'),
     'The facility is not accepting visit requests right now. Please check again later.',
   );
+});
+
+test('weeklyLimitNote: visits per week, all PDLs, pending counts, no Mon–Sun', () => {
+  assert.equal(
+    weeklyLimitNote(2),
+    'Up to 2 visits per week, across all your PDLs. Pending requests count too.',
+  );
+  assert.match(weeklyLimitNote(1), /^Up to 1 visit per week,/);
+  assert.match(weeklyLimitNote(3), /^Up to 3 visits per week,/);
+  assert.doesNotMatch(weeklyLimitNote(2), /Mon|Sun/);
 });
 
 test('firstBookableDate is the earliest available date', () => {

@@ -5,6 +5,7 @@ import { colors, layout, spacing, typography } from '../designSystem';
 import {
   formatWeekRange,
   WEEKLY_SLOTS_COUNTED_NOTE,
+  weeklyLimitNote,
   weeklyLimitReachedMessage,
   weeklyUsageFor,
   weeklyUsageLabel,
@@ -37,7 +38,7 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
         `Weekly slots, ${range}: ${label}, across all your linked PDLs.` +
         (usage.reached
           ? ` ${weeklyLimitReachedMessage(usage)} ${WEEKLY_SLOTS_COUNTED_NOTE}`
-          : ` Up to ${usage.limit} a week, Monday to Sunday.`)
+          : ` ${weeklyLimitNote(usage.limit)}`)
       }
     >
       <View style={styles.row}>
@@ -70,9 +71,7 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
           <Text style={styles.note}>{WEEKLY_SLOTS_COUNTED_NOTE}</Text>
         </>
       ) : (
-        <Text style={styles.note}>
-          Up to {usage.limit} a week (Mon–Sun), across all your PDLs.
-        </Text>
+        <Text style={styles.note}>{weeklyLimitNote(usage.limit)}</Text>
       )}
     </View>
   );
