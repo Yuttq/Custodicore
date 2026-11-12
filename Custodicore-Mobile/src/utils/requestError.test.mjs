@@ -7,6 +7,7 @@ import {
   SERVER_ERROR_MESSAGE,
   SERVICE_UNAVAILABLE_MESSAGE,
   TIMEOUT_MESSAGE,
+  UPLOAD_TOO_LARGE_MESSAGE,
   toRequestError,
 } from './requestError.js';
 
@@ -81,6 +82,14 @@ test('401 / 403 / 404 / 409 without body text keep their fixed messages', () => 
     assert.equal(err.status, Number(status));
     assert.equal(err.timedOut, undefined);
   }
+});
+
+test('413 from the web server (HTML body) says the upload is too large', () => {
+  const err = toRequestError(
+    axiosError({ status: 413, message: 'Request failed with status code 413', data: '<html>413 Request Entity Too Large</html>' }),
+  );
+  assert.equal(err.message, UPLOAD_TOO_LARGE_MESSAGE);
+  assert.equal(err.status, 413);
 });
 
 test('backend message and code win over the fixed text (e.g. 409 open_request_exists)', () => {

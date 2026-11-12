@@ -6,6 +6,11 @@ server {
     root /home/site/wwwroot/public;
     index index.php index.html;
 
+    # Registration sends the photo, government ID and relationship documents
+    # in one request. Nginx's 1 MB default rejected it with 413; match the
+    # PHP limits in public/.user.ini (and deploy/server-setup.sh).
+    client_max_body_size 64M;
+
     # Never serve hidden files, except the standardized ACME challenge path.
     location ~ /\.(?!well-known(?:/|$)) {
         deny all;

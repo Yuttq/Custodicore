@@ -11,6 +11,8 @@ export const CONNECTION_MESSAGE =
   'Unable to connect to the server. Please check your internet connection and try again.';
 export const SERVICE_UNAVAILABLE_MESSAGE = 'Service temporarily unavailable. Please try again later.';
 export const SERVER_ERROR_MESSAGE = 'The server ran into a problem. Please try again in a moment.';
+export const UPLOAD_TOO_LARGE_MESSAGE =
+  'Your photos or documents are too large to upload. Please use smaller images and try again.';
 
 /** Backend code sent with 503 when its database cannot be reached (bootstrap/app.php). */
 export const SERVICE_UNAVAILABLE_CODE = 'service_unavailable';
@@ -76,6 +78,8 @@ export function toRequestError(error) {
         else if (status === 403) message = 'You do not have access to this resource.';
         else if (status === 404) message = 'The requested visit or resource was not found.';
         else if (status === 409) message = 'This visit can no longer be updated.';
+        // The web server rejects an oversized upload before Laravel sees it.
+        else if (status === 413) message = UPLOAD_TOO_LARGE_MESSAGE;
         else message = error.message || 'Request failed';
       }
     }
