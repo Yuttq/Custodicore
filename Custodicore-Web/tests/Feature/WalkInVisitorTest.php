@@ -1007,10 +1007,10 @@ class WalkInVisitorTest extends TestCase
             ->assertSessionHas('success', fn ($message) => str_contains($message, 'Relationship verified'));
         $this->assertSame('verified', $relationship->fresh()->verification_status);
 
-        // Approving the account leaves nothing blocking the walk-in.
-        $this->post(route('visitor.approve', $walkIn->visitor_id));
-        $this->assertTrue(app(\App\Services\WalkInService::class)->checks($walkIn->fresh())['canApprove']);
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors();
+        // Approving the account leaves nothing blocking the walk-in, and the same
+        // Approve saves the walk-in decision (one step: nothing left pending).
+        $this->post(route('visitor.approve', $walkIn->visitor_id))->assertSessionHasNoErrors();
+        $this->assertSame('approved', app(\App\Services\WalkInService::class)->assessment($walkIn->fresh())->decision);
     }
 
     public function test_a_rejected_document_is_not_linked(): void

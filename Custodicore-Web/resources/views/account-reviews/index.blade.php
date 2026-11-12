@@ -207,7 +207,7 @@
                 <div><strong>{{ $linked->pdl?->full_name ?? 'PDL' }}</strong><div class="muted-cell">{{ $linked->relationshipLabel() }} · already linked</div></div>
               </div>
             @elseif ($visitor->isWalkIn())
-              <p class="muted-cell" style="margin:0;">Walk-in: the PDL is linked automatically from the Front Desk details when approved.</p>
+              <p class="muted-cell" style="margin:0;">Walk-in: Approve also links the PDL the Front Desk chose, approves the walk-in and books their visit, so the Front Desk can check them in.</p>
             @else
               <div class="field-m pdl-search" data-pdl-search data-url="{{ route('visitor.relatable-pdls', $visitor->visitor_id) }}">
                 <label for="pdl-search-{{ $visitor->visitor_id }}">PDL</label>
@@ -325,8 +325,8 @@
               </form>
             </details>
             <form method="POST" action="{{ route('visitor.approve', $visitor->visitor_id) }}" id="{{ $approveForm }}"
-                  data-confirm="{{ $visitor->isWalkIn() && ! $linked
-                    ? "Approve {$visitor->full_name}? This approves their government ID and account. The PDL is then linked from the Front Desk details."
+                  data-confirm="{{ $visitor->isWalkIn()
+                    ? "Approve walk-in {$visitor->full_name}? This approves their government ID, documents and account, links the PDL the Front Desk chose, approves the walk-in and books their visit, in one step."
                     : "Approve {$visitor->full_name}? This approves their government ID, account, relationship documents and the confirmations you ticked, and their relationship to the PDL, in one step. If any requirement is still incomplete, nothing is approved." }}"
                   data-confirm-title="Approve" data-confirm-ok="Approve">
               @csrf

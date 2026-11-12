@@ -653,6 +653,65 @@ class WalkInService
     }
 
     /**
+     * The rest of a walk-in's one Approve (after the account and its ID are
+     * approved): the officer has checked the walk-in's files on the page, so
+     * approve the ones still waiting, link the PDL and approve the
+     * relationship (autoLink), then save the walk-in decision as Approved,
+     * which books the visit the Front Desk chose. Anything that still blocks
+     * the decision leaves it Pending and is returned as a note.
+     *
+     * @return array{notes: array<int, string>, approved: bool}
+     */
+    public function approveInOneStep(VisitorProfile $visitor, int $staffId): array
+    {
+        $notes = [];
+        $assessment = $this->assessment($visitor);
+        if (! $assessment || $assessment->visit_request_id || $assessment->isDecided()) {
+            return ['notes' => [], 'approved' => false];
+        }
+
+        // Files still waiting: the walk-in's uploads and its relationship's.
+        $pending = RelationshipDocument::where('status', 'pending')
+            ->where(fn ($q) => $q->where('visitor_id', $visitor->visitor_id)
+                ->orWhereIn('relationship_id', $visitor->relationships()->pluck('relationship_id')))
+            ->get();
+        foreach ($pending as $document) {
+            $document->update(['status' => 'verified', 'rejection_reason' => null, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+            AuditLog::record('update', 'relationship_documents', $document->document_id,
+                "Verified {$document->label()} of walk-in {$visitor->full_name} (with the approval)",
+                Module::CODE_VISITOR_MANAGEMENT);
+        }
+
+        if ($note = $this->autoLink($visitor, $staffId)) {
+            $notes[] = $note;
+        }
+
+        $visitor->unsetRelation('relationships');
+        $checks = $this->checks($visitor);
+        if (! $checks['canApprove']) {
+            $notes[] = 'Walk-in decision still Pending: ' . implode(' ', $checks['blockers']);
+
+            return ['notes' => $notes, 'approved' => false];
+        }
+
+        try {
+            [$saved, $visit] = $this->assess($visitor, [
+                'decision' => 'approved',
+                'walk_in_reason' => $assessment->walk_in_reason ?: 'no_prior_booking',
+                'remarks' => $assessment->remarks,
+            ], $staffId);
+        } catch (ValidationException $e) {
+            $notes[] = 'Walk-in decision still Pending: ' . collect($e->errors())->flatten()->first();
+
+            return ['notes' => $notes, 'approved' => false];
+        }
+
+        $notes[] = 'Walk-in approved' . ($visit ? ': visit booked for ' . $saved->requestedVisitLabel() . '.' : '.');
+
+        return ['notes' => $notes, 'approved' => true];
+    }
+
+    /**
      * Run after each review step. Once every document for the relationship
      * the walk-in claimed is verified and exactly one PDL matches the name or
      * number they gave, links them to that PDL as that relationship. Then,

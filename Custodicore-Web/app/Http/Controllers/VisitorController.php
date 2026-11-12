@@ -185,9 +185,10 @@ class VisitorController extends Controller
             "Approved visitor account: {$visitor->full_name}");
 
         if ($visitor->isWalkIn()) {
-            $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
+            // One Approve: also the walk-in's files, PDL link and walk-in decision (books the visit).
+            $walkIn = app(\App\Services\WalkInService::class)->approveInOneStep($visitor, $staffId);
 
-            return back()->with('success', trim('Walk-in visitor approved. '.$approvalNotes.' '.($note ?? '')));
+            return back()->with('success', trim('Walk-in visitor approved. '.$approvalNotes.' '.implode(' ', $walkIn['notes'])));
         }
 
         return back()->with('success', trim('Visitor approved. The visitor has been notified. '.$approvalNotes));
