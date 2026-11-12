@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Backs the mobile app's visit-related calls in src/services/api.js.
@@ -130,12 +131,24 @@ class VisitorApiController extends Controller
             ->first();
         abort_unless($relationship, 404, 'Relationship not found.');
 
-        $visitRequest = $assignments->submitVisitorRequest(
-            $visitor,
-            $relationship,
-            CarbonImmutable::createFromFormat('Y-m-d', $data['date'], $availability->timezone())->startOfDay(),
-            $data['startTimes'] ?? $data['startTime']
-        );
+        try {
+            $visitRequest = $assignments->submitVisitorRequest(
+                $visitor,
+                $relationship,
+                CarbonImmutable::createFromFormat('Y-m-d', $data['date'], $availability->timezone())->startOfDay(),
+                $data['startTimes'] ?? $data['startTime']
+            );
+        } catch (ValidationException $e) {
+            // Same 422 body, plus a `code` the app can match instead of the message text.
+            if (in_array(VisitAssignmentService::WEEKLY_LIMIT_MESSAGE, $e->errors()['schedule_id'] ?? [], true)) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors' => $e->errors(),
+                    'code' => VisitAssignmentService::WEEKLY_LIMIT_CODE,
+                ], 422);
+            }
+            throw $e;
+        }
 
         return response()->json($this->visitPayload($visitRequest), 201);
     }

@@ -1,15 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, colors, layout, spacing, typography } from '../designSystem';
 import RelationshipPicker from './RelationshipPicker';
 import TimeSlotList from './TimeSlotList';
 import VisitCalendar from './VisitCalendar';
 import WeeklyVisitCounter from './WeeklyVisitCounter';
 import {
+  firstBookableDate,
   formatDateLong,
   formatSlotRange,
   formatVisitingDays,
+  isWeeklyLimitDay,
   isWeeklyLimitError,
   middayBreakLabel,
   WEEKLY_LIMIT_REACHED_TITLE,
@@ -138,7 +140,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
           ? {
               key,
               title: WEEKLY_LIMIT_REACHED_TITLE,
-              message: weeklyLimitReachedNotice(weeklyLimit?.limit),
+              message: weeklyLimitReachedNotice(weeklyLimit?.limit, chosen.date),
             }
           : {
               key,
@@ -163,10 +165,28 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     () => noAvailabilityNotice(relationship, weeklyLimit),
     [relationship, weeklyLimit],
   );
+  // The week the counter shows: the chosen date's, else the first bookable
+  // date's (a full current week would hide that the next one is open), else
+  // this week's.
+  const counterDate = selectedDate ?? firstBookableDate(daysByDate) ?? today;
   // The weekly counter under "Choose a Visit Date" already explains this week's limit.
   const weeklyLimitAlreadyShown =
-    Boolean(weeklyUsageFor(weeklyLimit, selectedDate ?? today)?.reached) &&
+    Boolean(weeklyUsageFor(weeklyLimit, counterDate)?.reached) &&
     noAvailabilityReason(relationship) === 'weekly_limit';
+  // As on Home: dates blocked only by the weekly limit stay tappable and say why.
+  const weeklyLimitDates = useMemo(() => {
+    /** @type {Record<string, boolean>} */
+    const out = {};
+    for (const [date, day] of Object.entries(daysByDate)) {
+      if (isWeeklyLimitDay(day)) out[date] = true;
+    }
+    return out;
+  }, [daysByDate]);
+  const onWeeklyLimitDatePress = (date) => {
+    Alert.alert(WEEKLY_LIMIT_REACHED_TITLE, weeklyLimitReachedNotice(weeklyLimit?.limit, date), [
+      { text: 'OK' },
+    ]);
+  };
 
   let info;
   if (loading && !relationship) {
@@ -231,8 +251,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         <>
           <Text style={styles.sectionLabel}>Choose a Visit Date</Text>
           <Card style={styles.visitCard}>
-            {/* Visitor-wide weekly usage for the chosen date's week (else this week). */}
-            <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={selectedDate ?? today} />
+            {/* Visitor-wide weekly usage for the chosen (else first bookable, else this) week. */}
+            <WeeklyVisitCounter weeklyLimit={weeklyLimit} date={counterDate} />
             <VisitCalendar
               key={relationship.relationshipId}
               daysByDate={daysByDate}
@@ -241,6 +261,8 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
               maxDate={to}
               selectedDate={selectedDate}
               onSelectDate={selectDate}
+              blockedDates={weeklyLimitDates}
+              onBlockedDatePress={onWeeklyLimitDatePress}
               compact
             />
           </Card>

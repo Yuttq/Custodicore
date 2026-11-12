@@ -159,6 +159,9 @@ test('the weekly limit message names the full weeks and covers all linked PDLs',
   const message = noAvailabilityMessage(rel(days), weeklyLimit);
   assert.match(message, /Weekly limit of 2 visits reached for November 9–15 and November 16–22 \(Monday–Sunday\)/);
   assert.match(message, /across all your linked PDLs/);
+  // Per week of the visit date: never "book again next week".
+  assert.match(message, /Dates in other weeks can be booked once they open\./);
+  assert.doesNotMatch(message, /next week/);
 });
 
 test('without weekly usage data the weekly limit message still explains the rule', () => {

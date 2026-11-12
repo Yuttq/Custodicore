@@ -240,34 +240,62 @@ export function weeklyUsageLabel(usage) {
  * are named because they are the surprising part.
  */
 export const WEEKLY_SLOTS_COUNTED_NOTE =
-  'Pending requests count toward the limit. Rejected and cancelled ones don’t.';
+  'Pending requests count toward the limit. Rejected, declined and cancelled ones don’t.';
 
 /**
  * Plain-language explanation of a week at the limit, naming the
- * Monday–Sunday range and that it covers every linked PDL.
+ * Monday–Sunday range and that it covers every linked PDL. The limit is
+ * per week of the VISIT date, so later weeks can be booked right away —
+ * never "book again on Monday".
  * @param {WeeklyUsage} usage
  */
 export function weeklyLimitReachedMessage(usage) {
-  // Short on purpose: the counter's heading already shows the week and "2 of 2 weekly slots used".
   // "Monday, November 23, 2026" → "Monday, November 23"
   const nextMonday = formatDateLong(addDaysIso(usage.weekStart, 7)).replace(/, \d{4}$/, '');
-  return `That's your limit across all your PDLs. You can book again on ${nextMonday}.`;
+  return (
+    `That's your limit for ${formatWeekRange(usage.weekStart)} across all your PDLs. ` +
+    `You can still book dates from ${nextMonday} onward.`
+  );
 }
 
 /** Title of the notice shown when a booking would exceed the weekly limit. */
 export const WEEKLY_LIMIT_REACHED_TITLE = 'Weekly Visit Limit Reached';
 
 /**
- * Body of that notice. The limit comes from the backend (visit.max_per_week);
- * 2 is only the fallback when it was not reported.
+ * Body of that notice, for a tapped or rejected `date`: names that date's
+ * Monday–Sunday week (not "this week", which may be another one) and that
+ * other weeks stay bookable. The limit comes from the backend
+ * (visit.max_per_week); 2 is only the fallback when it was not reported,
+ * and 0 means the facility takes no visit requests.
  * @param {number | null | undefined} [limit]
+ * @param {string | null} [date] YYYY-MM-DD of the visit date
  */
-export function weeklyLimitReachedNotice(limit) {
+export function weeklyLimitReachedNotice(limit, date = null) {
+  if (limit === 0) {
+    return 'The facility is not accepting visit requests right now. Please check again later.';
+  }
   const n = Number.isInteger(limit) && /** @type {number} */ (limit) > 0 ? limit : 2;
+  const weekStart = date ? weekStartIso(date) : null;
+  const week = weekStart ? `the week of ${formatWeekRange(weekStart)} (Monday–Sunday)` : 'that week';
   return (
-    `You've already used your ${n} allowed ${n === 1 ? 'visit' : 'visits'} for this week. ` +
-    'You can book another visit when the next weekly period begins.'
+    `You've already used your ${n} allowed ${n === 1 ? 'visit' : 'visits'} for ${week}, ` +
+    'across all your PDLs. Choose a date in another week.'
   );
+}
+
+/**
+ * The earliest date with a bookable session, or null. The Schedule tab's
+ * weekly counter shows this date's week when no date is chosen, so the
+ * visitor sees the week they can actually book rather than a full one.
+ * @param {Record<string, { available: boolean }> | null | undefined} daysByDate
+ * @returns {string | null}
+ */
+export function firstBookableDate(daysByDate) {
+  const dates = Object.entries(daysByDate ?? {})
+    .filter(([date, day]) => day?.available === true && parseIsoDate(date))
+    .map(([date]) => date)
+    .sort();
+  return dates[0] ?? null;
 }
 
 /**
@@ -282,12 +310,15 @@ export function isWeeklyLimitDay(day) {
 
 /**
  * True when a POST /api/visit-requests rejection is the backend's weekly
- * limit check (VisitAssignmentService::WEEKLY_LIMIT_MESSAGE).
+ * limit check: its `code` (VisitAssignmentService::WEEKLY_LIMIT_CODE),
+ * else the message text — old or new wording — for a backend that does
+ * not send the code yet.
  * @param {unknown} error
  */
 export function isWeeklyLimitError(error) {
-  const message = error instanceof Error ? error.message : '';
-  return /maximum number of visits allowed for this calendar week/i.test(message);
+  if (!(error instanceof Error)) return false;
+  if (/** @type {Error & { code?: unknown }} */ (error).code === 'weekly_limit') return true;
+  return /maximum number of visits allowed for (this calendar week|the week)/i.test(error.message);
 }
 
 /** ['thu', 'sat'] → "Thursday and Saturday" */

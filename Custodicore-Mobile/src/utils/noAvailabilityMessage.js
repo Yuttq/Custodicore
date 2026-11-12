@@ -40,7 +40,8 @@ function weeklyLimitMessage(weekStarts, limit) {
   const of = limit != null ? ` of ${limit} ${limit === 1 ? 'visit' : 'visits'}` : '';
   return (
     `Weekly limit${of} reached${which}. ` +
-    'It applies across all your linked PDLs, so book again next week.'
+    // The limit is per week of the visit date: other weeks are bookable now.
+    'It applies across all your linked PDLs. Dates in other weeks can be booked once they open.'
   );
 }
 

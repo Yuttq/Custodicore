@@ -298,8 +298,9 @@ function HomeVisitCalendar({ schedule, markedDates, onOpenDate, canAddPdl, onAdd
     }
     return out;
   }, [daysByDate]);
-  const onWeeklyLimitDatePress = useCallback(() => {
-    Alert.alert(WEEKLY_LIMIT_REACHED_TITLE, weeklyLimitReachedNotice(weeklyLimit?.limit), [
+  // Names the tapped date's week, which need not be the current one.
+  const onWeeklyLimitDatePress = useCallback((date) => {
+    Alert.alert(WEEKLY_LIMIT_REACHED_TITLE, weeklyLimitReachedNotice(weeklyLimit?.limit, date), [
       { text: 'OK' },
     ]);
   }, [weeklyLimit]);

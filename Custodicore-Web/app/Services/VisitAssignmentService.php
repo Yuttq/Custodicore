@@ -63,7 +63,15 @@ class VisitAssignmentService
         'no_show',
     ];
 
-    public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for this calendar week.';
+    /**
+     * The week is the Monday–Sunday week of the chosen visit date, not the
+     * week the request is made in. The visitor API also sends
+     * WEEKLY_LIMIT_CODE with it, which the app matches instead of this text.
+     */
+    public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
+
+    /** Machine-readable `code` of a weekly-limit rejection (visitor API). */
+    public const WEEKLY_LIMIT_CODE = 'weekly_limit';
 
     /** One PDL per visitor per day: the visitor already has a visit with a different PDL that date. */
     public const ONE_PDL_PER_DAY_MESSAGE = 'You already have a visit with another PDL on this date. Visitors may visit only one PDL per day.';

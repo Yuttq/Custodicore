@@ -12,6 +12,7 @@ import {
   formatSlotRange,
   formatTime24,
   formatVisitingDays,
+  firstBookableDate,
   formatWeekRange,
   isWeeklyLimitDay,
   isWeeklyLimitError,
@@ -122,10 +123,15 @@ test('weekly usage comes from the response and is looked up by Monday–Sunday w
   assert.equal(normalizeAvailabilityResponse({ relationships: [] }).weeklyLimit, null);
 });
 
-test('the limit message covers all PDLs and says when booking reopens', () => {
+test('the limit message names the full week and that later dates can be booked now', () => {
   const usage = weeklyUsageFor(normalizeAvailabilityResponse({ weeklyLimit: WEEKLY }).weeklyLimit, '2026-11-20');
   const message = weeklyLimitReachedMessage(usage);
-  assert.equal(message, "That's your limit across all your PDLs. You can book again on Monday, November 23.");
+  assert.equal(
+    message,
+    "That's your limit for November 16–22 across all your PDLs. You can still book dates from Monday, November 23 onward.",
+  );
+  // The limit follows the visit date's week, not the day of booking.
+  assert.doesNotMatch(message, /book again on/);
 });
 
 test('time and day formatting', () => {
@@ -394,16 +400,44 @@ test('Home calendar: each PDL shows only its own dates, and only they open Sched
 test('weekly slot wording: singular, and what counts', async () => {
   const { WEEKLY_SLOTS_COUNTED_NOTE } = await import('./scheduleAvailability.js');
   assert.equal(weeklyUsageLabel({ used: 1, limit: 1 }), '1 of 1 weekly slot used');
-  assert.equal(WEEKLY_SLOTS_COUNTED_NOTE, 'Pending requests count toward the limit. Rejected and cancelled ones don’t.');
+  assert.equal(
+    WEEKLY_SLOTS_COUNTED_NOTE,
+    'Pending requests count toward the limit. Rejected, declined and cancelled ones don’t.',
+  );
+});
+
+test('weeklyLimitReachedNotice names the visit date’s week, not "this week"', () => {
+  assert.equal(
+    weeklyLimitReachedNotice(2, '2026-11-14'),
+    "You've already used your 2 allowed visits for the week of November 9–15 (Monday–Sunday), " +
+      'across all your PDLs. Choose a date in another week.',
+  );
+  // A future week is named as such.
+  assert.match(weeklyLimitReachedNotice(2, '2026-11-28'), /week of November 23–29/);
+  assert.doesNotMatch(weeklyLimitReachedNotice(2, '2026-11-14'), /this week|next weekly period/);
 });
 
 test('weeklyLimitReachedNotice uses the backend limit, falling back to 2', () => {
-  assert.equal(
-    weeklyLimitReachedNotice(2),
-    "You've already used your 2 allowed visits for this week. You can book another visit when the next weekly period begins.",
-  );
-  assert.match(weeklyLimitReachedNotice(null), /your 2 allowed visits/);
+  assert.match(weeklyLimitReachedNotice(null), /your 2 allowed visits for that week/);
   assert.match(weeklyLimitReachedNotice(1), /your 1 allowed visit for/);
+  // 0 allows no visits at all: never "your 2 allowed visits".
+  assert.equal(
+    weeklyLimitReachedNotice(0, '2026-11-14'),
+    'The facility is not accepting visit requests right now. Please check again later.',
+  );
+});
+
+test('firstBookableDate is the earliest available date', () => {
+  assert.equal(
+    firstBookableDate({
+      '2026-11-21': { available: true },
+      '2026-11-14': { available: false },
+      '2026-11-19': { available: true },
+    }),
+    '2026-11-19',
+  );
+  assert.equal(firstBookableDate({ '2026-11-14': { available: false } }), null);
+  assert.equal(firstBookableDate(null), null);
 });
 
 test('isWeeklyLimitDay is true only for unavailable days blocked by weekly_limit', () => {
@@ -414,10 +448,21 @@ test('isWeeklyLimitDay is true only for unavailable days blocked by weekly_limit
 });
 
 test('isWeeklyLimitError matches the backend weekly-limit rejection', () => {
+  // By code (current backend), whatever the text.
+  const coded = Object.assign(new Error('Anything'), { code: 'weekly_limit' });
+  assert.equal(isWeeklyLimitError(coded), true);
+  // By text: the new wording, and the old one from a backend not yet updated.
+  assert.equal(
+    isWeeklyLimitError(
+      new Error('You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.'),
+    ),
+    true,
+  );
   assert.equal(
     isWeeklyLimitError(new Error('You have reached the maximum number of visits allowed for this calendar week.')),
     true,
   );
+  assert.equal(isWeeklyLimitError(Object.assign(new Error('Full'), { code: 'service_unavailable' })), false);
   assert.equal(isWeeklyLimitError(new Error('This visiting slot is full.')), false);
   assert.equal(isWeeklyLimitError(null), false);
 });

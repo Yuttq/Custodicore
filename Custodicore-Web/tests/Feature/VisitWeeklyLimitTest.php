@@ -36,7 +36,7 @@ class VisitWeeklyLimitTest extends TestCase
 
     private const FRIDAY = '2026-10-09';
 
-    private const LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for this calendar week.';
+    private const LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
 
     protected function setUp(): void
     {

@@ -720,7 +720,10 @@ class ScheduleAvailabilityApiTest extends TestCase
 
         $this->postJson('/api/visit-requests', [
             'relationshipId' => $drug->relationship_id, 'date' => '2026-10-17', 'startTime' => '09:00',
-        ])->assertStatus(422)->assertJsonValidationErrors(['schedule_id']);
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['schedule_id'])
+            // The app matches this code, not the message text.
+            ->assertJsonPath('code', 'weekly_limit');
 
         $response = $this->availability()->assertOk();
         $this->assertSame(2, $this->weeklyUsed($response)['2026-10-12']);

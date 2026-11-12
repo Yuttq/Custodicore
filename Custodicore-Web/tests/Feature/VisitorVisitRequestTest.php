@@ -297,7 +297,9 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame('full', $this->schedule->fresh()->status);
 
         Sanctum::actingAs($this->visitorAccount);
-        $this->submit()->assertUnprocessable()->assertJsonValidationErrors('startTime');
+        $this->submit()->assertUnprocessable()->assertJsonValidationErrors('startTime')
+            // Only a weekly-limit rejection carries `code: weekly_limit`.
+            ->assertJsonMissingPath('code');
 
         $this->assertSame(1, VisitRequest::count());
         $this->assertSame(1, $this->schedule->fresh()->slots_taken);
@@ -419,8 +421,9 @@ class VisitorVisitRequestTest extends TestCase
         $this->submit(['startTime' => '13:00'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
-                'schedule_id' => 'You have reached the maximum number of visits allowed for this calendar week.',
-            ]);
+                'schedule_id' => 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.',
+            ])
+            ->assertJsonPath('code', 'weekly_limit');
 
         $this->assertSame(2, VisitRequest::count(), 'Only the two racing visits exist.');
         $this->assertSame(0, (int) $afternoon->fresh()->slots_taken, 'The seat reservation is rolled back.');
