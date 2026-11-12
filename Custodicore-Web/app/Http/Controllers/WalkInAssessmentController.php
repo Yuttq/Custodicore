@@ -53,7 +53,7 @@ class WalkInAssessmentController extends Controller
             if (isset($e->errors()['booking'])) {
                 return redirect()->to($back)->with('error',
                     'The walk-in was not approved, because its visit could not be booked: '.$e->errors()['booking'][0]
-                    .' The decision stays Pending: the Front Desk can choose another session, or reject the walk-in.');
+                    .' The decision stays Pending. The chosen date and session cannot be changed: reject this walk-in, and the Front Desk records a new arrival for another session.');
             }
 
             throw $e;

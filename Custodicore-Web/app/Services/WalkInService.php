@@ -207,8 +207,9 @@ class WalkInService
     public function status(VisitorProfile $visitor): array
     {
         $assessment = $this->assessment($visitor);
-        // The visit the arrival's approval booked; else one Records assigned for today.
-        $visit = $this->arrivalVisit($assessment) ?? $this->todaysVisit($visitor);
+        // Today's visit first (the desk checks it in), else the visit the
+        // newest arrival's approval booked (it may be for a later day).
+        $visit = $this->todaysVisit($visitor) ?? $this->arrivalVisit($assessment);
         $decision = $assessment?->decision;
         $today = $this->availability->now()->toDateString();
         $visitDay = $visit?->schedule?->schedule_date?->toDateString();
@@ -410,9 +411,11 @@ class WalkInService
     }
 
     /**
-     * Changes the date and session of an arrival still waiting for the
-     * Records decision (e.g. the chosen session filled up, or an arrival
-     * recorded before sessions were chosen at the desk).
+     * Chooses the date and session of an arrival still waiting for the
+     * Records decision that has none yet (one recorded before sessions were
+     * chosen at the desk). Once chosen — at Submit for approval or here — the
+     * date and session are locked: if that session can no longer be booked,
+     * Records rejects the arrival and the desk records a new one.
      *
      * @param  array<int, string>  $startTimes
      */
@@ -421,6 +424,9 @@ class WalkInService
         $assessment = $this->assessment($visitor);
         if (! $assessment || $assessment->isDecided() || $assessment->visit_request_id) {
             throw ValidationException::withMessages(['requested_start_times' => 'The Records Officer has already decided on this arrival, so its date and session can no longer be changed.']);
+        }
+        if ($assessment->hasRequestedVisit()) {
+            throw ValidationException::withMessages(['requested_start_times' => 'The visit date and session were set when the walk-in was submitted and cannot be changed. If that session can no longer be booked, the Records Officer rejects this arrival and the Front Desk records a new one.']);
         }
 
         $pdl = $this->arrivalPdl($visitor, $assessment)
@@ -491,8 +497,28 @@ class WalkInService
             });
     }
 
-    /** Statuses (status()) from which the Front Desk can record a new arrival. */
-    public const NEW_ARRIVAL_STATUSES = ['returning', 'declined', 'ready'];
+    /**
+     * Statuses (status()) from which the Front Desk can record a new arrival:
+     * also while a visit is booked or under way, so the desk can schedule the
+     * same visitor for another day. The booking rules (one visit per day,
+     * weekly limit, open seats) still decide which sessions can be chosen.
+     */
+    public const NEW_ARRIVAL_STATUSES = ['returning', 'declined', 'ready', 'booked', 'inside', 'done'];
+
+    /** Whether the Front Desk can record a new arrival for this visitor now. */
+    public function canRecordArrival(VisitorProfile $visitor): bool
+    {
+        return in_array($this->status($visitor)['key'], self::NEW_ARRIVAL_STATUSES, true)
+            && ! $this->hasArrivalAwaitingDecision($visitor);
+    }
+
+    /** The newest arrival is still waiting for the Records Officer's decision. */
+    private function hasArrivalAwaitingDecision(VisitorProfile $visitor): bool
+    {
+        $assessment = $this->assessment($visitor);
+
+        return $assessment !== null && ! $assessment->isDecided() && $assessment->visit_request_id === null;
+    }
 
     /**
      * A registered walk-in came back: records the new arrival as a fresh
@@ -502,21 +528,24 @@ class WalkInService
      * that session. The account, ID and PDL relationship are already
      * verified, so nothing is registered again.
      *
-     * Only from NEW_ARRIVAL_STATUSES: not while an arrival is still waiting
-     * for Records, nor while the visitor has a booked visit.
+     * Only from NEW_ARRIVAL_STATUSES and never while another arrival is
+     * still waiting for Records (one decision at a time). A booked visit
+     * does not block it: the new arrival is for another day.
      *
      * @param  array<int, string>  $startTimes
      */
     public function newArrival(VisitorProfile $visitor, string $purpose, int $pdlId, string $date, array $startTimes, int $staffId): WalkInAssessment
     {
         $key = $this->status($visitor)['key'];
+        if ($key === 'assess' || ($this->hasArrivalAwaitingDecision($visitor) && in_array($key, self::NEW_ARRIVAL_STATUSES, true))) {
+            throw ValidationException::withMessages([
+                'visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.',
+            ]);
+        }
         if (! in_array($key, self::NEW_ARRIVAL_STATUSES, true)) {
-            throw ValidationException::withMessages(['visit_purpose' => match ($key) {
-                'booked' => 'This visitor already has a booked visit.',
-                'inside', 'done' => 'This visitor already has a visit today.',
-                'assess' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.',
-                default => 'This walk-in has not been approved and linked to a PDL yet.',
-            }]);
+            throw ValidationException::withMessages([
+                'visit_purpose' => 'This walk-in has not been approved and linked to a PDL yet.',
+            ]);
         }
 
         $relationship = $this->verifiedRelationships($visitor)->firstWhere('pdl_id', $pdlId)

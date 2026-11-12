@@ -9,6 +9,7 @@ use App\Models\Pdl;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
+use App\Models\VisitRequest;
 use App\Models\WalkInAssessment;
 use App\Services\RelationshipRequirements;
 use App\Services\WalkInService;
@@ -237,14 +238,24 @@ class WalkInController extends Controller
     {
         $status = $this->walkIns->status($visitor);
         $assessment = $this->walkIns->assessment($visitor);
-        $canChangeSlot = $assessment && ! $assessment->isDecided() && $assessment->visit_request_id === null;
+        // Only an arrival with no date and session yet; once chosen they are locked.
+        $canChangeSlot = $assessment && ! $assessment->isDecided() && $assessment->visit_request_id === null
+            && ! $assessment->hasRequestedVisit();
 
         return view('frontdesk.walk-ins.show', [
             'visitor' => $visitor->load('account', 'idDocuments'),
             'status' => $status,
             'assessment' => $assessment,
             'checks' => $this->walkIns->checks($visitor),
-            'canRecordArrival' => in_array($status['key'], WalkInService::NEW_ARRIVAL_STATUSES, true),
+            'canRecordArrival' => $this->walkIns->canRecordArrival($visitor),
+            // Every booked day still ahead (or today), so a visit for another day stays visible.
+            'upcomingVisits' => VisitRequest::where('visitor_id', $visitor->visitor_id)
+                ->where('status', 'confirmed')
+                ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '>=', today()))
+                ->with(['pdl', 'schedule', 'sessionSchedules'])
+                ->get()
+                ->sortBy(fn (VisitRequest $visit) => $visit->schedule->schedule_date->toDateString())
+                ->values(),
             'canChangeSlot' => $canChangeSlot,
             'slotPdl' => $canChangeSlot ? $this->walkIns->arrivalPdl($visitor, $assessment) : null,
             // PDLs the visitor is approved to visit, for a new arrival.

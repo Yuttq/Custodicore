@@ -110,13 +110,32 @@
         @endif
     </div>
 
-    {{-- The arrival is still waiting for Records: the desk can pick another session. --}}
+    {{-- Every booked day ahead (or today), e.g. this visit plus one for another day. --}}
+    @if ($upcomingVisits->isNotEmpty())
+        <div class="cc-card">
+            <p class="text-card-title">Booked Visits</p>
+            <p class="text-metadata text-text-secondary">Approved visits for this visitor, today and later. Each one is checked in on its own day.</p>
+            <ul class="mt-md divide-y divide-border">
+                @foreach ($upcomingVisits as $upcoming)
+                    <li class="flex flex-wrap items-center justify-between gap-sm py-sm text-body">
+                        <span class="font-semibold">
+                            {{ $upcoming->schedule->schedule_date->format('D, M j, Y') }} ·
+                            {{ $upcoming->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ') }}
+                        </span>
+                        <span class="text-text-secondary">{{ $upcoming->pdl?->full_name }}</span>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    {{-- An arrival recorded without a date and session: the desk chooses them once; they are then locked. --}}
     @if ($canChangeSlot && $slotPdl)
         <div class="cc-card">
-            <p class="text-card-title">{{ $assessment->hasRequestedVisit() ? 'Change Visit Date or Session' : 'Choose Visit Date and Session' }}</p>
+            <p class="text-card-title">Choose Visit Date and Session</p>
             <p class="text-metadata text-text-secondary">
                 For {{ $slotPdl->full_name }} ({{ $slotPdl->pdl_number }}). Only the sessions Records opened are shown;
-                approving the walk-in books the session chosen here.
+                approving the walk-in books the session chosen here. Once saved, it cannot be changed.
             </p>
             <form method="POST" action="{{ route('frontdesk.walk-ins.slot.update', $visitor) }}" class="mt-md">
                 @csrf
@@ -132,13 +151,19 @@
         </div>
     @endif
 
-    {{-- A registered walk-in came back: a new arrival for the Records Officer, no new registration. --}}
+    {{-- A new arrival for the Records Officer, no new registration: when the walk-in
+         comes back, or to schedule them for another day while a visit is booked. --}}
     @if ($canRecordArrival)
         <div class="cc-card">
-            <p class="text-card-title">New Arrival</p>
+            <p class="text-card-title">{{ $upcomingVisits->isNotEmpty() ? 'Schedule Another Day' : 'New Arrival' }}</p>
             <p class="text-metadata text-text-secondary">
-                The visitor is back to visit. Their ID and PDL relationship are already verified; the Records Officer
-                only decides on this arrival, and approving it books the session chosen here.
+                @if ($upcomingVisits->isNotEmpty())
+                    Book this visitor for another day. Days they already have a visit, and weeks where they've reached the weekly limit, can't be chosen.
+                @else
+                    The visitor is back to visit.
+                @endif
+                Their ID and PDL relationship are already verified; the Records Officer
+                only decides on this arrival, and approving it books the session chosen here. The date and session can't be changed after you record it.
             </p>
             <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md space-y-md">
                 @csrf

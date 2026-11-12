@@ -431,13 +431,55 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
-        // The desk chooses another session; then Records approves.
+        // The chosen date and session are locked: the desk cannot move them.
+        $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
+            'requested_date' => self::NEXT_FRIDAY,
+            'requested_start_times' => ['09:00'],
+        ])->assertSessionHasErrors('requested_start_times');
+        $this->assertSame(self::FRIDAY, $walkIn->walkInAssessments()->first()->requested_date->toDateString());
+
+        // Records rejects it; the desk records a new arrival for another session, which Records approves.
+        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'The chosen session already ended.'])
+            ->assertSessionHasNoErrors();
+        $this->recordArrival($walkIn)->assertSessionHasNoErrors();
+        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $this->assertSame(self::NEXT_FRIDAY, VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->schedule->schedule_date->toDateString());
+    }
+
+    public function test_the_chosen_date_and_session_are_locked_after_submit(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertOk()
+            ->assertSee('Fri, Oct 9, 2026')
+            ->assertDontSee('Change Visit Date or Session')
+            ->assertDontSee('Save Date and Session');
+
+        $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
+            'requested_date' => self::NEXT_FRIDAY,
+            'requested_start_times' => ['09:00'],
+        ])->assertSessionHasErrors(['requested_start_times' => 'The visit date and session were set when the walk-in was submitted and cannot be changed. If that session can no longer be booked, the Records Officer rejects this arrival and the Front Desk records a new one.']);
+
+        $this->assertSame(self::FRIDAY, $walkIn->walkInAssessments()->first()->requested_date->toDateString());
+    }
+
+    public function test_an_arrival_without_a_session_gets_one_chosen_once(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $walkIn->walkInAssessments()->first()->update(['requested_date' => null, 'requested_start_times' => null]);
+
         $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
             'requested_date' => self::NEXT_FRIDAY,
             'requested_start_times' => ['09:00'],
         ])->assertSessionHasNoErrors();
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
-        $this->assertSame(self::NEXT_FRIDAY, VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->schedule->schedule_date->toDateString());
+
+        // Chosen once; now locked like any submitted walk-in.
+        $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
+            'requested_date' => self::FRIDAY,
+            'requested_start_times' => ['09:00'],
+        ])->assertSessionHasErrors('requested_start_times');
+        $this->assertSame(self::NEXT_FRIDAY, $walkIn->walkInAssessments()->first()->requested_date->toDateString());
     }
 
     public function test_the_session_cannot_be_changed_after_the_decision(): void
@@ -622,18 +664,50 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, VisitorProfile::where('registered_via', 'walk_in')->count(), 'No second registration.');
     }
 
-    public function test_no_new_arrival_while_one_waits_or_a_visit_is_booked(): void
+    public function test_no_new_arrival_while_one_waits_for_records(): void
     {
         [$walkIn] = $this->linkedWalkIn();
 
         // The first arrival is still waiting for Records.
         $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
-
-        // Today's visit is booked.
-        $this->assessAsRecords($walkIn);
-        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor already has a booked visit.']);
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
 
         $this->assertSame(1, $walkIn->walkInAssessments()->count());
+    }
+
+    public function test_the_desk_schedules_a_booked_walk_in_for_another_day(): void
+    {
+        [$walkIn] = $this->linkedWalkIn();
+        $this->assessAsRecords($walkIn); // today's visit is booked
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertOk()
+            ->assertSee('Booked Visits')
+            ->assertSee('Schedule Another Day')
+            ->assertSee('Record New Arrival');
+
+        // The same day is refused: one visit per day.
+        $this->recordArrival($walkIn, 'Family visit', self::FRIDAY)->assertSessionHasErrors('requested_start_times');
+        $this->assertSame(1, $walkIn->walkInAssessments()->count());
+
+        // Another day is recorded for Records to decide; today's visit is untouched.
+        $this->recordArrival($walkIn, 'Deliver food')->assertSessionHasNoErrors();
+        $this->assertSame(2, $walkIn->walkInAssessments()->count());
+        $this->assertSame('confirmed', VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->status);
+
+        // A third while that one waits is refused.
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
+
+        // Records approves the second: both days are booked, and the desk still sees today's visit to check in.
+        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $dates = VisitRequest::where('visitor_id', $walkIn->visitor_id)->where('status', 'confirmed')->get()
+            ->map(fn ($v) => $v->schedule->schedule_date->toDateString())->sort()->values()->all();
+        $this->assertSame([self::FRIDAY, self::NEXT_FRIDAY], $dates);
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertSee('Check In Now')
+            ->assertSee('Fri, Oct 9, 2026')
+            ->assertSee('Fri, Oct 16, 2026');
     }
 
     public function test_a_new_arrival_needs_an_open_session(): void
