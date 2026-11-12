@@ -121,6 +121,14 @@ class VisitorController extends Controller
     public function approve(Request $request, VisitorProfile $visitor)
     {
         if ($visitor->verification_status === 'verified') {
+            // A walk-in approved before one Approve also finished the walk-in: finish it now.
+            if ($visitor->isWalkIn() && ($staffId = $this->actingStaffId()) !== null) {
+                $walkIn = app(\App\Services\WalkInService::class)->approveInOneStep($visitor, $staffId);
+                if ($walkIn['notes'] !== []) {
+                    return back()->with('success', trim('This visitor is already approved. ' . implode(' ', $walkIn['notes'])));
+                }
+            }
+
             return back()->with('success', 'This visitor is already approved.');
         }
 

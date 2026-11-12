@@ -98,4 +98,22 @@ class WalkInOneStepApprovalTest extends TestCase
         $this->assertSame('pending', app(WalkInService::class)->assessment($walkIn->fresh())->decision);
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
     }
+
+    public function test_command_finishes_walk_ins_approved_the_old_way(): void
+    {
+        // Approved before one Approve also saved the walk-in decision: account and ID approved, decision Pending.
+        $walkIn = $this->registerWalkIn();
+        $walkIn->idDocuments()->update(['verification_status' => 'verified']);
+        $walkIn->update(['verification_status' => 'verified', 'verified_by' => $this->recordOfficerAccount->staffProfile->staff_id, 'verified_at' => now()]);
+        $this->assertTrue(app(WalkInService::class)->awaitingDecision()->contains('visitor_id', $walkIn->visitor_id));
+
+        $this->artisan('cc:finish-approved-walk-ins', ['--dry-run' => true])->expectsOutputToContain('Would finish')->assertSuccessful();
+        $this->assertSame('pending', app(WalkInService::class)->assessment($walkIn->fresh())->decision);
+
+        $this->artisan('cc:finish-approved-walk-ins')->expectsOutputToContain('Walk-in approved: visit booked')->assertSuccessful();
+
+        $this->assertSame('approved', app(WalkInService::class)->assessment($walkIn->fresh())->decision);
+        $this->assertSame('confirmed', VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->status);
+        $this->artisan('cc:finish-approved-walk-ins')->expectsOutputToContain('No approved walk-ins are waiting')->assertSuccessful();
+    }
 }
