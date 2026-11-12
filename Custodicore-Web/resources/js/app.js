@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (method !== 'post') return;
 
         form.addEventListener('submit', (event) => {
+            // The page's own validation already stopped this submit (e.g. the
+            // Front Desk walk-in form showing a missing field): nothing is
+            // sent, so leave the button usable for the corrected retry.
+            if (event.defaultPrevented) return;
+
             const question = form.getAttribute('data-confirm');
             if (question && !window.confirm(question)) {
                 event.preventDefault();
