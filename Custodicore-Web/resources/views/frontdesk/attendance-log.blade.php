@@ -122,4 +122,52 @@
 
         @include('frontdesk.partials.pagination', ['paginator' => $entries, 'noun' => 'entry'])
     </div>
+
+    {{-- Everything logged that day: walk-ins, bookings, gate entries, IDs. --}}
+    <div class="cc-card mt-lg" id="all-activity">
+        <p class="text-card-title">All Activity</p>
+        <p class="text-metadata text-text-secondary">
+            Everything recorded {{ $date->isToday() ? 'today' : 'on '.$period }}: walk-in registrations and decisions, bookings,
+            check-ins and check-outs, and ID updates{{ $query !== '' ? ', matching "'.$query.'"' : '' }}. Newest first.
+        </p>
+
+        <div class="mt-lg overflow-x-auto border-t border-border pt-md">
+            <table class="w-full min-w-[760px] text-left">
+                <thead>
+                    <tr class="border-b border-border text-section-label text-text-secondary">
+                        <th class="py-sm pr-md font-semibold">TIME</th>
+                        <th class="py-sm pr-md font-semibold">TYPE</th>
+                        <th class="py-sm pr-md font-semibold">ACTIVITY</th>
+                        <th class="py-sm font-semibold">DONE BY</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    @forelse ($activity as $log)
+                        @php $tone = \App\Services\ActivityLog::tone($log); @endphp
+                        <tr class="text-body align-top">
+                            <td class="whitespace-nowrap py-sm pr-md">{{ $log->created_at?->format('H:i') }}</td>
+                            <td class="py-sm pr-md">
+                                <span @class([
+                                    'cc-chip whitespace-nowrap',
+                                    'cc-chip-success' => $tone === 'ok',
+                                    'cc-chip-danger' => $tone === 'bad',
+                                    'cc-chip-info' => $tone === 'info',
+                                ])>{{ \App\Http\Controllers\FrontDesk\AttendanceLogController::ACTIVITY_TYPES[$log->record_type] ?? \Illuminate\Support\Str::headline($log->record_type) }}</span>
+                            </td>
+                            <td class="py-sm pr-md">{{ $log->description }}</td>
+                            <td class="py-sm">{{ \App\Services\ActivityLog::actor($log) }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="py-md text-center text-metadata text-text-secondary">
+                                {{ $query !== '' ? 'No activity matched "'.$query.'" for '.$period.'.' : 'No activity recorded on this day.' }}
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        @include('frontdesk.partials.pagination', ['paginator' => $activity, 'noun' => 'activity'])
+    </div>
 @endsection

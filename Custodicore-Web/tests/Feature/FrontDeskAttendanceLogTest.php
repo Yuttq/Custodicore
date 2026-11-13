@@ -233,4 +233,35 @@ class FrontDeskAttendanceLogTest extends TestCase
         auth()->logout();
         $this->get(route('frontdesk.attendance-log'))->assertRedirect(route('login'));
     }
+
+    public function test_all_activity_lists_everything_logged_that_day(): void
+    {
+        $log = fn (string $type, string $text, ?int $account, string $at) => \App\Models\AuditLog::create([
+            'account_id' => $account, 'action_type' => 'update', 'record_type' => $type, 'record_id' => 1,
+            'description' => $text, 'created_at' => Carbon::parse($at),
+            'module_id' => \App\Models\Module::value('module_id'),
+        ]);
+        $desk = $this->frontDeskAccount->account_id;
+        $log('visitor_profiles', 'Front Desk registered walk-in visitor Lourdes Reyes', $desk, '2026-10-19 09:15');
+        $log('visit_requests', 'Booked walk-in visit for Lourdes Reyes', $desk, '2026-10-19 09:16');
+        $log('walk_in_assessments', 'System closed the walk-in of Ana Cruz', null, '2026-10-19 10:00');
+        $log('visitor_profiles', 'Front Desk registered walk-in visitor Pedro Santos', $desk, '2026-10-18 11:00');
+        // Records work on other records stays in the Records activity log.
+        $log('pdl_profiles', 'Updated PDL record of Juan Dela Cruz', null, '2026-10-19 11:00');
+
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log'))->assertOk()
+            ->assertSee('All Activity')
+            ->assertSeeInOrder(['System closed the walk-in of Ana Cruz', 'Booked walk-in visit for Lourdes Reyes', 'Front Desk registered walk-in visitor Lourdes Reyes'])
+            ->assertSee('09:15')
+            ->assertDontSee('Pedro Santos')
+            ->assertDontSee('Updated PDL record');
+
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['date' => '2026-10-18']))->assertOk()
+            ->assertSee('Front Desk registered walk-in visitor Pedro Santos')
+            ->assertDontSee('Lourdes Reyes');
+
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['q' => 'Booked']))->assertOk()
+            ->assertSee('Booked walk-in visit for Lourdes Reyes')
+            ->assertDontSee('System closed the walk-in');
+    }
 }
