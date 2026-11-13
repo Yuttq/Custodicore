@@ -278,6 +278,56 @@ class ExitUnrecordedTest extends TestCase
         $this->get('/front-desk/attendance-log?date='.self::FRIDAY)->assertOk()->assertSee('Exit Not Recorded')->assertSee('Return not recorded');
     }
 
+    public function test_a_previous_day_record_cannot_be_checked_out_only_closed(): void
+    {
+        $visit = $this->visitLeftInside();
+        $checkin = $this->openCheckin($visit);
+        $token = QrCode::where('visit_request_id', $visit->visit_request_id)->value('qr_token');
+
+        $this->at('08:00', self::SATURDAY);
+        $this->actingAs($this->frontDeskAccount, 'web');
+
+        // The manual check-out is refused: it would stamp Saturday as the exit time.
+        $this->from('/front-desk/checkin-checkout')
+            ->post("/front-desk/checkin-checkout/{$checkin->checkin_id}/check-out")
+            ->assertRedirect('/front-desk/checkin-checkout')
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Close record – exit not recorded'));
+
+        $checkin->refresh();
+        $this->assertSame('checked_in', $checkin->status);
+        $this->assertNull($checkin->check_out_time);
+        $this->assertSame('confirmed', $visit->fresh()->status);
+
+        // So is the QR check-out scan.
+        $this->postJson('/front-desk/checkin-checkout/scan', ['qr_token' => $token, 'mode' => 'checkout'])
+            ->assertStatus(422)
+            ->assertJsonPath('previous_day', true);
+
+        // The page lists the record for closing and keeps it out of the check-out search.
+        $this->get('/front-desk/checkin-checkout')
+            ->assertOk()
+            ->assertSee('Still marked inside from a previous day')
+            ->assertViewHas('manualCheckoutVisitors', fn ($list) => $list->isEmpty())
+            ->assertViewHas('previousDayInside', fn ($list) => $list->pluck('checkin_id')->all() === [$checkin->checkin_id]);
+
+        // Closing it works and records no exit.
+        $this->close($checkin)->assertSessionHasNoErrors()->assertSessionHas('status');
+        $this->assertSame(VisitCheckin::STATUS_EXIT_UNRECORDED, $checkin->fresh()->status);
+        $this->assertNull($checkin->fresh()->check_out_time);
+    }
+
+    public function test_a_same_day_record_is_still_checked_out_normally(): void
+    {
+        $checkin = $this->openCheckin($this->visitLeftInside());
+
+        $this->at('11:00');
+        $this->actingAs($this->frontDeskAccount, 'web');
+        $this->post("/front-desk/checkin-checkout/{$checkin->checkin_id}/check-out")->assertSessionHas('status');
+        $this->assertSame('checked_out', $checkin->fresh()->status);
+
+        $this->get('/front-desk/checkin-checkout')->assertOk()->assertDontSee('Still marked inside from a previous day');
+    }
+
     public function test_the_admin_record_reads_exit_not_recorded_not_still_inside(): void
     {
         $visit = $this->visitLeftInside();

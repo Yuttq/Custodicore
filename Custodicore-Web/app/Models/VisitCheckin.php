@@ -78,6 +78,18 @@ class VisitCheckin extends Model
         return $this->status === 'checked_in';
     }
 
+    /**
+     * Still marked inside from an earlier day. Its exit was never recorded,
+     * so a check-out now would stamp a wrong exit time: such a record is
+     * closed with "Close record – exit not recorded" instead.
+     */
+    public function isFromPreviousDay(): bool
+    {
+        return $this->isCheckedIn()
+            && $this->check_in_time !== null
+            && $this->check_in_time->lt(today());
+    }
+
     public function isExitUnrecorded(): bool
     {
         return $this->status === self::STATUS_EXIT_UNRECORDED;

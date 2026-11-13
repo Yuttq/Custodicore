@@ -45,6 +45,39 @@
 
 
     {{-- ============================================================
+        STILL MARKED INSIDE FROM A PREVIOUS DAY
+        Their exit was never recorded, so they cannot be checked out
+        (that would record a false exit time): staff close the record.
+    ============================================================ --}}
+    @if ($previousDayInside->isNotEmpty())
+        <div class="cc-card mt-lg border-warning" id="previousDayInsideCard">
+            <div class="flex items-center justify-between gap-sm">
+                <div>
+                    <p class="text-card-title">Still marked inside from a previous day</p>
+                    <p class="text-metadata text-text-secondary">No check-out was recorded for these visitors. Close each record instead of checking them out.</p>
+                </div>
+                <span class="cc-chip cc-chip-danger">{{ $previousDayInside->count() }}</span>
+            </div>
+
+            <ul class="mt-md divide-y divide-border">
+                @foreach ($previousDayInside as $checkin)
+                    @php $visit = $checkin->visitRequest; @endphp
+                    <li class="py-sm">
+                        <p class="text-body font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</p>
+                        <p class="text-metadata text-text-secondary">
+                            Visiting {{ $visit?->pdl?->full_name ?? '—' }}@if ($visit?->pdl?->pdl_number) ({{ $visit->pdl->pdl_number }})@endif
+                            · Checked in {{ $checkin->check_in_time?->format('M j, Y H:i') ?? '—' }}
+                            · ID held: {{ $checkin->id_surrendered_type ? ucwords(str_replace('_', ' ', $checkin->id_surrendered_type)) : '—' }}
+                        </p>
+                        @include('frontdesk.partials.close-unrecorded-form', ['checkin' => $checkin])
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+
+    {{-- ============================================================
         CHECK-IN WORKSPACE
     ============================================================ --}}
     <section id="checkInWorkspace">

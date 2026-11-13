@@ -14,7 +14,7 @@
           data-password-confirm="Close this record without a check-out? No exit time will be recorded. Enter your password to confirm.">
         @csrf
         <p class="text-metadata text-text-secondary">
-            Use only if the visitor already left and nobody recorded the check-out. If they are leaving now, record their check-out instead.
+            Use only if the visitor has already left and their check-out was not recorded.
         </p>
         <label class="block text-metadata font-semibold" for="close-reason-{{ $checkin->checkin_id }}">Explanation</label>
         <textarea id="close-reason-{{ $checkin->checkin_id }}" name="reason" required minlength="10" maxlength="150" rows="2"

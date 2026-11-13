@@ -49,6 +49,9 @@ class CheckinCheckoutController extends Controller
     private const ACCOUNT_INACTIVE_MESSAGE =
         "This visitor's account is deactivated. Do not admit them; refer them to the Warden.";
 
+    private const PREVIOUS_DAY_CHECKOUT_MESSAGE =
+        'This visitor was checked in on a previous day and their exit was never recorded. Use "Close record – exit not recorded" under "Still marked inside from a previous day" instead of checking them out.';
+
     private const ALREADY_INSIDE_MESSAGE =
         'This visitor is already inside. Switch to Check-Out and record their check-out.';
 
@@ -169,7 +172,16 @@ class CheckinCheckoutController extends Controller
             ];
         })->values();
 
-        $manualCheckoutVisitors = $insideNow->filter(fn (VisitCheckin $c) => $c->visitRequest)
+        /*
+         * Records still open from an earlier day are closed with "Close
+         * record – exit not recorded", never checked out, so they are
+         * listed on their own and left out of the manual check-out search.
+         */
+        [$previousDayInside, $checkoutable] = $insideNow->partition(
+            fn (VisitCheckin $c) => $c->isFromPreviousDay()
+        );
+
+        $manualCheckoutVisitors = $checkoutable->filter(fn (VisitCheckin $c) => $c->visitRequest)
             ->map(function (VisitCheckin $checkin) use ($overstayedVisitIds) {
                 $visit = $checkin->visitRequest;
                 $details = $this->visitDetails($visit, 'Checked in');
@@ -215,7 +227,8 @@ class CheckinCheckoutController extends Controller
                 'todayCheckouts',
                 'manualCheckinVisitors',
                 'manualCheckoutVisitors',
-                'overstayedVisitIds'
+                'overstayedVisitIds',
+                'previousDayInside'
             )
         );
     }
@@ -421,6 +434,14 @@ class CheckinCheckoutController extends Controller
                         'success' => false,
                         'message' => 'This visitor is not currently checked in.',
                         'status' => $checkin?->status,
+                    ], 422);
+                }
+
+                if ($checkin->isFromPreviousDay()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => self::PREVIOUS_DAY_CHECKOUT_MESSAGE,
+                        'previous_day' => true,
                     ], 422);
                 }
 
@@ -1377,6 +1398,15 @@ class CheckinCheckoutController extends Controller
                 }
 
                 /*
+                 * A record left open from an earlier day: the visitor
+                 * left without a recorded exit, so a check-out now would
+                 * record a false exit time.
+                 */
+                if ($checkin->isFromPreviousDay()) {
+                    return back()->with('error', self::PREVIOUS_DAY_CHECKOUT_MESSAGE);
+                }
+
+                /*
                  * Leaving with a later session of the visit still ahead is
                  * the midday exit: the visit stays confirmed and the same QR
                  * admits the visitor again for the afternoon session.
@@ -1523,7 +1553,7 @@ class CheckinCheckoutController extends Controller
                  * Only once the visit's last session has ended: during the
                  * visit the visitor may really be inside.
                  */
-                if (! $this->gate->isOverstayed($visitRequest)) {
+                if (! $checkin->isFromPreviousDay() && ! $this->gate->isOverstayed($visitRequest)) {
                     return back()->with(
                         'error',
                         'This record can only be closed after the visit\'s last session has ended. If the visitor is leaving now, record their check-out instead.'

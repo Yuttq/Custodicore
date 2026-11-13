@@ -55,7 +55,11 @@ import the whole local database over the live one.
 - [x] Sessions / cache: `file` driver, stored under `/home` — fine for one instance (switch to `database` if the app is ever scaled out)
 - [x] Production settings: `APP_ENV=production`, `APP_DEBUG=false` (App settings override the server `.env`), `SEED_DEMO_DATA` **not** set. Check: `php artisan about --only=environment,drivers`
 - [x] `TRUSTED_PROXIES=REMOTE_ADDR` + **HTTPS Only** on — without it Laravel thinks the site is http, so CSS is blocked and forms (login, setup) fail
-- [ ] **Scheduler is not running on Azure.** `routes/console.php` schedules `visits:expire` daily at 00:05, but App Service has no cron and `deploy/azure-startup.sh` does not start `php artisan schedule:work`, so old visit requests do not expire automatically. Until fixed, run `php artisan visits:expire` by hand in SSH. Fix options: start `schedule:work` in the background from the startup script, or an Azure WebJob / Logic App calling it daily
+- [ ] **Scheduler (L9): verify on Azure after the next deploy.** `routes/console.php` schedules `visits:expire` daily at 00:05 (Asia/Manila). App Service has no cron, so `deploy/azure-startup.sh` now starts `php artisan schedule:work` in the background as `www-data`, logging to `/home/custodicore/storage/logs/scheduler.log`. After a deploy/restart, check in SSH:
+  - `ps aux | grep schedule:work` shows one process
+  - `php artisan schedule:list` shows `visits:expire` and its next run
+  - the next morning, `tail /home/custodicore/storage/logs/scheduler.log` shows the 00:05 run
+  - If the process is missing, run `php artisan visits:expire` by hand and check that the Startup Command still points to the startup script. Keep **Always On** enabled (if the plan allows it) so the app is not unloaded overnight
 - [ ] Security check: security headers, `SESSION_SECURE_COOKIE=true`, `HSTS_MAX_AGE` (see `Custodicore-Web/README.md`)
 
 ### Phase 7 — Final testing and go-live ⏳
