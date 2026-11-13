@@ -23,14 +23,22 @@ use Illuminate\Support\Collection;
  * Leaving after the afternoon session has started is the final check-out,
  * not a midday exit: the visit is completed and there is no re-entry.
  *
- * A session can be entered until it ends. A later session of the day opens
- * at its own start (the afternoon session opens at 13:00, not during the
- * midday break), so neither a whole-day visitor returning from the midday
- * exit nor an afternoon-only visitor can come in before it. The first session
- * of the day has no opening bound.
+ * A session can be entered until it ends. The first session of the day opens
+ * EARLY_ENTRY_MINUTES before its start (08:30 for a 09:00 morning). A later
+ * session of the day opens at its own start (the afternoon session opens at
+ * 13:00, not during the midday break), so neither a whole-day visitor
+ * returning from the midday exit nor an afternoon-only visitor can come in
+ * before it.
+ *
+ * A visitor is inside for only one visit at a time: check-in is refused
+ * while they have an open gate record on another visit (another PDL today,
+ * or an exit left unrecorded on an earlier day). Check-out is never blocked.
  */
 class VisitGateService
 {
+    /** How early before the first session of the day check-in opens. */
+    public const EARLY_ENTRY_MINUTES = 30;
+
     /** The gate record of a visitor of this visit who is inside now. */
     public function activeCheckin(VisitRequest $visit): ?VisitCheckin
     {
@@ -38,16 +46,76 @@ class VisitGateService
     }
 
     /**
+     * An open gate record of this visit's visitor on a DIFFERENT visit (a
+     * visit for another PDL today, or an exit left unrecorded on an earlier
+     * day), or null. An ordinary read: inside a check-in transaction it sees
+     * a check-in committed a moment ago because the controller locks the
+     * visitor row before the transaction's first ordinary read (see
+     * CheckinCheckoutController::lockVisitor()). Not a locking read: with no
+     * index on status, FOR UPDATE would lock every scanned gate record and
+     * gap, blocking all other check-ins and check-outs and letting two
+     * concurrent check-ins deadlock on the insert.
+     */
+    public function visitorInsideElsewhere(VisitRequest $visit): ?VisitCheckin
+    {
+        if ($visit->visitor_id === null) {
+            return null;
+        }
+
+        return VisitCheckin::where('status', 'checked_in')
+            ->where('visit_request_id', '!=', $visit->visit_request_id)
+            ->whereHas('visitRequest', fn ($q) => $q->where('visitor_id', $visit->visitor_id))
+            ->orderByDesc('checkin_id')
+            ->first();
+    }
+
+    /**
+     * Why this visit's visitor cannot be checked in because they are marked
+     * inside for another visit, or null when they are not. Check-out never
+     * uses this.
+     */
+    public function visitorInsideElsewhereMessage(VisitRequest $visit): ?string
+    {
+        $other = $this->visitorInsideElsewhere($visit);
+
+        if (! $other) {
+            return null;
+        }
+
+        if ($other->isFromPreviousDay()) {
+            return 'This visitor is still marked inside from a previous visit on '
+                .$other->check_in_time->format('M j, Y')
+                .'. Close that record first under "Still marked inside from a previous day" (Close record – exit not recorded), then check them in.';
+        }
+
+        $pdl = $other->visitRequest?->pdl?->full_name;
+
+        return 'This visitor is already inside for another visit (visit #'.$other->visit_request_id
+            .($pdl ? ", PDL {$pdl}" : '')
+            .'). Check them out of that visit first.';
+    }
+
+    /**
      * Sessions of the visit not yet entered and not yet ended, earliest first.
+     * Uses the visit's checkins / sessionSchedules when already loaded (page
+     * lists that eager-load them); otherwise reads them from the database,
+     * as the gate's check-in and check-out transactions do.
      *
      * @return Collection<int, VisitSchedule>
      */
     public function remainingSessions(VisitRequest $visit, ?CarbonInterface $now = null): Collection
     {
         $now ??= now();
-        $entered = $visit->checkins()->pluck('schedule_id')->map(fn ($id) => (int) $id)->all();
+        $entered = ($visit->relationLoaded('checkins')
+                ? $visit->checkins->pluck('schedule_id')
+                : $visit->checkins()->pluck('schedule_id'))
+            ->map(fn ($id) => (int) $id)->all();
 
-        return $visit->sessionSchedules()->with('rule')->get()
+        $sessions = $visit->relationLoaded('sessionSchedules')
+            ? $visit->sessionSchedules->loadMissing('rule')
+            : $visit->sessionSchedules()->with('rule')->get();
+
+        return $sessions
             ->reject(fn (VisitSchedule $s) => in_array((int) $s->schedule_id, $entered, true))
             ->filter(fn (VisitSchedule $s) => $now->lt($this->endsAt($s)))
             ->values();
@@ -70,7 +138,7 @@ class VisitGateService
         }
 
         $opensAt = $this->opensAt($next);
-        if ($opensAt && $now->lt($opensAt)) {
+        if ($now->lt($opensAt)) {
             return [null, "This visit is for the {$this->sessionName($next)} ({$this->rangeLabel($next)}). Entry opens at {$opensAt->format('H:i')}."];
         }
 
@@ -174,14 +242,17 @@ class VisitGateService
     }
 
     /**
-     * Start of $session when the facility has an earlier session that day for
-     * the same visiting rule set; the first session of the day has no bound.
+     * When check-in for $session opens: EARLY_ENTRY_MINUTES before it starts
+     * when it is the facility's first session that day for the same visiting
+     * rule set; otherwise at its own start, so the midday break stays closed.
      */
-    private function opensAt(VisitSchedule $session): ?Carbon
+    private function opensAt(VisitSchedule $session): Carbon
     {
+        $opensAt = $this->startsAt($session)->subMinutes(self::EARLY_ENTRY_MINUTES);
+
         $rule = $session->rule;
         if (! $rule) {
-            return null;
+            return $opensAt;
         }
 
         $hasEarlierSession = FacilityVisitationRule::forGroup($rule->groupKey())
@@ -189,8 +260,6 @@ class VisitGateService
             ->where('time_slot_end', '<=', $session->time_slot_start)
             ->exists();
 
-        return $hasEarlierSession
-            ? Carbon::parse($session->schedule_date->toDateString().' '.$session->time_slot_start)
-            : null;
+        return $hasEarlierSession ? $this->startsAt($session) : $opensAt;
     }
 }

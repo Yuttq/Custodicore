@@ -176,7 +176,7 @@ class WholeDayVisitTest extends TestCase
             ->assertJsonPath('isWholeDay', true)
             ->assertJsonPath('scheduledAt', '2026-10-09T09:00:00+08:00')
             ->assertJsonPath('endAt', '2026-10-09T16:30:00+08:00')
-            ->assertJsonPath('timeLabel', '9:00 AM - 4:30 PM')
+            ->assertJsonPath('timeLabel', '09:00 - 16:30')
             ->assertJsonPath('sessions.0.period', 'morning')
             ->assertJsonPath('sessions.1.period', 'afternoon')
             ->assertJsonCount(2, 'sessions');
@@ -303,7 +303,7 @@ class WholeDayVisitTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('isWholeDay', false)
-            ->assertJsonPath('timeLabel', '1:00 PM - 4:30 PM');
+            ->assertJsonPath('timeLabel', '13:00 - 16:30');
 
         $this->assertSame(1, VisitSession::count());
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);

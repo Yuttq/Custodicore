@@ -10,12 +10,15 @@ use App\Models\QrCode;
 use App\Models\StaffProfile;
 use App\Models\VisitCheckin;
 use App\Models\VisitorId;
+use App\Models\VisitorPdlRelationship;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
+use App\Models\VisitSession;
 use App\Services\VisitAssignmentService;
 use App\Services\VisitGateService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SeedsVisitAssignmentFixtures;
@@ -30,7 +33,12 @@ use Tests\TestCase;
  *  - a whole-day visitor leaving after the afternoon session started is
  *    checked out for good (no re-entry);
  *  - the Overstayed badge;
- *  - a scan in check-in mode of a visitor already inside.
+ *  - a scan in check-in mode of a visitor already inside;
+ *  - a visitor is inside for only one visit at a time (another PDL today,
+ *    or an exit left unrecorded on an earlier day); check-out never blocked;
+ *  - check-in opens 30 minutes before the first session of the day (08:30)
+ *    and at its own start for a later session (13:00), so the midday break
+ *    stays closed.
  *
  * "Now" starts at Wednesday 2026-10-07 10:00 Asia/Manila; visits are on
  * Friday 2026-10-09 (morning 09:00–11:30, afternoon 13:00–16:30) or the
@@ -152,6 +160,61 @@ class QrWorkflowFixesTest extends TestCase
     private function activeCheckin(VisitRequest $visit): VisitCheckin
     {
         return VisitCheckin::where('visit_request_id', $visit->visit_request_id)->where('status', 'checked_in')->sole();
+    }
+
+    /**
+     * A confirmed Friday-morning visit of the same visitor with a second PDL.
+     * Booking allows one PDL per visitor per day, so it is booked for the
+     * Friday after and moved onto Friday in the database — the state left by
+     * data from before that rule, which the gate must still handle.
+     */
+    private function otherPdlVisitOnFriday(): VisitRequest
+    {
+        $pdl = Pdl::create([
+            'pdl_number' => 'PDL-TEST-002',
+            'full_name' => 'Second PDL',
+            'date_of_birth' => '1991-01-01',
+            'gender' => 'male',
+            'classification' => 'non_drug_related',
+            'admission_date' => '2024-01-01',
+            'custody_status' => 'active',
+            'registered_by' => StaffProfile::first()->staff_id,
+        ]);
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $pdl->pdl_id,
+            'relationship_type' => 'immediate_family',
+            'priority_tier' => 'high_priority',
+            'verification_status' => 'verified',
+        ]));
+
+        Sanctum::actingAs($this->visitorAccount);
+        $id = $this->postJson('/api/visit-requests', [
+            'relationshipId' => $relationship->relationship_id,
+            'date' => self::NEXT_FRIDAY,
+            'startTimes' => ['09:00'],
+        ])->assertCreated()->json('id');
+        $visit = app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+
+        $friday = VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '09:00:00')->sole();
+        VisitRequest::whereKey($visit->visit_request_id)->update(['schedule_id' => $friday->schedule_id]);
+        VisitSession::where('visit_request_id', $visit->visit_request_id)->update(['schedule_id' => $friday->schedule_id]);
+
+        return $visit->fresh();
+    }
+
+    private function closeUnrecorded(VisitCheckin $checkin): \Illuminate\Testing\TestResponse
+    {
+        $this->actingAs($this->frontDeskAccount, 'web');
+
+        return $this->from('/front-desk/schedule/inside')->post(
+            "/front-desk/checkin-checkout/{$checkin->checkin_id}/close-unrecorded",
+            [
+                'reason' => 'Visitor left at closing time; check-out was not recorded.',
+                'id_at_desk' => 'no',
+                'current_password' => 'password',
+            ]
+        );
     }
 
     /** Restriction row written without model events (no automatic cancellation). */
@@ -489,5 +552,238 @@ class QrWorkflowFixesTest extends TestCase
 
         $this->scan($token)->assertStatus(422)->assertJsonPath('message', self::ALREADY_INSIDE);
         $this->manualCheckIn($visit)->assertSessionHas('error', self::ALREADY_INSIDE);
+    }
+
+    // ------------------------------------ One visit inside at a time
+
+    public function test_a_visitor_inside_for_another_visit_today_is_not_checked_in_until_checked_out_of_it(): void
+    {
+        $visit = $this->confirmedVisit();
+        $other = $this->otherPdlVisitOnFriday();
+        $this->at('09:30');
+        $token = $this->qrToken($visit);
+
+        $this->manualCheckIn($other)->assertSessionMissing('error');
+        $inside = $this->activeCheckin($other);
+
+        $message = "This visitor is already inside for another visit (visit #{$other->visit_request_id}, PDL Second PDL). Check them out of that visit first.";
+        $this->scan($token)->assertStatus(422)
+            ->assertJsonPath('message', $message)
+            ->assertJsonPath('inside_elsewhere', true);
+        $this->checkIn($token)->assertStatus(422)
+            ->assertJsonPath('message', $message)
+            ->assertJsonPath('inside_elsewhere', true);
+        $this->manualCheckIn($visit)->assertSessionHas('error', $message);
+        $this->assertSame(0, VisitCheckin::where('visit_request_id', $visit->visit_request_id)->count());
+        $this->assertSame('active', QrCode::where('qr_token', $token)->value('status'), 'A refused entry does not use the pass.');
+
+        // Checked out of the other visit: now they can come in on this one.
+        $this->at('10:00');
+        $this->checkOut($inside)->assertRedirect()->assertSessionHas('status', 'Visitor checked out successfully.');
+        $this->scan($token)->assertOk();
+        $this->checkIn($token)->assertOk();
+        $this->assertSame('checked_in', $this->activeCheckin($visit)->status);
+    }
+
+    public function test_a_visitor_still_marked_inside_from_a_previous_day_is_not_checked_in_until_that_record_is_closed(): void
+    {
+        $earlier = $this->confirmedVisit(['09:00'], self::FRIDAY);
+        $today = $this->confirmedVisit(['09:00'], self::NEXT_FRIDAY);
+
+        // Checked in on the 9th; the exit was never recorded.
+        $this->at('09:30');
+        $this->checkIn($this->qrToken($earlier))->assertOk();
+        $left = $this->activeCheckin($earlier);
+
+        $this->at('09:30', self::NEXT_FRIDAY);
+        $token = $this->qrToken($today);
+
+        $this->scan($token)->assertStatus(422)->assertJsonPath('inside_elsewhere', true);
+        $this->assertStringContainsString('previous visit on Oct 9, 2026', $this->scan($token)->json('message'));
+        $this->checkIn($token)->assertStatus(422)->assertJsonPath('inside_elsewhere', true);
+        $this->manualCheckIn($today)->assertSessionHas('error');
+        $this->assertStringContainsString('Oct 9, 2026', session('error'));
+        $this->assertSame(0, VisitCheckin::where('visit_request_id', $today->visit_request_id)->count());
+
+        $this->closeUnrecorded($left)->assertSessionHasNoErrors()->assertSessionMissing('error');
+        $this->assertSame('exit_unrecorded', $left->fresh()->status);
+
+        $this->manualCheckIn($today)->assertSessionMissing('error');
+        $this->assertSame('checked_in', $this->activeCheckin($today)->status);
+    }
+
+    // ------------------------------------------------- Entry opening times
+
+    public function test_qr_check_in_opens_30_minutes_before_the_morning_session(): void
+    {
+        $visit = $this->confirmedVisit(['09:00']);
+        $this->at('08:00');
+        $token = $this->qrToken($visit);
+
+        $message = 'This visit is for the morning session (09:00 - 11:30). Entry opens at 08:30.';
+        $this->at('08:29');
+        $this->scan($token)->assertStatus(422)->assertJsonPath('message', $message);
+        $this->checkIn($token)->assertStatus(422)->assertJsonPath('message', $message);
+        $this->assertSame(0, VisitCheckin::count());
+
+        $this->at('08:30');
+        $this->scan($token)->assertOk()->assertJsonPath('schedule.session', 'Morning session');
+        $this->checkIn($token)->assertOk();
+        $this->assertSame(1, VisitCheckin::count());
+    }
+
+    public function test_manual_check_in_opens_30_minutes_before_the_morning_session(): void
+    {
+        $visit = $this->confirmedVisit(['09:00']);
+
+        $this->at('08:29');
+        $this->manualCheckIn($visit)
+            ->assertSessionHas('error', 'This visit is for the morning session (09:00 - 11:30). Entry opens at 08:30.');
+        $this->assertSame(0, VisitCheckin::count());
+
+        $this->at('08:30');
+        $this->manualCheckIn($visit)->assertSessionMissing('error');
+        $this->assertSame(1, VisitCheckin::count());
+    }
+
+    public function test_the_afternoon_re_entry_opens_at_13_00_not_30_minutes_early(): void
+    {
+        $visit = $this->confirmedVisit(['09:00', '13:00']);
+        $this->at('08:45');
+        $token = $this->qrToken($visit);
+        $this->checkIn($token)->assertOk();
+
+        // Midday exit: the visit stays confirmed and the pass stays active.
+        $this->at('11:30');
+        $this->checkOut($this->activeCheckin($visit))->assertRedirect()
+            ->assertSessionHas('status', 'Visitor exited for the midday break. The same QR pass admits them for the afternoon session.');
+        $this->assertSame('confirmed', $visit->fresh()->status);
+        $this->assertSame('active', QrCode::where('qr_token', $token)->value('status'));
+
+        // The early window is for the first session only: the midday break
+        // stays closed, at 12:30 and up to the last minute before 13:00.
+        $message = 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.';
+        foreach (['12:30', '12:59'] as $time) {
+            $this->at($time);
+            $this->scan($token)->assertStatus(422)->assertJsonPath('message', $message);
+            $this->checkIn($token)->assertStatus(422)->assertJsonPath('message', $message);
+            $this->manualCheckIn($visit)->assertSessionHas('error', $message);
+        }
+
+        $this->at('13:00');
+        $this->scan($token)->assertOk()->assertJsonPath('schedule.session', 'Afternoon session');
+        $this->checkIn($token)->assertOk();
+        $this->assertSame('used', QrCode::where('qr_token', $token)->value('status'));
+        $this->assertSame(2, VisitCheckin::where('visit_request_id', $visit->visit_request_id)->count());
+    }
+
+    public function test_an_afternoon_only_visitor_is_not_admitted_during_the_midday_break(): void
+    {
+        $visit = $this->confirmedVisit(['13:00']);
+        $this->at('12:30');
+        $token = $this->qrToken($visit);
+
+        $this->scan($token)->assertStatus(422)
+            ->assertJsonPath('message', 'This visit is for the afternoon session (13:00 - 16:30). Entry opens at 13:00.');
+
+        $this->at('13:00');
+        $this->checkIn($token)->assertOk();
+    }
+
+    // ------------------------------------------- Check-out is never blocked
+
+    public function test_check_out_is_allowed_at_any_time_including_overstay(): void
+    {
+        // Leaving within minutes of an early entry, before the session starts.
+        $early = $this->confirmedVisit(['09:00']);
+        $this->at('08:30');
+        $this->checkIn($this->qrToken($early))->assertOk();
+        $this->at('08:40');
+        $this->checkOut($this->activeCheckin($early))->assertRedirect()->assertSessionHas('status', 'Visitor checked out successfully.');
+        $this->assertSame('completed', $early->fresh()->status);
+
+        // Still inside after the last session ended (overstay).
+        $late = $this->confirmedVisit(['09:00'], self::NEXT_FRIDAY);
+        $this->at('09:30', self::NEXT_FRIDAY);
+        $token = $this->qrToken($late);
+        $this->checkIn($token)->assertOk();
+
+        $this->at('17:45', self::NEXT_FRIDAY);
+        $this->assertTrue(app(VisitGateService::class)->isOverstayed($late->fresh()));
+        $checkin = $this->activeCheckin($late);
+        $this->scan($token, ['mode' => 'checkout'])->assertOk()->assertJsonPath('checkin_id', $checkin->checkin_id);
+        $this->checkOut($checkin)->assertRedirect()->assertSessionHas('status', 'Visitor checked out successfully.');
+        $this->assertSame('checked_out', $checkin->fresh()->status);
+    }
+
+    // ------------------------------------------------ Check-in page load
+
+    public function test_the_check_in_page_query_count_does_not_grow_with_the_number_of_visitors(): void
+    {
+        $this->at('09:30');
+        $morning = VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '09:00:00')->sole();
+
+        // Written directly (no booking rules): only the page's reads matter.
+        $seed = function (int $count) use ($morning) {
+            for ($i = 0; $i < $count; $i++) {
+                foreach ([false, true] as $inside) {
+                    $visit = VisitRequest::create([
+                        'visitor_id' => $this->visitor->visitor_id,
+                        'pdl_id' => $this->pdl->pdl_id,
+                        'relationship_id' => $this->relationship->relationship_id,
+                        'schedule_id' => $morning->schedule_id,
+                        'status' => 'confirmed',
+                        'confirmed_at' => now(),
+                    ]);
+                    if ($inside) {
+                        VisitCheckin::create([
+                            'visit_request_id' => $visit->visit_request_id,
+                            'schedule_id' => $morning->schedule_id,
+                            'qr_code_id' => QrCode::generateFor($visit)->qr_code_id,
+                            'id_surrendered_type' => 'national_id',
+                            'id_surrender_time' => now(),
+                            'check_in_time' => now(),
+                            'check_in_officer_id' => StaffProfile::first()->staff_id,
+                            'verification_method' => 'qr_scan',
+                            'status' => 'checked_in',
+                        ]);
+                    }
+                }
+            }
+        };
+        $queries = function (): int {
+            $this->actingAs($this->frontDeskAccount, 'web');
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->get('/front-desk/checkin-checkout')->assertOk();
+            $count = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return $count;
+        };
+
+        $queries(); // first request: one-time session/cache reads, not counted
+
+        $seed(2);
+        $few = $queries();
+        $seed(6);
+        $many = $queries();
+
+        $this->assertSame($few, $many, "2 expected + 2 inside: {$few} queries; 8 + 8: {$many}.");
+    }
+
+    public function test_a_previous_day_record_is_still_refused_at_check_out(): void
+    {
+        $visit = $this->confirmedVisit(['09:00']);
+        $this->at('09:30');
+        $token = $this->qrToken($visit);
+        $this->checkIn($token)->assertOk();
+        $checkin = $this->activeCheckin($visit);
+
+        $this->at('09:00', '2026-10-10');
+        $this->scan($token, ['mode' => 'checkout'])->assertStatus(422);
+        $this->checkOut($checkin)->assertRedirect()->assertSessionHas('error');
+        $this->assertStringContainsString('Close record – exit not recorded', session('error'));
+        $this->assertSame('checked_in', $checkin->fresh()->status);
     }
 }

@@ -142,10 +142,13 @@ class QrPassValidityTest extends TestCase
         $this->scan($token)->assertStatus(422)->assertJsonPath('message', 'This QR code is not for today\'s visit.');
         $this->checkIn($token)->assertStatus(422);
 
-        // 00:00 Friday in Manila is still Thursday in UTC: it is the visit day.
-        // (The first session of the day has no opening bound, as before.)
+        // 00:00 Friday in Manila is still Thursday in UTC: it is the visit day,
+        // so the refusal is the session's opening time, not "not for today's
+        // visit".
         $this->at('00:00');
-        $this->scan($token)->assertOk();
+        $this->scan($token)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This visit is for the morning session (09:00 - 11:30). Entry opens at 08:30.');
         $this->assertSame(0, VisitCheckin::count());
     }
 
@@ -174,6 +177,14 @@ class QrPassValidityTest extends TestCase
         $visit = $this->confirmedVisit(['09:00']);
         $this->at('07:30');
         $token = $this->qrToken($visit);
+
+        // Up to 30 minutes early: 08:29 is too early, 08:30 is in.
+        $this->at('08:29');
+        $this->scan($token)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This visit is for the morning session (09:00 - 11:30). Entry opens at 08:30.');
+
+        $this->at('08:30');
         $this->scan($token)->assertOk()->assertJsonPath('schedule.session', 'Morning session');
 
         $this->at('11:31');

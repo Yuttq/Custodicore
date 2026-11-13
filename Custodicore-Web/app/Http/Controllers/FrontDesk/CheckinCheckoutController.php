@@ -75,6 +75,24 @@ class CheckinCheckoutController extends Controller
     }
 
     /**
+     * Locks the visit's visitor profile row for the rest of the transaction,
+     * so check-ins for two different visits of the same visitor run one
+     * after the other and the second sees the first's gate record.
+     *
+     * Call it right after the visit-request lock, before any ordinary
+     * (non-locking) read in the transaction: MySQL REPEATABLE READ takes
+     * the read snapshot at the first ordinary read, and it must be taken
+     * after this lock is granted. Lock order: visit_requests ->
+     * visitor_profiles -> qr_codes.
+     */
+    private function lockVisitor(VisitRequest $visitRequest): void
+    {
+        if ($visitRequest->visitor_id !== null) {
+            \App\Models\VisitorProfile::whereKey($visitRequest->visitor_id)->lockForUpdate()->first();
+        }
+    }
+
+    /**
      * ---------------------------------------------------------------
      * DISPLAY CHECK-IN / CHECK-OUT PAGE
      * ---------------------------------------------------------------
@@ -93,10 +111,12 @@ class CheckinCheckoutController extends Controller
         $insideNow = VisitCheckin::where('status', 'checked_in')
             ->with([
                 'visitRequest.visitor',
-                'visitRequest.pdl',
+                'visitRequest.pdl.activeRestrictions',
+                'visitRequest.relationship',
                 'visitRequest.schedule',
                 'visitRequest.sessionSchedules',
                 'visitRequest.checkins',
+                'schedule',
                 'qrCode',
             ])
             ->orderByDesc('check_in_time')
@@ -153,10 +173,16 @@ class CheckinCheckoutController extends Controller
         /*
          * Search lists for the manual (no-QR) check-in and check-out
          * backups, read by frontdesk-checkin.js and the page script.
+         * Relations are eager-loaded above and the registered IDs read in
+         * one query, so the page's query count does not grow per visitor.
          */
-        $manualCheckinVisitors = $expected->map(function (VisitRequest $visit) {
+        $registeredIdsByVisitor = $this->registeredIdsByVisitor(
+            $expected->pluck('visitor_id')->merge($insideNow->pluck('visitRequest.visitor_id'))
+        );
+
+        $manualCheckinVisitors = $expected->map(function (VisitRequest $visit) use ($registeredIdsByVisitor) {
             $session = $this->gate->remainingSessions($visit)->first() ?? $visit->schedule;
-            $registered = $this->registeredIds($visit->visitor?->visitor_id)->first() ?? [];
+            $registered = $registeredIdsByVisitor->get($visit->visitor?->visitor_id, collect())->first() ?? [];
 
             return [
                 'visitRequestId' => $visit->visit_request_id,
@@ -182,13 +208,12 @@ class CheckinCheckoutController extends Controller
         );
 
         $manualCheckoutVisitors = $checkoutable->filter(fn (VisitCheckin $c) => $c->visitRequest)
-            ->map(function (VisitCheckin $checkin) use ($overstayedVisitIds) {
+            ->map(function (VisitCheckin $checkin) use ($overstayedVisitIds, $registeredIdsByVisitor) {
                 $visit = $checkin->visitRequest;
                 $details = $this->visitDetails($visit, 'Checked in');
-                $registeredIds = $this->registeredIds($visit->visitor?->visitor_id);
-                $registered = $registeredIds->first() ?? [];
+                $registered = $registeredIdsByVisitor->get($visit->visitor?->visitor_id, collect())->first() ?? [];
                 $surrendered = $this->surrenderedId($checkin);
-                $session = VisitSchedule::find($checkin->schedule_id) ?? $visit->schedule;
+                $session = $checkin->schedule ?? $visit->schedule;
 
                 return [
                     'checkinId' => $checkin->checkin_id,
@@ -253,6 +278,10 @@ class CheckinCheckoutController extends Controller
                 'pdl',
                 'schedule',
                 'qrCode',
+                // Read by remainingSessions() below and on the page, so
+                // the list costs no query per visit.
+                'checkins',
+                'sessionSchedules.rule',
             ])
             ->orderBy('confirmed_at')
             ->get()
@@ -347,6 +376,23 @@ class CheckinCheckoutController extends Controller
     }
 
     /**
+     * Removes a replacement ID photo stored for a check-in that was not
+     * saved. A failed delete is only logged: the check-in answer stands.
+     */
+    private function deleteIdPhoto(?string $path): void
+    {
+        if ($path === null) {
+            return;
+        }
+
+        try {
+            Storage::disk(VisitorId::DISK)->delete($path);
+        } catch (\Throwable $e) {
+            Log::warning('Could not delete an unused ID photo: '.$e->getMessage());
+        }
+    }
+
+    /**
      * The type of ID a visitor surrendered at check-in, with its label.
      * The Front Desk does not record ID numbers.
      *
@@ -367,18 +413,35 @@ class CheckinCheckoutController extends Controller
      */
     private function registeredIds(?int $visitorId): \Illuminate\Support\Collection
     {
-        return VisitorId::where('visitor_id', $visitorId)
+        return $this->registeredIdsByVisitor(collect([$visitorId]))->get($visitorId, collect());
+    }
+
+    /**
+     * registeredIds() for many visitors in one query, keyed by visitor_id
+     * (visitors with no verified ID are absent).
+     *
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, array>>
+     */
+    private function registeredIdsByVisitor(\Illuminate\Support\Collection $visitorIds): \Illuminate\Support\Collection
+    {
+        $visitorIds = $visitorIds->filter()->unique()->values();
+
+        if ($visitorIds->isEmpty()) {
+            return collect();
+        }
+
+        return VisitorId::whereIn('visitor_id', $visitorIds)
             ->whereIn('verification_status', ['verified', 'approved'])
             ->orderByDesc('verified_at')
             ->get()
-            ->map(fn (VisitorId $id) => [
+            ->groupBy('visitor_id')
+            ->map(fn ($ids) => $ids->map(fn (VisitorId $id) => [
                 'id' => $id->visitor_id_doc_id,
                 'type' => $id->id_type,
                 'type_label' => $id->typeLabel(),
                 'status' => $id->verification_status,
                 'reason' => $id->reason,
-            ])
-            ->values();
+            ])->values());
     }
 
     /**
@@ -594,6 +657,17 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
+             * The visitor may be inside for only one visit at a time.
+             */
+            if ($elsewhere = $this->gate->visitorInsideElsewhereMessage($visitRequest)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $elsewhere,
+                    'inside_elsewhere' => true,
+                ], 422);
+            }
+
+            /*
              * The session this entry is for (morning, or the afternoon
              * re-entry of a whole-day visit).
              */
@@ -714,6 +788,13 @@ class CheckinCheckoutController extends Controller
             }
         }
 
+        /*
+         * A replacement ID photo is stored before the transaction, not
+         * while it holds the visit and visitor locks (a slow storage write
+         * would hold them), and deleted again unless the check-in is saved.
+         */
+        $photoPath = null;
+
         try {
 
             $qr = QrCode::where(
@@ -729,16 +810,36 @@ class CheckinCheckoutController extends Controller
                 ], 404);
             }
 
+            if ($data['id_match_status'] === 'replaced' && $newIdPhoto) {
+                $photoPath = 'visitor-ids/'.Str::random(40).'.'.$newIdPhoto['extension'];
+                Storage::disk(VisitorId::DISK)->put($photoPath, $newIdPhoto['contents']);
+            }
+
             /*
              * Validate and check in under a lock on the visit, then its
-             * QR (check-out locks the visit first too). A repeated or
-             * concurrent request for the same visit waits here and is
-             * re-validated against what the first one wrote.
+             * visitor, then its QR (check-out locks the visit first too).
+             * A repeated or concurrent request for the same visit waits
+             * here and is re-validated against what the first one wrote.
+             * Up to 3 attempts: a deadlock is retried rather than shown to
+             * the officer as an error.
              */
-            $result = DB::transaction(function () use ($qr, $data, $staffId, $newIdPhoto) {
+            $result = DB::transaction(function () use ($qr, $data, $staffId, $photoPath) {
 
                 $visitRequest = VisitRequest::lockForUpdate()
                     ->find($qr->visit_request_id);
+
+                /*
+                 * The visitor lock MUST come before the first ordinary
+                 * (non-locking) read of this transaction. Under MySQL
+                 * REPEATABLE READ the read snapshot is taken at that first
+                 * ordinary read, so taking it after this lock is granted
+                 * means a check-in of the same visitor on another visit,
+                 * committed while we waited, is seen by
+                 * visitorInsideElsewhereMessage() below.
+                 */
+                if ($visitRequest) {
+                    $this->lockVisitor($visitRequest);
+                }
 
                 $qr = QrCode::lockForUpdate()
                     ->find($qr->qr_code_id);
@@ -852,6 +953,19 @@ class CheckinCheckoutController extends Controller
                 }
 
                 /*
+                 * The visitor may be inside for only one visit at a time
+                 * (the visitor row was locked at the top of this
+                 * transaction).
+                 */
+                if ($elsewhere = $this->gate->visitorInsideElsewhereMessage($visitRequest)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $elsewhere,
+                        'inside_elsewhere' => true,
+                    ], 422);
+                }
+
+                /*
                  * A session that already has a gate record (checked
                  * out or not) is never offered again.
                  */
@@ -878,14 +992,6 @@ class CheckinCheckoutController extends Controller
                 if (
                     $data['id_match_status'] === 'replaced'
                 ) {
-
-                    $photoPath = $newIdPhoto
-                        ? 'visitor-ids/'.Str::random(40).'.'.$newIdPhoto['extension']
-                        : null;
-
-                    if ($photoPath) {
-                        Storage::disk(VisitorId::DISK)->put($photoPath, $newIdPhoto['contents']);
-                    }
 
                     VisitorId::create([
                         'visitor_id' =>
@@ -976,16 +1082,21 @@ class CheckinCheckoutController extends Controller
                 }
 
                 return [$visitRequest, $checkin, $session];
-            });
+            }, 3);
 
             /*
              * A failed check returned its error response.
              */
             if ($result instanceof JsonResponse) {
+                $this->deleteIdPhoto($photoPath);
+
                 return $result;
             }
 
             [$visitRequest, $checkin, $session] = $result;
+
+            // Saved with the check-in: never deleted from here on.
+            $photoPath = null;
 
             $sessionName = $this->gate->sessionName($session);
 
@@ -1075,6 +1186,8 @@ class CheckinCheckoutController extends Controller
 
         } catch (\Throwable $e) {
 
+            $this->deleteIdPhoto($photoPath);
+
             Log::error(
                 'QR check-in confirmation failed: ' .
                 $e->getMessage()
@@ -1110,14 +1223,25 @@ class CheckinCheckoutController extends Controller
 
             /*
              * Validate and check in under a lock on the visit, then its
-             * QR (the same order as the QR check-in and check-out), so a
-             * repeated or concurrent request re-validates against what
-             * the first one wrote.
+             * visitor, then its QR (check-out locks the visit first too),
+             * so a repeated or concurrent request re-validates against
+             * what the first one wrote.
              */
             $result = DB::transaction(function () use ($visitRequest, $data, $staffId) {
 
                 $visitRequest = VisitRequest::lockForUpdate()
                     ->findOrFail($visitRequest->visit_request_id);
+
+                /*
+                 * The visitor lock MUST come before the first ordinary
+                 * (non-locking) read of this transaction. Under MySQL
+                 * REPEATABLE READ the read snapshot is taken at that first
+                 * ordinary read, so taking it after this lock is granted
+                 * means a check-in of the same visitor on another visit,
+                 * committed while we waited, is seen by
+                 * visitorInsideElsewhereMessage() below.
+                 */
+                $this->lockVisitor($visitRequest);
 
                 /*
                  * Only confirmed visits.
@@ -1161,6 +1285,15 @@ class CheckinCheckoutController extends Controller
                         'error',
                         self::ALREADY_INSIDE_MESSAGE
                     );
+                }
+
+                /*
+                 * The visitor may be inside for only one visit at a time
+                 * (the visitor row was locked at the top of this
+                 * transaction).
+                 */
+                if ($elsewhere = $this->gate->visitorInsideElsewhereMessage($visitRequest)) {
+                    return back()->with('error', $elsewhere);
                 }
 
                 /*
@@ -1301,7 +1434,7 @@ class CheckinCheckoutController extends Controller
                 }
 
                 return [$checkin, $session];
-            });
+            }, 3); // up to 3 attempts: a deadlock is retried, not shown as an error
 
             /*
              * A failed check returned its error redirect.
@@ -1446,7 +1579,7 @@ class CheckinCheckoutController extends Controller
                 }
 
                 return [$checkin, $visitRequest, $temporaryExit];
-            });
+            }, 3); // up to 3 attempts: a deadlock is retried, not shown as an error
 
             /*
              * A failed check returned its error redirect.
@@ -1599,7 +1732,7 @@ class CheckinCheckoutController extends Controller
                 );
 
                 return $checkin;
-            });
+            }, 3); // up to 3 attempts: a deadlock is retried, not shown as an error
 
             if ($result instanceof RedirectResponse) {
                 return $result;

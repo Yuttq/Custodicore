@@ -136,6 +136,35 @@ class GovernmentIdPrivateStorageTest extends TestCase
         $this->assertSame([], Storage::disk('public')->allFiles());
     }
 
+    public function test_a_refused_gate_check_in_leaves_no_replacement_id_photo_behind(): void
+    {
+        $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
+        $visit = app(VisitAssignmentService::class)->assign([
+            'visitor_id' => $this->visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_id' => $this->relationship->relationship_id,
+            'schedule_id' => $this->schedule->schedule_id,
+        ]);
+        $this->travelTo($this->schedule->schedule_date->copy()->setTime(8, 0));
+        Sanctum::actingAs($this->visitorAccount);
+        $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")->assertOk();
+        $token = $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertOk()->json('qrToken');
+
+        // 08:00 is before entry opens (08:30): refused, so the photo stored
+        // ahead of the check-in transaction is removed again.
+        $this->actingAs($this->frontDeskAccount, 'web')->postJson('/front-desk/checkin-checkout/confirm', [
+            'qr_token' => $token,
+            'id_surrendered_type' => 'passport',
+            'id_match_status' => 'replaced',
+            'new_id_type' => 'passport',
+            'new_id_reason' => 'Lost the old ID',
+            'new_id_photo' => 'data:image/png;base64,'.self::PNG,
+        ])->assertStatus(422);
+
+        $this->assertFalse(VisitorId::where('id_type', 'passport')->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('visitor-ids'));
+    }
+
     public function test_a_different_id_can_be_recorded_at_the_gate_without_an_id_number(): void
     {
         $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));

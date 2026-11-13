@@ -1118,9 +1118,14 @@ class VisitAssignmentService
      * different sessions from both passing those checks.
      *
      * Must be the FIRST statement of the creating transaction. Lock order
-     * is visitor_profiles -> visit_schedules; no other path locks a visitor
-     * row (releases lock visit_requests -> visit_schedules, staff capacity
-     * changes lock visit_schedules only), so this adds no lock cycle. Being
+     * is visitor_profiles -> visit_schedules (releases lock visit_requests
+     * -> visit_schedules, staff capacity changes lock visit_schedules only).
+     * Front-desk check-in (QR and manual) also locks the visitor row, in the
+     * order visit_requests -> visitor_profiles -> qr_codes, then reads
+     * visit_checkins without locking and inserts the gate record. It never
+     * locks visit_schedules, and no path that locks the visitor row first
+     * goes on to lock an existing visit_requests row, so this closes no
+     * cycle. Being
      * first also means that under InnoDB REPEATABLE READ the transaction's
      * read snapshot is taken after this lock is granted, so the duplicate
      * and weekly-limit counts see every visit committed by the request that
