@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -223,15 +224,42 @@ class WalkInController extends Controller
             ->all();
 
         $visitor = $this->walkIns->register(
-            $request->safe()->except(['photo', 'government_id', 'documents', 'consent', 'not_duplicate']),
+            $request->safe()->except(['photo', 'government_id', 'documents', 'consent', 'not_duplicate', 'desk_verified', 'no_immediate_family']),
             $request->file('photo'),
             $request->file('government_id'),
             $documents,
             $staffId,
         );
 
-        return redirect()->route('frontdesk.walk-ins.show', $visitor)
-            ->with('status', "{$visitor->full_name} is registered and waiting for the Records Officer's approval.");
+        if (! $request->boolean('desk_verified')) {
+            return redirect()->route('frontdesk.walk-ins.show', $visitor)
+                ->with('status', "{$visitor->full_name} is registered and waiting for the Records Officer's approval.");
+        }
+
+        return $this->approveAtDesk($visitor, $staffId, $request->boolean('no_immediate_family') ? ['no_immediate_family'] : [], 'registered');
+    }
+
+    /**
+     * The desk checked the originals in person: approve the arrival and book
+     * its session now (WalkInService::approveAtDesk). If something blocks
+     * it, nothing of the approval is saved and the arrival waits for Records.
+     */
+    private function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations, string $done): RedirectResponse
+    {
+        $show = redirect()->route('frontdesk.walk-ins.show', $visitor);
+
+        try {
+            $visit = $this->walkIns->approveAtDesk($visitor, $staffId, $confirmations);
+        } catch (ValidationException $e) {
+            return $show->with('error', "{$visitor->full_name} is {$done}, but could not be approved at the desk: "
+                .collect($e->errors())->flatten()->first()
+                .' It is now waiting for the Records Officer.');
+        }
+
+        $times = $visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ');
+        $day = $visit->schedule->schedule_date->isToday() ? 'today' : $visit->schedule->schedule_date->format('D, M j, Y');
+
+        return $show->with('status', "{$visitor->full_name} is approved. Visit with {$visit->pdl->full_name} booked for {$day} ({$times}).");
     }
 
     public function show(VisitorProfile $visitor): View
@@ -285,6 +313,7 @@ class WalkInController extends Controller
         $data = $request->validate([
             'visit_purpose' => ['required', 'string', 'max:150'],
             'pdl_id' => ['required', 'integer'],
+            'desk_verified' => ['nullable', 'boolean'],
             ...self::SLOT_RULES,
         ], [
             'visit_purpose.required' => 'Enter the purpose of the visit.',
@@ -296,6 +325,10 @@ class WalkInController extends Controller
             $visitor, $data['visit_purpose'], (int) $data['pdl_id'],
             $data['requested_date'], $data['requested_start_times'], $staffId,
         );
+
+        if ($request->boolean('desk_verified')) {
+            return $this->approveAtDesk($visitor, $staffId, [], 'recorded');
+        }
 
         return redirect()->route('frontdesk.walk-ins.show', $visitor)
             ->with('status', "New arrival recorded. {$visitor->full_name} is waiting for the Records Officer's decision.");

@@ -263,7 +263,7 @@
             </div>
         </div>
 
-        {{-- 4. Visit date and session: one Records opened; Records' approval books it. --}}
+        {{-- 4. Visit date and session: one Records opened; approving the walk-in books it. --}}
         <div class="cc-card">
             <p class="text-card-title">4 · Visit Date and Session *</p>
             <p class="text-metadata text-text-secondary">Only the dates and sessions Records opened are shown. Approving the walk-in books the session chosen here.</p>
@@ -298,8 +298,24 @@
             </label>
             @include('frontdesk.walk-ins.partials.field-error', ['name' => 'consent'])
 
+            {{-- Ticked: the desk approves and books at once (WalkInService::approveAtDesk). Unticked: Records reviews it. --}}
+            <label class="mt-md flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
+                <input type="checkbox" id="desk_verified" name="desk_verified" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('desk_verified', $errors->any() ? null : '1')) />
+                <span>
+                    I checked the visitor's <strong>original</strong> ID and documents in person, and they match the copies uploaded here.
+                    <span class="block text-metadata text-text-secondary">The walk-in is approved and the visit booked right away. Untick this to send it to the Records Officer for review instead.</span>
+                </span>
+            </label>
+            <label id="noImmediateFamilyBox" class="mt-sm hidden flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
+                <input type="checkbox" id="no_immediate_family" name="no_immediate_family" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('no_immediate_family')) />
+                <span>
+                    I confirmed the PDL has <strong>no immediate family</strong> available to visit (required for a legal guardian).
+                    <span class="block text-metadata text-text-secondary">Without this, the legal guardian goes to the Records Officer for review.</span>
+                </span>
+            </label>
+
             <div class="mt-md flex flex-wrap gap-sm">
-                <button type="submit" id="walkInSubmit" class="cc-btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled>Submit for approval</button>
+                <button type="submit" id="walkInSubmit" class="cc-btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled>Approve and book visit</button>
                 <a href="{{ route('frontdesk.walk-ins.index') }}" class="cc-btn-secondary">Cancel</a>
             </div>
             <p id="walkInSubmitHint" class="mt-xs text-metadata text-text-secondary">Tick the consent box to submit.</p>
@@ -388,6 +404,7 @@
             const rule = types[type.value];
             $('relationshipDescription').textContent = rule ? rule.description : '';
             $('childrenTogether').classList.toggle('hidden', !rule?.childrenTogether);
+            $('noImmediateFamilyBox').classList.toggle('hidden', type.value !== 'legal_guardian' || !$('desk_verified').checked);
 
             const needed = requiredDocuments();
             $('documentsHeading').classList.toggle('hidden', needed.length === 0);
@@ -671,6 +688,15 @@
         };
         consent.addEventListener('change', syncConsent);
         syncConsent();
+
+        // The button says what will happen: approve now, or send to Records.
+        const deskVerified = $('desk_verified');
+        const syncDeskVerified = () => {
+            submit.textContent = deskVerified.checked ? 'Approve and book visit' : 'Submit for Records approval';
+            refresh();
+        };
+        deskVerified.addEventListener('change', syncDeskVerified);
+        syncDeskVerified();
 
         // Terms and Conditions / Privacy Policy open in a modal (not ticking the box).
         document.querySelectorAll('[data-legal-open]').forEach(link => link.addEventListener('click', e => {

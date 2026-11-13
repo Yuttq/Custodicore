@@ -643,7 +643,7 @@ class WalkInVisitorTest extends TestCase
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
             ->assertSee('Registered')
-            ->assertSee('Record New Arrival');
+            ->assertSee('Approve and Book Visit');
 
         $this->recordArrival($walkIn, 'Deliver food')->assertSessionHasNoErrors()->assertRedirect();
 
@@ -653,7 +653,7 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('Deliver food', $arrival->visit_purpose);
         $this->assertSame('spouse', $arrival->relationship_type, 'From the verified relationship.');
         $this->assertSame(self::NEXT_FRIDAY, $arrival->requested_date->toDateString());
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Record New Arrival');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Approve and Book Visit');
 
         // Records decides on the new arrival, which books the chosen session.
         $this->assessAsRecords($walkIn)
@@ -670,7 +670,7 @@ class WalkInVisitorTest extends TestCase
 
         // The first arrival is still waiting for Records.
         $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Approve and Book Visit');
 
         $this->assertSame(1, $walkIn->walkInAssessments()->count());
     }
@@ -684,7 +684,7 @@ class WalkInVisitorTest extends TestCase
             ->assertOk()
             ->assertSee('Booked Visits')
             ->assertSee('Schedule Another Day')
-            ->assertSee('Record New Arrival');
+            ->assertSee('Approve and Book Visit');
 
         // The same day is refused: one visit per day.
         $this->recordArrival($walkIn, 'Family visit', self::FRIDAY)->assertSessionHasErrors('requested_start_times');
@@ -726,7 +726,7 @@ class WalkInVisitorTest extends TestCase
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
 
         $this->recordArrival($walkIn)->assertSessionHasErrors('visit_purpose');
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Approve and Book Visit');
     }
 
     public function test_a_new_arrival_needs_a_purpose(): void

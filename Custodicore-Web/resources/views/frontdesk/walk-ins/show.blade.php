@@ -61,11 +61,11 @@
                         $bookedToday = $status['visit']->schedule?->schedule_date?->isToday();
                     @endphp
                     @if ($bookedToday)
-                        Approved by Records. Verify the visitor's identity and check them in for
+                        Approved. Verify the visitor's identity and check them in for
                         <strong>{{ $bookedTimes }}</strong>
                         with {{ $status['visit']->pdl?->full_name }}: take their ID at the gate.
                     @else
-                        Approved by Records. The visit with {{ $status['visit']->pdl?->full_name }} is booked for
+                        Approved. The visit with {{ $status['visit']->pdl?->full_name }} is booked for
                         <strong>{{ $status['visit']->schedule?->schedule_date?->format('D, M j, Y') }} · {{ $bookedTimes }}</strong>.
                         Check the visitor in on that day.
                     @endif
@@ -151,7 +151,7 @@
         </div>
     @endif
 
-    {{-- A new arrival for the Records Officer, no new registration: when the walk-in
+    {{-- A new arrival, no new registration: when the walk-in
          comes back, or to schedule them for another day while a visit is booked. --}}
     @if ($canRecordArrival)
         <div class="cc-card">
@@ -162,8 +162,8 @@
                 @else
                     The visitor is back to visit.
                 @endif
-                Their ID and PDL relationship are already verified; the Records Officer
-                only decides on this arrival, and approving it books the session chosen here. The date and session can't be changed after you record it.
+                Their ID and PDL relationship are already verified. Approving the arrival books the session chosen here;
+                the date and session can't be changed after you record it.
             </p>
             <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md space-y-md">
                 @csrf
@@ -202,17 +202,25 @@
                         'oldTimes' => old('requested_start_times', []),
                     ])
                 </div>
-                <button type="submit" class="cc-btn-primary">Record New Arrival</button>
+                <label class="flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
+                    <input type="checkbox" name="desk_verified" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('desk_verified', $errors->any() ? null : '1'))
+                           onchange="document.getElementById('arrivalSubmit').textContent = this.checked ? 'Approve and Book Visit' : 'Send to Records for Approval'" />
+                    <span>
+                        I checked the visitor's original ID in person and confirmed it is them.
+                        <span class="block text-metadata text-text-secondary">The arrival is approved and the visit booked right away. Untick this to send it to the Records Officer instead.</span>
+                    </span>
+                </label>
+                <button type="submit" id="arrivalSubmit" class="cc-btn-primary">{{ old('desk_verified', $errors->any() ? null : '1') ? 'Approve and Book Visit' : 'Send to Records for Approval' }}</button>
             </form>
         </div>
     @endif
-    {{-- The Records Officer's walk-in assessment (read-only here) --}}
+    {{-- The walk-in decision (read-only here): by the Front Desk or the Records Officer --}}
     @if ($assessment)
         <div class="cc-card">
             <div class="flex flex-wrap items-start justify-between gap-sm">
                 <div>
                     <p class="text-card-title">Walk-in Assessment</p>
-                    <p class="text-metadata text-text-secondary">Done by the Records Officer, once. Approving books the chosen session.</p>
+                    <p class="text-metadata text-text-secondary">Made once, by the Front Desk or the Records Officer. Approving books the chosen session.</p>
                 </div>
                 <span class="font-semibold {{ ['approved' => 'text-success', 'declined' => 'text-danger'][$assessment->decision] ?? 'text-warning' }}">
                     {{ $assessment->label('decision') }}

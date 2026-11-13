@@ -740,6 +740,124 @@ class WalkInService
         return ['notes' => $notes, 'approved' => true];
     }
 
+    /** Remark saved on an arrival the Front Desk approved itself. */
+    public const DESK_APPROVAL_REMARK = 'Approved at the Front Desk: the officer checked the original ID and documents in person.';
+
+    /**
+     * The Front Desk approves the current arrival itself, after checking
+     * the visitor's original ID and documents in person: the account, the
+     * government ID and every relationship document are verified, the PDL
+     * is linked and the relationship verified (autoLink), and the arrival is
+     * approved, which books the session the desk chose. assess() still runs
+     * every check (flags, the PDL's restrictions and availability, seats,
+     * weekly and daily limits), so the desk cannot approve what Records
+     * could not.
+     *
+     * All or nothing: if anything blocks it, nothing is saved and the
+     * arrival stays Pending for the Records Officer (the ValidationException
+     * says why).
+     *
+     * @param  array<int, string>  $confirmations  officer confirmations the desk ticked (no_immediate_family)
+     *
+     * @throws ValidationException
+     */
+    public function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations = []): VisitRequest
+    {
+        return DB::transaction(function () use ($visitor, $staffId, $confirmations) {
+            // First statement: the visitor lock (see VisitAssignmentService::lockVisitor()).
+            $this->assignments->lockVisitor($visitor);
+            $visitor->refresh();
+
+            $assessment = $this->assessment($visitor);
+            if (! $assessment || $assessment->isDecided() || $assessment->visit_request_id) {
+                throw ValidationException::withMessages(['decision' => 'This arrival has already been decided.']);
+            }
+
+            foreach ($visitor->idDocuments()->where('verification_status', 'pending')->get() as $id) {
+                $id->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
+                AuditLog::record('update', 'visitor_ids', $id->visitor_id_doc_id,
+                    "Front Desk verified {$id->typeLabel()} of walk-in {$visitor->full_name} (original seen at the desk)",
+                    Module::CODE_VISITOR_MANAGEMENT);
+            }
+
+            if ($visitor->verification_status !== 'verified') {
+                $visitor->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
+                AuditLog::record('update', 'visitor_profiles', $visitor->visitor_id,
+                    "Front Desk approved walk-in account of {$visitor->full_name}",
+                    Module::CODE_VISITOR_MANAGEMENT);
+            }
+
+            $pending = RelationshipDocument::where('status', 'pending')
+                ->where(fn ($q) => $q->where('visitor_id', $visitor->visitor_id)
+                    ->orWhereIn('relationship_id', $visitor->relationships()->pluck('relationship_id')))
+                ->get();
+            foreach ($pending as $document) {
+                $document->update(['status' => 'verified', 'rejection_reason' => null, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+                AuditLog::record('update', 'relationship_documents', $document->document_id,
+                    "Front Desk verified {$document->label()} of walk-in {$visitor->full_name} (original seen at the desk)",
+                    Module::CODE_VISITOR_MANAGEMENT);
+            }
+
+            // Links the PDL; verifies the relationship unless a confirmation is still missing.
+            $this->autoLink($visitor, $staffId);
+            if ($this->saveDeskConfirmations($visitor, $assessment, $staffId, $confirmations)) {
+                $this->autoLink($visitor, $staffId);
+            }
+            $visitor->unsetRelation('relationships');
+
+            [, $visit] = $this->assess($visitor, [
+                'decision' => 'approved',
+                'walk_in_reason' => $assessment->walk_in_reason ?: 'no_prior_booking',
+                'remarks' => self::DESK_APPROVAL_REMARK,
+            ], $staffId, 'Front Desk');
+
+            return $visit;
+        });
+    }
+
+    /**
+     * Confirmations the relationship's checklist asks for, made at the desk:
+     * the adult accompanying a minor (the guardian named on the form) and,
+     * when ticked, "no immediate family available" for a legal guardian.
+     * Returns whether any was saved.
+     */
+    private function saveDeskConfirmations(VisitorProfile $visitor, WalkInAssessment $assessment, int $staffId, array $confirmations): bool
+    {
+        $relationship = $visitor->relationships()
+            ->where('verification_status', 'pending')
+            ->where('pdl_id', $assessment->pdl_id)
+            ->first();
+        if (! $relationship) {
+            return false;
+        }
+
+        $notes = ['no_immediate_family' => null];
+        if ($visitor->guardian_full_name) {
+            $notes['accompanying_guardian'] = $visitor->guardian_full_name;
+        }
+
+        $wanted = collect(RelationshipRequirements::for($relationship))
+            ->where('kind', 'confirmation')
+            ->where('status', '!=', 'met')
+            ->pluck('key')
+            ->filter(fn ($key) => array_key_exists($key, $notes) && ($key !== 'no_immediate_family' || in_array($key, $confirmations, true)));
+        if ($wanted->isEmpty()) {
+            return false;
+        }
+
+        $saved = $relationship->officer_confirmations ?? [];
+        foreach ($wanted as $key) {
+            $saved[$key] = ['by' => $staffId, 'at' => now()->toIso8601String(), 'note' => $notes[$key]];
+            AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
+                "Front Desk confirmed '".RelationshipRequirements::CONFIRMATIONS[$key][0]."' for walk-in {$visitor->full_name}"
+                .($notes[$key] ? " ({$notes[$key]})" : ''),
+                Module::CODE_VISITOR_MANAGEMENT);
+        }
+        $relationship->update(['officer_confirmations' => $saved]);
+
+        return true;
+    }
+
     /**
      * Run after each review step. Once every document for the relationship
      * the walk-in claimed is verified and exactly one PDL matches the name or
@@ -860,9 +978,9 @@ class WalkInService
      *
      * @throws ValidationException
      */
-    public function assess(VisitorProfile $visitor, array $data, int $staffId): array
+    public function assess(VisitorProfile $visitor, array $data, int $staffId, string $decidedBy = 'Record Officer'): array
     {
-        return DB::transaction(function () use ($visitor, $data, $staffId) {
+        return DB::transaction(function () use ($visitor, $data, $staffId, $decidedBy) {
             // First statement: the visitor lock (VisitAssignmentService::lockVisitor()),
             // then the arrival, so two officers cannot both decide it.
             $this->assignments->lockVisitor($visitor);
@@ -905,7 +1023,7 @@ class WalkInService
             }
 
             AuditLog::record('update', 'walk_in_assessments', $assessment->assessment_id,
-                "Record Officer assessed walk-in {$visitor->full_name}: {$assessment->label('decision')}"
+                "{$decidedBy} assessed walk-in {$visitor->full_name}: {$assessment->label('decision')}"
                 .($assessment->remarks ? " ({$assessment->remarks})" : '')
                 .($visit ? "; booked {$assessment->requestedVisitLabel()}" : ''),
                 Module::CODE_VISITOR_MANAGEMENT);

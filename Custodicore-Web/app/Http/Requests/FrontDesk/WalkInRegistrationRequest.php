@@ -110,6 +110,10 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'consent' => ['accepted'],
             // Ticked after the officer checked a possible duplicate (see after()).
             'not_duplicate' => ['nullable', 'boolean'],
+            // The officer checked the original ID and documents: the desk approves at once.
+            'desk_verified' => ['nullable', 'boolean'],
+            // Legal guardian: the officer confirmed the PDL has no immediate family available.
+            'no_immediate_family' => ['nullable', 'boolean'],
         ];
     }
 
