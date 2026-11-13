@@ -3,6 +3,19 @@
 @section('title', 'Dashboard')
 
 @section('content')
+    @if ($unresolvedInside > 0)
+        <div class="cc-card border-l-4 border-danger" role="alert">
+            <p class="text-card-title text-danger">
+                {{ $unresolvedInside }} {{ \Illuminate\Support\Str::plural('visitor', $unresolvedInside) }} still marked inside from a previous day
+            </p>
+            <p class="text-metadata text-text-secondary">
+                Their check-out was probably never recorded. Confirm they have left, then use
+                "Close record – exit not recorded" so no false exit time is saved.
+            </p>
+            <a href="{{ route('frontdesk.schedule', 'inside') }}" class="mt-xs inline-block font-semibold text-primary-teal hover:underline">Review visitors still marked inside</a>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 gap-md sm:grid-cols-3">
         @foreach ($stats as $stat)
             @include('admin.partials.stat-card', $stat)

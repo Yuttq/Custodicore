@@ -22,12 +22,19 @@ import {
 } from '../designSystem';
 import { EmptyState } from '../components';
 import { useVisits } from '../context/VisitsContext';
+import { useAuth } from '../hooks/useAuth';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import {
   fetchQrTokenPayload,
   resolveScheduleIdForQr,
 } from '../repositories/qrRepository';
+import { clearQrPass, loadQrPass, saveQrPass } from '../services/qrPassStorage';
 import { formatDate, formatTime } from '../utils';
+import {
+  formatLastUpdated,
+  isDefinitiveNoPass,
+  isServerUnreachable,
+} from '../utils/qrPassCache';
 import {
   isPassExpired,
   isQrPassDay,
@@ -216,15 +223,61 @@ export default function QRCodeScreen({ route, navigation }) {
   const [laterPass, setLaterPass] = useState(null);
   const hasLoadedOnce = useRef(false);
 
+  // Offline copy of the pass (SecureStore). Display only: the Front Desk
+  // verifies every scan online. `offline` = the pass on screen is the saved
+  // copy (or the server could not be reached on refresh); `savedAt` = when
+  // the pass on screen was last confirmed by the server.
+  const { user } = useAuth();
+  const accountId = user?.id ?? null;
+  const cacheRef = useRef(null);
+  const [cacheReady, setCacheReady] = useState(false);
+  // A visit the visitor is inside for, per the saved pass: its pass is shown
+  // even after its day (overnight) until the server says they checked out.
+  const [insideVisitId, setInsideVisitId] = useState(null);
+  const [offline, setOffline] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCacheReady(false);
+    (async () => {
+      const entry = await loadQrPass(accountId);
+      if (cancelled) return;
+      cacheRef.current = entry;
+      setInsideVisitId(entry?.checkedIn ? entry.visitId : null);
+      setCacheReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  const forgetCache = useCallback(async () => {
+    cacheRef.current = null;
+    setInsideVisitId(null);
+    await clearQrPass();
+  }, []);
+
   const load = useCallback(
     async (mode = 'initial') => {
+      if (!cacheReady) return;
       let requestedId = scheduleIdParam;
+      if (requestedId == null && insideVisitId) {
+        // Inside the facility (possibly since yesterday): that visit's pass,
+        // until the server answers that the visitor has checked out.
+        requestedId = insideVisitId;
+      }
       if (requestedId == null) {
         // Wait for the visits list; the effect reruns once it settles.
         if (autoSelection === 'pending') return;
         if (autoSelection === 'none' || autoSelection === 'later') {
+          // The list loaded and today has no confirmed visit: a saved pass
+          // for today is no longer valid (e.g. the visit was cancelled).
+          if (cacheRef.current) await forgetCache();
           setQrPayload(null);
           setLaterPass(null);
+          setOffline(false);
+          setSavedAt(null);
           setError(autoSelection === 'none' ? NO_ACTIVE_QR_MESSAGE : null);
           setLoading(false);
           return;
@@ -241,8 +294,9 @@ export default function QRCodeScreen({ route, navigation }) {
         setError(null);
         setLaterPass(null);
       }
+      let sid = requestedId != null ? String(requestedId) : null;
       try {
-        const sid = await resolveScheduleIdForQr(requestedId);
+        sid = await resolveScheduleIdForQr(requestedId);
         const data = await fetchQrTokenPayload(sid);
         const normalized = normalizeQrPayload(
           data && typeof data === 'object' ? data : {},
@@ -253,26 +307,85 @@ export default function QRCodeScreen({ route, navigation }) {
         if (!normalized.checkedIn && normalized.scheduledAt && !isQrPassDay(normalized)) {
           setQrPayload(null);
           setLaterPass(normalized);
+          setOffline(false);
+          setSavedAt(null);
           setError(null);
           return;
         }
         setLaterPass(null);
         setQrPayload(normalized);
+        setOffline(false);
         setError(null);
         hasLoadedOnce.current = true;
+
+        const entry = await saveQrPass({ accountId, visitId: sid, pass: normalized });
+        cacheRef.current = entry;
+        setSavedAt(entry?.savedAt ?? new Date().toISOString());
+        setInsideVisitId(normalized.checkedIn ? String(sid) : null);
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Failed to load QR pass.';
-        // A failed background refresh (e.g. offline) keeps the pass on
-        // screen; only a definite "no pass" answer from the server clears it.
+        const cached = cacheRef.current;
+
+        if (isServerUnreachable(e)) {
+          if (silent) {
+            // A failed background refresh keeps the pass on screen.
+            setOffline(true);
+            return;
+          }
+          // Offline: show the saved pass of this visit (or of today, when
+          // the visit could not even be looked up).
+          if (cached && (sid == null || cached.visitId === String(sid))) {
+            setLaterPass(null);
+            setQrPayload(cached.pass);
+            setOffline(true);
+            setSavedAt(cached.savedAt);
+            setError(null);
+            hasLoadedOnce.current = true;
+            return;
+          }
+        }
+
+        if (isDefinitiveNoPass(e)) {
+          // The server answered: no pass for this visit (checked out for
+          // good, cancelled, ended…). Delete its saved copy, and let go of
+          // a visit the tab was opened for, so the next eligible one is
+          // picked automatically.
+          if (cached && (sid == null || cached.visitId === String(sid))) {
+            await forgetCache();
+          } else if (insideVisitId) {
+            setInsideVisitId(null);
+          }
+          if (scheduleIdParam != null) {
+            navigation.setParams({ scheduleId: undefined, visitId: undefined });
+          }
+        }
+
+        // A failed background refresh keeps the pass on screen; only a
+        // definite "no pass" answer from the server clears it.
         if (silent && !isNoActiveQrPassError(message)) return;
         setError(message);
         setQrPayload(null);
+        setOffline(false);
+        setSavedAt(null);
       } finally {
         if (silent) setRefreshing(false);
         else setLoading(false);
       }
     },
-    [scheduleIdParam, autoSelection],
+    [scheduleIdParam, autoSelection, cacheReady, insideVisitId, accountId, forgetCache, navigation],
+  );
+
+  // The tab is opened for one visit from Visit Details ("Show QR pass").
+  // Leaving the tab lets go of it, so pressing the tab later picks the
+  // nearest eligible visit again instead of staying on that one.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (scheduleIdParam != null) {
+          navigation.setParams({ scheduleId: undefined, visitId: undefined });
+        }
+      };
+    }, [navigation, scheduleIdParam]),
   );
 
   useEffect(() => {
@@ -296,10 +409,14 @@ export default function QRCodeScreen({ route, navigation }) {
   const tabBarInset = useTabBarScrollInset();
   const showNoActivePass = !loading && !qrPayload && isNoActiveQrPassError(error);
   const passStatus = getPassStatus(isExpired, checkedIn);
+  const lastUpdated = qrPayload ? formatLastUpdated(savedAt, now) : null;
 
   // Confirmed visit on a later date: its details, no pass yet.
+  // Not while the visitor is inside for another visit: that pass comes first.
   const laterVisit =
-    scheduleIdParam == null && selection && !selection.passDay ? selection.visit : null;
+    scheduleIdParam == null && !insideVisitId && selection && !selection.passDay
+      ? selection.visit
+      : null;
   const later = laterVisit
     ? {
         dateDisplay: laterVisit.dateDisplay || formatDate(laterVisit.scheduledAt),
@@ -399,6 +516,17 @@ export default function QRCodeScreen({ route, navigation }) {
           </View>
         ) : (
           <>
+            {offline ? (
+              <View style={styles.offlineBox} accessibilityRole="alert">
+                <Ionicons name="cloud-offline-outline" size={18} color={colors.warning} />
+                <Text style={styles.offlineText}>
+                  Offline — showing your saved pass
+                  {lastUpdated ? ` (last updated ${lastUpdated})` : ''}. The Front Desk
+                  verifies it online when you arrive.
+                </Text>
+              </View>
+            ) : null}
+
             <Card style={styles.passCard}>
               <PassStatusBanner status={passStatus} />
 
@@ -443,6 +571,11 @@ export default function QRCodeScreen({ route, navigation }) {
                 <Text style={styles.summaryPdl} numberOfLines={2}>
                   {qrPayload?.pdlName}
                 </Text>
+                {lastUpdated ? (
+                  <Text style={styles.lastUpdated}>
+                    {offline ? 'Saved' : 'Updated'} {lastUpdated}
+                  </Text>
+                ) : null}
               </View>
             </Card>
 
@@ -594,6 +727,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
     textAlign: 'center',
+  },
+  lastUpdated: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  offlineBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderRadius: layout.cardRadius,
+    padding: spacing.sm,
+    marginBottom: layout.cardGap,
+  },
+  offlineText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    flex: 1,
   },
   noticeBox: {
     flexDirection: 'row',

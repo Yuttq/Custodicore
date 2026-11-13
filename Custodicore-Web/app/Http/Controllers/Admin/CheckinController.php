@@ -92,8 +92,8 @@ class CheckinController extends Controller
             $c['pdl'],
             $c['purpose'],
             $c['check_in_time'] ?? '—',
-            $c['check_out_time'] ?? 'Still inside',
-            ucwords(str_replace('_', ' ', (string) $c['status'])),
+            $c['check_out_time'] ?? ($c['status'] === 'checked_in' ? 'Still inside' : 'Not recorded'),
+            $c['status'] === 'exit_unrecorded' ? 'Exit Not Recorded' : ucwords(str_replace('_', ' ', (string) $c['status'])),
         ], $rows);
 
         $pdf = SimplePdf::table('Check-In / Check-Out Log', $meta, $columns, $body, 'CustodiCore · Admin · Check-In / Check-Out');

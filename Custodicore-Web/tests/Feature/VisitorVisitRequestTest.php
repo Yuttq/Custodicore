@@ -579,14 +579,17 @@ class VisitorVisitRequestTest extends TestCase
     public function test_visitor_cannot_confirm_when_the_pdl_became_ineligible(): void
     {
         $visit = $this->staffAssignedVisit();
-        PdlRestriction::create([
+        // Saved without model events: a restriction normally cancels the
+        // pending visit at once (QrWorkflowFixesTest). This checks the
+        // confirm-time guard on its own.
+        PdlRestriction::withoutEvents(fn () => PdlRestriction::create([
             'pdl_id' => $this->pdl->pdl_id,
             'restriction_type' => 'quarantine',
             'status' => 'active',
             'start_date' => '2026-10-01',
             'reason' => 'Health protocol',
             'imposed_by' => StaffProfile::first()->staff_id,
-        ]);
+        ]));
         Sanctum::actingAs($this->visitorAccount);
 
         $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")

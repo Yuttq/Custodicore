@@ -72,7 +72,7 @@
                             <td class="py-sm pr-md">{{ $checkin['pdl'] }}</td>
                             <td class="py-sm pr-md">{{ $checkin['purpose'] }}</td>
                             <td class="py-sm pr-md text-text-secondary">{{ $checkin['check_in_time'] }}</td>
-                            <td class="py-sm pr-md text-text-secondary">{{ $checkin['check_out_time'] ?? 'Still inside' }}</td>
+                            <td class="py-sm pr-md text-text-secondary">{{ $checkin['check_out_time'] ?? ($checkin['status'] === 'checked_in' ? 'Still inside' : 'Not recorded') }}</td>
                             <td class="py-sm pr-md">@include('admin.partials.status-chip', ['status' => $checkin['status']])</td>
                         </tr>
                     @empty

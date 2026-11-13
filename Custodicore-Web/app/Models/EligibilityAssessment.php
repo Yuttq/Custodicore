@@ -105,7 +105,11 @@ class EligibilityAssessment extends Model
             : 'clean';
 
         // 4. PDL restriction check
-        $restrictionResult = ($pdl && $pdl->activeRestrictions()->exists())
+        // Checked against the visit date: a restriction may start or end before it.
+        $visitDate = $visitRequest->relationLoaded('schedule')
+            ? $visitRequest->schedule?->schedule_date
+            : VisitSchedule::whereKey($visitRequest->schedule_id)->value('schedule_date');
+        $restrictionResult = ($pdl && $pdl->restrictionsOn($visitDate ?? today())->exists())
             ? 'restricted'
             : 'no_restriction';
 

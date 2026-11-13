@@ -1071,6 +1071,12 @@
                                     <td class="py-sm pr-md">
                                         @if ($checkin->isCheckedIn())
                                             <span class="font-semibold text-success">Inside</span>
+                                            @if (in_array((int) $checkin->visit_request_id, $overstayedVisitIds ?? [], true))
+                                                <span class="cc-chip cc-chip-danger ml-xs" title="Still inside after the visit's last session ended">Overstayed</span>
+                                                @include('frontdesk.partials.close-unrecorded-form', ['checkin' => $checkin])
+                                            @endif
+                                        @elseif ($checkin->isExitUnrecorded())
+                                            <span class="font-semibold text-warning" title="Closed by staff: no check-out was recorded at the gate">Exit not recorded</span>
                                         @else
                                             <span class="font-semibold text-text-secondary">Checked Out</span>
                                         @endif
@@ -2152,6 +2158,9 @@
 
 </div>
 
+{{-- Password step of "Close record – exit not recorded". --}}
+@include('partials.password-confirm')
+
 
 {{-- ============================================================
     WORKFLOW JAVASCRIPT
@@ -3098,7 +3107,7 @@ function showCheckinStep(step) {
             result.innerHTML = `
                 <div class="flex items-center justify-between gap-md">
                     <div class="min-w-0">
-                        <p class="text-body font-semibold text-text-primary">${escapeCheckoutHtml(visitor.visitorName)}</p>
+                        <p class="text-body font-semibold text-text-primary">${escapeCheckoutHtml(visitor.visitorName)}${visitor.overstayed ? ' <span class="cc-chip cc-chip-danger ml-xs" title="Still inside after the visit\'s last session ended">Overstayed</span>' : ''}</p>
                         <p class="mt-xs text-metadata text-text-secondary">Visitor ID: ${escapeCheckoutHtml(visitor.visitorId ?? '—')}</p>
                         <p class="mt-xs text-metadata text-text-secondary">Visiting ${escapeCheckoutHtml(visitor.pdlName)} (${escapeCheckoutHtml(visitor.pdlNumber)})</p>
                         <p class="mt-xs text-metadata text-text-secondary">Checked in ${escapeCheckoutHtml(visitor.checkinTime)}</p>
@@ -4175,7 +4184,8 @@ function showCheckinStep(step) {
     /* Today's Check-Ins / Check-Outs: clicking anywhere on a row opens the visitor in Visitor Lookup. */
     document.addEventListener('click', e => {
         const row = e.target.closest('tr[data-row-href]');
-        if (!row || e.target.closest('a, button, input, select, textarea, label')) return;
+        // details: the "Close record – exit not recorded" form inside a row.
+        if (!row || e.target.closest('a, button, input, select, textarea, label, details')) return;
         if (window.getSelection()?.toString()) return; // selecting text, not opening
         if (e.ctrlKey || e.metaKey) window.open(row.dataset.rowHref, '_blank');
         else window.location.href = row.dataset.rowHref;

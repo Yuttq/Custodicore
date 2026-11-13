@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { USE_MOCK_AUTH } from '../mock/devFlags';
+import { clearQrPass } from '../services/qrPassStorage';
 import client, {
   getMe,
   getStoredToken,
@@ -186,6 +187,8 @@ export function AuthProvider({ children }) {
         REGISTRATION_SUMMARY_KEY,
         USER_KEY,
       ]);
+      // The offline copy of the QR pass never outlives the session.
+      await clearQrPass();
       setToken(null);
       setUser(null);
       setPendingVerification(false);

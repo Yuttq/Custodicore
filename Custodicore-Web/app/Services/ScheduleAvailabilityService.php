@@ -77,7 +77,7 @@ class ScheduleAvailabilityService
     {
         return VisitorPdlRelationship::where('visitor_id', $visitor->visitor_id)
             ->where('verification_status', 'verified')
-            ->with(['pdl.activeRestrictions'])
+            ->with(['pdl.restrictions'])
             ->orderBy('relationship_id')
             ->get()
             ->filter(fn ($r) => $r->pdl !== null)
@@ -207,7 +207,7 @@ class ScheduleAvailabilityService
         CarbonImmutable $date,
         string $startTime
     ): ?array {
-        $relationship->loadMissing('pdl.activeRestrictions');
+        $relationship->loadMissing('pdl.restrictions');
         if (! $relationship->pdl) {
             return null;
         }
@@ -230,7 +230,9 @@ class ScheduleAvailabilityService
     ): array {
         $pdl = $relationship->pdl;
         $classification = $pdl->classification;
-        $pdlAvailable = $pdl->custody_status === 'active' && $pdl->activeRestrictions->isEmpty();
+        // Today, for the relationship-level message; each day below is
+        // checked against its own date (a restriction may start or end later).
+        $pdlAvailable = $pdl->isVisitableOn($now);
         // The PDL's dorm schedule if their dorm has one, else their classification's days.
         $classificationRules = FacilityVisitationRule::rulesForPdl($pdl, $rules);
 
@@ -238,7 +240,7 @@ class ScheduleAvailabilityService
         for ($date = $from; $date->lte($to); $date = $date->addDay()) {
             $days[] = $this->dayAvailability(
                 $date, $relationship, $classificationRules, $rules, $schedules,
-                $occupied, $ownBookings, $weekly, $pdlAvailable, $now
+                $occupied, $ownBookings, $weekly, $pdl->isVisitableOn($date), $now
             );
         }
 

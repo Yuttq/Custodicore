@@ -87,6 +87,16 @@ class VisitAssignmentService
     public const REVIEW_EXPIRED_REASON = 'The visit date passed before the request was reviewed.';
 
     /**
+     * cancellation_reason of a visit cancelled because its PDL left custody or
+     * has a restriction on the visit date (shown to the visitor). Generic on
+     * purpose: the actual reason is staff-only and kept in the audit log.
+     */
+    public const PDL_UNAVAILABLE_REASON = 'The PDL is not available for visitation on this date. Please contact the facility.';
+
+    /** Statuses cancelled when the PDL becomes unavailable (`assigned` goes through review). */
+    private const CANCELLABLE_WHEN_PDL_UNAVAILABLE = ['confirmed', 'pending_confirmation'];
+
+    /**
      * @param  array{visitor_id:int,pdl_id:int,relationship_id:int,schedule_id:int,confirmation_deadline?:string|null}  $input
      */
     public function assign(array $input): VisitRequest
@@ -97,7 +107,7 @@ class VisitAssignmentService
         $schedule = VisitSchedule::with('rule')->find($input['schedule_id']);
 
         $this->assertVisitorAssignable($visitor);
-        $this->assertPdlAssignable($pdl);
+        $this->assertPdlAssignable($pdl, $schedule?->schedule_date);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
         $this->assertScheduleAssignable($schedule, $pdl);
         $this->assertSessionNotEnded($schedule);
@@ -298,7 +308,7 @@ class VisitAssignmentService
         $visitor->loadMissing('account');
         $pdl = Pdl::with('activeRestrictions')->find($relationship->pdl_id);
         $this->assertVisitorAssignable($visitor);
-        $this->assertPdlAssignable($pdl);
+        $this->assertPdlAssignable($pdl, $date);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
         return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots, $status, $deadline, $duplicateMessage, $otherPdlMessage, $afterCreate) {
@@ -377,7 +387,7 @@ class VisitAssignmentService
             $visitRequest->load(['visitor.account', 'pdl.activeRestrictions', 'relationship', 'schedule']);
 
             $this->assertVisitorAssignable($visitRequest->visitor);
-            $this->assertPdlAssignable($visitRequest->pdl);
+            $this->assertPdlAssignable($visitRequest->pdl, $visitRequest->schedule?->schedule_date);
 
             if (! $visitRequest->relationship?->isVerified()) {
                 throw ValidationException::withMessages([
@@ -492,7 +502,7 @@ class VisitAssignmentService
             }
 
             $this->assertVisitorAssignable($visitRequest->visitor);
-            $this->assertPdlAssignable($visitRequest->pdl);
+            $this->assertPdlAssignable($visitRequest->pdl, $visitRequest->schedule?->schedule_date);
             $this->assertRelationshipAssignable($visitRequest->relationship, $visitRequest->visitor, $visitRequest->pdl);
 
             $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
@@ -697,6 +707,85 @@ class VisitAssignmentService
         });
     }
 
+    /**
+     * Cancels the PDL's confirmed and pending-confirmation visits dated today
+     * or later that the PDL can no longer receive (left custody, or a
+     * restriction covers the visit date), releasing their seats and
+     * notifying the visitor with a generic message. $staffDetail (e.g.
+     * "quarantine restriction from …") goes only to the audit log.
+     *
+     * Visits already entered at the gate are left alone: a visitor inside can
+     * still check out, and the gate refuses any further entry. `assigned`
+     * requests are left to the review process. Returns how many changed.
+     */
+    public function cancelVisitsForUnavailablePdl(Pdl $pdl, string $staffDetail): int
+    {
+        $ids = VisitRequest::where('pdl_id', $pdl->pdl_id)
+            ->whereIn('status', self::CANCELLABLE_WHEN_PDL_UNAVAILABLE)
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '>=', today()->toDateString()))
+            ->whereDoesntHave('checkins')
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+
+        $cancelled = 0;
+        foreach ($ids as $id) {
+            if ($this->cancelForUnavailablePdl((int) $id, $staffDetail)) {
+                $cancelled++;
+            }
+        }
+
+        return $cancelled;
+    }
+
+    private function cancelForUnavailablePdl(int $visitRequestId, string $staffDetail): bool
+    {
+        return DB::transaction(function () use ($visitRequestId, $staffDetail) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (! $visitRequest || ! in_array($visitRequest->status, self::CANCELLABLE_WHEN_PDL_UNAVAILABLE, true)) {
+                return false;
+            }
+
+            $visitRequest->load(['schedule', 'visitor', 'pdl']);
+            $date = $visitRequest->schedule?->schedule_date;
+
+            if (
+                ! $date || $date->lt(today())
+                || $visitRequest->checkins()->exists()
+                || ($visitRequest->pdl && $visitRequest->pdl->isVisitableOn($date))
+            ) {
+                return false;
+            }
+
+            $visitRequest->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => self::PDL_UNAVAILABLE_REASON,
+            ]);
+
+            $this->releaseSessionSlots($visitRequest);
+
+            $scheduleLabel = $this->visitLabel($visitRequest);
+
+            if ($visitRequest->visitor?->account_id) {
+                Notification::notify(
+                    $visitRequest->visitor->account_id,
+                    'visits',
+                    'Visit Cancelled',
+                    "Your visit on {$scheduleLabel} was cancelled because the PDL is not available for visitation on that date. Please contact the facility.",
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
+            }
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System cancelled visit for {$visitRequest->visitor?->full_name} → {$visitRequest->pdl?->full_name} ({$scheduleLabel}): PDL unavailable — {$staffDetail}",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
+    }
+
     /** IDs of visitor requests still awaiting review whose visit date is before today. */
     public function pastDueAssignedRequestIds(): Collection
     {
@@ -802,7 +891,8 @@ class VisitAssignmentService
         }
     }
 
-    private function assertPdlAssignable(?Pdl $pdl): void
+    /** $date: the visit date the PDL's restrictions are checked against (default today). */
+    private function assertPdlAssignable(?Pdl $pdl, \DateTimeInterface|string|null $date = null): void
     {
         if (! $pdl) {
             throw ValidationException::withMessages(['pdl_id' => 'PDL not found.']);
@@ -814,7 +904,7 @@ class VisitAssignmentService
             ]);
         }
 
-        if ($pdl->activeRestrictions->isNotEmpty()) {
+        if ($pdl->restrictionsOn($date ?? today())->exists()) {
             throw ValidationException::withMessages([
                 'pdl_id' => 'This PDL has an active restriction and is not eligible for visitation.',
             ]);

@@ -8,9 +8,11 @@
         'rejected' => 'danger', 'declined' => 'danger', 'restricted' => 'danger', 'no_show' => 'danger',
         'has_prior_violations' => 'danger', 'flagged' => 'danger', 'suspended' => 'danger', 'inactive' => 'danger',
         'checked_in' => 'info', 'invited' => 'info', 'invite_expired' => 'warning', 'transferred' => 'neutral', 'deceased' => 'neutral', 'closed' => 'neutral', 'void' => 'neutral',
+        'exit_unrecorded' => 'warning',
     ];
     $variant = $map[$status] ?? 'neutral';
-    $label = ucwords(str_replace('_', ' ', (string) $status));
+    // Gate record closed by staff without a check-out (no exit time recorded).
+    $label = $status === 'exit_unrecorded' ? 'Exit Not Recorded' : ucwords(str_replace('_', ' ', (string) $status));
     $dot = [
         'success' => 'bg-success', 'warning' => 'bg-warning',
         'danger' => 'bg-danger', 'info' => 'bg-info', 'neutral' => 'bg-text-secondary',

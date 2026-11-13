@@ -880,6 +880,24 @@ Route::prefix('front-desk')
 
         /*
         |--------------------------------------------------------------------------
+        | Close Record – Exit Not Recorded
+        |--------------------------------------------------------------------------
+        |
+        | For a visitor still marked inside after their visit ended because
+        | nobody recorded the check-out. Not a check-out: no exit time is
+        | recorded. Requires an explanation and the officer's password.
+        |
+        */
+
+        Route::post(
+            '/checkin-checkout/{checkin}/close-unrecorded',
+            [CheckinCheckoutController::class, 'closeUnrecordedExit']
+        )->middleware('reauth')
+            ->name('checkin-checkout.close-unrecorded');
+
+
+        /*
+        |--------------------------------------------------------------------------
         | Visit Schedule
         |--------------------------------------------------------------------------
         |

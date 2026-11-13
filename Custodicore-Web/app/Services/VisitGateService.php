@@ -20,6 +20,9 @@ use Illuminate\Support\Collection;
  *                    -> afternoon re-entry (QR used: no session left to enter)
  *                    -> final check-out (visit completed)
  *
+ * Leaving after the afternoon session has started is the final check-out,
+ * not a midday exit: the visit is completed and there is no re-entry.
+ *
  * A session can be entered until it ends. A later session of the day opens
  * at its own start (the afternoon session opens at 13:00, not during the
  * midday break), so neither a whole-day visitor returning from the midday
@@ -76,17 +79,67 @@ class VisitGateService
 
     /**
      * Whether leaving $checkin's session is a temporary (midday) exit: the
-     * visit has a later session that was not entered and has not ended.
+     * visit has a later session that was not entered and has not started
+     * yet. Leaving once that session has started (e.g. 14:00 for a 13:00
+     * afternoon) is the final check-out: the visitor stayed through it.
      */
     public function hasReturnSession(VisitRequest $visit, VisitCheckin $checkin, ?CarbonInterface $now = null): bool
     {
+        $now ??= now();
         $current = $checkin->schedule;
         if (! $current) {
             return false;
         }
 
         return $this->remainingSessions($visit, $now)
-            ->contains(fn (VisitSchedule $s) => (string) $s->time_slot_start > (string) $current->time_slot_start);
+            ->contains(fn (VisitSchedule $s) => (string) $s->time_slot_start > (string) $current->time_slot_start
+                && $now->lt($this->startsAt($s)));
+    }
+
+    /**
+     * Why the visit's PDL cannot be visited today (left custody, or a
+     * restriction covering today), or null when they can. Read from the
+     * database so a change a moment ago is seen. Check-out never uses this.
+     */
+    public function pdlUnavailableMessage(VisitRequest $visit, ?CarbonInterface $now = null): ?string
+    {
+        $pdl = \App\Models\Pdl::find($visit->pdl_id);
+
+        return $pdl && $pdl->isVisitableOn(($now ?? now())->toDateString())
+            ? null
+            : self::PDL_UNAVAILABLE_MESSAGE;
+    }
+
+    public const PDL_UNAVAILABLE_MESSAGE =
+        'This PDL is not available for visitation today. Do not admit the visitor; refer them to the Warden.';
+
+    /**
+     * End of the visit's last session (11:30 for a morning visit, 16:30 for
+     * an afternoon or whole-day one) — when a pass expires and after which
+     * a visitor still inside has overstayed. Null without a schedule.
+     */
+    public function lastSessionEnd(VisitRequest $visit): ?Carbon
+    {
+        $sessions = $visit->relationLoaded('sessionSchedules')
+            ? $visit->sessionSchedules->sortBy(fn ($s) => (string) $s->time_slot_start)
+            : $visit->sessionSchedules()->get();
+        $last = $sessions->last() ?? $visit->schedule;
+
+        return $last ? $this->endsAt($last) : null;
+    }
+
+    /**
+     * Whether a visitor of this visit is inside after the visit's last
+     * session ended. Uses the gate records' check-in/check-out state only.
+     */
+    public function isOverstayed(VisitRequest $visit, ?CarbonInterface $now = null): bool
+    {
+        $inside = $visit->relationLoaded('checkins')
+            ? $visit->checkins->contains('status', 'checked_in')
+            : $visit->checkins()->where('status', 'checked_in')->exists();
+        $end = $inside ? $this->lastSessionEnd($visit) : null;
+
+        return $end !== null && ($now ?? now())->gt($end);
     }
 
     /** Whether $session is the visit's last session (no later one to enter). */
@@ -108,6 +161,11 @@ class VisitGateService
     {
         return Carbon::parse((string) $session->time_slot_start)->format('H:i')
             .' - '.Carbon::parse((string) $session->time_slot_end)->format('H:i');
+    }
+
+    private function startsAt(VisitSchedule $session): Carbon
+    {
+        return Carbon::parse($session->schedule_date->toDateString().' '.$session->time_slot_start);
     }
 
     private function endsAt(VisitSchedule $session): Carbon

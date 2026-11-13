@@ -80,12 +80,15 @@
                             <td class="py-sm pr-md">{{ $out?->format('H:i') ?? '—' }}</td>
                             <td class="py-sm pr-md">
                                 <span class="block"><span class="text-metadata text-text-secondary">In:</span> {{ $entry->checkInOfficer?->full_name ?? '—' }}</span>
-                                <span class="block"><span class="text-metadata text-text-secondary">Out:</span> {{ $entry->checkOutOfficer?->full_name ?? ($out ? '—' : 'Not yet') }}</span>
+                                <span class="block"><span class="text-metadata text-text-secondary">Out:</span> {{ $entry->checkOutOfficer?->full_name ?? ($out ? '—' : ($entry->isExitUnrecorded() ? 'Not recorded' : 'Not yet')) }}</span>
                             </td>
                             <td class="py-sm pr-md">
                                 {{ $entry->id_surrendered_type ? (new \App\Models\VisitorId(['id_type' => $entry->id_surrendered_type]))->typeLabel() : '—' }}
                                 @if ($entry->id_returned_time)
                                     <span class="block text-metadata text-success">Returned {{ $entry->id_returned_time->format('H:i') }}</span>
+                                @elseif ($entry->id_surrendered_type && $entry->isExitUnrecorded())
+                                    {{-- Closed without a check-out: the ID's whereabouts are in the audit log. --}}
+                                    <span class="block text-metadata text-text-secondary">Return not recorded</span>
                                 @elseif ($entry->id_surrendered_type)
                                     <span class="block text-metadata text-[#D97706]">Still held</span>
                                 @endif

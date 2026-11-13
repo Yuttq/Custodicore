@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\FrontDesk;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\FrontDesk\CloseUnrecordedExitRequest;
 use App\Http\Requests\FrontDesk\ManualCheckInRequest;
 use App\Http\Requests\FrontDesk\QrCheckInRequest;
 use App\Http\Requests\FrontDesk\ScanQrRequest;
@@ -48,6 +49,9 @@ class CheckinCheckoutController extends Controller
     private const ACCOUNT_INACTIVE_MESSAGE =
         "This visitor's account is deactivated. Do not admit them; refer them to the Warden.";
 
+    private const ALREADY_INSIDE_MESSAGE =
+        'This visitor is already inside. Switch to Check-Out and record their check-out.';
+
     public function __construct(
         private VisitGateService $gate
     ) {
@@ -88,10 +92,24 @@ class CheckinCheckoutController extends Controller
                 'visitRequest.visitor',
                 'visitRequest.pdl',
                 'visitRequest.schedule',
+                'visitRequest.sessionSchedules',
+                'visitRequest.checkins',
                 'qrCode',
             ])
             ->orderByDesc('check_in_time')
             ->get();
+
+        /*
+         * Visits whose visitor is still inside after the visit's last
+         * session ended (Overstayed badge).
+         */
+        $overstayedVisitIds = $insideNow
+            ->filter(fn (VisitCheckin $c) => $c->visitRequest && $this->gate->isOverstayed($c->visitRequest))
+            ->pluck('visit_request_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
 
         /*
          * Today's complete gate history.
@@ -152,7 +170,7 @@ class CheckinCheckoutController extends Controller
         })->values();
 
         $manualCheckoutVisitors = $insideNow->filter(fn (VisitCheckin $c) => $c->visitRequest)
-            ->map(function (VisitCheckin $checkin) {
+            ->map(function (VisitCheckin $checkin) use ($overstayedVisitIds) {
                 $visit = $checkin->visitRequest;
                 $details = $this->visitDetails($visit, 'Checked in');
                 $registeredIds = $this->registeredIds($visit->visitor?->visitor_id);
@@ -181,6 +199,7 @@ class CheckinCheckoutController extends Controller
                         ? Carbon::parse($checkin->check_in_time)->format('M d, Y H:i')
                         : '—',
                     'status' => 'Inside Facility',
+                    'overstayed' => in_array((int) $visit->visit_request_id, $overstayedVisitIds, true),
                     'registeredIdType' => $registered['type_label'] ?? '—',
                     'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
                     'idType' => $surrendered['type_label'],
@@ -195,7 +214,8 @@ class CheckinCheckoutController extends Controller
                 'todayHistory',
                 'todayCheckouts',
                 'manualCheckinVisitors',
-                'manualCheckoutVisitors'
+                'manualCheckoutVisitors',
+                'overstayedVisitIds'
             )
         );
     }
@@ -438,6 +458,19 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
+             * Wrong scan mode: a visitor already inside is told apart before
+             * the pass's status and expiry (which a pass shown at the exit
+             * fails), so the officer is pointed to check-out.
+             */
+            if ($qr->visitRequest && $this->gate->activeCheckin($qr->visitRequest)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => self::ALREADY_INSIDE_MESSAGE,
+                    'already_inside' => true,
+                ], 422);
+            }
+
+            /*
              * QR must still be active.
              */
             if ($qr->status !== 'active') {
@@ -498,13 +531,13 @@ class CheckinCheckoutController extends Controller
             }
 
             /*
-             * Prevent scanning an already checked-in visitor.
+             * The PDL must be in custody with no restriction covering
+             * today. No front-desk override.
              */
-            if ($this->gate->activeCheckin($visitRequest)) {
+            if ($pdlError = $this->gate->pdlUnavailableMessage($visitRequest)) {
                 return response()->json([
                     'success' => false,
-                    'message' =>
-                        'This visitor is already checked in. Please record their check-out first.',
+                    'message' => $pdlError,
                 ], 422);
             }
 
@@ -690,6 +723,18 @@ class CheckinCheckoutController extends Controller
                     ->find($qr->qr_code_id);
 
                 /*
+                 * Already inside: checked before the pass's status and
+                 * expiry, so the officer is pointed to check-out.
+                 */
+                if ($visitRequest && $this->gate->activeCheckin($visitRequest)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => self::ALREADY_INSIDE_MESSAGE,
+                        'already_inside' => true,
+                    ], 422);
+                }
+
+                /*
                  * QR must still be active.
                  */
                 if (! $qr || $qr->status !== 'active') {
@@ -749,13 +794,13 @@ class CheckinCheckoutController extends Controller
                 }
 
                 /*
-                 * Prevent duplicate check-in.
+                 * Re-checked under the lock: the PDL may have left custody
+                 * or been restricted after the scan. No override.
                  */
-                if ($this->gate->activeCheckin($visitRequest)) {
+                if ($pdlError = $this->gate->pdlUnavailableMessage($visitRequest)) {
                     return response()->json([
                         'success' => false,
-                        'message' =>
-                            'This visitor is already checked in. Please record their check-out first.',
+                        'message' => $pdlError,
                     ], 422);
                 }
 
@@ -1093,7 +1138,7 @@ class CheckinCheckoutController extends Controller
                 if ($this->gate->activeCheckin($visitRequest)) {
                     return back()->with(
                         'error',
-                        'This visitor is already checked in. Please record their check-out first.'
+                        self::ALREADY_INSIDE_MESSAGE
                     );
                 }
 
@@ -1122,6 +1167,14 @@ class CheckinCheckoutController extends Controller
 
                 if ($this->visitorAccountInactive($visitRequest)) {
                     return back()->with('error', self::ACCOUNT_INACTIVE_MESSAGE);
+                }
+
+                /*
+                 * The PDL must be in custody with no restriction covering
+                 * today. No override, manual check-in included.
+                 */
+                if ($pdlError = $this->gate->pdlUnavailableMessage($visitRequest)) {
+                    return back()->with('error', $pdlError);
                 }
 
                 /*
@@ -1420,5 +1473,123 @@ class CheckinCheckoutController extends Controller
                     ? 'Visitor exited for the midday break. The same QR pass admits them for the afternoon session.'
                     : 'Visitor checked out successfully.'
             );
+    }
+
+    /**
+     * ---------------------------------------------------------------
+     * CLOSE RECORD – EXIT NOT RECORDED
+     * ---------------------------------------------------------------
+     *
+     * For a visitor still marked inside after the visit's last session
+     * ended because nobody recorded their check-out. This is NOT a
+     * check-out: no exit was witnessed, so check_out_time,
+     * check_out_officer_id and id_returned_time stay empty. The gate
+     * record becomes `exit_unrecorded`, the visit is completed and its QR
+     * retired, and the audit log keeps who closed it, why, and whether the
+     * visitor's surrendered ID is still at the desk. Password-confirmed
+     * (`reauth`). The nightly job never does this on its own.
+     */
+    public function closeUnrecordedExit(
+        CloseUnrecordedExitRequest $request,
+        VisitCheckin $checkin
+    ): RedirectResponse {
+
+        $data = $request->validated();
+
+        if ($this->actingStaffId() === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        try {
+
+            /*
+             * Same lock order as check-in and check-out: the visit, then
+             * this gate record. A repeated or concurrent request waits,
+             * then finds the record no longer inside and changes nothing.
+             */
+            $result = DB::transaction(function () use ($checkin, $data) {
+
+                $visitRequest = VisitRequest::lockForUpdate()
+                    ->find($checkin->visit_request_id);
+
+                $checkin = VisitCheckin::lockForUpdate()
+                    ->find($checkin->checkin_id);
+
+                if (! $checkin || ! $checkin->isCheckedIn() || ! $visitRequest) {
+                    return back()->with('error', 'This visitor is not marked inside any more.');
+                }
+
+                /*
+                 * Only once the visit's last session has ended: during the
+                 * visit the visitor may really be inside.
+                 */
+                if (! $this->gate->isOverstayed($visitRequest)) {
+                    return back()->with(
+                        'error',
+                        'This record can only be closed after the visit\'s last session has ended. If the visitor is leaving now, record their check-out instead.'
+                    );
+                }
+
+                $checkin->update([
+                    'status' => VisitCheckin::STATUS_EXIT_UNRECORDED,
+                ]);
+
+                /*
+                 * The last session has ended, so no session is left to
+                 * enter: the visit is over, as after a final check-out.
+                 */
+                if ($visitRequest->status === 'confirmed') {
+                    $visitRequest->update(['status' => 'completed']);
+                }
+
+                $visitRequest->qrCode()
+                    ->where('status', 'active')
+                    ->update(['status' => 'used']);
+
+                /*
+                 * Written in the same transaction: the record is never
+                 * closed without its explanation. The reason comes before
+                 * the visitor's name so a long entry loses the name (the
+                 * visit number already identifies it), not the reason.
+                 */
+                AuditLog::record(
+                    'update',
+                    'visit_checkins',
+                    $checkin->checkin_id,
+                    Str::limit(
+                        "Closed record – exit not recorded (visit #{$visitRequest->visit_request_id}, checked in "
+                            .($checkin->check_in_time?->format('M j, Y H:i') ?? '—').'). '
+                            .'Surrendered ID still at desk: '.$data['id_at_desk'].'. '
+                            ."Reason: {$data['reason']}. "
+                            .'Visitor: '.($visitRequest->visitor?->full_name ?? '—'),
+                        255,
+                        ''
+                    ),
+                    Module::CODE_CHECKIN_CHECKOUT
+                );
+
+                return $checkin;
+            });
+
+            if ($result instanceof RedirectResponse) {
+                return $result;
+            }
+
+        } catch (\Throwable $e) {
+
+            Log::error('Closing a record without a check-out failed: '.$e->getMessage());
+
+            return back()->with(
+                'error',
+                'Could not close this record. Please try again, or contact the system administrator if it keeps happening.'
+            );
+        }
+
+        return back()->with(
+            'status',
+            $data['id_at_desk'] === 'yes'
+                ? 'Record closed – exit not recorded. The visitor\'s ID is still at the desk: keep it for collection.'
+                : 'Record closed – exit not recorded.'
+        );
     }
 }

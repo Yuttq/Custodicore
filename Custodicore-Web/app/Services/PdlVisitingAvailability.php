@@ -42,7 +42,7 @@ class PdlVisitingAvailability
         }
 
         $restriction = $pdl->relationLoaded('restrictions')
-            ? $pdl->restrictions->first(fn ($r) => $r->isActive())
+            ? $pdl->restrictions->first(fn ($r) => $r->coversDate($now))
             : $pdl->activeRestrictions()->first();
         if ($restriction) {
             return $base + ['state' => 'restricted', 'label' => 'Restricted: ' . ucwords(str_replace('_', ' ', $restriction->restriction_type))];

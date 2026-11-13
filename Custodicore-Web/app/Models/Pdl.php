@@ -52,6 +52,16 @@ class Pdl extends Model
                 $pdl->full_name = self::composeFullName($pdl->first_name, $pdl->middle_name, $pdl->last_name);
             }
         });
+
+        // Leaving active custody cancels the PDL's upcoming visits.
+        static::updated(function (Pdl $pdl) {
+            if ($pdl->wasChanged('custody_status') && $pdl->custody_status !== 'active') {
+                app(\App\Services\VisitAssignmentService::class)->cancelVisitsForUnavailablePdl(
+                    $pdl,
+                    "custody status changed to {$pdl->custody_status}"
+                );
+            }
+        });
     }
 
     public static function composeFullName(?string $first, ?string $middle, ?string $last): string
@@ -143,9 +153,31 @@ class Pdl extends Model
             ->orderBy('created_at', 'desc');
     }
 
+    /** Restrictions in effect today: active and dated to cover today. */
     public function activeRestrictions()
     {
-        return $this->restrictions()->where('status', 'active');
+        return $this->restrictionsOn(today());
+    }
+
+    /** Restrictions in effect on $date: active and dated to cover it. */
+    public function restrictionsOn(\DateTimeInterface|string $date)
+    {
+        return $this->restrictions()->inEffectOn($date);
+    }
+
+    /**
+     * Whether a visit with this PDL may take place on $date: in active
+     * custody and no restriction covering that date.
+     */
+    public function isVisitableOn(\DateTimeInterface|string $date): bool
+    {
+        if ($this->custody_status !== 'active') {
+            return false;
+        }
+
+        return $this->relationLoaded('restrictions')
+            ? ! $this->restrictions->contains(fn (PdlRestriction $r) => $r->coversDate($date))
+            : ! $this->restrictionsOn($date)->exists();
     }
 
     public function visitorRelationships()

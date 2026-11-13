@@ -132,6 +132,11 @@ class VisitorLookupController extends Controller
             return ['label' => 'Inside since '.Carbon::parse($active->check_in_time)->format('H:i'), 'status' => 'checked_in'];
         }
 
+        // Closed by staff without a check-out: no exit time to show.
+        if ($visit->checkins->contains('status', \App\Models\VisitCheckin::STATUS_EXIT_UNRECORDED)) {
+            return ['label' => 'Exit not recorded', 'status' => \App\Models\VisitCheckin::STATUS_EXIT_UNRECORDED];
+        }
+
         $last = $visit->checkins->sortByDesc('check_out_time')->first();
         if ($last?->check_out_time) {
             return ['label' => 'Left at '.Carbon::parse($last->check_out_time)->format('H:i'), 'status' => 'checked_out'];

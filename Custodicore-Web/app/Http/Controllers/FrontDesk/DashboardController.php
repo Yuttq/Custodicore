@@ -51,7 +51,13 @@ class DashboardController extends Controller
         // Includes a whole-day visitor out for the midday break.
         $upcomingArrivals = CheckinCheckoutController::expectedToday()->take(5)->load('sessionSchedules');
 
-        return view('frontdesk.dashboard', compact('stats', 'upcomingArrivals'));
+        // Gate records from an earlier day still marked inside: a check-out
+        // was most likely never recorded (see "Close record – exit not recorded").
+        $unresolvedInside = VisitCheckin::where('status', 'checked_in')
+            ->whereDate('check_in_time', '<', today()->toDateString())
+            ->count();
+
+        return view('frontdesk.dashboard', compact('stats', 'upcomingArrivals', 'unresolvedInside'));
     }
 
     /** Live card counts, polled by the dashboard so check-ins and check-outs show without a reload. */

@@ -67,8 +67,19 @@ class VisitCheckin extends Model
         return $this->belongsTo(StaffProfile::class, 'check_out_officer_id', 'staff_id');
     }
 
+    /**
+     * Closed by a Front Desk officer: the visitor was never checked out at
+     * the gate. No exit time, officer or ID return is recorded.
+     */
+    public const STATUS_EXIT_UNRECORDED = 'exit_unrecorded';
+
     public function isCheckedIn(): bool
     {
         return $this->status === 'checked_in';
+    }
+
+    public function isExitUnrecorded(): bool
+    {
+        return $this->status === self::STATUS_EXIT_UNRECORDED;
     }
 }

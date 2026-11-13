@@ -1,5 +1,7 @@
 @extends('layouts.frontdesk')
 
+@inject('gate', 'App\Services\VisitGateService')
+
 @section('title', 'Visit Schedule')
 
 @section('content')
@@ -128,6 +130,12 @@
                                 <td class="py-sm">
                                     @if ($inside)
                                         <span class="font-semibold text-success">Inside</span>
+                                        @if ($gate->isOverstayed($visit))
+                                            <span class="cc-chip cc-chip-danger ml-xs" title="Still inside after the visit's last session ended">Overstayed</span>
+                                            @include('frontdesk.partials.close-unrecorded-form', ['checkin' => $visit->checkins->firstWhere('status', 'checked_in')])
+                                        @endif
+                                    @elseif ($visit->checkins->contains('status', \App\Models\VisitCheckin::STATUS_EXIT_UNRECORDED))
+                                        <span class="font-semibold text-warning" title="Closed by staff: no check-out was recorded at the gate">Exit not recorded</span>
                                     @elseif ($visit->status === 'completed')
                                         <span class="font-semibold text-warning">Checked out</span>
                                     @elseif ($visit->checkins->isNotEmpty())
@@ -149,5 +157,7 @@
         @endif
     </div>
 @include('partials.live-refresh')
+{{-- Password step of "Close record – exit not recorded". --}}
+@include('partials.password-confirm')
 @endsection
 
