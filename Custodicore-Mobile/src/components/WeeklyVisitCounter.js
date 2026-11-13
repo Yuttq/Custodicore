@@ -16,8 +16,11 @@ import {
  * holding `date`. The count is the backend's (GET /api/schedules/availability
  * `weeklyLimit`) and covers ALL the visitor's linked PDLs together, so it
  * refreshes whenever availability reloads (e.g. after a request is sent).
- * At the limit it explains why no date that week can be chosen. Renders
- * nothing when the backend reported no usage for that week.
+ * One line only: the week and the count, amber at the limit. The full
+ * explanation (limit across all PDLs, later weeks, what counts) is read by
+ * screen readers only; tapping a full week's date shows it in the
+ * "Weekly Visit Limit Reached" pop-up. Renders nothing when the backend
+ * reported no usage for that week.
  *
  * @param {object} props
  * @param {{ limit: number; weeks: Record<string, number> } | null | undefined} props.weeklyLimit
@@ -64,15 +67,6 @@ export default function WeeklyVisitCounter({ weeklyLimit, date }) {
           {label}
         </Text>
       </View>
-      {usage.reached ? (
-        <>
-          <Text style={styles.reached}>{weeklyLimitReachedMessage(usage)}</Text>
-          {/* Only here: a visitor at the limit may not have visited yet. */}
-          <Text style={styles.note}>{WEEKLY_SLOTS_COUNTED_NOTE}</Text>
-        </>
-      ) : (
-        <Text style={styles.note}>{weeklyLimitNote(usage.limit)}</Text>
-      )}
     </View>
   );
 }
@@ -110,15 +104,5 @@ const styles = StyleSheet.create({
   },
   countReached: {
     color: colors.warningText,
-  },
-  note: {
-    ...typography.metadata,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  reached: {
-    ...typography.metadata,
-    color: colors.warningText,
-    marginTop: spacing.xs,
   },
 });
