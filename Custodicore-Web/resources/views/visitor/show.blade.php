@@ -122,25 +122,9 @@
               Matches {{ $match->full_name }} ({{ $match->pdl_number }}, {{ ucfirst($match->custody_status) }}).
               Linked automatically as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? 'the given relationship' }} once every document is approved.
             @elseif ($checks['matches']->isNotEmpty())
-              Several PDLs match the name or number given. Link the right one:
+              Several PDLs match the name or number given.
             @else
-              No PDL matches "{{ $visitor->intended_pdl_name }}"{{ $visitor->intended_pdl_number ? ' / '.$visitor->intended_pdl_number : '' }}. Search for the PDL under Relationships to PDLs below.
-            @endif
-            @if (! $locked && $checks['matches']->count() > 1 && $assessment->relationship_type)
-              @foreach ($checks['matches'] as $pdl)
-                <form method="POST" action="{{ route('visitor.relationships.store', $visitor->visitor_id) }}" style="display:flex;gap:8px;align-items:center;margin-top:6px;"
-                      data-confirm="Link {{ $visitor->full_name }} to {{ $pdl->full_name }} ({{ $pdl->pdl_number }}) as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] }}?"
-                      data-confirm-title="Link PDL" data-confirm-ok="Link">
-                  @csrf
-                  <input type="hidden" name="pdl_id" value="{{ $pdl->pdl_id }}">
-                  <input type="hidden" name="relationship_type" value="{{ $assessment->relationship_type }}">
-                  @if ($assessment->has_children_together !== null)
-                    <input type="hidden" name="has_children_together" value="{{ $assessment->has_children_together ? 1 : 0 }}">
-                  @endif
-                  <span style="color:var(--text);">{{ $pdl->full_name }} · {{ $pdl->pdl_number }} · {{ ucfirst($pdl->custody_status) }}</span>
-                  <button type="submit" class="row-action" style="color:var(--green);">Link as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] }}</button>
-                </form>
-              @endforeach
+              No PDL matches "{{ $visitor->intended_pdl_name }}"{{ $visitor->intended_pdl_number ? ' / '.$visitor->intended_pdl_number : '' }}. The Front Desk selects the PDL.
             @endif
           </td>
         </tr>
@@ -210,24 +194,6 @@
                 @if ($doc->file_path)
                   <a class="row-action" href="{{ route('visitor.ids.file', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" target="_blank" rel="noopener">View</a>
                 @endif
-                @if (! $locked && $doc->verification_status === 'pending')
-                  <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                        data-confirm="Approve this {{ $doc->typeLabel() }}? Only do this after checking it matches the visitor."
-                        data-confirm-title="Approve ID" data-confirm-ok="Approve">
-                    @csrf
-                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-                  </form>
-                  <details class="acct-reject">
-                    <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                    <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
-                        data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor sees your reason and must upload a new one."
-                        data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
-                      @csrf
-                      <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="Why the ID is rejected"></textarea>
-                      <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
-                    </form>
-                  </details>
-                @endif
               </div>
             </td>
           </tr>
@@ -246,24 +212,6 @@
             <td>
               <div style="display:flex;gap:8px;align-items:flex-start;">
                 <a class="row-action" href="{{ route('relationship-documents.file', $doc->document_id) }}" target="_blank" rel="noopener">View</a>
-                @if (! $locked && $doc->status === 'pending' && $doc->relationship?->verification_status !== 'verified')
-                  <form method="POST" action="{{ route('visitor.walk-in-documents.verify', [$visitor->visitor_id, $doc->document_id]) }}"
-                        data-confirm="Approve the {{ $doc->label() }}? Only do this after checking the names match the visitor and the PDL."
-                        data-confirm-title="Approve Document" data-confirm-ok="Approve">
-                    @csrf
-                    <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-                  </form>
-                  <details class="acct-reject">
-                    <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                    <form method="POST" action="{{ route('visitor.walk-in-documents.reject', [$visitor->visitor_id, $doc->document_id]) }}" class="acct-reject-form"
-                        data-confirm="Reject the {{ $doc->label() }}? The visitor must bring or upload a new one."
-                        data-confirm-title="Reject document" data-confirm-ok="Reject" data-confirm-danger>
-                      @csrf
-                      <textarea name="rejection_reason" required minlength="5" maxlength="500" placeholder="e.g. The names on the certificate do not match"></textarea>
-                      <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
-                    </form>
-                  </details>
-                @endif
               </div>
             </td>
           </tr>
@@ -271,68 +219,29 @@
       </tbody>
     </table>
 
-    {{-- 3. The Records Officer's decision --}}
-    @if ($locked)
-      <p class="muted-cell" style="margin:0 0 12px;">
-        This walk-in was {{ $assessment->label('decision') }}{{ $assessment->visit_request_id ? ' and its visit was booked' : '' }}. The decision is final;
+    {{-- 3. The decision, made at the Front Desk --}}
+    <p class="muted-cell" style="margin:0 0 12px;">
+      @if ($locked)
+        This walk-in was {{ $assessment->label('decision') }} at the Front Desk{{ $assessment->visit_request_id ? ' and its visit was booked' : '' }}. The decision is final;
         for another visit, the Front Desk records a new arrival.
-      </p>
-    @elseif (! $checks['canApprove'])
-      <div class="field-hint" style="margin:0 0 12px;">
-        <strong>Before You Can Approve:</strong>
-        <ul style="margin:4px 0 0;padding-left:18px;">
-          @foreach ($checks['blockers'] as $blocker)<li>{{ $blocker }}</li>@endforeach
-        </ul>
-        You can save the decision as Pending or Rejected meanwhile.
-      </div>
-    @endif
-
-    <form method="POST" action="{{ route('visitor.walk-in-assessment', $visitor->visitor_id) }}"
-          data-confirm="Save the walk-in decision for {{ $visitor->full_name }}? The Front Desk sees it right away."
-          data-confirm-title="Save walk-in decision" data-confirm-ok="Save">
-      @csrf
-      <fieldset @disabled($locked) style="border:none;padding:0;margin:0;">
-        <div class="row cols-3">
-          <div class="field-m">
-            <label for="walkin_decision">Walk-In Decision</label>
-            <select id="walkin_decision" name="decision" required>
-              <option value="">— Select —</option>
-              @foreach ($options['decision'] as $optionValue => $optionLabel)
-                <option value="{{ $optionValue }}" @selected($value('decision') === $optionValue)
-                  @disabled($optionValue === 'approved' && ! $checks['canApprove'])>{{ $optionLabel }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="field-m">
-            <label for="walkin_reason">Reason for Walk-In</label>
-            <select id="walkin_reason" name="walk_in_reason" required>
-              @foreach ($options['walk_in_reason'] as $optionValue => $optionLabel)
-                <option value="{{ $optionValue }}" @selected($value('walk_in_reason') === $optionValue)>{{ $optionLabel }}</option>
-              @endforeach
-            </select>
-          </div>
-        </div>
-        <div class="field-m" style="margin-bottom:12px;">
-          <label for="walkin_remarks">Officer Remarks</label>
-          <textarea id="walkin_remarks" name="remarks" maxlength="1000" placeholder="Required when the reason is Other or the walk-in is rejected">{{ $value('remarks') }}</textarea>
-        </div>
-      </fieldset>
-
-      <div class="row cols-3" style="margin-bottom:12px;">
-        <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</div></div>
-        <div><div class="stat-label">Date and Time Processed</div><div>{{ $assessment->processed_at?->format('M j, Y H:i') ?? '—' }}</div></div>
-      </div>
-
-      @unless ($locked)
-        <button class="btn btn-blue" type="submit">Save Walk-in Decision</button>
-      @endunless
-    </form>
+      @else
+        Waiting for the Front Desk's decision. The Front Desk checks the original ID and documents and approves or rejects walk-ins.
+      @endif
+    </p>
+    <div class="row cols-3" style="margin-bottom:12px;">
+      <div><div class="stat-label">Walk-In Decision</div><div>{{ $assessment->label('decision') }}</div></div>
+      <div><div class="stat-label">Reason for Walk-In</div><div>{{ $assessment->processed_at ? $assessment->label('walk_in_reason') : '—' }}</div></div>
+      <div><div class="stat-label">Officer Remarks</div><div>{{ $assessment->remarks ?: '—' }}</div></div>
+      <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</div></div>
+      <div><div class="stat-label">Date and Time Processed</div><div>{{ $assessment->processed_at?->format('M j, Y H:i') ?? '—' }}</div></div>
+    </div>
   </div>
 @endif
 
 {{-- ================= ACCOUNT REVIEW ================= --}}
 {{-- Only while there is something to do; an approved account's status, email and date are in the header. --}}
-@if ($reviewStatus !== 'verified')
+{{-- Walk-ins are approved at the Front Desk, with their walk-in assessment. --}}
+@if ($reviewStatus !== 'verified' && ! $visitor->isWalkIn())
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Account Review</h2></div>
   <div class="row cols-3" style="margin-bottom:0;">

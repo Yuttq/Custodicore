@@ -12,7 +12,7 @@
 --}}
 @php
   $registrationDocs = $visitor->registrationDocuments->unique('requirement_key');
-  // Walk-ins keep their own document review (WalkInAssessmentController).
+  // Walk-ins keep their own document review (at the Front Desk, WalkInService::approveAtDesk).
   $canRejectRegistrationDocs = ($allowReject ?? true) && $visitor->verification_status !== 'verified' && ! $visitor->isWalkIn();
 @endphp
 @if ($registrationDocs->isNotEmpty())

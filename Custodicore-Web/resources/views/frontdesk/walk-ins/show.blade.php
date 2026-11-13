@@ -35,22 +35,21 @@
         <template id="walkInStatusMessage">
             @switch($status['key'])
                 @case('waiting')
-                    Waiting for the Records Officer to review the ID and documents. This page updates on its own.
-                    Ask the visitor to wait nearby.
+                    Not approved yet. Check the original ID and documents, then approve or reject the walk-in in the Walk-in Assessment below.
                     @break
                 @case('returned')
-                    The Records Officer rejected this registration.
+                    This registration was rejected.
                     <strong>Reason:</strong> {{ $visitor->rejection_reason ?: 'No reason given.' }}
                     Explain it to the visitor; they can come back with what's missing.
                     @break
                 @case('declined')
-                    The Records Officer rejected this walk-in. The decision is final; see their remarks in the assessment below and explain them to the visitor.
+                    This walk-in was rejected. The decision is final; see the remarks in the assessment below and explain them to the visitor.
                     @break
                 @case('assess')
-                    The ID and PDL relationship are verified. Waiting for the Records Officer's approve or reject decision. This page updates on its own.
+                    The ID and PDL relationship are verified. Approve or reject this arrival in the Walk-in Assessment below.
                     @break
                 @case('linking')
-                    The ID is approved. Records is now linking and verifying the PDL relationship.
+                    The ID is approved, but the PDL relationship is not verified yet. Approve or reject the walk-in in the Walk-in Assessment below.
                     @break
                 @case('ready')
                     Approved, but no visit was booked. Record a new arrival with a date and session.
@@ -162,8 +161,8 @@
                 @else
                     The visitor is back to visit.
                 @endif
-                Their ID and PDL relationship are already verified. Approving the arrival books the session chosen here;
-                the date and session can't be changed after you record it.
+                Their ID and PDL relationship are already verified. Check their ID, then approve or reject the arrival here; approving books the session chosen here.
+                The date and session can't be changed after you record it.
             </p>
             <form method="POST" action="{{ route('frontdesk.walk-ins.arrivals.store', $visitor) }}" class="mt-md space-y-md">
                 @csrf
@@ -202,46 +201,145 @@
                         'oldTimes' => old('requested_start_times', []),
                     ])
                 </div>
-                <label class="flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
-                    <input type="checkbox" name="desk_verified" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('desk_verified', $errors->any() ? null : '1'))
-                           onchange="document.getElementById('arrivalSubmit').textContent = this.checked ? 'Approve and Book Visit' : 'Send to Records for Approval'" />
-                    <span>
-                        I checked the visitor's original ID in person and confirmed it is them.
-                        <span class="block text-metadata text-text-secondary">The arrival is approved and the visit booked right away. Untick this to send it to the Records Officer instead.</span>
-                    </span>
-                </label>
-                <button type="submit" id="arrivalSubmit" class="cc-btn-primary">{{ old('desk_verified', $errors->any() ? null : '1') ? 'Approve and Book Visit' : 'Send to Records for Approval' }}</button>
+                {{-- The walk-in assessment for this arrival, decided with it. --}}
+                <div class="grid grid-cols-1 gap-md md:grid-cols-2">
+                    <div>
+                        <label for="arrival_decision" class="cc-label">Walk-in decision *</label>
+                        <select id="arrival_decision" name="decision" class="cc-input">
+                            <option value="approved" @selected(old('decision', 'approved') === 'approved')>Approve and book the visit</option>
+                            <option value="declined" @selected(old('decision') === 'declined')>Reject</option>
+                        </select>
+                        @error('decision') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label for="arrival_reason" class="cc-label">Reason for walk-in *</label>
+                        <select id="arrival_reason" name="walk_in_reason" class="cc-input">
+                            @foreach ($reasons as $value => $label)
+                                <option value="{{ $value }}" @selected(old('walk_in_reason', 'no_prior_booking') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('walk_in_reason') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="arrival_remarks" class="cc-label">Officer remarks</label>
+                        <textarea id="arrival_remarks" name="remarks" rows="2" maxlength="1000" class="cc-input" placeholder="Required when the reason is Other or the arrival is rejected">{{ old('remarks') }}</textarea>
+                        @error('remarks') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <button type="submit" class="cc-btn-primary">Record New Arrival</button>
             </form>
         </div>
     @endif
-    {{-- The walk-in decision (read-only here): by the Front Desk or the Records Officer --}}
+    {{-- The walk-in assessment: decided once, by the Front Desk. --}}
     @if ($assessment)
-        <div class="cc-card">
+        <div class="cc-card" id="assessment">
             <div class="flex flex-wrap items-start justify-between gap-sm">
                 <div>
                     <p class="text-card-title">Walk-in Assessment</p>
-                    <p class="text-metadata text-text-secondary">Made once, by the Front Desk or the Records Officer. Approving books the chosen session.</p>
+                    <p class="text-metadata text-text-secondary">Decided at the Front Desk when the walk-in was saved. If an approval was blocked, fix the reason, then approve or reject it here. The decision is final.</p>
                 </div>
                 <span class="font-semibold {{ ['approved' => 'text-success', 'declined' => 'text-danger'][$assessment->decision] ?? 'text-warning' }}">
                     {{ $assessment->label('decision') }}
                 </span>
             </div>
 
+            {{-- Filled in by the system --}}
             @php
-                // Automatic checks: live until the visit is booked, then as saved with the decision.
-                $auto = fn ($field) => $assessment->visit_request_id ? $assessment->label($field) : (\App\Models\WalkInAssessment::OPTIONS[$field][$checks[$field]] ?? null);
+                $decided = $assessment->isDecided() || $assessment->visit_request_id;
+                $options = \App\Models\WalkInAssessment::OPTIONS;
+                $pdlCheck = $decided && $assessment->pdl_verification ? $assessment->pdl_verification : $checks['pdl_verification'];
+                $checkedPdl = $checks['linkedPdls']->first() ?? $checks['matches']->first();
             @endphp
-            <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-3">
-                @foreach (['pdl_verification' => 'PDL verification', 'visitor_eligibility' => 'Visitor eligibility', 'authorized_visitor' => 'Authorized visitor'] as $field => $question)
-                    <div><dt class="cc-label">{{ $question }} (automatic)</dt><dd class="mt-xs font-semibold">{{ $auto($field) ?? '—' }}</dd></div>
-                @endforeach
-                <div><dt class="cc-label">Walk-in decision</dt><dd class="mt-xs font-semibold">{{ $assessment->label('decision') }}</dd></div>
-                <div><dt class="cc-label">Reason for walk-in</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at ? $assessment->label('walk_in_reason') : '—' }}</dd></div>
-                <div><dt class="cc-label">Files reviewed</dt><dd class="mt-xs font-semibold">{{ $checks['pendingFiles'] ? $checks['pendingFiles'].' still waiting' : 'All reviewed' }}</dd></div>
-                <div class="sm:col-span-2 lg:col-span-3"><dt class="cc-label">Officer remarks</dt><dd class="mt-xs font-semibold">{{ $assessment->remarks ?: '—' }}</dd></div>
-                <div><dt class="cc-label">Processed by</dt><dd class="mt-xs font-semibold">{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</dd></div>
-                <div><dt class="cc-label">Date and time processed</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at?->format('M j, Y · H:i') ?? '—' }}</dd></div>
+            <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-3">
+                <div>
+                    <dt class="cc-label">PDL verification (automatic)</dt>
+                    <dd class="mt-xs font-semibold {{ $pdlCheck === 'verified' ? 'text-success' : 'text-danger' }}">
+                        {{ $options['pdl_verification'][$pdlCheck] ?? '—' }}{{ $checkedPdl ? ' · '.$checkedPdl->full_name.' ('.$checkedPdl->pdl_number.')' : '' }}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="cc-label">Visitor eligibility (automatic)</dt>
+                    <dd class="mt-xs font-semibold {{ $checks['flagged'] ? 'text-danger' : ($decided ? '' : 'text-text-secondary') }}">
+                        @if ($checks['flagged']) Active flag: cannot be approved
+                        @elseif ($decided) {{ $assessment->label('visitor_eligibility') ?? '—' }}
+                        @else No flags · ID verified when you approve
+                        @endif
+                    </dd>
+                </div>
+                <div>
+                    <dt class="cc-label">Authorized visitor (automatic)</dt>
+                    <dd class="mt-xs font-semibold {{ $decided ? '' : 'text-text-secondary' }}">
+                        @if ($decided) {{ $assessment->label('authorized_visitor') ?? '—' }}
+                        @elseif ($checks['authorized_visitor'] === 'yes') Yes · relationship already verified
+                        @else Relationship verified when you approve
+                        @endif
+                    </dd>
+                </div>
             </dl>
+
+            {{-- The files given at the desk --}}
+            <div class="mt-md">
+                <p class="cc-label">Files</p>
+                <ul class="mt-xs divide-y divide-border rounded-lg border border-border">
+                    @forelse ($checks['ids']->map(fn ($id) => ['label' => 'Valid ID · '.$id->typeLabel(), 'status' => $id->verification_status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'id', $id->visitor_id_doc_id])])
+                        ->concat($checks['documents']->map(fn ($doc) => ['label' => $doc->label(), 'status' => $doc->status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'document', $doc->document_id])])) as $file)
+                        <li class="flex flex-wrap items-center justify-between gap-sm px-md py-sm text-body">
+                            <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="font-semibold text-primary-teal underline">{{ $file['label'] }}</a>
+                            <span class="{{ ['verified' => 'text-success', 'rejected' => 'text-danger'][$file['status']] ?? 'text-warning' }}">{{ ['verified' => 'Verified', 'rejected' => 'Rejected'][$file['status']] ?? 'Not checked yet' }}</span>
+                        </li>
+                    @empty
+                        <li class="px-md py-sm text-body text-text-secondary">No files.</li>
+                    @endforelse
+                </ul>
+            </div>
+
+            @if ($canAssess)
+                <form method="POST" action="{{ route('frontdesk.walk-ins.assessment', $visitor) }}" class="mt-lg space-y-md"
+                      data-confirm="Save the walk-in decision for {{ $visitor->full_name }}? The decision is final."
+                      data-confirm-title="Save walk-in decision" data-confirm-ok="Save">
+                    @csrf
+                    <div class="grid grid-cols-1 gap-md md:grid-cols-2">
+                        <div>
+                            <label for="assess_decision" class="cc-label">Walk-in decision *</label>
+                            <select id="assess_decision" name="decision" required class="cc-input">
+                                <option value="approved" @selected(old('decision', 'approved') === 'approved')>Approve and book the visit</option>
+                                <option value="declined" @selected(old('decision') === 'declined')>Reject</option>
+                            </select>
+                            @error('decision') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label for="assess_reason" class="cc-label">Reason for walk-in *</label>
+                            <select id="assess_reason" name="walk_in_reason" required class="cc-input">
+                                @foreach ($reasons as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('walk_in_reason', $assessment->walk_in_reason ?: 'no_prior_booking') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('walk_in_reason') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+                    <div>
+                        <label for="assess_remarks" class="cc-label">Officer remarks</label>
+                        <textarea id="assess_remarks" name="remarks" rows="3" maxlength="1000" class="cc-input" placeholder="Required when the reason is Other or the walk-in is rejected">{{ old('remarks', $assessment->remarks) }}</textarea>
+                        @error('remarks') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                    </div>
+                    @if ($assessment->relationship_type === 'legal_guardian')
+                        <label class="flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
+                            <input type="checkbox" name="no_immediate_family" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('no_immediate_family')) />
+                            <span>I confirmed the PDL has <strong>no immediate family</strong> available to visit (required to approve a legal guardian).</span>
+                        </label>
+                    @endif
+                    <button type="submit" class="cc-btn-primary">Save Walk-in Decision</button>
+                </form>
+            @else
+                <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-3">
+                    <div><dt class="cc-label">Walk-in decision</dt><dd class="mt-xs font-semibold">{{ $assessment->label('decision') }}</dd></div>
+                    <div><dt class="cc-label">Reason for walk-in</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at ? $assessment->label('walk_in_reason') : '—' }}</dd></div>
+                    <div><dt class="cc-label">Files reviewed</dt><dd class="mt-xs font-semibold">{{ $checks['pendingFiles'] ? $checks['pendingFiles'].' not checked yet' : 'All checked' }}</dd></div>
+                    <div class="sm:col-span-2 lg:col-span-3"><dt class="cc-label">Officer remarks</dt><dd class="mt-xs font-semibold">{{ $assessment->remarks ?: '—' }}</dd></div>
+                    <div><dt class="cc-label">Processed by</dt><dd class="mt-xs font-semibold">{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</dd></div>
+                    <div><dt class="cc-label">Date and time processed</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at?->format('M j, Y · H:i') ?? '—' }}</dd></div>
+                </dl>
+            @endif
         </div>
     @endif
 @endsection
@@ -258,19 +356,3 @@
         })();
     </script>
 @endpush
-
-@if (in_array($status['key'], ['waiting', 'linking', 'assess'], true))
-    @push('scripts')
-        <script>
-            // Follow the Records Officer's progress, but not while the desk is
-            // filling in a form (e.g. choosing another session).
-            (() => {
-                let editing = false;
-                document.querySelectorAll('form[method="POST"]').forEach(form => {
-                    ['input', 'change', 'click'].forEach(type => form.addEventListener(type, () => { editing = true; }));
-                });
-                setInterval(() => { if (!document.hidden && !editing) location.reload(); }, 15000);
-            })();
-        </script>
-    @endpush
-@endif

@@ -539,7 +539,7 @@ class WalkInService
         $key = $this->status($visitor)['key'];
         if ($key === 'assess' || ($this->hasArrivalAwaitingDecision($visitor) && in_array($key, self::NEW_ARRIVAL_STATUSES, true))) {
             throw ValidationException::withMessages([
-                'visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.',
+                'visit_purpose' => 'This visitor\'s arrival is still waiting for a decision. Approve or reject it in the Walk-in Assessment first.',
             ]);
         }
         if (! in_array($key, self::NEW_ARRIVAL_STATUSES, true)) {
@@ -758,12 +758,14 @@ class WalkInService
      * says why).
      *
      * @param  array<int, string>  $confirmations  officer confirmations the desk ticked (no_immediate_family)
+     * @param  ?string  $reason  reason for the walk-in (WalkInAssessment::OPTIONS); the arrival's own, else no_prior_booking
+     * @param  ?string  $remarks  the officer's remarks; DESK_APPROVAL_REMARK when empty
      *
      * @throws ValidationException
      */
-    public function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations = []): VisitRequest
+    public function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations = [], ?string $reason = null, ?string $remarks = null): VisitRequest
     {
-        return DB::transaction(function () use ($visitor, $staffId, $confirmations) {
+        return DB::transaction(function () use ($visitor, $staffId, $confirmations, $reason, $remarks) {
             // First statement: the visitor lock (see VisitAssignmentService::lockVisitor()).
             $this->assignments->lockVisitor($visitor);
             $visitor->refresh();
@@ -807,8 +809,8 @@ class WalkInService
 
             [, $visit] = $this->assess($visitor, [
                 'decision' => 'approved',
-                'walk_in_reason' => $assessment->walk_in_reason ?: 'no_prior_booking',
-                'remarks' => self::DESK_APPROVAL_REMARK,
+                'walk_in_reason' => $reason ?: ($assessment->walk_in_reason ?: 'no_prior_booking'),
+                'remarks' => $remarks ?: self::DESK_APPROVAL_REMARK,
             ], $staffId, 'Front Desk');
 
             return $visit;

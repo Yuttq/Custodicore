@@ -29,7 +29,8 @@ class ReviewQueue
 {
     public static function accountsQuery(): Builder
     {
-        return VisitorProfile::where('verification_status', 'pending');
+        // Walk-ins are approved at the Front Desk (WalkInService::approveAtDesk).
+        return VisitorProfile::where('verification_status', 'pending')->notWalkIn();
     }
 
     public static function visitsQuery(): Builder
@@ -45,7 +46,7 @@ class ReviewQueue
     public static function pdlLinksQuery(): Builder
     {
         return VisitorPdlRelationship::where('verification_status', 'pending')
-            ->whereHas('visitor', fn (Builder $q) => $q->where('verification_status', 'verified'));
+            ->whereHas('visitor', fn (Builder $q) => $q->where('verification_status', 'verified')->notWalkIn());
     }
 
     /** Open visitor requests to add another PDL, waiting to be matched or rejected. */

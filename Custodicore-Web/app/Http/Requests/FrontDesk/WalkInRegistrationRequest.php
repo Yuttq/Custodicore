@@ -55,6 +55,7 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'visit_purpose_type' => Sanitizer::text($this->input('visit_purpose_type')),
             'visit_purpose' => Sanitizer::text($this->input('visit_purpose')),
             'id_type' => VisitorId::resolveType(Sanitizer::text($this->input('id_type'))),
+            'remarks' => Sanitizer::paragraph($this->input('remarks')),
         ]);
     }
 
@@ -110,10 +111,8 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'consent' => ['accepted'],
             // Ticked after the officer checked a possible duplicate (see after()).
             'not_duplicate' => ['nullable', 'boolean'],
-            // The officer checked the original ID and documents: the desk approves at once.
-            'desk_verified' => ['nullable', 'boolean'],
-            // Legal guardian: the officer confirmed the PDL has no immediate family available.
-            'no_immediate_family' => ['nullable', 'boolean'],
+            // The walk-in assessment, decided with the registration.
+            ...\App\Http\Controllers\FrontDesk\WalkInController::DECISION_RULES,
         ];
     }
 
@@ -248,6 +247,7 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'documents.*.mimes' => $fileType,
             'documents.*.file' => $fileType,
             'documents.*.max' => $fileSize,
+            ...\App\Http\Controllers\FrontDesk\WalkInController::DECISION_MESSAGES,
             'consent.accepted' => 'The visitor must agree to the Terms and Conditions and the Privacy Policy before proceeding.',
         ];
     }

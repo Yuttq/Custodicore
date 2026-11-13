@@ -22,8 +22,9 @@ class AccountReviewController extends Controller
         $tab = $request->query('tab') === 'rejected' ? 'rejected' : 'pending';
 
         $queries = [
+            // Walk-ins are approved at the Front Desk, not here.
             'pending' => VisitorProfile::where('verification_status', 'pending')
-                ->orderByRaw("CASE WHEN registered_via = 'walk_in' AND created_at >= ? THEN 0 ELSE 1 END", [today()])
+                ->notWalkIn()
                 ->orderBy('created_at'),
             'rejected' => VisitorProfile::where('verification_status', 'rejected')->orderByDesc('verified_at'),
         ];
@@ -43,9 +44,6 @@ class AccountReviewController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        // Approved walk-ins still waiting for the walk-in decision; the visitor is at the gate.
-        $walkInsAwaitingDecision = app(\App\Services\WalkInService::class)->awaitingDecision();
-
-        return view('account-reviews.index', compact('visitors', 'counts', 'tab', 'walkInsAwaitingDecision'));
+        return view('account-reviews.index', compact('visitors', 'counts', 'tab'));
     }
 }

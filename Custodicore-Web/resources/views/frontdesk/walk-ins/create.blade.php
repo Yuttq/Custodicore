@@ -281,10 +281,62 @@
             </div>
         </div>
 
-        {{-- 5. Review & Confirm --}}
+        {{-- 5. Walk-in Assessment: decided here, with the registration (WalkInService::approveAtDesk). --}}
         <div class="cc-card">
-            <p class="text-card-title">5 · Review &amp; Confirm</p>
-            <p class="text-metadata text-text-secondary">Double-check all details before saving the visit.</p>
+            <p class="text-card-title">5 · Walk-in Assessment</p>
+            <p class="text-metadata text-text-secondary">Check the visitor's original ID and documents against the copies above, then decide. Approving books the session chosen in step 4. The decision is final.</p>
+
+            <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-3">
+                <div>
+                    <dt class="cc-label">PDL verification (automatic)</dt>
+                    <dd id="pdlVerification" class="mt-xs font-semibold text-text-secondary">Select the PDL in step 3.</dd>
+                </div>
+                <div>
+                    <dt class="cc-label">Visitor eligibility (automatic)</dt>
+                    <dd class="mt-xs font-semibold text-text-secondary">Checked on save: ID and flags</dd>
+                </div>
+                <div>
+                    <dt class="cc-label">Authorized visitor (automatic)</dt>
+                    <dd class="mt-xs font-semibold text-text-secondary">Checked on save: relationship documents</dd>
+                </div>
+            </dl>
+
+            <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                <div>
+                    <label for="decision" class="cc-label">Walk-in decision *</label>
+                    <select id="decision" name="decision" @class(['cc-input', 'border-danger' => $errors->has('decision')])>
+                        <option value="approved" @selected(old('decision', 'approved') === 'approved')>Approve and book the visit</option>
+                        <option value="declined" @selected(old('decision') === 'declined')>Reject</option>
+                    </select>
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'decision'])
+                </div>
+                <div>
+                    <label for="walk_in_reason" class="cc-label">Reason for walk-in *</label>
+                    <select id="walk_in_reason" name="walk_in_reason" @class(['cc-input', 'border-danger' => $errors->has('walk_in_reason')])>
+                        @foreach (\App\Models\WalkInAssessment::OPTIONS['walk_in_reason'] as $reasonValue => $reasonLabel)
+                            <option value="{{ $reasonValue }}" @selected(old('walk_in_reason', 'no_prior_booking') === $reasonValue)>{{ $reasonLabel }}</option>
+                        @endforeach
+                    </select>
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'walk_in_reason'])
+                </div>
+                <div class="md:col-span-2">
+                    <label for="remarks" class="cc-label">Officer remarks</label>
+                    <textarea id="remarks" name="remarks" rows="2" maxlength="1000" placeholder="Required when the reason is Other or the walk-in is rejected"
+                              @class(['cc-input', 'border-danger' => $errors->has('remarks')])>{{ old('remarks') }}</textarea>
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'remarks'])
+                </div>
+            </div>
+
+            <label id="noImmediateFamilyBox" class="mt-md hidden flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
+                <input type="checkbox" id="no_immediate_family" name="no_immediate_family" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('no_immediate_family')) />
+                <span>I confirmed the PDL has <strong>no immediate family</strong> available to visit (required to approve a legal guardian).</span>
+            </label>
+        </div>
+
+        {{-- 6. Review & Confirm --}}
+        <div class="cc-card">
+            <p class="text-card-title">6 · Review &amp; Confirm</p>
+            <p class="text-metadata text-text-secondary">Double-check all details before saving.</p>
 
             <label @class(['mt-md flex items-start gap-sm rounded-lg border-2 p-md text-body', 'border-danger' => $errors->has('consent'), 'border-border' => ! $errors->has('consent')]) data-field-box="consent">
                 <input type="checkbox" id="consent" name="consent" value="1" class="mt-1 h-4 w-4 shrink-0" />
@@ -298,24 +350,8 @@
             </label>
             @include('frontdesk.walk-ins.partials.field-error', ['name' => 'consent'])
 
-            {{-- Ticked: the desk approves and books at once (WalkInService::approveAtDesk). Unticked: Records reviews it. --}}
-            <label class="mt-md flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
-                <input type="checkbox" id="desk_verified" name="desk_verified" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('desk_verified', $errors->any() ? null : '1')) />
-                <span>
-                    I checked the visitor's <strong>original</strong> ID and documents in person, and they match the copies uploaded here.
-                    <span class="block text-metadata text-text-secondary">The walk-in is approved and the visit booked right away. Untick this to send it to the Records Officer for review instead.</span>
-                </span>
-            </label>
-            <label id="noImmediateFamilyBox" class="mt-sm hidden flex items-start gap-sm rounded-lg border-2 border-border p-md text-body">
-                <input type="checkbox" id="no_immediate_family" name="no_immediate_family" value="1" class="mt-1 h-4 w-4 shrink-0" @checked(old('no_immediate_family')) />
-                <span>
-                    I confirmed the PDL has <strong>no immediate family</strong> available to visit (required for a legal guardian).
-                    <span class="block text-metadata text-text-secondary">Without this, the legal guardian goes to the Records Officer for review.</span>
-                </span>
-            </label>
-
             <div class="mt-md flex flex-wrap gap-sm">
-                <button type="submit" id="walkInSubmit" class="cc-btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled>Approve and book visit</button>
+                <button type="submit" id="walkInSubmit" class="cc-btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled>Save and approve</button>
                 <a href="{{ route('frontdesk.walk-ins.index') }}" class="cc-btn-secondary">Cancel</a>
             </div>
             <p id="walkInSubmitHint" class="mt-xs text-metadata text-text-secondary">Tick the consent box to submit.</p>
@@ -404,7 +440,7 @@
             const rule = types[type.value];
             $('relationshipDescription').textContent = rule ? rule.description : '';
             $('childrenTogether').classList.toggle('hidden', !rule?.childrenTogether);
-            $('noImmediateFamilyBox').classList.toggle('hidden', type.value !== 'legal_guardian' || !$('desk_verified').checked);
+            $('noImmediateFamilyBox').classList.toggle('hidden', type.value !== 'legal_guardian' || $('decision').value !== 'approved');
 
             const needed = requiredDocuments();
             $('documentsHeading').classList.toggle('hidden', needed.length === 0);
@@ -689,14 +725,25 @@
         consent.addEventListener('change', syncConsent);
         syncConsent();
 
-        // The button says what will happen: approve now, or send to Records.
-        const deskVerified = $('desk_verified');
-        const syncDeskVerified = () => {
-            submit.textContent = deskVerified.checked ? 'Approve and book visit' : 'Submit for Records approval';
+        // ---- Walk-in assessment: the PDL check follows the PDL chosen; the button says what Save does ----
+        const syncPdlVerification = () => {
+            const box = $('pdlVerification');
+            const chosen = !!pdlId.value;
+            const available = !pdlId.dataset.status || pdlId.dataset.status === 'active';
+            box.textContent = !chosen ? 'Select the PDL in step 3.'
+                : available ? `Verified · ${pdlSearch.value}` : `${pdlSearch.value} · not available for visits`;
+            box.className = 'mt-xs font-semibold ' + (!chosen ? 'text-text-secondary' : available ? 'text-success' : 'text-danger');
+        };
+        pdlId.addEventListener('change', syncPdlVerification);
+        syncPdlVerification();
+
+        const decision = $('decision');
+        const syncDecision = () => {
+            submit.textContent = decision.value === 'declined' ? 'Save and reject' : 'Save and approve';
             refresh();
         };
-        deskVerified.addEventListener('change', syncDeskVerified);
-        syncDeskVerified();
+        decision.addEventListener('change', syncDecision);
+        syncDecision();
 
         // Terms and Conditions / Privacy Policy open in a modal (not ticking the box).
         document.querySelectorAll('[data-legal-open]').forEach(link => link.addEventListener('click', e => {

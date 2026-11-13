@@ -106,7 +106,7 @@ class RelationshipRequirementController extends Controller
         // A file sent with an app registration of a visitor not approved yet can
         // be rejected before the PDL is linked, so the visitor can replace it
         // from the app. It is still approved only with the account (AccountApproval).
-        // Walk-ins keep their own document review (WalkInAssessmentController).
+        // Walk-ins keep their own document review (at the Front Desk, WalkInService::approveAtDesk).
         $isRegistrationUpload = $document->relationship_id === null
             && $document->pdl_link_request_id === null
             && $document->visitor

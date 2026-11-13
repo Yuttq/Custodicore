@@ -89,14 +89,11 @@ class WalkInVisitorTest extends TestCase
         ], $overrides);
     }
 
-    /** The Record Officer's walk-in assessment, then back to the Front Desk. */
-    private function assessAsRecords(VisitorProfile $walkIn, array $overrides = [])
+    /** The Front Desk's walk-in assessment (approve or reject). */
+    private function assessAtDesk(VisitorProfile $walkIn, array $overrides = [])
     {
-        $response = $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.walk-in-assessment', $walkIn->visitor_id), $this->assessment($overrides));
-        $this->actingAs($this->frontDeskAccount);
-
-        return $response;
+        return $this->actingAs($this->frontDeskAccount)
+            ->post(route('frontdesk.walk-ins.assessment', $walkIn), $this->assessment($overrides));
     }
 
     /** What the Record Officer does in the Review Queue, done directly. */
@@ -202,16 +199,17 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(0, VisitorProfile::where('registered_via', 'walk_in')->count());
     }
 
-    public function test_walk_in_comes_first_in_the_review_queue(): void
+    public function test_walk_ins_are_not_in_the_records_review_queue(): void
     {
         VisitorProfile::where('visitor_id', $this->visitor->visitor_id)->update(['verification_status' => 'pending', 'created_at' => now()->subDay()]);
         $this->register();
 
+        // The Front Desk approves walk-ins; Records only reviews app registrations.
         $this->actingAs($this->recordOfficerAccount)
             ->get(route('account-reviews.index'))
             ->assertOk()
-            ->assertSeeInOrder(['Lourdes Reyes', 'Walk-in · waiting at gate', 'Maria D. Santos'])
-            ->assertSee('No email (walk-in)');
+            ->assertSee('Maria D. Santos')
+            ->assertDontSee('Lourdes Reyes');
     }
 
     public function test_relationship_documents_are_required(): void
@@ -314,7 +312,7 @@ class WalkInVisitorTest extends TestCase
 
     // ------------------------- Phases 3–6: approve once, booking, check-in/out
 
-    public function test_records_approval_books_the_chosen_session_and_the_desk_checks_in_and_out(): void
+    public function test_desk_approval_books_the_chosen_session_and_the_desk_checks_in_and_out(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
@@ -327,10 +325,10 @@ class WalkInVisitorTest extends TestCase
         // Account approved and PDL linked: still waiting for the walk-in decision.
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
-            ->assertSee('Pending Approval')->assertSee('approve or reject decision');
+            ->assertSee('Pending Approval')->assertSee('Approve or reject this arrival');
 
-        $this->assessAsRecords($walkIn)
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now (09:00–11:30)'));
+        $this->assessAtDesk($walkIn)
+            ->assertSessionHas('status', fn ($message) => str_contains($message, 'today (09:00–11:30)'));
 
         // Phase 4: the chosen session is reserved and the visit confirmed.
         $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->firstOrFail();
@@ -343,7 +341,7 @@ class WalkInVisitorTest extends TestCase
         // Phase 5: the desk verifies the ID, takes it and checks the visitor in.
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
-            ->assertSee('Rico P. Salcedo')
+            ->assertSee('Noel D. Fernandez')
             ->assertSee('Approved')->assertSee('Check In Now')
             ->assertSee('09:00–11:30')
             ->assertSee(e(route('frontdesk.checkin-checkout', ['checkin' => 'Lourdes Reyes'])), false);
@@ -380,8 +378,8 @@ class WalkInVisitorTest extends TestCase
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $this->approveAndLink($walkIn);
 
-        $this->assessAsRecords($walkIn)
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Visit booked for Fri, Oct 16, 2026 (09:00–11:30)'));
+        $this->assessAtDesk($walkIn)
+            ->assertSessionHas('status', fn ($message) => str_contains($message, 'booked for Fri, Oct 16, 2026 (09:00–11:30)'));
 
         $visit = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->sole();
         $this->assertSame('confirmed', $visit->status);
@@ -399,10 +397,10 @@ class WalkInVisitorTest extends TestCase
     public function test_the_decision_is_final(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors();
+        $this->assessAtDesk($walkIn)->assertSessionHasNoErrors();
 
         // Approved: it cannot be changed to Rejected (or approved again).
-        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'Changed my mind.'])
+        $this->assessAtDesk($walkIn, ['decision' => 'declined', 'remarks' => 'Changed my mind.'])
             ->assertSessionHasErrors('decision');
         $this->assertSame('approved', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
@@ -410,9 +408,9 @@ class WalkInVisitorTest extends TestCase
         // Rejected: it cannot be approved afterwards.
         $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01']);
         $rejected = VisitorProfile::where('full_name', 'Pedro Cruz')->firstOrFail();
-        $this->assessAsRecords($rejected, ['decision' => 'declined', 'remarks' => 'Not on the PDL\'s visitor list.'])->assertSessionHasNoErrors();
+        $this->assessAtDesk($rejected, ['decision' => 'declined', 'remarks' => 'Not on the PDL\'s visitor list.'])->assertSessionHasNoErrors();
         $this->approveAndLink($rejected);
-        $this->assessAsRecords($rejected)->assertSessionHasErrors('decision');
+        $this->assessAtDesk($rejected)->assertSessionHasErrors('decision');
         $this->assertSame('declined', $rejected->walkInAssessments()->first()->decision);
 
         $this->actingAs($this->recordOfficerAccount)
@@ -426,8 +424,8 @@ class WalkInVisitorTest extends TestCase
 
         // Records gets to it after today's session ended.
         $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 18:00:00', 'Asia/Manila'));
-        $this->assessAsRecords($walkIn)
-            ->assertSessionHas('error', fn ($message) => str_contains($message, 'already ended') && str_contains($message, 'stays Pending'));
+        $this->assessAtDesk($walkIn)
+            ->assertSessionHas('error', fn ($message) => str_contains($message, 'already ended') && str_contains($message, 'could not be approved'));
         $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
@@ -439,10 +437,10 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(self::FRIDAY, $walkIn->walkInAssessments()->first()->requested_date->toDateString());
 
         // Records rejects it; the desk records a new arrival for another session, which Records approves.
-        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'The chosen session already ended.'])
+        $this->assessAtDesk($walkIn, ['decision' => 'declined', 'remarks' => 'The chosen session already ended.'])
             ->assertSessionHasNoErrors();
         $this->recordArrival($walkIn)->assertSessionHasNoErrors();
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $this->assessAtDesk($walkIn)->assertSessionHasNoErrors()->assertSessionHas('status');
         $this->assertSame(self::NEXT_FRIDAY, VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->schedule->schedule_date->toDateString());
     }
 
@@ -485,7 +483,7 @@ class WalkInVisitorTest extends TestCase
     public function test_the_session_cannot_be_changed_after_the_decision(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn);
+        $this->assessAtDesk($walkIn);
 
         $this->post(route('frontdesk.walk-ins.slot.update', $walkIn), [
             'requested_date' => self::NEXT_FRIDAY,
@@ -500,7 +498,7 @@ class WalkInVisitorTest extends TestCase
         // An arrival recorded before sessions were chosen at the desk.
         $walkIn->walkInAssessments()->first()->update(['requested_date' => null, 'requested_start_times' => null]);
 
-        $this->assessAsRecords($walkIn)->assertSessionHasErrors('decision');
+        $this->assessAtDesk($walkIn)->assertSessionHasErrors('decision');
         $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Choose Visit Date and Session');
     }
 
@@ -541,7 +539,7 @@ class WalkInVisitorTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $this->assessAsRecords($walkIn)
+        $this->assessAtDesk($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, VisitAssignmentService::WEEKLY_LIMIT_MESSAGE));
 
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'No walk-in visit is created.');
@@ -581,7 +579,7 @@ class WalkInVisitorTest extends TestCase
             'status' => 'assigned',
         ]);
 
-        $this->assessAsRecords($walkIn)
+        $this->assessAtDesk($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, 'another PDL on this date'));
 
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
@@ -594,7 +592,7 @@ class WalkInVisitorTest extends TestCase
         // Every seat was taken after the desk chose the session.
         $this->todaysSchedule()->update(['slots_taken' => 2]);
 
-        $this->assessAsRecords($walkIn)
+        $this->assessAtDesk($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, 'full'));
 
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
@@ -611,7 +609,7 @@ class WalkInVisitorTest extends TestCase
             ->andThrow(ValidationException::withMessages(['eligibility' => 'Eligibility refused this visit.']));
         $this->app->instance(VisitAssignmentService::class, $assignments);
 
-        $this->assessAsRecords($walkIn)
+        $this->assessAtDesk($walkIn)
             ->assertSessionHas('error', fn ($message) => str_contains($message, 'Eligibility refused this visit.'));
 
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'Nothing is booked.');
@@ -635,7 +633,7 @@ class WalkInVisitorTest extends TestCase
     public function test_a_returning_walk_in_gets_a_new_arrival_instead_of_registering_again(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn);
+        $this->assessAtDesk($walkIn);
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
         // A week later the visitor is back at the desk.
@@ -643,7 +641,7 @@ class WalkInVisitorTest extends TestCase
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
             ->assertSee('Registered')
-            ->assertSee('Approve and Book Visit');
+            ->assertSee('Record New Arrival');
 
         $this->recordArrival($walkIn, 'Deliver food')->assertSessionHasNoErrors()->assertRedirect();
 
@@ -653,11 +651,11 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('Deliver food', $arrival->visit_purpose);
         $this->assertSame('spouse', $arrival->relationship_type, 'From the verified relationship.');
         $this->assertSame(self::NEXT_FRIDAY, $arrival->requested_date->toDateString());
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Approve and Book Visit');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Pending Approval')->assertDontSee('Record New Arrival');
 
         // Records decides on the new arrival, which books the chosen session.
-        $this->assessAsRecords($walkIn)
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'check the visitor in now'));
+        $this->assessAtDesk($walkIn)
+            ->assertSessionHas('status', fn ($message) => str_contains($message, 'is approved'));
 
         $this->assertSame(2, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
         $this->assertNotNull($walkIn->walkInAssessments()->first()->visit_request_id);
@@ -669,8 +667,8 @@ class WalkInVisitorTest extends TestCase
         [$walkIn] = $this->linkedWalkIn();
 
         // The first arrival is still waiting for Records.
-        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Approve and Book Visit');
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is still waiting for a decision. Approve or reject it in the Walk-in Assessment first.']);
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
 
         $this->assertSame(1, $walkIn->walkInAssessments()->count());
     }
@@ -678,13 +676,13 @@ class WalkInVisitorTest extends TestCase
     public function test_the_desk_schedules_a_booked_walk_in_for_another_day(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn); // today's visit is booked
+        $this->assessAtDesk($walkIn); // today's visit is booked
 
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
             ->assertSee('Booked Visits')
             ->assertSee('Schedule Another Day')
-            ->assertSee('Approve and Book Visit');
+            ->assertSee('Record New Arrival');
 
         // The same day is refused: one visit per day.
         $this->recordArrival($walkIn, 'Family visit', self::FRIDAY)->assertSessionHasErrors('requested_start_times');
@@ -696,10 +694,10 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('confirmed', VisitRequest::where('visitor_id', $walkIn->visitor_id)->sole()->status);
 
         // A third while that one waits is refused.
-        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is already waiting for the Records Officer\'s decision.']);
+        $this->recordArrival($walkIn)->assertSessionHasErrors(['visit_purpose' => 'This visitor\'s arrival is still waiting for a decision. Approve or reject it in the Walk-in Assessment first.']);
 
         // Records approves the second: both days are booked, and the desk still sees today's visit to check in.
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $this->assessAtDesk($walkIn)->assertSessionHasNoErrors()->assertSessionHas('status');
         $dates = VisitRequest::where('visitor_id', $walkIn->visitor_id)->where('status', 'confirmed')->get()
             ->map(fn ($v) => $v->schedule->schedule_date->toDateString())->sort()->values()->all();
         $this->assertSame([self::FRIDAY, self::NEXT_FRIDAY], $dates);
@@ -713,7 +711,7 @@ class WalkInVisitorTest extends TestCase
     public function test_a_new_arrival_needs_an_open_session(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn);
+        $this->assessAtDesk($walkIn);
         $this->travelTo(CarbonImmutable::parse(self::NEXT_FRIDAY.' 08:00:00', 'Asia/Manila'));
 
         $this->recordArrival($walkIn, 'Family visit', '2026-10-23')->assertSessionHasErrors('requested_start_times');
@@ -726,13 +724,13 @@ class WalkInVisitorTest extends TestCase
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
 
         $this->recordArrival($walkIn)->assertSessionHasErrors('visit_purpose');
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Approve and Book Visit');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertDontSee('Record New Arrival');
     }
 
     public function test_a_new_arrival_needs_a_purpose(): void
     {
         [$walkIn] = $this->linkedWalkIn();
-        $this->assessAsRecords($walkIn);
+        $this->assessAtDesk($walkIn);
         $this->travelTo(CarbonImmutable::parse(self::NEXT_FRIDAY.' 08:00:00', 'Asia/Manila'));
 
         $this->recordArrival($walkIn, '  ')->assertSessionHasErrors(['visit_purpose' => 'Enter the purpose of the visit.']);
@@ -795,7 +793,7 @@ class WalkInVisitorTest extends TestCase
         $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01']);
         $approved = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $this->approveAndLink($approved);
-        $this->assessAsRecords($approved);
+        $this->assessAtDesk($approved);
 
         $this->get(route('frontdesk.walk-ins.index'))
             ->assertOk()
@@ -828,7 +826,7 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
         // Rejected: the request ends.
-        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'Not on the PDL\'s visitor list.']);
+        $this->assessAtDesk($walkIn, ['decision' => 'declined', 'remarks' => 'Not on the PDL\'s visitor list.']);
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Rejected')
             ->assertDontSee('Check In Now');
@@ -953,57 +951,52 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame('verified', $walkIn->fresh()->verification_status);
     }
 
-    public function test_records_officer_does_the_assessment(): void
+    public function test_the_front_desk_does_the_assessment(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
 
-        // Not the Front Desk's job.
-        $this->post(route('visitor.walk-in-assessment', $walkIn->visitor_id), $this->assessment())->assertForbidden();
-
-        // Approved only after the account is approved and the PDL relationship verified.
-        $this->assessAsRecords($walkIn)->assertSessionHasErrors('decision');
-
-        // Pending is fine meanwhile; it records who and when, and the automatic checks.
-        $this->assessAsRecords($walkIn, ['decision' => 'pending'])->assertSessionHasNoErrors();
-        $assessment = $walkIn->walkInAssessments()->first();
-        $this->assertSame('verified', $assessment->pdl_verification); // the PDL the desk selected
-        $this->assertSame('for_review', $assessment->visitor_eligibility);
-        $this->assertSame('for_review', $assessment->authorized_visitor);
-        $this->assertSame($this->recordOfficerAccount->staffProfile->staff_id, $assessment->processed_by);
-        $this->assertNotNull($assessment->processed_at);
+        // Not the Records Officer's job any more.
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('frontdesk.walk-ins.assessment', $walkIn), $this->assessment())->assertForbidden();
 
         // Declining, or "Other" as the reason, needs remarks.
-        $this->assessAsRecords($walkIn, ['decision' => 'declined'])->assertSessionHasErrors('remarks');
-        $this->assessAsRecords($walkIn, ['decision' => 'declined', 'remarks' => 'No valid ID presented.'])->assertSessionHasNoErrors();
+        $this->assessAtDesk($walkIn, ['decision' => 'declined'])->assertSessionHasErrors('remarks');
+        $this->assessAtDesk($walkIn, ['walk_in_reason' => 'other'])->assertSessionHasErrors('remarks');
+        $this->assessAtDesk($walkIn, ['decision' => 'declined', 'remarks' => 'No valid ID presented.'])->assertSessionHasNoErrors();
+
+        $assessment = $walkIn->walkInAssessments()->first();
+        $this->assertSame('declined', $assessment->decision);
+        $this->assertSame($this->frontDeskAccount->staffProfile->staff_id, $assessment->processed_by);
+        $this->assertNotNull($assessment->processed_at);
+        $this->assertSame(0, VisitRequest::count());
 
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Rejected')
-            ->assertSee('No valid ID presented.');
+            ->assertSee('No valid ID presented.')
+            ->assertDontSee('Save Walk-in Decision');
     }
 
-    public function test_review_queue_lists_approved_walk_ins_awaiting_the_decision(): void
+    public function test_records_sees_the_walk_in_assessment_read_only(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
-        $this->approveAndLink($walkIn);
 
         $this->actingAs($this->recordOfficerAccount)
-            ->get(route('account-reviews.index'))
-            ->assertSee('Walk-ins waiting for your decision')
-            ->assertSee('Lourdes Reyes');
-
-        $this->get(route('visitor.show', $walkIn->visitor_id))
+            ->get(route('visitor.show', $walkIn->visitor_id))
             ->assertOk()
             ->assertSee('Walk-in Assessment')
             ->assertSee('Family visit')
             ->assertSee('PDL-TEST-001')
-            ->assertSee('Fri, Oct 9, 2026 · 09:00');
+            ->assertSee('Fri, Oct 9, 2026 · 09:00')
+            ->assertSee('Waiting for the Front Desk')
+            ->assertDontSee('Save Walk-in Decision')
+            ->assertDontSee('Approve Visitor');
 
-        $this->assessAsRecords($walkIn);
+        $this->assessAtDesk($walkIn)->assertSessionHasNoErrors();
         $this->actingAs($this->recordOfficerAccount)
-            ->get(route('account-reviews.index'))
-            ->assertDontSee('Walk-ins waiting for your decision');
+            ->get(route('visitor.show', $walkIn->visitor_id))
+            ->assertSee('Approved at the Front Desk');
     }
 
     public function test_walk_in_list_keeps_everyone_registered(): void
@@ -1056,68 +1049,52 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame($relationship->relationship_id, RelationshipDocument::where('visitor_id', $walkIn->visitor_id)->value('relationship_id'));
     }
 
-    public function test_verified_documents_link_and_verify_the_relationship_automatically(): void
+    public function test_desk_approval_verifies_the_files_and_links_the_pdl(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $document = RelationshipDocument::where('visitor_id', $walkIn->visitor_id)->firstOrFail();
-        $id = $walkIn->idDocuments()->firstOrFail();
-        $this->actingAs($this->recordOfficerAccount);
 
-        $this->get(route('visitor.show', $walkIn->visitor_id))
-            ->assertSee('Spouse · not linked yet');
+        // The desk sees the files it decides on.
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))
+            ->assertSee('Marriage Certificate')
+            ->assertSee('Not checked yet')
+            ->assertSee('Save Walk-in Decision');
+        $this->get(route('frontdesk.walk-ins.file', [$walkIn, 'document', $document->document_id]))->assertOk();
+        $this->get(route('frontdesk.walk-ins.file', [$walkIn, 'id', $walkIn->idDocuments()->first()->visitor_id_doc_id]))->assertOk();
 
-        // Documents are reviewed before the PDL is linked; verifying the last one links it.
-        $this->post(route('visitor.walk-in-documents.verify', [$walkIn->visitor_id, $document->document_id]))
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Linked to Example PDL as Spouse'));
+        $this->assessAtDesk($walkIn, ['remarks' => 'Originals checked.'])->assertSessionHasNoErrors();
 
+        $this->assertSame('verified', $document->fresh()->status);
         $relationship = $walkIn->relationships()->firstOrFail();
         $this->assertSame($this->pdl->pdl_id, $relationship->pdl_id);
-        $this->assertSame('pending', $relationship->verification_status); // the valid ID is not verified yet
-        $this->assertSame($relationship->relationship_id, $document->fresh()->relationship_id);
-
-        // Verifying the ID completes the checklist: the relationship is verified automatically.
-        $this->post(route('visitor.ids.verify', [$walkIn->visitor_id, $id->visitor_id_doc_id]))
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Relationship verified'));
-        $this->assertSame('verified', $relationship->fresh()->verification_status);
-
-        // Approving the account leaves nothing blocking the walk-in, and the same
-        // Approve saves the walk-in decision (one step: nothing left pending).
-        $this->post(route('visitor.approve', $walkIn->visitor_id))->assertSessionHasNoErrors();
-        $this->assertSame('approved', app(\App\Services\WalkInService::class)->assessment($walkIn->fresh())->decision);
+        $this->assertSame('verified', $relationship->verification_status);
+        $assessment = $walkIn->walkInAssessments()->first();
+        $this->assertSame('approved', $assessment->decision);
+        $this->assertSame('yes', $assessment->authorized_visitor);
+        $this->assertSame('Originals checked.', $assessment->remarks);
     }
 
-    public function test_a_rejected_document_is_not_linked(): void
+    public function test_files_of_another_visitor_are_not_served(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
-        $document = RelationshipDocument::where('visitor_id', $walkIn->visitor_id)->firstOrFail();
+        $this->register(['first_name' => 'Pedro', 'last_name' => 'Cruz', 'date_of_birth' => '1980-01-01']);
+        $other = VisitorProfile::where('full_name', 'Pedro Cruz')->firstOrFail();
+        $document = RelationshipDocument::where('visitor_id', $other->visitor_id)->firstOrFail();
 
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.walk-in-documents.reject', [$walkIn->visitor_id, $document->document_id]), ['rejection_reason' => 'Names do not match.'])
-            ->assertSessionHasNoErrors();
-
-        $this->assertSame('rejected', $document->fresh()->status);
-        $this->assertSame(0, $walkIn->relationships()->count());
+        $this->get(route('frontdesk.walk-ins.file', [$walkIn, 'document', $document->document_id]))->assertNotFound();
     }
 
-    public function test_every_file_must_be_reviewed_before_approval(): void
+    public function test_files_still_waiting_are_verified_by_the_desk_approval(): void
     {
         $this->register();
         $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
         $relationship = $this->approveAndLink($walkIn);
         RelationshipDocument::where('relationship_id', $relationship->relationship_id)->update(['status' => 'pending']);
 
-        $this->actingAs($this->recordOfficerAccount)
-            ->get(route('visitor.show', $walkIn->visitor_id))
-            ->assertSee('Files to Review')
-            ->assertSee('Marriage Certificate')
-            ->assertSee('1 still waiting.', false);
-
-        $this->assessAsRecords($walkIn)->assertSessionHasErrors('decision');
-
-        RelationshipDocument::where('relationship_id', $relationship->relationship_id)->update(['status' => 'verified']);
-        $this->assessAsRecords($walkIn)->assertSessionHasNoErrors();
+        $this->assessAtDesk($walkIn)->assertSessionHasNoErrors();
+        $this->assertSame(0, RelationshipDocument::where('relationship_id', $relationship->relationship_id)->where('status', 'pending')->count());
         $this->assertSame('yes', $walkIn->walkInAssessments()->first()->authorized_visitor);
     }
 

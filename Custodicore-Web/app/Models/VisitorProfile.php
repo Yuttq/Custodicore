@@ -142,6 +142,12 @@ class VisitorProfile extends Model
         return $flags->sortByDesc(fn (VisitorFlag $f) => $f->expires_at?->timestamp ?? PHP_INT_MAX)->first();
     }
 
+    /** Visitors not registered at the Front Desk as walk-ins (the desk approves those). */
+    public function scopeNotWalkIn($query)
+    {
+        return $query->where(fn ($q) => $q->where('registered_via', '!=', 'walk_in')->orWhereNull('registered_via'));
+    }
+
     public function activeFlags()
     {
         // Not resolved and not past its time limit (VisitorFlag::scopeActive).

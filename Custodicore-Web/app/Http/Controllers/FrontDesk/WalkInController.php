@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ResolvesActingStaff;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FrontDesk\WalkInRegistrationRequest;
 use App\Models\Pdl;
+use App\Models\RelationshipDocument;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
@@ -19,7 +20,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
 /**
@@ -38,9 +42,9 @@ class WalkInController extends Controller
 
     /** Status tabs: filter => label, hint, accent, icon and the WalkInService::status() keys it groups. */
     private const CARDS = [
-        'pending' => ['Pending Approval', 'Awaiting Records review', 'warning', 'clock', ['waiting', 'linking', 'assess']],
+        'pending' => ['Pending Approval', 'Waiting for your decision', 'warning', 'clock', ['waiting', 'linking', 'assess']],
         'approved' => ['Approved', 'Approved, not checked in yet', 'success', 'check-circle', ['booked', 'ready']],
-        'rejected' => ['Rejected', 'Rejected by Records', 'danger', 'x', ['returned', 'declined']],
+        'rejected' => ['Rejected', 'Rejected', 'danger', 'x', ['returned', 'declined']],
     ];
 
     /**
@@ -224,36 +228,63 @@ class WalkInController extends Controller
             ->all();
 
         $visitor = $this->walkIns->register(
-            $request->safe()->except(['photo', 'government_id', 'documents', 'consent', 'not_duplicate', 'desk_verified', 'no_immediate_family']),
+            $request->safe()->except(['photo', 'government_id', 'documents', 'consent', 'not_duplicate']),
             $request->file('photo'),
             $request->file('government_id'),
             $documents,
             $staffId,
         );
 
-        if (! $request->boolean('desk_verified')) {
-            return redirect()->route('frontdesk.walk-ins.show', $visitor)
-                ->with('status', "{$visitor->full_name} is registered and waiting for the Records Officer's approval.");
-        }
-
-        return $this->approveAtDesk($visitor, $staffId, $request->boolean('no_immediate_family') ? ['no_immediate_family'] : [], 'registered');
+        return $this->decide($visitor, $staffId, $request->validated());
     }
 
     /**
-     * The desk checked the originals in person: approve the arrival and book
-     * its session now (WalkInService::approveAtDesk). If something blocks
-     * it, nothing of the approval is saved and the arrival waits for Records.
+     * The walk-in assessment, saved with the registration or new arrival (or
+     * from the walk-in's page when an approval was blocked): Approve verifies
+     * the files, links the PDL and books the session
+     * (WalkInService::approveAtDesk); Reject saves the decision with the
+     * remarks. If an approval is blocked, nothing of it is saved and the
+     * walk-in stays Pending, to approve again or reject on its page.
+     *
+     * @param  array{decision:string,walk_in_reason:string,remarks:?string,no_immediate_family?:mixed}  $data
      */
-    private function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations, string $done): RedirectResponse
+    private function decide(VisitorProfile $visitor, int $staffId, array $data): RedirectResponse
     {
-        $show = redirect()->route('frontdesk.walk-ins.show', $visitor);
+        if (empty($data['decision'])) {
+            return redirect()->route('frontdesk.walk-ins.show', $visitor)
+                ->with('status', "{$visitor->full_name} is saved. Approve or reject the walk-in in the Walk-in Assessment.");
+        }
+
+        if ($data['decision'] === 'declined') {
+            $this->walkIns->assess($visitor, [
+                'decision' => 'declined',
+                'walk_in_reason' => $data['walk_in_reason'],
+                'remarks' => $data['remarks'],
+            ], $staffId, 'Front Desk');
+
+            return redirect()->route('frontdesk.walk-ins.show', $visitor)
+                ->with('status', "Walk-in of {$visitor->full_name} rejected.");
+        }
+
+        return $this->approveAtDesk($visitor, $staffId, ! empty($data['no_immediate_family']) ? ['no_immediate_family'] : [],
+            $data['walk_in_reason'], $data['remarks'] ?? null);
+    }
+
+    /**
+     * Approve from the walk-in assessment: verify the files, link the PDL
+     * and book the session (WalkInService::approveAtDesk). If something
+     * blocks it, nothing of the approval is saved and the arrival stays Pending.
+     */
+    private function approveAtDesk(VisitorProfile $visitor, int $staffId, array $confirmations, ?string $reason, ?string $remarks): RedirectResponse
+    {
+        $show = redirect()->to(route('frontdesk.walk-ins.show', $visitor).'#assessment');
 
         try {
-            $visit = $this->walkIns->approveAtDesk($visitor, $staffId, $confirmations);
+            $visit = $this->walkIns->approveAtDesk($visitor, $staffId, $confirmations, $reason, $remarks);
         } catch (ValidationException $e) {
-            return $show->with('error', "{$visitor->full_name} is {$done}, but could not be approved at the desk: "
+            return $show->with('error', "{$visitor->full_name} could not be approved: "
                 .collect($e->errors())->flatten()->first()
-                .' It is now waiting for the Records Officer.');
+                .' The walk-in stays Pending; fix it and approve again, or reject it.');
         }
 
         $times = $visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ');
@@ -292,6 +323,10 @@ class WalkInController extends Controller
                 ->map(fn (VisitorPdlRelationship $relationship) => $relationship->pdl)
                 ->values(),
             'purposes' => WalkInAssessment::PURPOSES,
+            // The desk decides an arrival not decided yet (approve or reject).
+            'canAssess' => $assessment && ! $assessment->isDecided() && $assessment->visit_request_id === null
+                && $assessment->hasRequestedVisit() && $visitor->verification_status !== 'rejected',
+            'reasons' => WalkInAssessment::OPTIONS['walk_in_reason'],
         ]);
     }
 
@@ -309,16 +344,20 @@ class WalkInController extends Controller
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
-        $request->merge(['visit_purpose' => Sanitizer::text($request->input('visit_purpose'))]);
+        $request->merge([
+            'visit_purpose' => Sanitizer::text($request->input('visit_purpose')),
+            'remarks' => Sanitizer::paragraph($request->input('remarks')),
+        ]);
         $data = $request->validate([
             'visit_purpose' => ['required', 'string', 'max:150'],
             'pdl_id' => ['required', 'integer'],
-            'desk_verified' => ['nullable', 'boolean'],
             ...self::SLOT_RULES,
+            ...self::DECISION_RULES,
         ], [
             'visit_purpose.required' => 'Enter the purpose of the visit.',
             'pdl_id.*' => 'Choose the PDL to visit.',
             ...self::SLOT_MESSAGES,
+            ...self::DECISION_MESSAGES,
         ]);
 
         $this->walkIns->newArrival(
@@ -326,12 +365,7 @@ class WalkInController extends Controller
             $data['requested_date'], $data['requested_start_times'], $staffId,
         );
 
-        if ($request->boolean('desk_verified')) {
-            return $this->approveAtDesk($visitor, $staffId, [], 'recorded');
-        }
-
-        return redirect()->route('frontdesk.walk-ins.show', $visitor)
-            ->with('status', "New arrival recorded. {$visitor->full_name} is waiting for the Records Officer's decision.");
+        return $this->decide($visitor, $staffId, $data);
     }
 
     /** Changes the date and session of an arrival still waiting for the Records decision. */
@@ -350,6 +384,75 @@ class WalkInController extends Controller
         return redirect()->route('frontdesk.walk-ins.show', $visitor)
             ->with('status', "Visit set to {$assessment->requestedVisitLabel()}.");
     }
+
+    /**
+     * The walk-in assessment, made by the Front Desk: Approve (verifies the
+     * visitor, ID and documents, links the PDL and books the chosen session;
+     * WalkInService::approveAtDesk) or Reject, with the reason for the
+     * walk-in and the officer's remarks. Made once; a later visit is a new
+     * arrival.
+     */
+    public function assess(Request $request, VisitorProfile $visitor): RedirectResponse
+    {
+        abort_unless($visitor->isWalkIn(), 404);
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $request->merge(['remarks' => Sanitizer::paragraph($request->input('remarks'))]);
+        $data = $request->validate(['decision' => ['required', 'in:approved,declined']] + self::DECISION_RULES, self::DECISION_MESSAGES);
+
+        $assessment = $this->walkIns->assessment($visitor);
+        if (! $assessment || $assessment->isDecided() || $assessment->visit_request_id) {
+            throw ValidationException::withMessages(['decision' => 'This walk-in was already decided, and the decision is final. For another visit, record a new arrival.']);
+        }
+        if ($data['decision'] === 'approved' && ! $assessment->hasRequestedVisit()) {
+            throw ValidationException::withMessages(['decision' => 'Choose the visit date and session first.']);
+        }
+
+        return $this->decide($visitor, $staffId, $data);
+    }
+
+    /** A file the walk-in gave at the desk (government ID or relationship document), for the assessment. */
+    public function file(VisitorProfile $visitor, string $kind, int $file): StreamedResponse
+    {
+        abort_unless($visitor->isWalkIn(), 404);
+
+        if ($kind === 'id') {
+            $id = VisitorId::where('visitor_id', $visitor->visitor_id)->findOrFail($file);
+            $disk = $id->fileDisk();
+            abort_unless($disk !== null, 404);
+
+            return Storage::disk($disk)->response($id->file_path);
+        }
+
+        $document = RelationshipDocument::findOrFail($file);
+        abort_unless((int) ($document->visitor_id ?? $document->relationship?->visitor_id) === (int) $visitor->visitor_id, 404);
+        abort_unless(Storage::disk('local')->exists($document->file_path), 404);
+
+        return Storage::disk('local')->response($document->file_path, $document->original_name);
+    }
+
+    /**
+     * The walk-in assessment: decision, reason for the walk-in, remarks
+     * (required to reject or for "Other"). The forms always send a decision;
+     * without one the walk-in stays Pending, to decide on its page.
+     */
+    public const DECISION_RULES = [
+        'decision' => ['nullable', 'in:approved,declined'],
+        'walk_in_reason' => ['required_with:decision', 'nullable', 'in:no_prior_booking,other'],
+        'remarks' => ['required_if:decision,declined', 'required_if:walk_in_reason,other', 'nullable', 'string', 'max:1000'],
+        'no_immediate_family' => ['nullable', 'boolean'],
+    ];
+
+    public const DECISION_MESSAGES = [
+        'decision.*' => 'Choose Approve or Reject.',
+        'walk_in_reason.*' => 'Choose the reason for the walk-in.',
+        'remarks.required_if' => 'Add remarks explaining the reason (required for "Other" or a rejected walk-in).',
+        'remarks.max' => 'Keep the remarks under 1000 characters.',
+    ];
 
     private const SLOT_RULES = [
         'requested_date' => ['required', 'date_format:Y-m-d'],

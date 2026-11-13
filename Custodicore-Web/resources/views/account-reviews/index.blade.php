@@ -17,23 +17,6 @@
   It approves the ID, the documents, the account and the PDL relationship together. Approve stays off until every requirement is complete.
 </p>
 
-@if ($walkInsAwaitingDecision->isNotEmpty())
-  <div class="panel" style="margin-bottom:16px;border-left:4px solid var(--amber);">
-    <div class="panel-header" style="margin-bottom:8px;">
-      <h2>Walk-ins waiting for your decision <span class="count-chip">{{ $walkInsAwaitingDecision->count() }}</span></h2>
-    </div>
-    <p class="muted-cell" style="margin:0 0 10px;">Approved accounts registered at the Front Desk. Complete the walk-in assessment so the Front Desk can book the visit.</p>
-    <ul style="margin:0;padding-left:18px;">
-      @foreach ($walkInsAwaitingDecision as $walkIn)
-        <li style="margin:4px 0;">
-          <a class="elig-name" href="{{ route('visitor.show', $walkIn->visitor_id) }}#walk-in">{{ $walkIn->full_name }}</a>
-          <span class="muted-cell">· visiting {{ $walkIn->intended_pdl_name ?: '—' }} · registered <span data-live-ignore>{{ $walkIn->created_at?->diffForHumans() }}</span></span>
-        </li>
-      @endforeach
-    </ul>
-  </div>
-@endif
-
 <div class="elig-tabs" role="tablist">
   @foreach ($tabs as $key => [$label, $chipClass])
     <a href="{{ route('account-reviews.index', $key === 'pending' ? [] : ['tab' => $key]) }}" class="elig-tab {{ $tab === $key ? 'is-active' : '' }}" role="tab">
@@ -50,7 +33,7 @@
       @else No accounts are waiting for approval.
       @endif
     </div>
-    <p class="muted-cell">New visitor registrations from the app and walk-ins registered at the Front Desk appear here.</p>
+    <p class="muted-cell">New visitor registrations from the app appear here. Walk-ins are approved at the Front Desk.</p>
   </div>
 @else
   @foreach ($visitors as $visitor)

@@ -586,22 +586,6 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'idFile']
     )->name('visitor.ids.file');
 
-    // Walk-in assessment and decision (walk-ins registered at the Front Desk).
-    Route::post(
-        '/visitors/{visitor}/walk-in-assessment',
-        [\App\Http\Controllers\WalkInAssessmentController::class, 'update']
-    )->name('visitor.walk-in-assessment');
-
-    Route::post(
-        '/visitors/{visitor}/walk-in-documents/{document}/verify',
-        [\App\Http\Controllers\WalkInAssessmentController::class, 'verifyDocument']
-    )->name('visitor.walk-in-documents.verify');
-
-    Route::post(
-        '/visitors/{visitor}/walk-in-documents/{document}/reject',
-        [\App\Http\Controllers\WalkInAssessmentController::class, 'rejectDocument']
-    )->name('visitor.walk-in-documents.reject');
-
     Route::post(
         '/visitors/{visitor}/approve',
         [\App\Http\Controllers\VisitorController::class, 'approve']
@@ -941,9 +925,9 @@ Route::prefix('front-desk')
         |--------------------------------------------------------------------------
         |
         | Visitors without a phone: found or registered at the desk, with the
-        | PDL and a session Records opened; the Record Officer approves once,
-        | which books that session; then checked in and out at the gate
-        | (WalkInService).
+        | PDL and a session Records opened; the Front Desk checks the originals
+        | and approves (or rejects) once, which books that session; then
+        | checked in and out at the gate (WalkInService).
         |
         */
 
@@ -953,10 +937,14 @@ Route::prefix('front-desk')
         Route::get('/walk-ins/slots', [WalkInController::class, 'slots'])->middleware('throttle:60,1,walk-in-slots')->name('walk-ins.slots');
         Route::post('/walk-ins', [WalkInController::class, 'store'])->name('walk-ins.store');
         Route::get('/walk-ins/{visitor}', [WalkInController::class, 'show'])->name('walk-ins.show');
-        // A registered walk-in came back: a new arrival for Records to decide on.
+        // A registered walk-in came back: a new arrival, approved at the desk.
         Route::post('/walk-ins/{visitor}/arrivals', [WalkInController::class, 'storeArrival'])->name('walk-ins.arrivals.store');
-        // Another date or session for an arrival still waiting for the Records decision.
+        // Another date or session for an arrival not decided yet.
         Route::post('/walk-ins/{visitor}/slot', [WalkInController::class, 'updateSlot'])->name('walk-ins.slot.update');
+        // The walk-in assessment (approve or reject) and the files it is decided on.
+        Route::post('/walk-ins/{visitor}/assessment', [WalkInController::class, 'assess'])->name('walk-ins.assessment');
+        Route::get('/walk-ins/{visitor}/files/{kind}/{file}', [WalkInController::class, 'file'])
+            ->whereIn('kind', ['id', 'document'])->whereNumber('file')->name('walk-ins.file');
 
 
         /*
