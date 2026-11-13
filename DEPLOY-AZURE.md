@@ -137,7 +137,7 @@ Useful commands:
 cd /home/site/wwwroot
 php artisan config:clear              # after changing App settings
 php artisan migrate:status            # quick database connection check
-php artisan migrate --force           # after deploying new migrations
+php artisan migrate --force           # runs automatically at startup (deploy/azure-startup.sh, log: /home/custodicore/storage/logs/migrate.log); run by hand if that log shows a failure
 php artisan cc:mail-test you@example.com
 php artisan cc:mfa-reset              # remove a staff member's two-step verification
 php artisan cc:purge-visitors         # dry run: lists every visitor account it would delete

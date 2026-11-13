@@ -33,6 +33,20 @@ service nginx reload
 # restart starts a new container, so there is never a second copy.
 app_root="/home/site/wwwroot"
 scheduler_log="$storage_root/logs/scheduler.log"
+migrate_log="$storage_root/logs/migrate.log"
+
+# Database migrations from the deploy: every deploy restarts the app, so new
+# migrations run here, before requests use the new code. Only additive
+# `migrate --force` (never fresh/refresh/reset). A failure is logged and the
+# app still starts, so a bad migration cannot take the site down; check
+# migrate.log and run `php artisan migrate --force` by hand in SSH.
+if [ -f "$app_root/artisan" ]; then
+    touch "$migrate_log"
+    chown www-data:www-data "$migrate_log"
+    printf '\n[%s] php artisan migrate --force\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$migrate_log"
+    su -s /bin/sh www-data -c "cd '$app_root' && php artisan migrate --force --no-interaction" >> "$migrate_log" 2>&1 \
+        || printf 'Warning: migrations failed; see %s\n' "$migrate_log" >&2
+fi
 
 if [ -f "$app_root/artisan" ]; then
     touch "$scheduler_log"
