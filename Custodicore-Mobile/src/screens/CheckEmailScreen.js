@@ -87,61 +87,68 @@ export default function CheckEmailScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.illustrationWrap}>
-          <View style={styles.illustrationOuter}>
-            <View style={styles.illustrationInner}>
-              <Ionicons name="mail-unread-outline" size={44} color={colors.primaryTeal} />
-            </View>
-            {!fromLogin ? (
-              <View style={styles.successBadge}>
-                <Ionicons name="checkmark" size={18} color={colors.white} />
+        <View style={styles.card}>
+          <View style={styles.illustrationWrap}>
+            <View style={styles.illustrationOuter}>
+              <View style={styles.illustrationInner}>
+                <Ionicons name="mail-unread-outline" size={32} color={colors.primaryTeal} />
               </View>
+              {!fromLogin ? (
+                <View style={styles.successBadge}>
+                  <Ionicons name="checkmark" size={14} color={colors.white} />
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <Text style={styles.title}>Check your email</Text>
+          <Text style={styles.message}>
+            {fromLogin ? 'Please verify your email address before logging in. ' : ''}
+            We sent a verification link to
+          </Text>
+          {email ? (
+            <View style={styles.emailBox}>
+              <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.email} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {email}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.message}>Tap the link in the email, then come back and log in.</Text>
+
+          <View style={styles.actions}>
+            <Button
+              title="Back to Login"
+              onPress={() => goToLogin(false)}
+              accessibilityLabel="Back to login"
+            />
+            {email ? (
+              <Pressable
+                onPress={onResend}
+                disabled={resending || cooldown > 0}
+                hitSlop={8}
+                style={({ pressed }) => [styles.resendLink, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  cooldown > 0
+                    ? `Resend verification email, available in ${cooldown} seconds`
+                    : 'Resend verification email'
+                }
+                accessibilityState={{ disabled: resending || cooldown > 0, busy: resending }}
+              >
+                {resending ? (
+                  <ActivityIndicator size="small" color={colors.primaryTeal} />
+                ) : (
+                  <Text style={styles.resendText}>
+                    Didn&apos;t get it? Check spam or{' '}
+                    <Text style={cooldown > 0 ? styles.resendWait : styles.resendAction}>
+                      {cooldown > 0 ? `Resend email (${cooldown}s)` : 'Resend email'}
+                    </Text>
+                  </Text>
+                )}
+              </Pressable>
             ) : null}
           </View>
-        </View>
-
-        <Text style={styles.title}>Check your email</Text>
-        <Text style={styles.message}>
-          {fromLogin ? 'Please verify your email address before logging in.\n' : ''}
-          We sent a verification link to
-        </Text>
-        {email ? <Text style={styles.email}>{email}</Text> : null}
-        <Text style={styles.message}>
-          Tap the link to verify, then log in.{'\n'}Can&apos;t find it? Check your spam folder.
-        </Text>
-
-        <View style={styles.actions}>
-          <Button
-            title="Back to Login"
-            onPress={() => goToLogin(false)}
-            accessibilityLabel="Back to login"
-          />
-          {email ? (
-            <Pressable
-              onPress={onResend}
-              disabled={resending || cooldown > 0}
-              hitSlop={8}
-              style={({ pressed }) => [styles.resendLink, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={
-                cooldown > 0
-                  ? `Resend verification email, available in ${cooldown} seconds`
-                  : 'Resend verification email'
-              }
-              accessibilityState={{ disabled: resending || cooldown > 0, busy: resending }}
-            >
-              {resending ? (
-                <ActivityIndicator size="small" color={colors.primaryTeal} />
-              ) : (
-                <Text style={styles.resendText}>
-                  Didn&apos;t get it?{' '}
-                  <Text style={cooldown > 0 ? styles.resendWait : styles.resendAction}>
-                    {cooldown > 0 ? `Resend email (${cooldown}s)` : 'Resend email'}
-                  </Text>
-                </Text>
-              )}
-            </Pressable>
-          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -157,21 +164,31 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     justifyContent: 'center',
   },
+  // One compact card holds the whole message and its actions.
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: layout.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   illustrationWrap: {
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
   illustrationOuter: {
-    width: 96,
-    height: 96,
+    width: 70,
+    height: 70,
     alignItems: 'center',
     justifyContent: 'center',
   },
   illustrationInner: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.card,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -179,35 +196,48 @@ const styles = StyleSheet.create({
   },
   successBadge: {
     position: 'absolute',
-    right: 2,
-    bottom: 2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    right: 0,
+    bottom: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.background,
+    borderWidth: 2,
+    borderColor: colors.card,
   },
   title: {
     ...typography.pageTitle,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   message: {
     ...typography.metadata,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  // The address in a soft box, so it stands out from the sentences around it.
+  emailBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    alignSelf: 'center',
+    maxWidth: '100%',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: colors.background,
+    marginBottom: spacing.sm,
   },
   email: {
     ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.md,
+    flexShrink: 1,
   },
   actions: {
     width: '100%',
