@@ -103,7 +103,7 @@
       <div><div class="stat-label">PDL ID Number Given</div><div>{{ $visitor->intended_pdl_number ?: '—' }}</div></div>
       <div><div class="stat-label">Relationship Given</div><div>{{ $visitor->relationship_hint ?: '—' }}</div></div>
       <div><div class="stat-label">PDL Selected by the Front Desk</div><div>{{ $assessment->pdl ? $assessment->pdl->full_name.' ('.$assessment->pdl->pdl_number.')' : '—' }}</div></div>
-      <div><div class="stat-label">Requested Visit (Booked on Approval)</div><div>{{ $assessment->requestedVisitLabel() ?? 'Not chosen yet' }}</div></div>
+      <div><div class="stat-label">Requested Visit (Booked on Approval)</div><div>{{ $assessment->requestedVisitLabel() ?? 'Not chosen yet' }}</div>@foreach ($assessment->extraVisitLabels() as $label)<div>{{ $label }}</div>@endforeach</div>
     </div>
 
     {{-- 1. Checks the system fills in --}}

@@ -20,6 +20,7 @@ class WalkInAssessment extends Model
         'pdl_id',
         'requested_date',
         'requested_start_times',
+        'extra_visits',
         'pdl_verification',
         'visitor_eligibility',
         'authorized_visitor',
@@ -36,6 +37,7 @@ class WalkInAssessment extends Model
         'has_children_together' => 'boolean',
         'requested_date' => 'date',
         'requested_start_times' => 'array',
+        'extra_visits' => 'array',
     ];
 
     /** Once a decision is Approved or Rejected it is final (WalkInService::assess()). */
@@ -56,9 +58,32 @@ class WalkInAssessment extends Model
             return null;
         }
 
-        $times = collect($this->requested_start_times)->sort()->values();
+        return self::visitLabel($this->requested_date->toDateString(), $this->requested_start_times);
+    }
 
-        return $this->requested_date->format('D, M j, Y').' · '.$times->implode(' + ')
+    /**
+     * The other days picked at registration, booked with the approval.
+     *
+     * @return array<int, array{date:string, start_times:array<int,string>}>
+     */
+    public function extraVisits(): array
+    {
+        return array_values(array_filter((array) $this->extra_visits,
+            fn ($visit) => ! empty($visit['date']) && ! empty($visit['start_times'])));
+    }
+
+    /** @return array<int, string> labels of extraVisits(), like requestedVisitLabel() */
+    public function extraVisitLabels(): array
+    {
+        return array_map(fn ($visit) => self::visitLabel($visit['date'], $visit['start_times']), $this->extraVisits());
+    }
+
+    /** @param  array<int, string>  $startTimes */
+    public static function visitLabel(string $date, array $startTimes): string
+    {
+        $times = collect($startTimes)->sort()->values();
+
+        return \Illuminate\Support\Carbon::parse($date)->format('D, M j, Y').' · '.$times->implode(' + ')
             .($times->count() > 1 ? ' (whole day)' : '');
     }
 

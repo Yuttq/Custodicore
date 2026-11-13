@@ -266,7 +266,7 @@
         {{-- 4. Visit date and session: one Records opened; approving the walk-in books it. --}}
         <div class="cc-card">
             <p class="text-card-title">4 · Visit Date and Session *</p>
-            <p class="text-metadata text-text-secondary">Only the dates and sessions Records opened are shown. Approving the walk-in books the session chosen here.</p>
+            <p class="text-metadata text-text-secondary">Only the dates and sessions Records opened are shown. Approving the walk-in books the session chosen here, and any other schedule added for this visitor.</p>
             <div class="mt-md">
                 @include('frontdesk.walk-ins.partials.slot-picker', [
                     'id' => 'registrationSlots',
@@ -275,6 +275,8 @@
                     'typeSource' => '#relationship_type',
                     'oldDate' => old('requested_date'),
                     'oldTimes' => old('requested_start_times', []),
+                    'allowExtra' => true,
+                    'oldExtras' => old('extra_visits', []),
                 ])
                 {{-- Messages from the page's own checks (the picker shows the server's). --}}
                 <p class="mt-xs text-metadata font-semibold text-danger" data-error-for="requested_date" role="alert" hidden></p>
@@ -635,7 +637,7 @@
                 }],
                 ['requested_date', () => {
                     const date = parseDate(document.querySelector('#registrationSlots [data-slot-date]').value);
-                    if (!date) return 'Please select a visit date.';
+                    if (!date) return 'Please select a visit date and session.';
                     return date < today() ? 'Visit date cannot be in the past.' : null;
                 }],
                 ['consent', () => $('consent').checked ? null : 'The visitor must agree to the Terms and Conditions and the Privacy Policy before proceeding.'],

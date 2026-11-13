@@ -6,6 +6,7 @@ use App\Models\Pdl;
 use App\Models\VisitorId;
 use App\Models\VisitorProfile;
 use App\Services\RelationshipRequirements;
+use App\Services\ScheduleAvailabilityService;
 use App\Services\WalkInService;
 use App\Support\Sanitizer;
 use Illuminate\Support\Carbon;
@@ -36,6 +37,9 @@ class WalkInRegistrationRequest extends FrontDeskRequest
 
     public const MAX_FILES = 5;
 
+    /** Other days the desk may book for the walk-in at registration, besides the first. */
+    public const MAX_EXTRA_VISITS = 3;
+
     protected function prepareForValidation(): void
     {
         $first = Sanitizer::name($this->input('first_name'));
@@ -52,6 +56,15 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'guardian_relationship' => Sanitizer::text($this->input('guardian_relationship')),
             'guardian_contact_number' => self::mobile($this->input('guardian_contact_number')),
             'requested_start_times' => WalkInService::normalizeTimes((array) $this->input('requested_start_times', [])),
+            // Other days picked for the same walk-in; rows left empty are dropped.
+            'extra_visits' => collect((array) $this->input('extra_visits', []))
+                ->filter(fn ($visit) => is_array($visit) && (! empty($visit['date']) || ! empty($visit['start_times'])))
+                ->map(fn ($visit) => [
+                    'date' => is_string($visit['date'] ?? null) ? $visit['date'] : null,
+                    'start_times' => WalkInService::normalizeTimes((array) ($visit['start_times'] ?? [])),
+                ])
+                ->values()
+                ->all(),
             'visit_purpose_type' => Sanitizer::text($this->input('visit_purpose_type')),
             'visit_purpose' => Sanitizer::text($this->input('visit_purpose')),
             'id_type' => VisitorId::resolveType(Sanitizer::text($this->input('id_type'))),
@@ -103,6 +116,10 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'requested_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
             'requested_start_times' => ['required', 'array', 'min:1', 'max:4'],
             'requested_start_times.*' => ['date_format:H:i'],
+            'extra_visits' => ['nullable', 'array', 'max:'.self::MAX_EXTRA_VISITS],
+            'extra_visits.*.date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'extra_visits.*.start_times' => ['required', 'array', 'min:1', 'max:4'],
+            'extra_visits.*.start_times.*' => ['date_format:H:i'],
             'visit_purpose_type' => ['required', 'string', 'max:150'],
             'visit_purpose' => [Rule::requiredIf($this->filled('visit_purpose_type')), 'nullable', 'string', 'max:150'],
             'relationship_type' => ['required', Rule::in(RelationshipRequirements::registrationTypes())],
@@ -166,8 +183,59 @@ class WalkInRegistrationRequest extends FrontDeskRequest
                         ? $validator->errors()->add('requested_date', 'Visits are not allowed on the selected day.')
                         : $validator->errors()->add('requested_start_times', $message);
                 }
+
+                $this->validateExtraVisits($validator);
             },
         ];
+    }
+
+    /**
+     * The other days picked for the same walk-in: one visit a day, each a
+     * session Records opened and bookable now, and no more visits in a week
+     * than visit.max_per_week (counting the first schedule). Booking them at
+     * approval checks all of it again.
+     */
+    private function validateExtraVisits(Validator $validator): void
+    {
+        $extras = (array) $this->input('extra_visits', []);
+        if ($extras === [] || $validator->errors()->hasAny(['extra_visits', 'extra_visits.*', 'pdl_id', 'requested_date'])) {
+            return;
+        }
+
+        $service = app(WalkInService::class);
+        $availability = app(ScheduleAvailabilityService::class);
+        $pdl = Pdl::find($this->integer('pdl_id'));
+        if (! $pdl) {
+            return;
+        }
+
+        $dates = [(string) $this->input('requested_date')];
+        foreach ($extras as $i => $visit) {
+            $label = 'Schedule '.($i + 2);
+            if (in_array($visit['date'], $dates, true)) {
+                $validator->errors()->add('extra_visits', "{$label}: the visitor already has a schedule on that day. Pick another day.");
+
+                return;
+            }
+            $dates[] = $visit['date'];
+
+            try {
+                $service->assertSlotOpen($pdl, null, (string) $this->input('relationship_type'), $visit['date'], $visit['start_times']);
+            } catch (ValidationException $e) {
+                $validator->errors()->add('extra_visits', "{$label}: ".collect($e->errors())->flatten()->first());
+
+                return;
+            }
+        }
+
+        $max = $availability->maxVisitsPerWeek();
+        $busiest = collect($dates)
+            ->countBy(fn ($date) => Carbon::parse($date)->startOfWeek(Carbon::MONDAY)->toDateString())
+            ->max();
+        if ($busiest > $max) {
+            $validator->errors()->add('extra_visits', "A visitor may have up to {$max} visit".($max === 1 ? '' : 's')
+                .' a week (Monday to Sunday). Pick days in another week, or remove a schedule.');
+        }
     }
 
     /** @return array<int, string> */
@@ -239,6 +307,10 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'requested_date.date_format' => 'Please select a visit date.',
             'requested_date.after_or_equal' => 'Visit date cannot be in the past.',
             'requested_start_times.*' => 'Choose a session for the visit.',
+            'extra_visits.max' => 'You can add up to '.self::MAX_EXTRA_VISITS.' more schedules only.',
+            'extra_visits.*.date.after_or_equal' => 'Another schedule’s date cannot be in the past.',
+            'extra_visits.*.date.*' => 'Choose a date for each added schedule, or remove it.',
+            'extra_visits.*.start_times.*' => 'Choose a session for each added schedule, or remove it.',
             'visit_purpose_type.*' => 'Please select the purpose of the visit.',
             'visit_purpose.required' => 'Please specify the purpose of the visit.',
             'visit_purpose.max' => 'Keep the purpose of the visit under 150 characters.',

@@ -162,12 +162,17 @@ class WalkInService
                     'pdl_id' => $pdl->pdl_id,
                     'requested_date' => $data['requested_date'],
                     'requested_start_times' => self::normalizeTimes($data['requested_start_times']),
+                    'extra_visits' => collect($data['extra_visits'] ?? [])
+                        ->map(fn ($visit) => ['date' => $visit['date'], 'start_times' => self::normalizeTimes($visit['start_times'])])
+                        ->values()->all() ?: null,
                     'decision' => 'pending',
                 ]);
 
                 AuditLog::record('create', 'visitor_profiles', $profile->visitor_id,
                     "Front Desk registered walk-in visitor {$profile->full_name} (to visit {$pdl->full_name} ({$pdl->pdl_number}) on "
-                    .$data['requested_date'].' '.implode(' + ', self::normalizeTimes($data['requested_start_times'])).', '
+                    .$data['requested_date'].' '.implode(' + ', self::normalizeTimes($data['requested_start_times']))
+                    .collect($data['extra_visits'] ?? [])->map(fn ($v) => ', '.$v['date'].' '.implode(' + ', self::normalizeTimes($v['start_times'])))->implode('')
+                    .', '
                     .count($documents).' relationship document(s)'.($governmentId ? ', government ID' : '').')',
                     Module::CODE_VISITOR_MANAGEMENT);
 
@@ -1022,12 +1027,14 @@ class WalkInService
                     // Rolls the decision back with the booking.
                     throw ValidationException::withMessages(['booking' => collect($e->errors())->flatten()->first()]);
                 }
+                $this->bookExtraVisits($visitor, $assessment, $visit);
             }
 
             AuditLog::record('update', 'walk_in_assessments', $assessment->assessment_id,
                 "{$decidedBy} assessed walk-in {$visitor->full_name}: {$assessment->label('decision')}"
                 .($assessment->remarks ? " ({$assessment->remarks})" : '')
-                .($visit ? "; booked {$assessment->requestedVisitLabel()}" : ''),
+                .($visit ? "; booked {$assessment->requestedVisitLabel()}" : '')
+                .($visit && $assessment->extraVisits() ? ', '.implode(', ', $assessment->extraVisitLabels()) : ''),
                 Module::CODE_VISITOR_MANAGEMENT);
 
             return [$assessment, $visit];
@@ -1041,18 +1048,57 @@ class WalkInService
             throw ValidationException::withMessages(['requested_start_times' => 'The Front Desk has not chosen a visit date and session yet.']);
         }
 
-        $relationship = $this->verifiedRelationships($visitor)
+        return $this->bookVisit(
+            $visitor,
+            $this->requestedRelationship($visitor, $assessment),
+            $assessment->requested_start_times,
+            CarbonImmutable::parse($assessment->requested_date->toDateString()),
+        );
+    }
+
+    /**
+     * Books the other days picked at registration, after the first visit,
+     * with every rule of a booking (seats, one visit a day, weekly limit).
+     * All or nothing with the approval: if one cannot be booked, the
+     * approval is rolled back and the message names the day.
+     *
+     * @throws ValidationException
+     */
+    private function bookExtraVisits(VisitorProfile $visitor, WalkInAssessment $assessment, VisitRequest $first): void
+    {
+        $extras = $assessment->extraVisits();
+        if ($extras === []) {
+            return;
+        }
+
+        $relationship = $this->requestedRelationship($visitor, $assessment);
+        foreach ($extras as $extra) {
+            $label = WalkInAssessment::visitLabel($extra['date'], $extra['start_times']);
+            try {
+                $visit = $this->assignments->submitVisitorRequest(
+                    $visitor, $relationship, CarbonImmutable::parse($extra['date']), $extra['start_times']
+                );
+                $visit = $this->assignments->approveVisitorRequest($visit);
+            } catch (ValidationException $e) {
+                throw ValidationException::withMessages([
+                    'booking' => "The added schedule {$label} cannot be booked: ".collect($e->errors())->flatten()->first(),
+                ]);
+            }
+            $visit->update(['is_walk_in' => true]);
+
+            AuditLog::record('update', 'visit_requests', $visit->visit_request_id,
+                "Booked walk-in visit for {$visitor->full_name} → {$first->pdl->full_name} ({$label}, added at registration)",
+                Module::CODE_VISIT_SCHEDULING);
+        }
+    }
+
+    private function requestedRelationship(VisitorProfile $visitor, WalkInAssessment $assessment): VisitorPdlRelationship
+    {
+        return $this->verifiedRelationships($visitor)
             ->first(fn (VisitorPdlRelationship $r) => $assessment->pdl_id === null || (int) $r->pdl_id === (int) $assessment->pdl_id)
             ?? throw ValidationException::withMessages([
                 'relationship' => 'The visitor is not linked to the PDL the Front Desk selected. Ask the Front Desk to choose the session again.',
             ]);
-
-        return $this->bookVisit(
-            $visitor,
-            $relationship,
-            $assessment->requested_start_times,
-            CarbonImmutable::parse($assessment->requested_date->toDateString()),
-        );
     }
 
     /**

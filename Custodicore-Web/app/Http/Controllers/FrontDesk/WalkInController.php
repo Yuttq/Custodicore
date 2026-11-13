@@ -290,7 +290,10 @@ class WalkInController extends Controller
         $times = $visit->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ');
         $day = $visit->schedule->schedule_date->isToday() ? 'today' : $visit->schedule->schedule_date->format('D, M j, Y');
 
-        return $show->with('status', "{$visitor->full_name} is approved. Visit with {$visit->pdl->full_name} booked for {$day} ({$times}).");
+        $extras = $this->walkIns->assessment($visitor)?->extraVisitLabels() ?? [];
+        $more = $extras ? ' Also booked: '.implode('; ', $extras).'.' : '';
+
+        return $show->with('status', "{$visitor->full_name} is approved. Visit with {$visit->pdl->full_name} booked for {$day} ({$times}).{$more}");
     }
 
     public function show(VisitorProfile $visitor): View

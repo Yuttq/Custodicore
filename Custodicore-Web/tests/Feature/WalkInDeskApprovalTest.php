@@ -134,6 +134,44 @@ class WalkInDeskApprovalTest extends TestCase
             ->assertSee('Approved')->assertSee('Check In Now')->assertDontSee('Save Walk-in Decision');
     }
 
+    public function test_another_schedule_added_at_registration_is_booked_with_the_approval(): void
+    {
+        $this->register(['extra_visits' => [['date' => self::NEXT_FRIDAY, 'start_times' => ['09:00']]]])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', fn ($message) => str_contains($message, 'is approved')
+                && str_contains($message, 'Also booked: Fri, Oct 16, 2026 · 09:00'));
+
+        $walkIn = $this->walkIn();
+        $assessment = $walkIn->walkInAssessments()->first();
+        $this->assertSame([['date' => self::NEXT_FRIDAY, 'start_times' => ['09:00']]], $assessment->extraVisits());
+
+        $visits = VisitRequest::where('visitor_id', $walkIn->visitor_id)->with('schedule')->get();
+        $this->assertCount(2, $visits);
+        $this->assertTrue($visits->every(fn ($visit) => $visit->status === 'confirmed' && $visit->is_walk_in));
+        $this->assertEqualsCanonicalizing([self::FRIDAY, self::NEXT_FRIDAY],
+            $visits->map(fn ($visit) => $visit->schedule->schedule_date->toDateString())->all());
+        // The arrival stays tied to its first visit.
+        $first = $visits->first(fn ($visit) => $visit->schedule->schedule_date->toDateString() === self::FRIDAY);
+        $this->assertSame($assessment->visit_request_id, $first->visit_request_id);
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertOk()->assertSee('Fri, Oct 16, 2026 · 09:00');
+    }
+
+    public function test_added_schedules_must_be_other_open_days(): void
+    {
+        $this->register(['extra_visits' => [['date' => self::FRIDAY, 'start_times' => ['09:00']]]])
+            ->assertSessionHasErrors(['extra_visits' => 'Schedule 2: the visitor already has a schedule on that day. Pick another day.']);
+
+        // Records opened nothing on that Monday.
+        $this->register(['extra_visits' => [['date' => '2026-10-12', 'start_times' => ['09:00']]]])
+            ->assertSessionHasErrors(['extra_visits' => 'Schedule 2: Records has not opened a session for this PDL on that date. Choose one of the dates shown.']);
+
+        $this->register(['extra_visits' => [['date' => self::NEXT_FRIDAY, 'start_times' => []]]])
+            ->assertSessionHasErrors('extra_visits.0.start_times');
+
+        $this->assertSame(0, VisitorProfile::where('full_name', 'Lourdes Reyes')->count());
+    }
+
     public function test_one_save_can_reject_the_walk_in(): void
     {
         $this->register(['decision' => 'declined'])->assertSessionHasErrors('remarks');
