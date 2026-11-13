@@ -213,16 +213,12 @@
                     </div>
                     <div>
                         <label for="arrival_reason" class="cc-label">Reason for walk-in *</label>
-                        <select id="arrival_reason" name="walk_in_reason" class="cc-input">
-                            @foreach ($reasons as $value => $label)
-                                <option value="{{ $value }}" @selected(old('walk_in_reason', 'no_prior_booking') === $value)>{{ $label }}</option>
-                            @endforeach
-                        </select>
+                        <input id="arrival_reason" name="walk_in_reason" maxlength="255" value="{{ old('walk_in_reason') }}" placeholder="e.g. No phone to book in the app" class="cc-input" />
                         @error('walk_in_reason') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
                     </div>
                     <div class="md:col-span-2">
                         <label for="arrival_remarks" class="cc-label">Officer remarks</label>
-                        <textarea id="arrival_remarks" name="remarks" rows="2" maxlength="1000" class="cc-input" placeholder="Required when the reason is Other or the arrival is rejected">{{ old('remarks') }}</textarea>
+                        <textarea id="arrival_remarks" name="remarks" rows="2" maxlength="1000" class="cc-input" placeholder="Required when the arrival is rejected">{{ old('remarks') }}</textarea>
                         @error('remarks') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
                     </div>
                 </div>
@@ -250,32 +246,17 @@
                 $pdlCheck = $decided && $assessment->pdl_verification ? $assessment->pdl_verification : $checks['pdl_verification'];
                 $checkedPdl = $checks['linkedPdls']->first() ?? $checks['matches']->first();
             @endphp
-            <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-3">
+            <dl class="mt-md text-body">
                 <div>
                     <dt class="cc-label">PDL verification (automatic)</dt>
                     <dd class="mt-xs font-semibold {{ $pdlCheck === 'verified' ? 'text-success' : 'text-danger' }}">
                         {{ $options['pdl_verification'][$pdlCheck] ?? '—' }}{{ $checkedPdl ? ' · '.$checkedPdl->full_name.' ('.$checkedPdl->pdl_number.')' : '' }}
                     </dd>
                 </div>
-                <div>
-                    <dt class="cc-label">Visitor eligibility (automatic)</dt>
-                    <dd class="mt-xs font-semibold {{ $checks['flagged'] ? 'text-danger' : ($decided ? '' : 'text-text-secondary') }}">
-                        @if ($checks['flagged']) Active flag: cannot be approved
-                        @elseif ($decided) {{ $assessment->label('visitor_eligibility') ?? '—' }}
-                        @else No flags · ID verified when you approve
-                        @endif
-                    </dd>
-                </div>
-                <div>
-                    <dt class="cc-label">Authorized visitor (automatic)</dt>
-                    <dd class="mt-xs font-semibold {{ $decided ? '' : 'text-text-secondary' }}">
-                        @if ($decided) {{ $assessment->label('authorized_visitor') ?? '—' }}
-                        @elseif ($checks['authorized_visitor'] === 'yes') Yes · relationship already verified
-                        @else Relationship verified when you approve
-                        @endif
-                    </dd>
-                </div>
             </dl>
+            @if ($checks['flagged'])
+                <p class="mt-sm text-body font-semibold text-danger">Active flag: this visitor can't be approved until the flag is resolved.</p>
+            @endif
 
             {{-- The files given at the desk --}}
             <div class="mt-md">
@@ -309,17 +290,13 @@
                         </div>
                         <div>
                             <label for="assess_reason" class="cc-label">Reason for walk-in *</label>
-                            <select id="assess_reason" name="walk_in_reason" required class="cc-input">
-                                @foreach ($reasons as $value => $label)
-                                    <option value="{{ $value }}" @selected(old('walk_in_reason', $assessment->walk_in_reason ?: 'no_prior_booking') === $value)>{{ $label }}</option>
-                                @endforeach
-                            </select>
+                            <input id="assess_reason" name="walk_in_reason" required maxlength="255" value="{{ old('walk_in_reason', $assessment->walk_in_reason) }}" placeholder="e.g. No phone to book in the app" class="cc-input" />
                             @error('walk_in_reason') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
                         </div>
                     </div>
                     <div>
                         <label for="assess_remarks" class="cc-label">Officer remarks</label>
-                        <textarea id="assess_remarks" name="remarks" rows="3" maxlength="1000" class="cc-input" placeholder="Required when the reason is Other or the walk-in is rejected">{{ old('remarks', $assessment->remarks) }}</textarea>
+                        <textarea id="assess_remarks" name="remarks" rows="3" maxlength="1000" class="cc-input" placeholder="Required when the walk-in is rejected">{{ old('remarks', $assessment->remarks) }}</textarea>
                         @error('remarks') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
                     </div>
                     @if ($assessment->relationship_type === 'legal_guardian')
@@ -333,7 +310,7 @@
             @else
                 <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-3">
                     <div><dt class="cc-label">Walk-in decision</dt><dd class="mt-xs font-semibold">{{ $assessment->label('decision') }}</dd></div>
-                    <div><dt class="cc-label">Reason for walk-in</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at ? $assessment->label('walk_in_reason') : '—' }}</dd></div>
+                    <div><dt class="cc-label">Reason for walk-in</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at ? ($assessment->walk_in_reason ?: '—') : '—' }}</dd></div>
                     <div><dt class="cc-label">Files reviewed</dt><dd class="mt-xs font-semibold">{{ $checks['pendingFiles'] ? $checks['pendingFiles'].' not checked yet' : 'All checked' }}</dd></div>
                     <div class="sm:col-span-2 lg:col-span-3"><dt class="cc-label">Officer remarks</dt><dd class="mt-xs font-semibold">{{ $assessment->remarks ?: '—' }}</dd></div>
                     <div><dt class="cc-label">Processed by</dt><dd class="mt-xs font-semibold">{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</dd></div>

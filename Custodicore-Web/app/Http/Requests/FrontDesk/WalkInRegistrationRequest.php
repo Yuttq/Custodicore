@@ -55,6 +55,7 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'visit_purpose_type' => Sanitizer::text($this->input('visit_purpose_type')),
             'visit_purpose' => Sanitizer::text($this->input('visit_purpose')),
             'id_type' => VisitorId::resolveType(Sanitizer::text($this->input('id_type'))),
+            'walk_in_reason' => Sanitizer::text($this->input('walk_in_reason')),
             'remarks' => Sanitizer::paragraph($this->input('remarks')),
         ]);
     }

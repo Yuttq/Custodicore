@@ -69,7 +69,6 @@ class WalkInAssessment extends Model
         'authorized_visitor' => ['yes' => 'Yes', 'no' => 'No', 'for_review' => 'For Review'],
         // 'declined' is the stored value of a rejected walk-in.
         'decision' => ['approved' => 'Approved', 'declined' => 'Rejected', 'pending' => 'Pending'],
-        'walk_in_reason' => ['no_prior_booking' => 'No prior booking', 'other' => 'Other'],
     ];
 
     /** Filled in by the system (WalkInService::checks()), not chosen by the officer. */

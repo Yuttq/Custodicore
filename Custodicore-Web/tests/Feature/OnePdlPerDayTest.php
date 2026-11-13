@@ -436,7 +436,7 @@ class OnePdlPerDayTest extends TestCase
 
         $statements = $this->statementsOfFirstTransaction(fn () => app(WalkInService::class)->assess(
             $this->visitor,
-            ['decision' => 'approved', 'walk_in_reason' => 'no_prior_booking', 'remarks' => null],
+            ['decision' => 'approved', 'walk_in_reason' => 'No phone to book in the app', 'remarks' => null],
             StaffProfile::first()->staff_id,
         ));
 

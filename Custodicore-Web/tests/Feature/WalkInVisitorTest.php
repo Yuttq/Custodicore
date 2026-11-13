@@ -84,7 +84,7 @@ class WalkInVisitorTest extends TestCase
     {
         return array_merge([
             'decision' => 'approved',
-            'walk_in_reason' => 'no_prior_booking',
+            'walk_in_reason' => 'No phone to book in the app',
             'remarks' => '',
         ], $overrides);
     }
@@ -962,7 +962,7 @@ class WalkInVisitorTest extends TestCase
 
         // Declining, or "Other" as the reason, needs remarks.
         $this->assessAtDesk($walkIn, ['decision' => 'declined'])->assertSessionHasErrors('remarks');
-        $this->assessAtDesk($walkIn, ['walk_in_reason' => 'other'])->assertSessionHasErrors('remarks');
+        $this->assessAtDesk($walkIn, ['walk_in_reason' => ''])->assertSessionHasErrors('walk_in_reason');
         $this->assessAtDesk($walkIn, ['decision' => 'declined', 'remarks' => 'No valid ID presented.'])->assertSessionHasNoErrors();
 
         $assessment = $walkIn->walkInAssessments()->first();

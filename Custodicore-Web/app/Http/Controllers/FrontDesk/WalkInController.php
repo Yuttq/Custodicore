@@ -326,7 +326,6 @@ class WalkInController extends Controller
             // The desk decides an arrival not decided yet (approve or reject).
             'canAssess' => $assessment && ! $assessment->isDecided() && $assessment->visit_request_id === null
                 && $assessment->hasRequestedVisit() && $visitor->verification_status !== 'rejected',
-            'reasons' => WalkInAssessment::OPTIONS['walk_in_reason'],
         ]);
     }
 
@@ -346,6 +345,7 @@ class WalkInController extends Controller
 
         $request->merge([
             'visit_purpose' => Sanitizer::text($request->input('visit_purpose')),
+            'walk_in_reason' => Sanitizer::text($request->input('walk_in_reason')),
             'remarks' => Sanitizer::paragraph($request->input('remarks')),
         ]);
         $data = $request->validate([
@@ -401,7 +401,10 @@ class WalkInController extends Controller
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
-        $request->merge(['remarks' => Sanitizer::paragraph($request->input('remarks'))]);
+        $request->merge([
+            'walk_in_reason' => Sanitizer::text($request->input('walk_in_reason')),
+            'remarks' => Sanitizer::paragraph($request->input('remarks')),
+        ]);
         $data = $request->validate(['decision' => ['required', 'in:approved,declined']] + self::DECISION_RULES, self::DECISION_MESSAGES);
 
         $assessment = $this->walkIns->assessment($visitor);
@@ -436,21 +439,22 @@ class WalkInController extends Controller
     }
 
     /**
-     * The walk-in assessment: decision, reason for the walk-in, remarks
-     * (required to reject or for "Other"). The forms always send a decision;
+     * The walk-in assessment: decision, the reason for the walk-in (typed),
+     * remarks (required to reject). The forms always send a decision;
      * without one the walk-in stays Pending, to decide on its page.
      */
     public const DECISION_RULES = [
         'decision' => ['nullable', 'in:approved,declined'],
-        'walk_in_reason' => ['required_with:decision', 'nullable', 'in:no_prior_booking,other'],
-        'remarks' => ['required_if:decision,declined', 'required_if:walk_in_reason,other', 'nullable', 'string', 'max:1000'],
+        'walk_in_reason' => ['required_with:decision', 'nullable', 'string', 'max:255'],
+        'remarks' => ['required_if:decision,declined', 'nullable', 'string', 'max:1000'],
         'no_immediate_family' => ['nullable', 'boolean'],
     ];
 
     public const DECISION_MESSAGES = [
         'decision.*' => 'Choose Approve or Reject.',
-        'walk_in_reason.*' => 'Choose the reason for the walk-in.',
-        'remarks.required_if' => 'Add remarks explaining the reason (required for "Other" or a rejected walk-in).',
+        'walk_in_reason.required_with' => 'Type the reason for the walk-in.',
+        'walk_in_reason.max' => 'Keep the reason under 255 characters.',
+        'remarks.required_if' => 'Add remarks explaining why the walk-in is rejected.',
         'remarks.max' => 'Keep the remarks under 1000 characters.',
     ];
 

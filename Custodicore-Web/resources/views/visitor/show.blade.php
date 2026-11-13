@@ -230,7 +230,7 @@
     </p>
     <div class="row cols-3" style="margin-bottom:12px;">
       <div><div class="stat-label">Walk-In Decision</div><div>{{ $assessment->label('decision') }}</div></div>
-      <div><div class="stat-label">Reason for Walk-In</div><div>{{ $assessment->processed_at ? $assessment->label('walk_in_reason') : '—' }}</div></div>
+      <div><div class="stat-label">Reason for Walk-In</div><div>{{ $assessment->processed_at ? ($assessment->walk_in_reason ?: '—') : '—' }}</div></div>
       <div><div class="stat-label">Officer Remarks</div><div>{{ $assessment->remarks ?: '—' }}</div></div>
       <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</div></div>
       <div><div class="stat-label">Date and Time Processed</div><div>{{ $assessment->processed_at?->format('M j, Y H:i') ?? '—' }}</div></div>

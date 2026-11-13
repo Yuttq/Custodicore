@@ -286,18 +286,10 @@
             <p class="text-card-title">5 · Walk-in Assessment</p>
             <p class="text-metadata text-text-secondary">Check the visitor's original ID and documents against the copies above, then decide. Approving books the session chosen in step 4. The decision is final.</p>
 
-            <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-3">
+            <dl class="mt-md text-body">
                 <div>
                     <dt class="cc-label">PDL verification (automatic)</dt>
                     <dd id="pdlVerification" class="mt-xs font-semibold text-text-secondary">Select the PDL in step 3.</dd>
-                </div>
-                <div>
-                    <dt class="cc-label">Visitor eligibility (automatic)</dt>
-                    <dd class="mt-xs font-semibold text-text-secondary">Checked on save: ID and flags</dd>
-                </div>
-                <div>
-                    <dt class="cc-label">Authorized visitor (automatic)</dt>
-                    <dd class="mt-xs font-semibold text-text-secondary">Checked on save: relationship documents</dd>
                 </div>
             </dl>
 
@@ -312,16 +304,13 @@
                 </div>
                 <div>
                     <label for="walk_in_reason" class="cc-label">Reason for walk-in *</label>
-                    <select id="walk_in_reason" name="walk_in_reason" @class(['cc-input', 'border-danger' => $errors->has('walk_in_reason')])>
-                        @foreach (\App\Models\WalkInAssessment::OPTIONS['walk_in_reason'] as $reasonValue => $reasonLabel)
-                            <option value="{{ $reasonValue }}" @selected(old('walk_in_reason', 'no_prior_booking') === $reasonValue)>{{ $reasonLabel }}</option>
-                        @endforeach
-                    </select>
+                    <input id="walk_in_reason" name="walk_in_reason" maxlength="255" value="{{ old('walk_in_reason') }}" placeholder="e.g. No phone to book in the app"
+                           @class(['cc-input', 'border-danger' => $errors->has('walk_in_reason')]) />
                     @include('frontdesk.walk-ins.partials.field-error', ['name' => 'walk_in_reason'])
                 </div>
                 <div class="md:col-span-2">
                     <label for="remarks" class="cc-label">Officer remarks</label>
-                    <textarea id="remarks" name="remarks" rows="2" maxlength="1000" placeholder="Required when the reason is Other or the walk-in is rejected"
+                    <textarea id="remarks" name="remarks" rows="2" maxlength="1000" placeholder="Required when the walk-in is rejected"
                               @class(['cc-input', 'border-danger' => $errors->has('remarks')])>{{ old('remarks') }}</textarea>
                     @include('frontdesk.walk-ins.partials.field-error', ['name' => 'remarks'])
                 </div>

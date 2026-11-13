@@ -726,7 +726,7 @@ class WalkInService
         try {
             [$saved, $visit] = $this->assess($visitor, [
                 'decision' => 'approved',
-                'walk_in_reason' => $assessment->walk_in_reason ?: 'no_prior_booking',
+                'walk_in_reason' => $assessment->walk_in_reason ?: 'No prior booking',
                 'remarks' => $assessment->remarks,
             ], $staffId);
         } catch (ValidationException $e) {
@@ -758,7 +758,7 @@ class WalkInService
      * says why).
      *
      * @param  array<int, string>  $confirmations  officer confirmations the desk ticked (no_immediate_family)
-     * @param  ?string  $reason  reason for the walk-in (WalkInAssessment::OPTIONS); the arrival's own, else no_prior_booking
+     * @param  ?string  $reason  reason for the walk-in, as typed at the desk
      * @param  ?string  $remarks  the officer's remarks; DESK_APPROVAL_REMARK when empty
      *
      * @throws ValidationException
@@ -809,7 +809,7 @@ class WalkInService
 
             [, $visit] = $this->assess($visitor, [
                 'decision' => 'approved',
-                'walk_in_reason' => $reason ?: ($assessment->walk_in_reason ?: 'no_prior_booking'),
+                'walk_in_reason' => $reason ?: ($assessment->walk_in_reason ?: 'No prior booking'),
                 'remarks' => $remarks ?: self::DESK_APPROVAL_REMARK,
             ], $staffId, 'Front Desk');
 

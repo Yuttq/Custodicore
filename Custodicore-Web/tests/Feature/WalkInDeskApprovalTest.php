@@ -63,7 +63,7 @@ class WalkInDeskApprovalTest extends TestCase
             'documents' => ['marriage_certificate' => UploadedFile::fake()->create('marriage.pdf', 200, 'application/pdf')],
             'consent' => '1',
             'decision' => 'approved',
-            'walk_in_reason' => 'no_prior_booking',
+            'walk_in_reason' => 'No phone to book in the app',
         ], $overrides));
     }
 
@@ -82,7 +82,7 @@ class WalkInDeskApprovalTest extends TestCase
     {
         return $this->actingAs($this->frontDeskAccount)->post(route('frontdesk.walk-ins.assessment', $walkIn), $data + [
             'decision' => 'approved',
-            'walk_in_reason' => 'no_prior_booking',
+            'walk_in_reason' => 'No phone to book in the app',
         ]);
     }
 
@@ -94,7 +94,7 @@ class WalkInDeskApprovalTest extends TestCase
             'requested_date' => self::NEXT_FRIDAY,
             'requested_start_times' => ['09:00'],
             'decision' => 'approved',
-            'walk_in_reason' => 'no_prior_booking',
+            'walk_in_reason' => 'No phone to book in the app',
         ]);
     }
 
@@ -119,7 +119,7 @@ class WalkInDeskApprovalTest extends TestCase
         $assessment = $walkIn->walkInAssessments()->first();
         $this->assertSame('approved', $assessment->decision);
         $this->assertSame('verified', $assessment->pdl_verification);
-        $this->assertSame('no_prior_booking', $assessment->walk_in_reason);
+        $this->assertSame('No phone to book in the app', $assessment->walk_in_reason);
         $this->assertSame($this->deskStaffId(), (int) $assessment->processed_by);
         $this->assertSame('Originals checked.', $assessment->remarks);
 
@@ -137,7 +137,7 @@ class WalkInDeskApprovalTest extends TestCase
     public function test_one_save_can_reject_the_walk_in(): void
     {
         $this->register(['decision' => 'declined'])->assertSessionHasErrors('remarks');
-        $this->register(['walk_in_reason' => 'other'])->assertSessionHasErrors('remarks');
+        $this->register(['walk_in_reason' => ''])->assertSessionHasErrors('walk_in_reason');
 
         $this->register(['decision' => 'declined', 'remarks' => 'Marriage certificate names do not match.'])
             ->assertSessionHasNoErrors()
@@ -201,7 +201,7 @@ class WalkInDeskApprovalTest extends TestCase
         ]);
 
         $this->recordArrival($walkIn)->assertSessionHas('error', fn ($message) => str_contains($message, 'active flag'));
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Active flag: cannot be approved');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Active flag: this visitor can');
 
         $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
