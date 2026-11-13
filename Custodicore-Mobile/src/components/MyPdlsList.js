@@ -12,9 +12,10 @@ const PDL_STATUS_COLORS = {
 };
 
 /**
- * "My PDLs": the visitor's "Add Another PDL" request (Pending Review or Not
- * Accepted) and every PDL relationship on the account with its status.
- * Shown on Profile → My PDLs (`variant="screen"`, with Request / Linked PDLs
+ * "My PDLs": the visitor's "Add Another PDL" requests (each Pending Review or
+ * Not Accepted, with its own actions) and every PDL relationship on the
+ * account with its status.
+ * Shown on Profile → My PDLs (`variant="screen"`, with Requests / Linked PDLs
  * labels) and, for visitors without the Profile tab (pending or returned
  * accounts), inline in Verification Documents (`variant="inline"`, one
  * "My PDLs" label). New requests start only from the (+) on Home → Visitation
@@ -22,10 +23,10 @@ const PDL_STATUS_COLORS = {
  * @param {object} props
  * @param {'screen' | 'inline'} [props.variant]
  * @param {ReturnType<typeof import('../utils/relationshipRequirementDocuments').buildPdlRelationshipList>} props.pdls
- * @param {import('../utils/pdlLinkRequest').PdlRequestStatus | null} props.pdlRequest
- * @param {() => void} props.onCancelRequest
- * @param {boolean} props.cancelling
- * @param {(() => void) | null} props.onRequestAgain — rejected request, when a new one is allowed
+ * @param {import('../utils/pdlLinkRequest').PdlRequestStatus[]} props.pdlRequests
+ * @param {(request: import('../utils/pdlLinkRequest').PdlRequestStatus) => void} props.onCancelRequest
+ * @param {string | null} props.cancellingId — the request being cancelled
+ * @param {((request: import('../utils/pdlLinkRequest').PdlRequestStatus) => void) | null} props.onRequestAgain — rejected request, when a new one is allowed
  * @param {Set<string>} [props.docsNeeded] — relationship ids with a document to upload or replace
  * @param {(() => void) | null} [props.onOpenDocuments]
  * @param {((pdl: any) => void) | null} [props.onRequestAgainForPdl] — rejected relationship, when a new request is allowed
@@ -33,9 +34,9 @@ const PDL_STATUS_COLORS = {
 export default function MyPdlsList({
   variant = 'screen',
   pdls,
-  pdlRequest,
+  pdlRequests,
   onCancelRequest,
-  cancelling,
+  cancellingId,
   onRequestAgain,
   docsNeeded,
   onOpenDocuments = null,
@@ -46,27 +47,33 @@ export default function MyPdlsList({
   return (
     <>
       {!onScreen ? <Text style={styles.eyebrow}>My PDLs</Text> : null}
-      {pdlRequest ? (
+      {pdlRequests.length > 0 ? (
         <>
-          {onScreen ? <Text style={styles.eyebrow}>Request</Text> : null}
-          <PdlRequestCard
-            request={pdlRequest}
-            onCancel={onCancelRequest}
-            cancelling={cancelling}
-            onRequestAgain={onRequestAgain}
-          />
+          {onScreen ? (
+            <Text style={styles.eyebrow}>{pdlRequests.length === 1 ? 'Request' : 'Requests'}</Text>
+          ) : null}
+          {pdlRequests.map((request) => (
+            <PdlRequestCard
+              key={request.id}
+              request={request}
+              onCancel={() => onCancelRequest(request)}
+              cancelling={cancellingId === request.id}
+              cancelDisabled={cancellingId !== null}
+              onRequestAgain={onRequestAgain ? () => onRequestAgain(request) : null}
+            />
+          ))}
         </>
       ) : null}
       {pdls.length > 0 ? (
         <>
-          {/* Only needed to separate the list from a request card above it. */}
-          {onScreen && pdlRequest ? <Text style={styles.eyebrow}>Linked PDLs</Text> : null}
+          {/* Only needed to separate the list from the request cards above it. */}
+          {onScreen && pdlRequests.length > 0 ? <Text style={styles.eyebrow}>Linked PDLs</Text> : null}
           <View style={[styles.list, styles.block]}>
             {pdls.map((pdl, index) => {
               const needsDocs =
                 pdl.status === 'pending' && Boolean(onOpenDocuments) && Boolean(docsNeeded?.has(pdl.id));
-              // Only while a new request is allowed (approved account, none
-              // open): the handler is null otherwise (useMyPdlActions).
+              // Only while a new request is allowed (approved account): the
+              // handler is null otherwise (useMyPdlActions).
               const canRequestAgain = pdl.status === 'rejected' && Boolean(onRequestAgainForPdl);
               return (
                 <View
@@ -129,16 +136,17 @@ export default function MyPdlsList({
 }
 
 /**
- * The visitor's "Add Another PDL" request — open (Pending Review, can be
+ * One "Add Another PDL" request — open (Pending Review, can be
  * cancelled) or rejected (Not Accepted, with the staff reason and Request
  * Again when a new request is allowed).
  * @param {object} props
  * @param {import('../utils/pdlLinkRequest').PdlRequestStatus} props.request
  * @param {() => void} props.onCancel
- * @param {boolean} props.cancelling
+ * @param {boolean} props.cancelling — this request is being cancelled
+ * @param {boolean} props.cancelDisabled — some request is being cancelled
  * @param {(() => void) | null} props.onRequestAgain
  */
-function PdlRequestCard({ request, onCancel, cancelling, onRequestAgain }) {
+function PdlRequestCard({ request, onCancel, cancelling, cancelDisabled, onRequestAgain }) {
   const open = request.status === 'open';
   const color = open ? VERIFICATION_STATUS_COLORS.underReview : VERIFICATION_STATUS_COLORS.rejected;
 
@@ -169,7 +177,7 @@ function PdlRequestCard({ request, onCancel, cancelling, onRequestAgain }) {
             variant="destructive"
             onPress={onCancel}
             loading={cancelling}
-            disabled={cancelling}
+            disabled={cancelDisabled}
             accessibilityLabel={`Cancel the request to add ${request.pdlName}`}
           />
         </>

@@ -179,13 +179,13 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
   );
 
   const pdls = useMemo(() => verification?.pdlRelationships ?? [], [verification]);
-  const pdlRequest = verification?.pdlRequest ?? null;
-  const hasPdlInfo = pdls.length > 0 || Boolean(pdlRequest);
+  const pdlRequests = useMemo(() => verification?.pdlRequests ?? [], [verification]);
+  const hasPdlInfo = pdls.length > 0 || pdlRequests.length > 0;
   const sections = useMemo(() => groupVerificationDocuments(documents, pdls), [documents, pdls]);
   // "Complete" is already said by the progress card; only the steps to take stay.
   const accountMessage =
     verification?.backendStatus === 'verified' ? null : getAccountStatusMessage(verification?.backendStatus);
-  const { cancelling, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
+  const { cancellingId, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
     navigation,
     verification,
     reload,
@@ -260,9 +260,9 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
               <MyPdlsList
                 variant="inline"
                 pdls={pdls}
-                pdlRequest={pdlRequest}
+                pdlRequests={pdlRequests}
                 onCancelRequest={cancelRequest}
-                cancelling={cancelling}
+                cancellingId={cancellingId}
                 onRequestAgain={requestAgain}
                 onRequestAgainForPdl={requestAgainForRelationship}
               />

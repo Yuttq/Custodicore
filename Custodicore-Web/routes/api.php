@@ -104,7 +104,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // (awaiting Record Officer review) — see VisitAssignmentService.
         Route::post('/visit-requests', [VisitorApiController::class, 'storeVisitRequest'])->middleware('throttle:10,1');
 
-        // Phase 5B: ask to add another PDL (one open request at a time; staff
+        // Phase 5B: ask to add another PDL (up to five open requests; staff
         // identify the PDL later). Cancelling is outside this group (below).
         Route::post('/pdl-requests', [\App\Http\Controllers\Api\PdlLinkRequestController::class, 'store'])
             ->middleware('throttle:5,1');

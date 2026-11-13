@@ -173,16 +173,108 @@ class PdlLinkRequestApiTest extends TestCase
         $this->assertSame(2, RelationshipDocument::where('pdl_link_request_id', PdlLinkRequest::sole()->request_id)->count());
     }
 
-    public function test_only_one_open_request_at_a_time(): void
+    /** Five different PDL names (the request limit). */
+    private const NAMES = ['Juan Dela Cruz', 'Pedro Santos', 'Maria Clara', 'Jose Rizal', 'Andres Bonifacio'];
+
+    public function test_up_to_five_open_requests_and_the_sixth_is_refused(): void
     {
-        $this->submit($this->parentRequest())->assertCreated();
-        $this->submit($this->parentRequest(['pdlName' => 'Pedro Santos']))
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $this->assertSame(5, PdlLinkRequestService::MAX_OPEN);
+
+        foreach (self::NAMES as $name) {
+            $this->submit($this->parentRequest(['pdlName' => $name]))->assertCreated();
+        }
+        $this->submit($this->parentRequest(['pdlName' => 'Emilio Aguinaldo']))
             ->assertStatus(409)
-            ->assertJsonPath('code', 'open_request_exists');
+            ->assertJsonPath('code', 'pdl_request_limit')
+            ->assertJsonPath('message', 'You already have 5 PDL requests waiting for facility staff. Wait for one to be reviewed, or cancel one in My PDLs, before sending another.');
+
+        $this->assertSame(5, PdlLinkRequest::open()->count());
+        $this->assertSame(5, RelationshipDocument::count());
+        $this->assertCount(5, $this->storedFiles()); // the refused request stored nothing
+
+        // Cancelling one frees a place.
+        $first = PdlLinkRequest::where('pdl_name', 'Juan Dela Cruz')->sole();
+        $this->post("/api/pdl-requests/{$first->request_id}/cancel", [], ['Accept' => 'application/json'])->assertOk();
+        $this->submit($this->parentRequest(['pdlName' => 'Emilio Aguinaldo']))->assertCreated();
+        $this->assertSame(5, PdlLinkRequest::open()->count());
+
+        // A rejected one frees a place too.
+        PdlLinkRequest::where('pdl_name', 'Pedro Santos')->sole()
+            ->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_REJECTED) + ['rejection_reason' => 'Not found.']);
+        $this->submit($this->parentRequest(['pdlName' => 'Apolinario Mabini']))->assertCreated();
+    }
+
+    public function test_the_limit_counts_each_visitors_own_requests_only(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        foreach (self::NAMES as $name) {
+            $this->submit($this->parentRequest(['pdlName' => $name]))->assertCreated();
+        }
+
+        $other = $this->approvedVisitor('other');
+        Sanctum::actingAs(Account::find($other->account_id));
+        // Same name as one of the first visitor's requests: not a duplicate for them.
+        $this->submit($this->parentRequest())->assertCreated();
+        $this->getJson('/api/documents')->assertJsonPath('pdlRequestLimit', ['max' => 5, 'open' => 1]);
+    }
+
+    public function test_a_second_open_request_for_the_same_pdl_name_is_refused(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $this->submit($this->parentRequest())->assertCreated();
+
+        // Case, extra spaces and periods do not make it a different PDL.
+        foreach (['Juan Dela Cruz', 'juan  dela cruz', 'JUAN DELA CRUZ.'] as $name) {
+            $this->submit($this->parentRequest(['pdlName' => $name]))
+                ->assertStatus(409)
+                ->assertJsonPath('code', 'duplicate_pdl_request')
+                ->assertJsonPath('message', 'You already have a request to add Juan Dela Cruz waiting for facility staff. You can see it in My PDLs.');
+        }
+        $this->assertSame(1, PdlLinkRequest::count());
+        $this->assertCount(1, $this->storedFiles());
+
+        // Once that request is rejected, the same name can be requested again.
+        PdlLinkRequest::sole()->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_REJECTED) + ['rejection_reason' => 'Not found.']);
+        $this->submit($this->parentRequest())->assertCreated();
+    }
+
+    public function test_a_pdl_already_on_the_account_is_refused(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        // The fixture visitor has an approved relationship with "Example PDL".
+        $this->submit($this->parentRequest(['pdlName' => 'example pdl']))
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'pdl_already_linked')
+            ->assertJsonPath('message', 'Example PDL is already on your account. You can see this PDL in My PDLs.');
+
+        // A pending relationship counts too; a rejected one can be requested again.
+        $this->relationship->update(['verification_status' => 'pending']);
+        $this->submit($this->parentRequest(['pdlName' => 'Example PDL']))->assertStatus(409)->assertJsonPath('code', 'pdl_already_linked');
+        $this->relationship->update(['verification_status' => 'rejected']);
+        $this->submit($this->parentRequest(['pdlName' => 'Example PDL']))->assertCreated();
 
         $this->assertSame(1, PdlLinkRequest::count());
-        $this->assertSame(1, RelationshipDocument::count());
-        $this->assertCount(1, $this->storedFiles()); // the refused request stored nothing
+        $this->assertCount(1, $this->storedFiles());
+    }
+
+    public function test_the_limit_is_enforced_by_the_service_not_only_the_api(): void
+    {
+        $service = app(PdlLinkRequestService::class);
+        foreach (self::NAMES as $name) {
+            $service->submit($this->visitor, ['pdlName' => $name, 'relationshipType' => 'parent', 'hasChildrenTogether' => null],
+                ['pdl_birth_certificate' => $this->file()]);
+        }
+
+        try {
+            $service->submit($this->visitor, ['pdlName' => 'Emilio Aguinaldo', 'relationshipType' => 'parent', 'hasChildrenTogether' => null],
+                ['pdl_birth_certificate' => $this->file()]);
+            $this->fail('A sixth open request must be refused.');
+        } catch (\App\Services\PdlRequestRefused $e) {
+            $this->assertSame(\App\Services\PdlRequestRefused::LIMIT, $e->refusal);
+        }
+        $this->assertSame(5, PdlLinkRequest::count());
+        $this->assertCount(5, $this->storedFiles());
     }
 
     public function test_submissions_are_rate_limited(): void
@@ -276,8 +368,8 @@ class PdlLinkRequestApiTest extends TestCase
         $this->assertSame('Juan Dela Cruz', $pdlRequest()['pdlName']);
         $this->assertSame('parent', $pdlRequest()['relationshipType']);
         $this->assertNull($pdlRequest()['rejectionReason']);
-        // Existing fields are still there.
-        $this->getJson('/api/documents')->assertJsonStructure(['verificationStatus', 'governmentIds', 'relationships', 'registrationDocuments', 'pdlRequest']);
+        // Existing fields are still there, next to the new list and limit.
+        $this->getJson('/api/documents')->assertJsonStructure(['verificationStatus', 'governmentIds', 'relationships', 'registrationDocuments', 'pdlRequest', 'pdlRequests', 'pdlRequestLimit']);
 
         // Rejected (staff action, later stage): shown with the reason for 30 days.
         $request->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_REJECTED) + ['rejection_reason' => 'No PDL by that name.']);
@@ -291,6 +383,36 @@ class PdlLinkRequestApiTest extends TestCase
         // Linked: shown as a relationship under My PDLs instead.
         $request->update(['status' => PdlLinkRequest::STATUS_LINKED]);
         $this->assertNull($pdlRequest());
+    }
+
+    public function test_documents_api_lists_every_request_with_its_own_status(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $documents = fn () => $this->getJson('/api/documents')->assertOk();
+        $documents()->assertJsonPath('pdlRequests', [])->assertJsonPath('pdlRequestLimit', ['max' => 5, 'open' => 0]);
+
+        foreach (['Juan Dela Cruz', 'Pedro Santos', 'Maria Clara', 'Jose Rizal'] as $i => $name) {
+            $this->travel($i)->minutes(); // distinct created_at for a stable order
+            $this->submit($this->parentRequest(['pdlName' => $name]))->assertCreated();
+        }
+        $this->travelBack();
+        $byName = fn () => PdlLinkRequest::all()->keyBy('pdl_name');
+        $byName()['Pedro Santos']->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_REJECTED) + ['rejection_reason' => 'No PDL by that name.']);
+        $this->post("/api/pdl-requests/{$byName()['Maria Clara']->request_id}/cancel", [], ['Accept' => 'application/json'])->assertOk();
+        $byName()['Jose Rizal']->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_LINKED));
+
+        $response = $documents();
+        // Newest first; the linked one is shown as a PDL instead.
+        $this->assertSame(['Maria Clara', 'Pedro Santos', 'Juan Dela Cruz'], array_column($response->json('pdlRequests'), 'pdlName'));
+        $this->assertSame(['cancelled', 'rejected', 'open'], array_column($response->json('pdlRequests'), 'status'));
+        $this->assertSame([null, 'No PDL by that name.', null], array_column($response->json('pdlRequests'), 'rejectionReason'));
+        $response->assertJsonPath('pdlRequestLimit', ['max' => 5, 'open' => 1]);
+        // Older builds still get one request: the open one before newer closed ones.
+        $response->assertJsonPath('pdlRequest.pdlName', 'Juan Dela Cruz');
+
+        // Closed requests drop off after 30 days; open ones stay.
+        $this->travel(31)->days();
+        $this->assertSame(['Juan Dela Cruz'], array_column($documents()->json('pdlRequests'), 'pdlName'));
     }
 
     public function test_a_storage_failure_leaves_no_request_rows_or_files(): void

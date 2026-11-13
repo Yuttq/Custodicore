@@ -10,7 +10,12 @@ import {
   getPdlRequestStepErrors,
   mapPdlRequestServerErrors,
   normalizePdlRequest,
+  normalizePdlRequestLimit,
+  normalizePdlRequests,
+  pdlRequestLimitMessage,
+  pdlRequestLimitReached,
   pdlRequestPrefill,
+  pdlRequestRefusalTitle,
   toPdlRequestFields,
 } from './pdlLinkRequest.js';
 import { REGISTRATION_RELATIONSHIPS } from './registrationRequirements.js';
@@ -147,14 +152,51 @@ test('cancelled, linked or missing requests are not shown', () => {
   assert.equal(normalizePdlRequest({ status: 'open' }), null);
 });
 
-test('Add Another PDL: approved accounts without an open request', () => {
-  const open = normalizePdlRequest(apiRequest());
-  const rejected = normalizePdlRequest(apiRequest({ status: 'rejected' }));
-  assert.equal(canAddAnotherPdl('verified', null), true);
-  assert.equal(canAddAnotherPdl('verified', rejected), true);
-  assert.equal(canAddAnotherPdl('verified', open), false);
-  assert.equal(canAddAnotherPdl('pending', null), false);
-  assert.equal(canAddAnotherPdl('rejected', null), false);
+test('Add Another PDL: every approved account, open requests or not', () => {
+  assert.equal(canAddAnotherPdl('verified'), true);
+  assert.equal(canAddAnotherPdl('pending'), false);
+  assert.equal(canAddAnotherPdl('rejected'), false);
+  assert.equal(canAddAnotherPdl(null), false);
+});
+
+test('the request list keeps each open and rejected request, newest first', () => {
+  const list = normalizePdlRequests([
+    apiRequest({ id: 3, pdlName: 'Maria Clara' }),
+    apiRequest({ id: 2, status: 'rejected', pdlName: 'Pedro Santos', rejectionReason: 'Not found.' }),
+    apiRequest({ id: 1, status: 'cancelled' }),
+    apiRequest({ id: 3 }), // the same request twice: kept once
+  ]);
+  assert.deepEqual(list.map((r) => [r.id, r.status]), [['3', 'open'], ['2', 'rejected']]);
+  assert.equal(list[1].rejectionReason, 'Not found.');
+});
+
+test('an older backend: the single pdlRequest becomes a one-item list', () => {
+  assert.deepEqual(normalizePdlRequests(undefined, apiRequest({ id: 4 })).map((r) => r.id), ['4']);
+  assert.deepEqual(normalizePdlRequests(undefined, null), []);
+  // The list wins when both are sent.
+  assert.deepEqual(normalizePdlRequests([], apiRequest({ id: 4 })), []);
+});
+
+test('the open-request limit', () => {
+  const requests = normalizePdlRequests([apiRequest({ id: 1 }), apiRequest({ id: 2 })]);
+  assert.deepEqual(normalizePdlRequestLimit({ max: 5, open: 2 }, requests), { max: 5, open: 2 });
+  assert.equal(pdlRequestLimitReached({ max: 5, open: 4 }), false);
+  assert.equal(pdlRequestLimitReached({ max: 5, open: 5 }), true);
+  assert.equal(pdlRequestLimitReached(null), false);
+  // An older backend sends no limit and allows one open request.
+  assert.deepEqual(normalizePdlRequestLimit(undefined, requests), { max: 1, open: 2 });
+  assert.deepEqual(normalizePdlRequestLimit({ max: 'x', open: -1 }, []), { max: 1, open: 0 });
+  assert.equal(
+    pdlRequestLimitMessage(5),
+    'You already have 5 PDL requests waiting for facility staff. Wait for one to be reviewed, or cancel one in My PDLs, before sending another.',
+  );
+});
+
+test('a refused request gets a title for its reason', () => {
+  assert.equal(pdlRequestRefusalTitle('pdl_request_limit'), 'Request limit reached');
+  assert.equal(pdlRequestRefusalTitle('duplicate_pdl_request'), 'Request already sent');
+  assert.equal(pdlRequestRefusalTitle('pdl_already_linked'), 'PDL already on your account');
+  assert.equal(pdlRequestRefusalTitle(undefined), 'Request already waiting');
 });
 
 test('a rejected request keeps its relationship type for Request Again', () => {

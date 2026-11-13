@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PdlLinkRequest;
 use App\Models\VisitorProfile;
-use App\Services\OpenPdlRequestExists;
 use App\Services\PdlLinkRequestService;
 use App\Services\PdlRequestNotOpen;
+use App\Services\PdlRequestRefused;
 use App\Services\RelationshipRequirements;
 use App\Support\Sanitizer;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +25,9 @@ use Illuminate\Validation\ValidationException;
  *                                                   whose account is no longer approved)
  *
  * The request stays separate from any relationship until facility staff
- * identify the PDL (later stage). GET /api/documents returns it as `pdlRequest`.
+ * identify the PDL (later stage). A visitor may have up to
+ * PdlLinkRequestService::MAX_OPEN open requests. GET /api/documents returns
+ * them as `pdlRequests` (and the newest as `pdlRequest` for older builds).
  */
 class PdlLinkRequestController extends Controller
 {
@@ -90,8 +92,8 @@ class PdlLinkRequestController extends Controller
                 'relationshipType' => $validated['relationshipType'],
                 'hasChildrenTogether' => $hasChildren,
             ], $files);
-        } catch (OpenPdlRequestExists $e) {
-            return response()->json(['message' => $e->getMessage(), 'code' => 'open_request_exists'], 409);
+        } catch (PdlRequestRefused $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => $e->refusal], 409);
         } catch (\Throwable $e) {
             Log::error("PDL request could not be saved for visitor #{$visitor->visitor_id} (" . $e::class . '): ' . $e->getMessage());
 

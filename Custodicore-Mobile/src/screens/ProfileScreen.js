@@ -168,7 +168,7 @@ export default function ProfileScreen({ navigation }) {
   // My PDLs row summary ("1 pending"), from GET /api/documents (reloads on focus).
   const { verification } = useVisitorVerification();
   const pdlSummary = useMemo(
-    () => summarizeMyPdls(verification?.pdlRelationships, verification?.pdlRequest).short,
+    () => summarizeMyPdls(verification?.pdlRelationships, verification?.pdlRequests).short,
     [verification],
   );
 

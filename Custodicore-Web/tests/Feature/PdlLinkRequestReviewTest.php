@@ -63,7 +63,7 @@ class PdlLinkRequestReviewTest extends TestCase
     }
 
     /** An open parent request with its one document, sent through the Stage 2 service. */
-    private function openRequest(?VisitorProfile $visitor = null, string $type = 'parent', ?bool $children = null): PdlLinkRequest
+    private function openRequest(?VisitorProfile $visitor = null, string $type = 'parent', ?bool $children = null, string $pdlName = 'Juan Dela Cruz'): PdlLinkRequest
     {
         $visitor ??= $this->visitor;
         $files = match ($type) {
@@ -72,7 +72,7 @@ class PdlLinkRequestReviewTest extends TestCase
         };
 
         return app(PdlLinkRequestService::class)->submit($visitor, [
-            'pdlName' => 'Juan Dela Cruz',
+            'pdlName' => $pdlName,
             'relationshipType' => $type,
             'hasChildrenTogether' => $children,
         ], $files);
@@ -290,10 +290,12 @@ class PdlLinkRequestReviewTest extends TestCase
 
     public function test_linking_reuses_an_existing_pending_relationship(): void
     {
-        $pending = $this->relationshipWith($this->other, 'pending', 'sibling');
-        $ownDocument = $this->storedDocument(['relationship_id' => $pending->relationship_id, 'requirement_key' => 'visitor_birth_certificate']);
+        // The request comes first: a visitor cannot request a PDL they already
+        // have a pending relationship with, but staff may add one meanwhile.
         $request = $this->openRequest();
         $requestDocument = $request->documents()->sole();
+        $pending = $this->relationshipWith($this->other, 'pending', 'sibling');
+        $ownDocument = $this->storedDocument(['relationship_id' => $pending->relationship_id, 'requirement_key' => 'visitor_birth_certificate']);
         $relationshipsBefore = VisitorPdlRelationship::count();
 
         $this->link($request)->assertSessionHas('success');
@@ -570,6 +572,52 @@ class PdlLinkRequestReviewTest extends TestCase
         Sanctum::actingAs($this->recordOfficerAccount);
         $this->postJson($url)->assertForbidden();
         $this->assertTrue($request->fresh()->isOpen());
+    }
+
+    public function test_each_open_request_is_linked_rejected_or_cancelled_on_its_own(): void
+    {
+        $maria = $this->newPdl('Maria Clara', 'PDL-2026-00090');
+        $a = $this->openRequest();                                    // linked to Juan Dela Cruz
+        $b = $this->openRequest(null, 'parent', null, 'Pedro Santos'); // rejected
+        $c = $this->openRequest(null, 'parent', null, 'Jose Rizal');   // cancelled by the visitor
+        $d = $this->openRequest(null, 'parent', null, 'Maria Clara');  // linked to Maria Clara
+        $e = $this->openRequest(null, 'parent', null, 'Andres Bonifacio'); // untouched
+        $doc = fn (PdlLinkRequest $r) => $r->documents()->sole();
+        [$docA, $docB, $docC, $docD, $docE] = array_map($doc, [$a, $b, $c, $d, $e]);
+
+        // All five are in the staff queue, each on its own row.
+        $this->get(route('pdl-links.index'))->assertOk()
+            ->assertSee('Pedro Santos')->assertSee('Jose Rizal')->assertSee('Andres Bonifacio');
+        $this->assertSame(5, ReviewQueue::pdlRequestsQuery()->count());
+
+        $this->link($a)->assertSessionHas('success');
+        $this->post(route('pdl-requests.reject', $b->request_id), ['rejection_reason' => 'No PDL by that name.'])->assertSessionHas('success');
+        app(PdlLinkRequestService::class)->cancel($this->visitor, $c);
+        $this->link($d, ['pdl_id' => $maria->pdl_id])->assertSessionHas('success');
+
+        $this->assertSame(['linked', 'rejected', 'cancelled', 'linked', 'open'],
+            array_map(fn ($r) => $r->fresh()->status, [$a, $b, $c, $d, $e]));
+
+        // Two separate relationships, each holding only its own request's file.
+        $relA = VisitorPdlRelationship::where('visitor_id', $this->visitor->visitor_id)->where('pdl_id', $this->other->pdl_id)->sole();
+        $relD = VisitorPdlRelationship::where('visitor_id', $this->visitor->visitor_id)->where('pdl_id', $maria->pdl_id)->sole();
+        $this->assertSame([$docA->document_id], $relA->documents()->pluck('document_id')->all());
+        $this->assertSame([$docD->document_id], $relD->documents()->pluck('document_id')->all());
+
+        // Rejected and cancelled lost only their own files.
+        foreach ([$docB, $docC] as $gone) {
+            $this->assertNull(RelationshipDocument::find($gone->document_id));
+            Storage::disk('local')->assertMissing($gone->file_path);
+        }
+        // The untouched request keeps its file, unlinked, still in the queue.
+        $this->assertNull($docE->fresh()->relationship_id);
+        Storage::disk('local')->assertExists($docE->file_path);
+        $this->assertSame([$e->request_id], ReviewQueue::pdlRequestsQuery()->pluck('request_id')->all());
+
+        // The rejection notice points at that request only.
+        $notice = Notification::where('notification_type', 'pdl_request_rejected')->sole();
+        $this->assertSame($b->request_id, (int) $notice->related_record_id);
+        $this->assertStringContainsString('Pedro Santos', $notice->message);
     }
 
     public function test_link_and_approve_approves_a_complete_request_in_one_step(): void

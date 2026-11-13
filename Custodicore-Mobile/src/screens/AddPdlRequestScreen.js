@@ -40,6 +40,7 @@ import {
   getPdlRequestDocuments,
   getPdlRequestStepErrors,
   mapPdlRequestServerErrors,
+  pdlRequestRefusalTitle,
 } from '../utils/pdlLinkRequest';
 import {
   ADULT_AGE,
@@ -227,8 +228,10 @@ export default function AddPdlRequestScreen({ navigation, route }) {
       if (mapped) {
         setErrors(mapped.errors);
         goToStep(mapped.step);
-      } else if (err?.status === 409 || err?.code === 'open_request_exists') {
-        Alert.alert('Request already waiting', err.message, [
+      } else if (err?.status === 409) {
+        // Request limit, same PDL already requested, or PDL already on the
+        // account: the backend's message says which.
+        Alert.alert(pdlRequestRefusalTitle(err.code), err.message, [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
       } else if (err?.status === 403) {

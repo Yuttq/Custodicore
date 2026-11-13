@@ -51,7 +51,13 @@ test('the rejected document is named in the body', () => {
   assert.equal(extractRejectedDocumentLabel('Something else'), null);
 });
 
-const approved = { backendStatus: 'verified', pdlRequest: null, documents: [] };
+const approved = {
+  backendStatus: 'verified',
+  pdlRequests: [],
+  pdlRequestLimit: { max: 5, open: 0 },
+  documents: [],
+};
+const atLimit = { max: 5, open: 5 };
 
 test('Request Again only while a new PDL request is allowed', () => {
   const n = { category: 'pdl_request_rejected', body: PDL_BODY };
@@ -60,11 +66,20 @@ test('Request Again only while a new PDL request is allowed', () => {
     route: 'AddPdlRequest',
   });
   assert.deepEqual(
-    resolveNotificationAction(n, { ...approved, pdlRequest: { status: 'rejected' } }),
+    resolveNotificationAction(n, { ...approved, pdlRequests: [{ id: '1', status: 'rejected' }] }),
     { label: 'Request Again', route: 'AddPdlRequest' },
   );
-  // A newer request is already waiting for staff.
-  assert.equal(resolveNotificationAction(n, { ...approved, pdlRequest: { status: 'open' } }), null);
+  // Other requests waiting for staff no longer block a new one…
+  assert.deepEqual(
+    resolveNotificationAction(n, {
+      ...approved,
+      pdlRequests: [{ id: '2', status: 'open' }],
+      pdlRequestLimit: { max: 5, open: 1 },
+    }),
+    { label: 'Request Again', route: 'AddPdlRequest' },
+  );
+  // …until the limit is reached.
+  assert.equal(resolveNotificationAction(n, { ...approved, pdlRequestLimit: atLimit }), null);
   assert.equal(resolveNotificationAction(n, { ...approved, backendStatus: 'pending' }), null);
   // State not loaded yet: no shortcut rather than a wrong one.
   assert.equal(resolveNotificationAction(n, null), null);
@@ -81,7 +96,7 @@ const rejectedRequest = {
 
 test('Request Again carries the rejected request it is about', () => {
   const n = { category: 'pdl_request_rejected', body: PDL_BODY };
-  assert.deepEqual(resolveNotificationAction(n, { ...approved, pdlRequest: rejectedRequest }), {
+  assert.deepEqual(resolveNotificationAction(n, { ...approved, pdlRequests: [rejectedRequest] }), {
     label: 'Request Again',
     route: 'AddPdlRequest',
     params: {
@@ -95,7 +110,7 @@ test('Request Again carries the rejected request it is about', () => {
   });
   // An older notice about another PDL: an empty form, not the wrong details.
   const older = { category: 'pdl_request_rejected', body: PDL_BODY.replace('Juan Dela Cruz', 'Pedro Santos') };
-  assert.deepEqual(resolveNotificationAction(older, { ...approved, pdlRequest: rejectedRequest }), {
+  assert.deepEqual(resolveNotificationAction(older, { ...approved, pdlRequests: [rejectedRequest] }), {
     label: 'Request Again',
     route: 'AddPdlRequest',
   });
@@ -268,8 +283,8 @@ test('relationship rejection offers Request Again prefilled from that relationsh
       },
     },
   });
-  // A request is already waiting, or the account is not approved: no shortcut.
-  assert.equal(resolveNotificationAction(n, { ...state, pdlRequest: { status: 'open' } }), null);
+  // At the open-request limit, or the account is not approved: no shortcut.
+  assert.equal(resolveNotificationAction(n, { ...state, pdlRequestLimit: atLimit }), null);
   assert.equal(resolveNotificationAction(n, { ...state, backendStatus: 'pending' }), null);
   // Reopened by staff since: nothing left to do.
   assert.equal(
@@ -327,11 +342,25 @@ test('PDL request rejection matches its request by record before the body text',
     relatedType: 'pdl_link_requests',
     relatedId: '7',
   };
-  const action = resolveNotificationAction(n, { ...approved, pdlRequest: rejectedRequest });
+  const action = resolveNotificationAction(n, { ...approved, pdlRequests: [rejectedRequest] });
   assert.equal(action?.params?.prefill?.pdlName, 'Juan Dela Cruz');
   // A different request id: an empty form.
-  assert.deepEqual(resolveNotificationAction({ ...n, relatedId: '99' }, { ...approved, pdlRequest: rejectedRequest }), {
+  assert.deepEqual(resolveNotificationAction({ ...n, relatedId: '99' }, { ...approved, pdlRequests: [rejectedRequest] }), {
     label: 'Request Again',
     route: 'AddPdlRequest',
   });
+});
+
+test('with several requests, each rejection notice prefills its own request', () => {
+  const other = { ...rejectedRequest, id: '8', pdlName: 'Pedro Santos', rejectionReason: 'Wrong relationship.' };
+  const open = { id: '9', status: 'open', pdlName: 'Maria Clara' };
+  const state = { ...approved, pdlRequests: [open, other, rejectedRequest], pdlRequestLimit: { max: 5, open: 1 } };
+  const notice = (id) => ({ category: 'pdl_request_rejected', body: PDL_BODY, relatedType: 'pdl_link_requests', relatedId: id });
+
+  assert.equal(resolveNotificationAction(notice('7'), state)?.params?.prefill?.pdlName, 'Juan Dela Cruz');
+  assert.equal(resolveNotificationAction(notice('8'), state)?.params?.prefill?.pdlName, 'Pedro Santos');
+  assert.equal(resolveNotificationAction(notice('8'), state)?.params?.prefill?.rejectionReason, 'Wrong relationship.');
+  // An older notice without a record: the rejected request named in the body.
+  const older = { category: 'pdl_request_rejected', body: PDL_BODY.replace('Juan Dela Cruz', 'Pedro Santos') };
+  assert.equal(resolveNotificationAction(older, state)?.params?.prefill?.pdlName, 'Pedro Santos');
 });

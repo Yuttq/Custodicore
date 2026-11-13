@@ -6,8 +6,8 @@ import { relationshipsNeedingDocuments, summarizeMyPdls } from './myPdls.js';
 
 const pdl = (status) => ({ status });
 
-test('summary counts relationships and the current request', () => {
-  const s = summarizeMyPdls([pdl('approved'), pdl('approved'), pdl('pending')], { status: 'open' });
+test('summary counts relationships and every request', () => {
+  const s = summarizeMyPdls([pdl('approved'), pdl('approved'), pdl('pending')], [{ status: 'open' }]);
   assert.equal(s.approved, 2);
   assert.equal(s.pending, 2);
   assert.equal(s.rejected, 0);
@@ -15,17 +15,27 @@ test('summary counts relationships and the current request', () => {
   assert.equal(s.short, '2 pending');
 });
 
+test('several open and rejected requests each count once', () => {
+  const s = summarizeMyPdls(
+    [pdl('approved')],
+    [{ status: 'open' }, { status: 'open' }, { status: 'open' }, { status: 'rejected' }],
+  );
+  assert.equal(s.pending, 3);
+  assert.equal(s.rejected, 1);
+  assert.equal(s.full, '1 approved · 3 pending · 1 not accepted');
+});
+
 test('the short summary shows what needs the visitor first', () => {
-  assert.equal(summarizeMyPdls([pdl('approved'), pdl('pending')], { status: 'rejected' }).short, '1 not accepted');
-  assert.equal(summarizeMyPdls([pdl('approved')], null).short, '1 approved');
+  assert.equal(summarizeMyPdls([pdl('approved'), pdl('pending')], [{ status: 'rejected' }]).short, '1 not accepted');
+  assert.equal(summarizeMyPdls([pdl('approved')], []).short, '1 approved');
   assert.equal(
-    summarizeMyPdls([pdl('approved'), pdl('rejected')], { status: 'rejected' }).full,
+    summarizeMyPdls([pdl('approved'), pdl('rejected')], [{ status: 'rejected' }]).full,
     '1 approved · 2 not accepted',
   );
 });
 
 test('nothing to summarize', () => {
-  const s = summarizeMyPdls([], null);
+  const s = summarizeMyPdls([], []);
   assert.equal(s.full, '');
   assert.equal(s.short, '');
   assert.equal(summarizeMyPdls(undefined, undefined).full, '');

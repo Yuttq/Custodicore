@@ -22,7 +22,12 @@ import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { loadLocalProfile } from '../services/localProfileStorage';
 import { pickNextVisit, visitTimeText } from '../utils/activeVisits';
-import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
+import {
+  PDL_REQUEST_LIMIT_TITLE,
+  canAddAnotherPdl,
+  pdlRequestLimitMessage,
+  pdlRequestLimitReached,
+} from '../utils/pdlLinkRequest';
 import { announcementCategoryLabel, formatAnnouncementDate } from '../utils/announcementDisplay';
 import {
   calendarDateHandoff,
@@ -206,7 +211,7 @@ function CompactUpcomingVisit({ visit, onViewVisit, onViewMyVisits }) {
  * @param {{ relationshipId: string; pdlName: string | null }[]} props.relationships
  * @param {string | null} [props.selectedId]
  * @param {(relationshipId: string) => void} [props.onSelect]
- * @param {boolean} props.canAdd — approved account without an open request
+ * @param {boolean} props.canAdd — approved account (stays shown while requests are open)
  * @param {() => void} props.onAdd
  */
 function HomePdlChips({ relationships, selectedId, onSelect, canAdd, onAdd }) {
@@ -535,13 +540,19 @@ export default function DashboardScreen({ navigation }) {
 
   const nextVisit = useMemo(() => pickNextVisit(visits), [visits]);
 
-  // Phase 5B "Add Another PDL": approved accounts without an open request
-  // (AddPdlRequest is only registered for approved visitors; the backend
-  // checks both rules again). The verification hook reloads on focus, so the
-  // (+) hides once a request is sent.
-  const canAddPdl =
-    isApprovedVisitor && canAddAnotherPdl(verification?.backendStatus, verification?.pdlRequest);
-  const onAddPdl = useCallback(() => navigation.navigate('AddPdlRequest'), [navigation]);
+  // Phase 5B "Add Another PDL": always shown to approved accounts
+  // (AddPdlRequest is only registered for approved visitors). At the
+  // open-request limit it explains why instead of opening the form; the
+  // backend checks approval and the limit again.
+  const canAddPdl = isApprovedVisitor && canAddAnotherPdl(verification?.backendStatus);
+  const pdlRequestLimit = verification?.pdlRequestLimit ?? null;
+  const onAddPdl = useCallback(() => {
+    if (pdlRequestLimitReached(pdlRequestLimit)) {
+      Alert.alert(PDL_REQUEST_LIMIT_TITLE, pdlRequestLimitMessage(pdlRequestLimit.max), [{ text: 'OK' }]);
+      return;
+    }
+    navigation.navigate('AddPdlRequest');
+  }, [navigation, pdlRequestLimit]);
 
   const { relationship, relationships, today: availabilityToday } = schedule;
   // Visits can be requested only for a staff-verified relationship, which

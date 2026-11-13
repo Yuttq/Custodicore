@@ -42,6 +42,24 @@ class PdlLinkRequestService
     /** A closed (rejected / cancelled) request stays visible in the app this long. */
     public const RECENT_DAYS = 30;
 
+    /** Open requests one visitor may have at the same time. */
+    public const MAX_OPEN = 5;
+
+    /** Requests GET /api/documents lists at most (newest first). */
+    public const LIST_LIMIT = 10;
+
+    /**
+     * A PDL name reduced for comparison only: lower case, periods dropped,
+     * runs of spaces collapsed. "Juan  Dela Cruz." matches "juan dela cruz";
+     * a different spelling ("Juan D. Cruz") does not, and is left for staff.
+     */
+    public static function nameKey(?string $name): string
+    {
+        $name = str_replace('.', ' ', mb_strtolower((string) $name));
+
+        return trim((string) preg_replace('/\s+/u', ' ', $name));
+    }
+
     /**
      * The documents a request must carry: the same files registration asks
      * for that relationship (the minor's birth certificate included), with
@@ -71,7 +89,9 @@ class PdlLinkRequestService
      * @param  array{pdlName: string, relationshipType: string, hasChildrenTogether: ?bool}  $data
      * @param  array<string, UploadedFile>  $files  requirement key => file (already validated)
      *
-     * @throws OpenPdlRequestExists when the visitor already has an open request
+     * @throws PdlRequestRefused when the visitor already has MAX_OPEN open
+     *                           requests, an open request for the same PDL name,
+     *                           or a pending / approved relationship with it
      */
     public function submit(VisitorProfile $visitor, array $data, array $files): PdlLinkRequest
     {
@@ -80,11 +100,9 @@ class PdlLinkRequestService
         try {
             return DB::transaction(function () use ($visitor, $data, $files, &$storedPaths) {
                 // Lock the visitor row so two submissions are handled one after
-                // the other; the unique open_visitor_id is the final guard.
+                // the other: the checks below then see each other's requests.
                 VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
-                if (PdlLinkRequest::open()->where('visitor_id', $visitor->visitor_id)->exists()) {
-                    throw new OpenPdlRequestExists();
-                }
+                $this->ensureCanSubmit($visitor, $data['pdlName']);
 
                 $request = PdlLinkRequest::create([
                     'visitor_id' => $visitor->visitor_id,
@@ -119,14 +137,51 @@ class PdlLinkRequestService
 
                 return $request;
             });
-        } catch (UniqueConstraintViolationException) {
-            // Another submission won the race for the single open slot.
-            $this->deleteFiles($storedPaths, 'submit rollback');
-            throw new OpenPdlRequestExists();
         } catch (\Throwable $e) {
             $this->deleteFiles($storedPaths, 'submit rollback');
             throw $e;
         }
+    }
+
+    /**
+     * The submit rules, checked in this order (call with the visitor row locked):
+     *   1. fewer than MAX_OPEN open requests;
+     *   2. no pending or approved relationship with a PDL of that name
+     *      (a rejected one can be requested again; staff reopen it on link);
+     *   3. no open request for a PDL of that name.
+     *
+     * @throws PdlRequestRefused
+     */
+    private function ensureCanSubmit(VisitorProfile $visitor, string $pdlName): void
+    {
+        $open = PdlLinkRequest::open()->where('visitor_id', $visitor->visitor_id)->get(['request_id', 'pdl_name']);
+        if ($open->count() >= self::MAX_OPEN) {
+            throw PdlRequestRefused::limit(self::MAX_OPEN);
+        }
+
+        $key = self::nameKey($pdlName);
+        $linked = VisitorPdlRelationship::where('visitor_id', $visitor->visitor_id)
+            ->whereIn('verification_status', ['pending', 'verified'])
+            ->with('pdl:pdl_id,full_name')
+            ->get()
+            ->first(fn (VisitorPdlRelationship $r) => $r->pdl && self::nameKey($r->pdl->full_name) === $key);
+        if ($linked) {
+            throw PdlRequestRefused::alreadyLinked($linked->pdl->full_name);
+        }
+
+        $same = $open->first(fn (PdlLinkRequest $r) => self::nameKey($r->pdl_name) === $key);
+        if ($same) {
+            throw PdlRequestRefused::duplicate($same->pdl_name);
+        }
+    }
+
+    /** How many open requests the visitor has, and the most allowed at once. */
+    public function limitFor(VisitorProfile $visitor): array
+    {
+        return [
+            'max' => self::MAX_OPEN,
+            'open' => PdlLinkRequest::open()->where('visitor_id', $visitor->visitor_id)->count(),
+        ];
     }
 
     /**
@@ -328,28 +383,36 @@ class PdlLinkRequestService
     }
 
     /**
-     * The request the app shows: the open one, else the latest rejected or
-     * cancelled one from the last RECENT_DAYS days. A linked request is not
-     * shown (its relationship is listed under My PDLs instead).
+     * The requests the app shows, newest first (at most LIST_LIMIT): every
+     * open one, plus the rejected or cancelled ones from the last RECENT_DAYS
+     * days. A linked request is not shown (its relationship is listed under
+     * My PDLs instead).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, PdlLinkRequest>
+     */
+    public function listForVisitor(VisitorProfile $visitor)
+    {
+        return PdlLinkRequest::where('visitor_id', $visitor->visitor_id)
+            ->where(fn ($q) => $q->where('status', PdlLinkRequest::STATUS_OPEN)
+                ->orWhere(fn ($q) => $q
+                    ->whereIn('status', [PdlLinkRequest::STATUS_REJECTED, PdlLinkRequest::STATUS_CANCELLED])
+                    ->where('updated_at', '>=', now()->subDays(self::RECENT_DAYS))))
+            ->orderByDesc('created_at')
+            ->orderByDesc('request_id')
+            ->limit(self::LIST_LIMIT)
+            ->with('documents')
+            ->get();
+    }
+
+    /**
+     * The single request older app builds read as `pdlRequest`: the newest
+     * open one, else the newest recently rejected or cancelled one.
      */
     public function currentForVisitor(VisitorProfile $visitor): ?PdlLinkRequest
     {
-        $latest = PdlLinkRequest::where('visitor_id', $visitor->visitor_id)
-            ->orderByDesc('created_at')
-            ->orderByDesc('request_id')
-            ->with('documents')
-            ->first();
+        $requests = $this->listForVisitor($visitor);
 
-        if (! $latest) {
-            return null;
-        }
-        if ($latest->isOpen()) {
-            return $latest;
-        }
-        $closedRecently = in_array($latest->status, [PdlLinkRequest::STATUS_REJECTED, PdlLinkRequest::STATUS_CANCELLED], true)
-            && $latest->updated_at?->gte(now()->subDays(self::RECENT_DAYS));
-
-        return $closedRecently ? $latest : null;
+        return $requests->first(fn (PdlLinkRequest $r) => $r->isOpen()) ?? $requests->first();
     }
 
     /**

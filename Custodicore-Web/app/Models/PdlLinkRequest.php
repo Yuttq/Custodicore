@@ -13,8 +13,9 @@ use Illuminate\Database\Eloquent\Model;
  * request is linked, no relationship_id.
  *
  * Statuses: open → linked | rejected | cancelled. While open,
- * open_visitor_id = visitor_id (one open request per visitor, enforced by a
- * unique index); otherwise it is NULL. Use markClosed() when leaving `open`.
+ * open_visitor_id = visitor_id; otherwise it is NULL. A visitor may have up
+ * to PdlLinkRequestService::MAX_OPEN open requests (checked by the service).
+ * Use closingAttributes() when leaving `open`.
  *
  * Document rules for the later workflow stages:
  *   - linked: the request's documents move to the relationship (kept, not deleted);
@@ -54,7 +55,7 @@ class PdlLinkRequest extends Model
 
     protected static function booted(): void
     {
-        // A new request is open: claim the visitor's single open slot.
+        // A new request is open: it counts toward the visitor's open requests.
         static::creating(function (PdlLinkRequest $request) {
             $request->status ??= self::STATUS_OPEN;
             if ($request->status === self::STATUS_OPEN) {
@@ -68,7 +69,7 @@ class PdlLinkRequest extends Model
         return $this->status === self::STATUS_OPEN;
     }
 
-    /** Attributes that close the request and free the visitor's open slot. */
+    /** Attributes that close the request (it no longer counts as open). */
     public static function closingAttributes(string $status): array
     {
         return ['status' => $status, 'open_visitor_id' => null];

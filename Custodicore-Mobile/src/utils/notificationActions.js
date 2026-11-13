@@ -14,7 +14,24 @@
  * reason: no marker in the body → no reason.
  */
 
-import { canAddAnotherPdl, pdlRequestPrefill, relationshipRequestPrefill } from './pdlLinkRequest.js';
+import {
+  canAddAnotherPdl,
+  pdlRequestLimitReached,
+  pdlRequestPrefill,
+  relationshipRequestPrefill,
+} from './pdlLinkRequest.js';
+
+/**
+ * A notification's "Request Again" opens the Add Another PDL form, so it is
+ * offered only while a new request can be sent: approved account, below the
+ * open-request limit (the backend checks both again).
+ */
+function canRequestAgain(verification) {
+  return (
+    canAddAnotherPdl(verification.backendStatus) &&
+    !pdlRequestLimitReached(verification.pdlRequestLimit)
+  );
+}
 
 /** Backend notification_type values with a staff reason in the body. */
 const REASON_PATTERNS = {
@@ -83,11 +100,11 @@ export function extractRejectedDocumentLabel(body) {
  *   reason and the documents to correct), only while the account is still
  *   returned.
  * - `pdl_request_rejected` → "Request Again" opens the Add Another PDL form,
- *   only while a new request is allowed (approved account, none open). It is
- *   prefilled from the latest rejected request when that is the request this
- *   notification is about (same record, or — for older notifications — its
- *   PDL name appears in the body); otherwise the form starts empty rather
- *   than with another request's details.
+ *   only while a new request is allowed (approved account, below the
+ *   open-request limit). It is prefilled from this notification's own
+ *   rejected request (same record, or — for older notifications — the
+ *   rejected request whose PDL name appears in the body); otherwise the form
+ *   starts empty rather than with another request's details.
  * - `relationship_rejected` → "Request Again", same rule: a rejected
  *   relationship takes no new documents, so the visitor sends a new request,
  *   prefilled from that relationship while it is still rejected.
@@ -102,7 +119,7 @@ export function extractRejectedDocumentLabel(body) {
  *   replaceable document is still rejected.
  *
  * @param {{ category?: unknown; body?: unknown; relatedType?: string | null; relatedId?: string | null }} notification
- * @param {{ backendStatus?: string | null; pdlRequest?: any; pdlRelationships?: any[]; documents?: any[] } | null | undefined} verification
+ * @param {{ backendStatus?: string | null; pdlRequests?: any[]; pdlRequestLimit?: { max: number; open: number } | null; pdlRelationships?: any[]; documents?: any[] } | null | undefined} verification
  * @returns {NotificationAction | null}
  */
 export function resolveNotificationAction(notification, verification) {
@@ -118,19 +135,22 @@ export function resolveNotificationAction(notification, verification) {
   }
 
   if (type === 'pdl_request_rejected') {
-    if (!canAddAnotherPdl(verification.backendStatus, verification.pdlRequest)) return null;
-    const prefill = pdlRequestPrefill(verification.pdlRequest);
+    if (!canRequestAgain(verification)) return null;
+    const requests = Array.isArray(verification.pdlRequests) ? verification.pdlRequests : [];
     const requestId = relatedIdOf(notification, 'pdl_link_requests');
-    const sameRequest = requestId
-      ? String(verification.pdlRequest?.id ?? '') === requestId
-      : Boolean(prefill?.pdlName && body.includes(prefill.pdlName));
-    return prefill && sameRequest
+    // This notification's own request: by id, else (older notifications)
+    // the rejected request whose PDL name the message mentions.
+    const request = requestId
+      ? requests.find((r) => String(r?.id ?? '') === requestId)
+      : requests.find((r) => r?.status === 'rejected' && r.pdlName && body.includes(r.pdlName));
+    const prefill = pdlRequestPrefill(request);
+    return prefill
       ? { label: 'Request Again', route: 'AddPdlRequest', params: { prefill } }
       : { label: 'Request Again', route: 'AddPdlRequest' };
   }
 
   if (type === 'relationship_rejected') {
-    if (!canAddAnotherPdl(verification.backendStatus, verification.pdlRequest)) return null;
+    if (!canRequestAgain(verification)) return null;
     const relationshipId = relatedIdOf(notification, 'visitor_pdl_relationships');
     const pdl = relationshipId ? pdls.find((p) => String(p?.id) === relationshipId) : null;
     // Reopened or approved since: nothing left to do for this notification.

@@ -14,7 +14,11 @@ import {
   hasAnyRelationshipUpload,
   isAwaitingRelationshipLink,
 } from '../utils/relationshipRequirementDocuments';
-import { normalizePdlRequest, toPdlRequestFields } from '../utils/pdlLinkRequest';
+import {
+  normalizePdlRequestLimit,
+  normalizePdlRequests,
+  toPdlRequestFields,
+} from '../utils/pdlLinkRequest';
 import { visibleRejectionReason } from '../utils/verificationStatusUi';
 import {
   GOVERNMENT_ID_KEY,
@@ -183,6 +187,8 @@ export function normalizeVerification(data, relationshipKey) {
     },
   ];
 
+  const pdlRequests = normalizePdlRequests(o.pdlRequests, o.pdlRequest);
+
   const anyUploaded =
     governmentIds.length > 0 ||
     registrationDocuments.length > 0 ||
@@ -199,8 +205,10 @@ export function normalizeVerification(data, relationshipKey) {
     documents,
     // "My PDLs": every PDL relationship and its status (read-only).
     pdlRelationships: buildPdlRelationshipList(relationships),
-    // Phase 5B: the open or recently rejected "Add Another PDL" request, or null.
-    pdlRequest: normalizePdlRequest(o.pdlRequest),
+    // Phase 5B: every open or recently rejected "Add Another PDL" request,
+    // newest first, and how many may be open at once.
+    pdlRequests,
+    pdlRequestLimit: normalizePdlRequestLimit(o.pdlRequestLimit, pdlRequests),
     // The visitor's own photo (GET /api/me/photo); retakeable until approval.
     hasPhoto: o.hasPhoto === true,
     photoUploadedAt: typeof o.photoUploadedAt === 'string' ? o.photoUploadedAt : null,

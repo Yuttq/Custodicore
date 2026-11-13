@@ -8,7 +8,6 @@ use App\Models\RelationshipDocument;
 use App\Models\VisitorId;
 use App\Models\VisitorPdlRelationship;
 use App\Models\VisitorProfile;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -87,25 +86,22 @@ class PdlLinkRequestFoundationTest extends TestCase
         $this->assertSame([$request->request_id], $this->visitor->pdlLinkRequests()->pluck('request_id')->all());
     }
 
-    public function test_the_database_allows_only_one_open_request_per_visitor(): void
+    public function test_the_database_allows_several_open_requests_per_visitor(): void
     {
+        // The limit is the service's job (PdlLinkRequestApiTest); the table
+        // itself no longer stops a second open request.
         $first = $this->request($this->visitor);
+        $second = $this->request($this->visitor, ['pdl_name' => 'Another PDL']);
+        $this->assertSame($this->visitor->visitor_id, (int) $second->fresh()->open_visitor_id);
+        $this->assertSame(2, PdlLinkRequest::open()->where('visitor_id', $this->visitor->visitor_id)->count());
 
-        try {
-            $this->request($this->visitor, ['pdl_name' => 'Another PDL']);
-            $this->fail('A second open request must be refused.');
-        } catch (QueryException) {
-            // Expected: unique open_visitor_id.
-        }
-
-        // Closing frees the slot; closed requests never block each other.
+        // Closing one leaves the other open.
         $first->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_CANCELLED));
         $this->assertNull($first->fresh()->open_visitor_id);
-        $second = $this->request($this->visitor, ['pdl_name' => 'Another PDL']);
-        $second->update(PdlLinkRequest::closingAttributes(PdlLinkRequest::STATUS_REJECTED));
+        $this->assertTrue($second->fresh()->isOpen());
         $this->request($this->visitor, ['pdl_name' => 'Third PDL']);
 
-        $this->assertSame(1, PdlLinkRequest::open()->where('visitor_id', $this->visitor->visitor_id)->count());
+        $this->assertSame(2, PdlLinkRequest::open()->where('visitor_id', $this->visitor->visitor_id)->count());
         $this->assertSame(3, $this->visitor->pdlLinkRequests()->count());
     }
 

@@ -2,29 +2,31 @@
  * My PDLs summaries for Profile → My PDLs and the link row in Verification
  * Documents. Pure — no React Native imports — so it runs under `node --test`.
  * Built from what GET /api/documents already returns (pdlRelationships and
- * pdlRequest after normalizeVerification).
+ * pdlRequests after normalizeVerification).
  */
 
 /**
  * @typedef {object} MyPdlsSummary
  * @property {number} approved
- * @property {number} pending — pending relationships plus an open request
- * @property {number} rejected — rejected relationships plus a rejected request
+ * @property {number} pending — pending relationships plus open requests
+ * @property {number} rejected — rejected relationships plus rejected requests
  * @property {string} full — "2 approved · 1 pending · 1 not accepted" ('' when empty)
  * @property {string} short — the one count that most needs attention ('' when empty)
  */
 
 /**
  * @param {{ status: 'approved' | 'pending' | 'rejected' }[] | null | undefined} pdls
- * @param {{ status: 'open' | 'rejected' } | null | undefined} pdlRequest
+ * @param {{ status: 'open' | 'rejected' }[] | null | undefined} pdlRequests
  * @returns {MyPdlsSummary}
  */
-export function summarizeMyPdls(pdls, pdlRequest) {
+export function summarizeMyPdls(pdls, pdlRequests) {
   const list = Array.isArray(pdls) ? pdls : [];
+  const requests = Array.isArray(pdlRequests) ? pdlRequests : [];
   const count = (status) => list.filter((p) => p?.status === status).length;
+  const countRequests = (status) => requests.filter((r) => r?.status === status).length;
   const approved = count('approved');
-  const pending = count('pending') + (pdlRequest?.status === 'open' ? 1 : 0);
-  const rejected = count('rejected') + (pdlRequest?.status === 'rejected' ? 1 : 0);
+  const pending = count('pending') + countRequests('open');
+  const rejected = count('rejected') + countRequests('rejected');
 
   const parts = [
     approved ? `${approved} approved` : '',

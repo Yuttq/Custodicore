@@ -189,14 +189,91 @@ export function normalizePdlRequest(raw) {
 }
 
 /**
- * "Add Another PDL" is offered to an approved account without an open
- * request (a rejected or cancelled one does not block a new request). The
- * backend enforces both rules again.
- * @param {string | null | undefined} backendStatus — visitor verification_status
- * @param {PdlRequestStatus | null | undefined} pdlRequest — normalizePdlRequest()
+ * GET /api/documents `pdlRequests` → every request My PDLs shows, newest
+ * first (open and rejected; see normalizePdlRequest). Falls back to the
+ * single `pdlRequest` an older backend sends.
+ * @param {unknown} rawList — `pdlRequests`
+ * @param {unknown} [rawSingle] — `pdlRequest`
+ * @returns {PdlRequestStatus[]}
  */
-export function canAddAnotherPdl(backendStatus, pdlRequest) {
-  return backendStatus === 'verified' && pdlRequest?.status !== 'open';
+export function normalizePdlRequests(rawList, rawSingle) {
+  const raw = Array.isArray(rawList) ? rawList : rawSingle ? [rawSingle] : [];
+  const seen = new Set();
+  /** @type {PdlRequestStatus[]} */
+  const out = [];
+  for (const item of raw) {
+    const r = normalizePdlRequest(item);
+    if (r && !seen.has(r.id)) {
+      seen.add(r.id);
+      out.push(r);
+    }
+  }
+  return out;
+}
+
+/**
+ * @typedef {object} PdlRequestLimit
+ * @property {number} max — open requests allowed at once
+ * @property {number} open — open requests now
+ */
+
+/**
+ * GET /api/documents `pdlRequestLimit`. An older backend sends none and
+ * allows one open request, so that is assumed then.
+ * @param {unknown} raw
+ * @param {PdlRequestStatus[]} requests — normalizePdlRequests()
+ * @returns {PdlRequestLimit}
+ */
+export function normalizePdlRequestLimit(raw, requests) {
+  const r = raw && typeof raw === 'object' ? /** @type {Record<string, any>} */ (raw) : null;
+  const countOpen = requests.filter((x) => x.status === 'open').length;
+  const max = Number.isInteger(r?.max) && r.max > 0 ? r.max : 1;
+  const open = Number.isInteger(r?.open) && r.open >= 0 ? r.open : countOpen;
+  return { max, open };
+}
+
+/**
+ * "Add Another PDL" is offered to every approved account; it stays visible
+ * while requests are open (see pdlRequestLimitReached for the limit). The
+ * backend enforces approval and the limit again.
+ * @param {string | null | undefined} backendStatus — visitor verification_status
+ */
+export function canAddAnotherPdl(backendStatus) {
+  return backendStatus === 'verified';
+}
+
+/**
+ * True when the visitor already has as many open requests as allowed.
+ * @param {PdlRequestLimit | null | undefined} limit — normalizePdlRequestLimit()
+ */
+export function pdlRequestLimitReached(limit) {
+  return Boolean(limit) && limit.open >= limit.max;
+}
+
+/** Shown when "Add PDL" is tapped at the limit (same wording as the backend). */
+export const PDL_REQUEST_LIMIT_TITLE = 'Request limit reached';
+
+/** @param {number} max */
+export function pdlRequestLimitMessage(max) {
+  return `You already have ${max} PDL request${max === 1 ? '' : 's'} waiting for facility staff. Wait for one to be reviewed, or cancel one in My PDLs, before sending another.`;
+}
+
+/**
+ * Alert title for a refused submission (HTTP 409 `code`); the message is the
+ * backend's own.
+ * @param {string | null | undefined} code
+ */
+export function pdlRequestRefusalTitle(code) {
+  switch (code) {
+    case 'pdl_request_limit':
+      return PDL_REQUEST_LIMIT_TITLE;
+    case 'duplicate_pdl_request':
+      return 'Request already sent';
+    case 'pdl_already_linked':
+      return 'PDL already on your account';
+    default:
+      return 'Request already waiting';
+  }
 }
 
 /**

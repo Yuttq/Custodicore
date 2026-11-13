@@ -14,26 +14,26 @@ import useMyPdlActions from '../hooks/useMyPdlActions';
 import { useAuth } from '../hooks/useAuth';
 import useVisitorVerification from '../hooks/useVisitorVerification';
 import { relationshipsNeedingDocuments } from '../utils/myPdls';
-import { canAddAnotherPdl } from '../utils/pdlLinkRequest';
 
 /**
  * Profile → My PDLs: the visitor's PDL relationships and their status, plus
- * the current "Add Another PDL" request (Cancel Request / Request Again).
+ * each "Add Another PDL" request with its own Cancel Request / Request Again.
  * Same data as Verification Documents (GET /api/documents). New requests
  * start from "+ Add Another PDL" here or the (+) on Home → Visitation
- * Calendar, under the same rule (canAddAnotherPdl).
+ * Calendar, under the same rule (useMyPdlActions).
  */
 export default function MyPdlsScreen({ navigation }) {
   const { isApprovedVisitor } = useAuth();
   const { verification, loading, error, reload } = useVisitorVerification();
-  const { cancelling, cancelRequest, requestAgain, requestAgainForRelationship } = useMyPdlActions({
-    navigation,
-    verification,
-    reload,
-  });
+  const { cancellingId, cancelRequest, addPdl, requestAgain, requestAgainForRelationship } =
+    useMyPdlActions({
+      navigation,
+      verification,
+      reload,
+    });
 
   const pdls = verification?.pdlRelationships ?? [];
-  const pdlRequest = verification?.pdlRequest ?? null;
+  const pdlRequests = verification?.pdlRequests ?? [];
   const docsNeeded = useMemo(
     () => relationshipsNeedingDocuments(verification?.documents),
     [verification],
@@ -42,11 +42,10 @@ export default function MyPdlsScreen({ navigation }) {
     () => navigation.navigate('VisitorVerificationDocuments'),
     [navigation],
   );
-  // Same rule as the (+) on Home: approved account and no request already
-  // open (the backend checks both again). Reloads on focus, so the button
-  // hides once a request is sent.
-  const canAddPdl = isApprovedVisitor && canAddAnotherPdl(verification?.backendStatus, pdlRequest);
-  const addPdl = useCallback(() => navigation.navigate('AddPdlRequest'), [navigation]);
+  // Same rule as the (+) on Home: approved accounts always see the button;
+  // at the request limit it explains why instead of opening the form (the
+  // backend checks both again).
+  const canAddPdl = isApprovedVisitor && Boolean(addPdl);
 
   let content;
   if (loading && !verification) {
@@ -64,7 +63,7 @@ export default function MyPdlsScreen({ navigation }) {
         <Button title="Retry" onPress={reload} accessibilityLabel="Retry loading your PDLs" />
       </EmptyState>
     );
-  } else if (pdls.length === 0 && !pdlRequest) {
+  } else if (pdls.length === 0 && pdlRequests.length === 0) {
     content = (
       <EmptyState
         title="No PDLs yet"
@@ -84,9 +83,9 @@ export default function MyPdlsScreen({ navigation }) {
         <MyPdlsList
           variant="screen"
           pdls={pdls}
-          pdlRequest={pdlRequest}
+          pdlRequests={pdlRequests}
           onCancelRequest={cancelRequest}
-          cancelling={cancelling}
+          cancellingId={cancellingId}
           onRequestAgain={requestAgain}
           onRequestAgainForPdl={requestAgainForRelationship}
           docsNeeded={docsNeeded}

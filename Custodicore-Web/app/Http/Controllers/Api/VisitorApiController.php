@@ -536,9 +536,17 @@ class VisitorApiController extends Controller
             'hasPhoto' => (bool) $visitor->photo_path,
             'photoUploadedAt' => $visitor->photo_uploaded_at?->toIso8601String(),
             'canReplacePhoto' => $visitor->canChangePhoto(),
-            // Phase 5B: the open request to add another PDL, else the latest
-            // rejected / cancelled one from the last 30 days; null otherwise.
-            'pdlRequest' => ($pdlRequest = app(\App\Services\PdlLinkRequestService::class)->currentForVisitor($visitor))
+            // Phase 5B: the requests to add another PDL — every open one plus
+            // the rejected / cancelled ones from the last 30 days, newest first.
+            'pdlRequests' => ($pdlRequestService = app(\App\Services\PdlLinkRequestService::class))
+                ->listForVisitor($visitor)
+                ->map(fn ($r) => PdlLinkRequestController::payload($r))
+                ->values(),
+            // How many are open and how many may be open at once.
+            'pdlRequestLimit' => $pdlRequestService->limitFor($visitor),
+            // Older app builds: the newest open request, else the newest recent
+            // rejected / cancelled one; null otherwise.
+            'pdlRequest' => ($pdlRequest = $pdlRequestService->currentForVisitor($visitor))
                 ? PdlLinkRequestController::payload($pdlRequest)
                 : null,
         ]);
