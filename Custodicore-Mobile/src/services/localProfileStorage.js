@@ -1,6 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LEGACY_LOCAL_PROFILE_KEY, localProfileKey } from '../utils/localProfileKey';
 
-const STORAGE_KEY = '@custodicore/visitor_profile_local';
+/**
+ * The old phone-wide entry cannot be traced to an account, so it is removed
+ * (once per app run is enough) rather than shown to whoever logs in.
+ */
+let legacyRemoved = false;
+async function removeLegacyProfile() {
+  if (legacyRemoved) return;
+  legacyRemoved = true;
+  try {
+    await AsyncStorage.removeItem(LEGACY_LOCAL_PROFILE_KEY);
+  } catch {
+    legacyRemoved = false;
+  }
+}
 
 /**
  * @param {unknown} obj
@@ -22,16 +36,20 @@ function pickStoredFields(obj) {
 }
 
 /**
- * Loads persisted visitor profile fields from device storage.
+ * Loads the signed-in account's profile fields from device storage.
  * TODO: Connect to backend/database in production — replace with GET /me (or session) and merge into app state.
  *
  * @template T
- * @param {T} defaultProfile — fallback when nothing stored or parse fails
+ * @param {T} defaultProfile — fallback when nothing stored, no account, or parse fails
+ * @param {string | number | null | undefined} accountId — useAuth().user.id
  * @returns {Promise<T & Record<string, unknown>>}
  */
-export async function loadLocalProfile(defaultProfile) {
+export async function loadLocalProfile(defaultProfile, accountId) {
+  await removeLegacyProfile();
+  const key = localProfileKey(accountId);
+  if (!key) return { ...defaultProfile };
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(key);
     if (!raw) return { ...defaultProfile };
     const parsed = JSON.parse(raw);
     return { ...defaultProfile, ...pickStoredFields(parsed) };
@@ -41,12 +59,17 @@ export async function loadLocalProfile(defaultProfile) {
 }
 
 /**
- * Persists editable profile fields locally.
+ * Persists the signed-in account's profile fields locally. Kept after
+ * logout, so the account finds them again on its next login.
  * TODO: Connect to backend/database in production — PATCH /me (or equivalent), then mirror to cache if needed.
  *
- * @param {{ fullName: string; email: string; phone: string; address?: string; registrationStatus: string; relationshipToPdl?: string; photoUri?: string | null }} profile
+ * @param {{ fullName?: string; email?: string; phone?: string; address?: string; registrationStatus?: string; relationshipToPdl?: string; photoUri?: string | null }} profile
+ * @param {string | number | null | undefined} accountId — useAuth().user.id
+ * @throws {Error} when no account is signed in
  */
-export async function persistLocalProfile(profile) {
+export async function persistLocalProfile(profile, accountId) {
+  const key = localProfileKey(accountId);
+  if (!key) throw new Error('No signed-in account to save the profile for.');
   const payload = JSON.stringify({
     fullName: profile.fullName,
     email: profile.email,
@@ -56,5 +79,5 @@ export async function persistLocalProfile(profile) {
     relationshipToPdl: profile.relationshipToPdl ?? '',
     photoUri: typeof profile.photoUri === 'string' ? profile.photoUri : null,
   });
-  await AsyncStorage.setItem(STORAGE_KEY, payload);
+  await AsyncStorage.setItem(key, payload);
 }

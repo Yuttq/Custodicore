@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import useAutoRefresh from '../hooks/useAutoRefresh';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -573,15 +573,20 @@ export default function DashboardScreen({ navigation }) {
 
   const tabBarInset = useTabBarScrollInset();
 
-  useEffect(() => {
-    let cancelled = false;
-    loadLocalProfile(LOCAL_PHOTO_DEFAULTS).then((loaded) => {
-      if (!cancelled) setProfile(loaded);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The signed-in account's photo, reloaded each time Home comes into view
+  // so a photo changed or removed on Profile shows here right away.
+  const accountId = user?.id ?? null;
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadLocalProfile(LOCAL_PHOTO_DEFAULTS, accountId).then((loaded) => {
+        if (!cancelled) setProfile(loaded);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [accountId]),
+  );
 
   const onViewDocuments = useCallback(() => {
     navigation.navigate('VisitorVerificationDocuments');

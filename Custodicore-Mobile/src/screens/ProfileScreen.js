@@ -172,10 +172,13 @@ export default function ProfileScreen({ navigation }) {
     [verification],
   );
 
+  // The photo is saved per account (localProfileKey).
+  const accountId = user?.id ?? null;
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      loadLocalProfile(LOCAL_PHOTO_DEFAULTS).then((loaded) => {
+      loadLocalProfile(LOCAL_PHOTO_DEFAULTS, accountId).then((loaded) => {
         if (!cancelled) setProfile(loaded);
       });
       setProfileError(null);
@@ -188,18 +191,18 @@ export default function ProfileScreen({ navigation }) {
       return () => {
         cancelled = true;
       };
-    }, [refreshUser]),
+    }, [refreshUser, accountId]),
   );
 
   const persistProfilePhoto = useCallback(async (photoUri) => {
     const next = { ...profile, photoUri: photoUri || null };
     try {
-      await persistLocalProfile(next);
+      await persistLocalProfile(next, accountId);
       setProfile(next);
     } catch {
       Alert.alert('Could not save photo', 'Please try again.');
     }
-  }, [profile]);
+  }, [profile, accountId]);
 
   const pickProfilePhoto = useCallback(
     async (useCamera) => {
