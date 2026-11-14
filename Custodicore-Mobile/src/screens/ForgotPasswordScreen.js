@@ -73,7 +73,8 @@ export default function ForgotPasswordScreen({ navigation }) {
   }, [email, navigation]);
 
   return (
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right', 'bottom']}>
+    // Top edge: keeps the header below the status bar (the app draws edge to edge).
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
       <StackScreenHeader
         title="Forgot Password"
         navigation={navigation}

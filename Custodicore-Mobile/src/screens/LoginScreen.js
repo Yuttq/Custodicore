@@ -177,7 +177,9 @@ export default function LoginScreen({ navigation, route }) {
   const authBusy = submitting || googleSubmitting;
 
   return (
-    <SafeAreaView style={styles.navyScreen} edges={['left', 'right', 'bottom']}>
+    // Top edge: content starts below the status bar; the navy background
+    // still fills behind it.
+    <SafeAreaView style={styles.navyScreen} edges={['top', 'left', 'right', 'bottom']}>
       <FocusAwareStatusBar style="light" />
       <KeyboardAvoidingView
         style={styles.flex}

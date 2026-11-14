@@ -129,7 +129,8 @@ export default function LinkGoogleAccountScreen({ navigation, route }) {
   }, [password, linkGoogle, backToLogin]);
 
   return (
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right', 'bottom']}>
+    // Top edge: keeps the header below the status bar (the app draws edge to edge).
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right', 'bottom']}>
       <StackScreenHeader title="Link Google Account" onBack={backToLogin} />
       <KeyboardAvoidingView
         style={styles.flex}

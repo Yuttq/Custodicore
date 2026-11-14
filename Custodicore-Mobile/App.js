@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -26,6 +27,11 @@ export default function App() {
         <AuthProvider>
           <VisitsProvider>
             <NotificationBadgeProvider>
+              {/* App-wide default: dark status bar icons for the light screens.
+                  It mounts first, so navy screens (Splash, Login, tab header
+                  bands, Create Account) override it with light icons while
+                  shown, and it applies again when they go away. */}
+              <StatusBar style="dark" />
               <NavigationContainer
                 onReady={() => {
                   if (__DEV__) console.log('NAVIGATION READY');
