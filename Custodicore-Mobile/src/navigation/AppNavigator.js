@@ -111,7 +111,7 @@ function MainTabs() {
       tabBar={(props) => <BottomNav {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: dsColors.primaryTeal,
+        tabBarActiveTintColor: dsColors.primaryTealDark,
         tabBarInactiveTintColor: dsColors.textSecondary,
         tabBarShowLabel: true,
       }}

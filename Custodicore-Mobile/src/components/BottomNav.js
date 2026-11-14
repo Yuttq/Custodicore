@@ -85,7 +85,8 @@ export default function BottomNav({ state, descriptors, navigation }) {
               : options.title !== undefined
                 ? options.title
                 : route.name;
-          const activeTint = options.tabBarActiveTintColor ?? colors.primaryTeal;
+          // Dark teal: bright teal labels are only 3.10:1 on the white tab bar.
+          const activeTint = options.tabBarActiveTintColor ?? colors.primaryTealDark;
           const inactiveTint = options.tabBarInactiveTintColor ?? colors.textSecondary;
           const tint = isFocused ? activeTint : inactiveTint;
           const showBadge = route.name === 'Notifications' && unreadCount > 0;
@@ -271,7 +272,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   qrLabelFocused: {
-    color: colors.primaryTeal,
+    // Label text: dark teal for 5.26:1. The QR button itself stays bright teal.
+    color: colors.primaryTealDark,
   },
   badge: {
     position: 'absolute',

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AuthDivider from '../components/AuthDivider';
+import FocusAwareStatusBar from '../components/FocusAwareStatusBar';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import {
   Button,
@@ -33,7 +34,6 @@ import { GoogleSignInCancelledError } from '../services/socialAuthHandlers';
 import { validateEmail, validatePassword, validateRequired } from '../utils';
 import { isEmailVerifiedLink } from '../utils/emailVerificationLink';
 
-const LOGO_ASPECT = 819 / 1024;
 const CONTENT_MAX_WIDTH = 440;
 
 /** Fixed for the life of the binary — false in Expo Go and without a Web Client ID. */
@@ -75,8 +75,9 @@ export default function LoginScreen({ navigation, route }) {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   const logoSize = useMemo(() => {
-    const width = Math.min(windowWidth * 0.36, 140);
-    return { width, height: width / LOGO_ASPECT };
+    // shield-badge.png is square: the shield on a white disc.
+    const size = Math.min(windowWidth * 0.26, 104);
+    return { width: size, height: size };
   }, [windowWidth]);
 
   const clearEmailError = useCallback(() => {
@@ -176,7 +177,8 @@ export default function LoginScreen({ navigation, route }) {
   const authBusy = submitting || googleSubmitting;
 
   return (
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.navyScreen} edges={['left', 'right', 'bottom']}>
+      <FocusAwareStatusBar style="light" />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -196,32 +198,36 @@ export default function LoginScreen({ navigation, route }) {
               hitSlop={spacing.sm}
               style={[commonStyles.backButton, styles.backButton]}
             >
-              <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
+              <Ionicons name="chevron-back" size={24} color={colors.textOnNavy} />
             </Pressable>
 
+            {/* Matches CustodiCore Web: brand on navy, everything else in one white card. */}
             <View style={styles.brandingSection}>
               <ExpoImage
-                source={require('../../assets/custodicore-bjmp-logo.png')}
+                source={require('../../assets/shield-badge.png')}
                 style={[styles.logo, logoSize]}
                 contentFit="contain"
-                accessibilityLabel="CustodiCore"
+                accessibilityLabel="CustodiCore shield"
               />
+              <Text style={styles.brandName}>CustodiCore</Text>
+              <Text style={styles.brandTagline}>VISITOR PORTAL</Text>
+            </View>
+
+            <Card style={styles.formCard}>
               <Text style={styles.welcomeTitle} accessibilityRole="header">
                 Welcome Back
               </Text>
               <Text style={styles.welcomeSubtitle}>Sign in to your account</Text>
-            </View>
 
-            {emailJustVerified ? (
-              <View style={styles.verifiedBanner} accessibilityRole="alert">
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={styles.verifiedBannerText}>
-                  Your email has been verified. You can now log in.
-                </Text>
-              </View>
-            ) : null}
+              {emailJustVerified ? (
+                <View style={styles.verifiedBanner} accessibilityRole="alert">
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                  <Text style={styles.verifiedBannerText}>
+                    Your email has been verified. You can now log in.
+                  </Text>
+                </View>
+              ) : null}
 
-            <Card style={styles.formCard}>
               <View style={styles.field}>
                 <Text style={formStyles.label} nativeID="login-email-label">
                   Email Address
@@ -314,35 +320,49 @@ export default function LoginScreen({ navigation, route }) {
 
               <Button
                 title="Sign In"
+                variant="success"
                 onPress={onSubmit}
                 loading={submitting}
                 disabled={authBusy}
                 accessibilityLabel="Sign in to CustodiCore"
               />
+
+              {GOOGLE_SIGN_IN_AVAILABLE ? (
+                <View style={styles.altAuthSection}>
+                  <AuthDivider />
+                  <GoogleSignInButton
+                    onPress={onGoogleSignIn}
+                    loading={googleSubmitting}
+                    disabled={authBusy}
+                  />
+                </View>
+              ) : null}
+
+              <View style={styles.registerRow}>
+                <Text style={styles.registerPrompt}>Don&apos;t have an account?</Text>
+                <Pressable
+                  onPress={() => navigation.navigate('Register')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Create account"
+                  hitSlop={spacing.sm}
+                  style={({ pressed }) => [styles.registerLinkWrap, pressed && styles.pressed]}
+                >
+                  <Text style={styles.registerLink}>Create Account</Text>
+                </Pressable>
+              </View>
             </Card>
 
-            {GOOGLE_SIGN_IN_AVAILABLE ? (
-              <View style={styles.altAuthSection}>
-                <AuthDivider />
-                <GoogleSignInButton
-                  onPress={onGoogleSignIn}
-                  loading={googleSubmitting}
-                  disabled={authBusy}
-                />
-              </View>
-            ) : null}
-
-            <View style={styles.registerRow}>
-              <Text style={styles.registerPrompt}>Don&apos;t have an account?</Text>
-              <Pressable
-                onPress={() => navigation.navigate('Register')}
-                accessibilityRole="link"
-                accessibilityLabel="Create account"
-                hitSlop={spacing.sm}
-                style={({ pressed }) => [styles.registerLinkWrap, pressed && styles.pressed]}
-              >
-                <Text style={styles.registerLink}>Create Account</Text>
-              </Pressable>
+            <View
+              style={styles.agencyRow}
+              accessible
+              accessibilityLabel="Bureau of Jail Management and Penology"
+            >
+              <ExpoImage
+                source={require('../../assets/bjmp-seal.png')}
+                style={styles.agencySeal}
+                contentFit="contain"
+              />
+              <Text style={styles.agencyText}>Bureau of Jail Management and Penology</Text>
             </View>
 
             <Text style={styles.footer}>Your information is securely protected.</Text>
@@ -354,6 +374,10 @@ export default function LoginScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
+  navyScreen: {
+    flex: 1,
+    backgroundColor: colors.navySurface,
+  },
   flex: { flex: 1 },
   scroll: {
     paddingHorizontal: layout.screenPadding,
@@ -372,24 +396,32 @@ const styles = StyleSheet.create({
   },
   brandingSection: {
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   logo: {
     marginBottom: spacing.sm,
   },
-  welcomeTitle: {
+  brandName: {
     ...typography.pageTitle,
-    fontSize: 26,
-    lineHeight: 32,
-    color: colors.textPrimary,
+    color: colors.textOnNavy,
     textAlign: 'center',
+  },
+  brandTagline: {
+    ...typography.eyebrow,
+    color: colors.textOnNavyMuted,
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  welcomeTitle: {
+    ...typography.screenHeader,
+    color: colors.primaryNavy,
     marginBottom: spacing.xs,
   },
   welcomeSubtitle: {
-    ...typography.body,
+    ...typography.metadata,
     color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
+    marginBottom: spacing.md,
   },
   verifiedBanner: {
     flexDirection: 'row',
@@ -464,8 +496,8 @@ const styles = StyleSheet.create({
   },
   registerRow: {
     alignItems: 'center',
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: spacing.md,
+    gap: spacing.xs,
   },
   registerPrompt: {
     ...typography.metadata,
@@ -480,19 +512,37 @@ const styles = StyleSheet.create({
   registerLink: {
     ...typography.body,
     fontWeight: '700',
-    color: colors.primaryTeal,
+    // primaryTeal is 3.10:1 on white; the dark teal is 5.26:1.
+    color: colors.primaryTealDark,
     textAlign: 'center',
   },
   pressed: {
     opacity: 0.88,
   },
+  agencyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  agencySeal: {
+    width: spacing.xl,
+    height: spacing.xl,
+  },
+  agencyText: {
+    ...typography.metadata,
+    flexShrink: 1,
+    color: colors.textOnNavyMuted,
+  },
   footer: {
     ...typography.metadata,
     fontSize: 12,
     lineHeight: 18,
-    color: colors.textSecondary,
+    color: colors.textOnNavyMuted,
     textAlign: 'center',
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
   },
 });

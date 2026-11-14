@@ -27,6 +27,11 @@ export const colors = {
    * guaranteed AA on amber status tints (~4.38:1).
    */
   warningText: '#B45309',
+  /**
+   * Success text on green status tints, e.g. the QR "Inside Facility" banner
+   * (6.24:1 on a 12% green tint, where successStrong is only ~4.39:1).
+   */
+  successText: '#166534',
   /** Danger text and destructive fills with white text (6.47:1) */
   dangerStrong: '#B91C1C',
 
@@ -43,6 +48,18 @@ export const colors = {
 
   /** Informational status / accents */
   info: '#2563EB',
+
+  /**
+   * Navy surfaces (Login, splash, Home/My Visits header band) — matches
+   * CustodiCore Web. Ratios measured against primaryNavy.
+   */
+  navySurface: '#0F3D7A',
+  /** Primary text on navy (10.67:1) */
+  textOnNavy: '#FFFFFF',
+  /** Secondary text on navy (7.18:1) */
+  textOnNavyMuted: '#CBD5E1',
+  /** Hairlines / rings on navy — decorative only */
+  borderOnNavy: 'rgba(255, 255, 255, 0.35)',
 
   white: '#FFFFFF',
 };

@@ -11,7 +11,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EmptyState, LoadingSpinner, NotificationRow } from '../components';
-import { Button, colors, commonStyles, layout, spacing, typography } from '../designSystem';
+import {
+  Button,
+  HeaderBand,
+  colors,
+  commonStyles,
+  layout,
+  spacing,
+  typography,
+} from '../designSystem';
 import useAutoRefresh from '../hooks/useAutoRefresh';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
@@ -364,10 +372,9 @@ export default function NotificationsScreen({ navigation }) {
   ];
 
   return (
-    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
-      <Text style={styles.screenTitle} accessibilityRole="header">
-        Notifications
-      </Text>
+    // Top edge is handled by HeaderBand, which draws navy under the status bar.
+    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right']}>
+      <HeaderBand title="Notifications" />
       <SectionList
         sections={sections}
         keyExtractor={keyExtractor}
@@ -398,20 +405,15 @@ export default function NotificationsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  screenTitle: {
-    ...typography.pageTitle,
-    color: colors.textPrimary,
-    paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
+  // paddingTop clears the band's rounded bottom edge.
   listContent: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   listEmptyContent: {
     flexGrow: 1,
     paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
   filterBar: {
@@ -429,8 +431,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   filterChipActive: {
-    backgroundColor: colors.primaryTeal,
-    borderColor: colors.primaryTeal,
+    // White label on bright teal is 3.10:1; on dark teal 5.26:1.
+    backgroundColor: colors.primaryTealDark,
+    borderColor: colors.primaryTealDark,
   },
   filterChipPressed: {
     opacity: 0.92,
