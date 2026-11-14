@@ -4,9 +4,9 @@
 # the Android 12+ safe circle (2/3 of the canvas) and never gets cropped.
 # The full wordmark is shown afterwards by src/screens/SplashScreen.js.
 #
-#   npm run generate-splash-icon   builds both files used by the app:
-#     assets/splash-icon.png   native splash (-Backdrop, safe-circle padding)
-#     assets/shield-badge.png  Login logo (-Backdrop -CircleFraction 1, no padding)
+#   npm run generate-splash-icon   builds assets/splash-icon.png, the native
+#   splash image (-Backdrop -FullLogo: full logo on a white disc, inside
+#   the Android 12+ safe circle).
 param(
   [string]$Src = (Join-Path $PSScriptRoot '../assets/custodicore-logo.png'),
   [string]$Out = (Join-Path $PSScriptRoot '../assets/splash-icon.png'),
@@ -14,13 +14,22 @@ param(
   [double]$CircleFraction = 0.6667,
   # Draws a white disc behind the shield. Needed on the navy splash/login:
   # the padlock's blue is ~1.03:1 against navy and would vanish without it.
-  [switch]$Backdrop
+  [switch]$Backdrop,
+  # Whole logo (shield + "CustodiCore" + "VISITOR PORTAL") instead of the
+  # shield only, sized so the whole box fits inside the safe circle and the
+  # word is never cut. Used for the native splash, with -Backdrop.
+  [switch]$FullLogo
 )
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
-# Crop: shield + padlock only (wordmark begins at y~660)
-$cx0 = 196; $cy0 = 108; $cw = 420; $ch = 548
+if ($FullLogo) {
+  # Full logo: shield top y~116 to "VISITOR PORTAL" bottom y~846, wordmark x 52..760
+  $cx0 = 44; $cy0 = 108; $cw = 724; $ch = 746
+} else {
+  # Crop: shield + padlock only (wordmark begins at y~660)
+  $cx0 = 196; $cy0 = 108; $cw = 420; $ch = 548
+}
 $srcBmp = New-Object System.Drawing.Bitmap $Src
 $crop = New-Object System.Drawing.Bitmap $cw, $ch, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 for ($y = 0; $y -lt $ch; $y++) {
@@ -48,6 +57,12 @@ $safeR = $Canvas * $CircleFraction / 2 * 0.92
 # With a backdrop the disc fills the safe circle and the shield sits inside it.
 $shieldR = if ($Backdrop) { $safeR * 0.8 } else { $safeR }
 $scale = $shieldR / $maxR
+if ($FullLogo) {
+  # Fit the whole crop box (its corners, not just the drawn pixels) inside the
+  # circle, with a 3% margin, so no letter of the wordmark reaches the edge.
+  $halfDiagonal = [Math]::Sqrt(($cw / 2) * ($cw / 2) + ($ch / 2) * ($ch / 2))
+  $scale = $safeR * 0.97 / $halfDiagonal
+}
 
 $outBmp = New-Object System.Drawing.Bitmap $Canvas, $Canvas, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $gr = [System.Drawing.Graphics]::FromImage($outBmp)

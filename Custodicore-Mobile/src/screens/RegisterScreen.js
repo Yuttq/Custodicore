@@ -21,13 +21,11 @@ import {
   BirthdateField,
   Button,
   Card,
-  HeaderBand,
   colors,
   layout,
   spacing,
   typography,
 } from '../designSystem';
-import { StatusBar } from 'expo-status-bar';
 import RegistrationPhotoCamera from '../components/RegistrationPhotoCamera';
 import {
   toDocumentImageUpload,
@@ -1454,8 +1452,6 @@ export default function RegisterScreen({ navigation, route }) {
         onRequestClose={() => setLegalDoc(null)}
       >
         <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-          {/* White header: dark status bar icons while open (the navy band behind sets light). */}
-          <StatusBar style="dark" />
           <View style={legalStyles.header}>
             <Text style={legalStyles.headerTitle}>{doc?.title ?? fallbackTitle}</Text>
             <Pressable
@@ -1539,13 +1535,19 @@ export default function RegisterScreen({ navigation, route }) {
   );
 
   const renderConsent = () => (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <HeaderBand title="Before you begin" onBack={goBack} />
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.scroll, styles.scrollBelowBand]}
-      >
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
+        </Pressable>
+
+        <Text style={styles.screenTitle}>Before you begin</Text>
         {renderGoogleBadge()}
         <Text style={styles.stepSubtitle}>
           Please review and accept our Terms and Conditions and Privacy Policy before you
@@ -1583,21 +1585,26 @@ export default function RegisterScreen({ navigation, route }) {
   if (!consentDone) return renderConsent();
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <HeaderBand
-        title={STEP_TITLES[step]}
-        subtitle="Create your visitor account"
-        onBack={goBack}
-      />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[styles.scroll, styles.scrollBelowBand]}
+          contentContainerStyle={styles.scroll}
         >
+          <Pressable
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={10}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.primaryNavy} />
+          </Pressable>
+
+          <Text style={styles.screenTitle}>{STEP_TITLES[step]}</Text>
           {renderGoogleBadge()}
           {step === 1 ? (
             <Text style={styles.stepSubtitle}>
@@ -1904,9 +1911,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.xl,
   },
-  // The back arrow and step title live in HeaderBand above the scroll view.
-  scrollBelowBand: {
-    paddingTop: spacing.md,
+  // 40dp circle; the Pressable's hitSlop={10} keeps the touch target ≥ 48dp.
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  screenTitle: {
+    ...typography.pageTitle,
+    fontSize: 22,
+    lineHeight: 28,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   googleBadge: {
     flexDirection: 'row',

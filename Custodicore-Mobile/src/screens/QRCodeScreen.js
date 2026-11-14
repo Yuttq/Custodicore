@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
   Card,
-  HeaderBand,
   colors,
   commonStyles,
   layout,
@@ -431,43 +430,36 @@ export default function QRCodeScreen({ route, navigation }) {
   }, [navigation]);
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right']}>
-      <HeaderBand
-        title="QR Pass"
-        right={
-          qrPayload && !loading ? (
-            <Pressable
-              onPress={() => load('refresh')}
-              disabled={refreshing}
-              // 40dp circle + 4dp slop on each side = 48dp touch target.
-              hitSlop={spacing.xs}
-              style={({ pressed }) => [
-                styles.refreshIconBtn,
-                pressed && !refreshing && styles.pressed,
-                refreshing && styles.refreshDisabled,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Refresh QR pass"
-            >
-              {refreshing ? (
-                <ActivityIndicator size="small" color={colors.primaryNavy} />
-              ) : (
-                <Ionicons name="refresh" size={22} color={colors.primaryNavy} />
-              )}
-            </Pressable>
-          ) : (
-            <View style={styles.refreshPlaceholder} />
-          )
-        }
-      />
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle} accessibilityRole="header">
+          QR Pass
+        </Text>
+        {qrPayload && !loading ? (
+          <Pressable
+            onPress={() => load('refresh')}
+            disabled={refreshing}
+            style={({ pressed }) => [
+              styles.refreshIconBtn,
+              pressed && !refreshing && styles.pressed,
+              refreshing && styles.refreshDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh QR pass"
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primaryTeal} />
+            ) : (
+              <Ionicons name="refresh" size={22} color={colors.primaryTeal} />
+            )}
+          </Pressable>
+        ) : (
+          <View style={styles.refreshPlaceholder} />
+        )}
+      </View>
 
       <ScrollView
-        contentContainerStyle={[
-          commonStyles.scrollContent,
-          styles.scrollBelowBand,
-          { paddingBottom: tabBarInset },
-        ]}
+        contentContainerStyle={[commonStyles.scrollContent, { paddingBottom: tabBarInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -601,17 +593,28 @@ export default function QRCodeScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  scrollBelowBand: {
-    paddingTop: spacing.md,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
-  // Sits in the navy HeaderBand: white circle, navy icon.
+  headerTitle: {
+    ...typography.pageTitle,
+    color: colors.textPrimary,
+    flex: 1,
+  },
   refreshIconBtn: {
     width: layout.iconButtonSize - spacing.sm,
     height: layout.iconButtonSize - spacing.sm,
     borderRadius: (layout.iconButtonSize - spacing.sm) / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   refreshPlaceholder: {
     width: layout.iconButtonSize - spacing.sm,

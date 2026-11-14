@@ -15,7 +15,6 @@ import { pickPhotoFromCamera, pickPhotoFromGallery } from '../services/imagePick
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Card,
-  HeaderBand,
   StatusChip,
   colors,
   layout,
@@ -289,14 +288,16 @@ export default function ProfileScreen({ navigation }) {
   );
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <HeaderBand title="Profile" />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <Text style={styles.screenTitle} accessibilityRole="header">
+          Profile
+        </Text>
+
         <View style={styles.hero}>
           <ProfileAvatar
             photoUri={profile.photoUri}
@@ -341,7 +342,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  screenTitle: {
+    ...typography.pageTitle,
+    color: colors.textPrimary,
+    marginBottom: layout.pageTitleGap,
   },
   hero: {
     alignItems: 'center',

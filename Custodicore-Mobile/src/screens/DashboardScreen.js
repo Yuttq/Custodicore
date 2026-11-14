@@ -7,7 +7,6 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Card,
-  HeaderBand,
   StatusChip,
   colors,
   layout,
@@ -621,18 +620,21 @@ export default function DashboardScreen({ navigation }) {
   );
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <HeaderBand
-        title={`${greeting} ${visitorName}`}
-        subtitle="Welcome Back"
-        right={<DashboardAvatar photoUri={profile.photoUri} initials={initials} />}
-      />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.greeting}>
+              {greeting} {visitorName}
+            </Text>
+            <Text style={styles.welcomeBack}>Welcome Back</Text>
+          </View>
+          <DashboardAvatar photoUri={profile.photoUri} initials={initials} />
+        </View>
         {verificationReminder ? (
           <CompactVerificationStatus
             display={verificationReminder}
@@ -681,7 +683,26 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  headerText: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  greeting: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  welcomeBack: {
+    ...typography.metadata,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   avatar: {
     width: layout.buttonHeight,

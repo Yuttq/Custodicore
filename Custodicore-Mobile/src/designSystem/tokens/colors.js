@@ -49,18 +49,6 @@ export const colors = {
   /** Informational status / accents */
   info: '#2563EB',
 
-  /**
-   * Navy surfaces (Login, splash, Home/My Visits header band) — matches
-   * CustodiCore Web. Ratios measured against primaryNavy.
-   */
-  navySurface: '#0F3D7A',
-  /** Primary text on navy (10.67:1) */
-  textOnNavy: '#FFFFFF',
-  /** Secondary text on navy (7.18:1) */
-  textOnNavyMuted: '#CBD5E1',
-  /** Hairlines / rings on navy — decorative only */
-  borderOnNavy: 'rgba(255, 255, 255, 0.35)',
-
   white: '#FFFFFF',
 };
 

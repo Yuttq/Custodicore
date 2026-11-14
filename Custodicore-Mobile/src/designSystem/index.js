@@ -10,7 +10,6 @@ export { formStyles } from './styles/formStyles';
 export { BirthdateField } from './components/BirthdateField';
 export { Button } from './components/Button';
 export { Card } from './components/Card';
-export { HeaderBand } from './components/HeaderBand';
 export { StatusChip } from './components/StatusChip';
 export { StackScreenHeader } from './components/StackScreenHeader';
 

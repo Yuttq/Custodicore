@@ -72,25 +72,24 @@ export default function SplashScreen({ navigation }) {
         >
           <View style={styles.divider} accessibilityElementsHidden />
 
-          {/* The logo artwork has a white background and a dark wordmark, so it
-              sits on a white card against the navy splash. */}
-          <View style={styles.logoCard}>
-            <Image
-              source={require('../../assets/custodicore-bjmp-logo.png')}
-              style={{
+          <Image
+            source={require('../../assets/custodicore-bjmp-logo.png')}
+            style={[
+              styles.custodiLogo,
+              {
                 width: layout.custodiWidth,
                 height: layout.custodiHeight,
-              }}
-              resizeMode="contain"
-              accessibilityLabel="CustodiCore"
-            />
-          </View>
+              },
+            ]}
+            resizeMode="contain"
+            accessibilityLabel="CustodiCore"
+          />
 
           <Text style={styles.subtitle}>Visitor Management System</Text>
         </Animated.View>
       </SafeAreaView>
 
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
     </View>
   );
 }
@@ -98,15 +97,15 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.navySurface,
+    backgroundColor: colors.background,
   },
   backgroundBase: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.navySurface,
+    backgroundColor: colors.background,
   },
   backgroundGradientBottom: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    backgroundColor: 'rgba(15, 61, 122, 0.04)',
     top: '45%',
   },
   accentBar: {
@@ -136,15 +135,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryTeal,
     marginVertical: spacing.lg,
   },
-  logoCard: {
-    backgroundColor: colors.white,
-    borderRadius: spacing.md,
-    padding: spacing.md,
+  custodiLogo: {
+    marginBottom: spacing.sm,
   },
   subtitle: {
     ...typography.sectionLabel,
-    // Teal on navy is 3.44:1, below AA at this size.
-    color: colors.textOnNavyMuted,
+    // Dark teal: bright teal text is 3.10:1 on the light background.
+    color: colors.primaryTealDark,
     textAlign: 'center',
     marginTop: spacing.lg,
     letterSpacing: 1.2,

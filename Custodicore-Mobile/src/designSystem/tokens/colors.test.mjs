@@ -65,20 +65,6 @@ test('QR pass status text stays AA on its tinted banners', () => {
   }
 });
 
-test('text on navy surfaces meets WCAG AA', () => {
-  assert.equal(colors.navySurface, colors.primaryNavy);
-  for (const token of ['textOnNavy', 'textOnNavyMuted']) {
-    assert.ok(contrast(colors[token], colors.navySurface) >= AA_TEXT, token);
-  }
-});
-
-test('bright teal and green are not used as text on navy or as white-label fills', () => {
-  // Documents why Login uses successStrong (not success) for its green button,
-  // and why links/labels on navy use textOnNavy* instead of teal.
-  assert.ok(contrast(colors.white, colors.success) < AA_TEXT);
-  assert.ok(contrast(colors.primaryTeal, colors.navySurface) < AA_TEXT);
-});
-
 test('bright accents are preserved for decorative use', () => {
   assert.equal(colors.primaryTeal, '#0DA58A');
   assert.equal(colors.success, '#16A34A');

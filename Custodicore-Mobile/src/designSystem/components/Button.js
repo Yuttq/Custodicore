@@ -36,13 +36,6 @@ const VARIANTS = {
     ripple: 'rgba(255,255,255,0.25)',
     spinner: colors.white,
   },
-  /** Green action (Login Sign In, matching CustodiCore Web). White on successStrong is 5.02:1. */
-  success: {
-    container: 'success',
-    label: 'labelSuccess',
-    ripple: 'rgba(255,255,255,0.25)',
-    spinner: colors.white,
-  },
 };
 
 /**
@@ -50,7 +43,7 @@ const VARIANTS = {
  * @param {object} props
  * @param {string} props.title
  * @param {() => void} props.onPress
- * @param {'primary'|'secondary'|'destructive'|'success'} [props.variant]
+ * @param {'primary'|'secondary'|'destructive'} [props.variant]
  * @param {boolean} [props.loading]
  * @param {boolean} [props.disabled]
  * @param {string} [props.accessibilityLabel]
@@ -113,9 +106,6 @@ const styles = StyleSheet.create({
   destructive: {
     backgroundColor: colors.dangerStrong,
   },
-  success: {
-    backgroundColor: colors.successStrong,
-  },
   label: {
     ...typography.body,
     fontWeight: '600', // SemiBold per spec for buttons
@@ -123,7 +113,6 @@ const styles = StyleSheet.create({
   labelPrimary: { color: colors.white },
   labelSecondary: { color: colors.textPrimary },
   labelDestructive: { color: colors.white },
-  labelSuccess: { color: colors.white },
   disabled: { opacity: 0.55 },
 });
 

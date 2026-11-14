@@ -22,7 +22,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
   Card,
-  HeaderBand,
   StatusChip,
   colors,
   commonStyles,
@@ -421,11 +420,12 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
   );
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right']}>
-      <HeaderBand title="My Visits" />
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
+      <Text style={styles.screenTitle} accessibilityRole="header">
+        My Visits
+      </Text>
 
-      <View style={[commonStyles.segmentedControl, styles.segmentedAfterBand]}>
+      <View style={commonStyles.segmentedControl}>
         {TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -521,8 +521,12 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  segmentedAfterBand: {
-    marginTop: spacing.md,
+  screenTitle: {
+    ...typography.pageTitle,
+    color: colors.textPrimary,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   list: {
     paddingHorizontal: layout.screenPadding,

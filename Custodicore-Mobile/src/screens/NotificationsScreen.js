@@ -11,15 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EmptyState, LoadingSpinner, NotificationRow } from '../components';
-import {
-  Button,
-  HeaderBand,
-  colors,
-  commonStyles,
-  layout,
-  spacing,
-  typography,
-} from '../designSystem';
+import { Button, colors, commonStyles, layout, spacing, typography } from '../designSystem';
 import useAutoRefresh from '../hooks/useAutoRefresh';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
 import useVisitorVerification from '../hooks/useVisitorVerification';
@@ -372,9 +364,10 @@ export default function NotificationsScreen({ navigation }) {
   ];
 
   return (
-    // Top edge is handled by HeaderBand, which draws navy under the status bar.
-    <SafeAreaView style={commonStyles.safeScreen} edges={['left', 'right']}>
-      <HeaderBand title="Notifications" />
+    <SafeAreaView style={commonStyles.safeScreen} edges={['top', 'left', 'right']}>
+      <Text style={styles.screenTitle} accessibilityRole="header">
+        Notifications
+      </Text>
       <SectionList
         sections={sections}
         keyExtractor={keyExtractor}
@@ -405,15 +398,20 @@ export default function NotificationsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // paddingTop clears the band's rounded bottom edge.
+  screenTitle: {
+    ...typography.pageTitle,
+    color: colors.textPrimary,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   listContent: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.md,
+    paddingTop: spacing.xs,
   },
   listEmptyContent: {
     flexGrow: 1,
     paddingHorizontal: layout.screenPadding,
-    paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
   filterBar: {
