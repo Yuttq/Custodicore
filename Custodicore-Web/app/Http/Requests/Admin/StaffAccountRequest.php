@@ -37,8 +37,23 @@ class StaffAccountRequest extends FormRequest
             'suffix' => Sanitizer::suffix($this->input('suffix')),
             'role_name' => Sanitizer::text($this->input('role_name')),
             'personal_email' => Sanitizer::email($this->input('personal_email')),
-            'contact_number' => Sanitizer::mobile($this->input('contact_number')),
+            'contact_number' => self::cleanMobile($this->input('contact_number')),
         ]);
+    }
+
+    /**
+     * Sanitizer::mobile() keeps only the digits, so "09171234567abc" would pass.
+     * A number typed with letters or other symbols is left as typed instead, so
+     * the mobile-number rule rejects it. Spaces, dashes, dots, brackets and a
+     * leading + are still fine (e.g. "+63 (917) 123-4567").
+     */
+    private static function cleanMobile($value): ?string
+    {
+        if (is_string($value) && preg_match('/[^0-9\s+\-().]/u', $value)) {
+            return trim($value);
+        }
+
+        return Sanitizer::mobile($value);
     }
 
     public function rules(): array

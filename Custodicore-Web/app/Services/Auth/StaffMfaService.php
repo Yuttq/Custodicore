@@ -22,10 +22,11 @@ use Illuminate\Support\Str;
  * Officer, Front Desk Officer). Visitors on the mobile app are not involved.
  *
  * Sign-in becomes: email or username + password  ->  one more proof  ->  signed in.
- * The second proof is one of:
- *   - the 6-digit code from the officer's authenticator app (App\Support\Totp)
- *   - a 6-digit code emailed to them (fallback if the phone is not at hand)
- *   - one of 8 one-time backup codes (fallback if the phone is lost)
+ * The second proof is a 6-digit code emailed to the officer each time they
+ * sign in on a browser that is not trusted (sendEmailCode()). Setup is just
+ * typing the first emailed code (enableEmail()); no app to install.
+ * Accounts set up earlier with an authenticator app keep working: their app
+ * codes and backup codes are still accepted, but nothing new uses them.
  *
  * Between the password and the second proof the officer is NOT signed in: the
  * session only remembers "this account passed the password step" (`mfa_pending`,
@@ -58,7 +59,36 @@ class StaffMfaService
 
     public function isEnabled(Account $account): bool
     {
-        return $account->mfa_enabled_at !== null && $account->mfa_secret !== null;
+        // Emailed codes need no secret; older app-based accounts also have one.
+        return $account->mfa_enabled_at !== null;
+    }
+
+    /** Where emailed codes go: the officer's personal email, else the sign-in email. */
+    public function emailTarget(Account $account): string
+    {
+        return $account->staffProfile?->personal_email ?: $account->email;
+    }
+
+    /**
+     * Turns two-step verification on with emailed codes, after the officer
+     * typed the first code we emailed them.
+     */
+    public function enableEmail(Account $account): void
+    {
+        $account->forceFill([
+            'mfa_secret' => null,
+            'mfa_enabled_at' => now(),
+            'mfa_last_used_step' => null,
+            'mfa_backup_codes' => null,
+        ])->save();
+    }
+
+    /** True when a not-yet-expired emailed code is waiting in this session. */
+    public function hasLiveEmailCode(Request $request): bool
+    {
+        $stored = $request->session()->get('mfa_email');
+
+        return is_array($stored) && time() <= (int) ($stored['exp'] ?? 0);
     }
 
     /** Whether signing in this account must pass through the second step (set up or verify). */
@@ -266,7 +296,7 @@ class StaffMfaService
      */
     public function sendEmailCode(Request $request, Account $account): array
     {
-        $to = $account->staffProfile?->personal_email ?: $account->email;
+        $to = $this->emailTarget($account);
         $masked = self::maskEmail($to);
 
         $key = 'mfa-email-send:' . $account->getKey();
@@ -390,7 +420,9 @@ class StaffMfaService
     /** Tied to the secret and the password hash, so resetting MFA or changing the password cancels every trusted device. */
     private function trustSignature(Account $account, int $expires): string
     {
-        $fingerprint = hash('sha256', (string) $account->mfa_secret . '|' . (string) $account->password_hash);
+        // No secret with emailed codes: the setup time stands in, so a reset still cancels trusted browsers.
+        $mfaPart = $account->mfa_secret ?? ('email|' . (string) $account->mfa_enabled_at);
+        $fingerprint = hash('sha256', (string) $mfaPart . '|' . (string) $account->password_hash);
 
         return hash_hmac('sha256', $account->getKey() . '|' . $expires . '|' . $fingerprint, (string) config('app.key'));
     }

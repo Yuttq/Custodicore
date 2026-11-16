@@ -105,21 +105,11 @@
             @if ($mfaEnabled)
                 <p class="mt-xs text-body">
                     <span class="font-semibold text-success">On.</span>
-                    Signing in needs your password and a code from your authenticator app.
-                </p>
-                <p class="mt-xs text-body {{ $backupCodesLeft <= 2 ? 'font-semibold text-danger' : '' }}">
-                    Backup codes left: {{ $backupCodesLeft }}
+                    Signing in needs your password and a 6-digit code we email you.
                 </p>
                 <p class="mt-xs text-metadata text-text-secondary">
-                    Making new backup codes cancels all the old ones. Lost your phone? Ask the system administrator to reset your two-step verification.
+                    The code goes to your email when you sign in on a new browser. Can't open your email? Ask the system administrator to reset your two-step verification.
                 </p>
-
-                <form method="POST" action="{{ route('account.mfa.regenerate') }}" class="mt-md max-w-sm space-y-sm" autocomplete="off">
-                    @csrf
-                    <label for="mfa-current-password" class="cc-label">Your password</label>
-                    <input type="password" id="mfa-current-password" name="current_password" required autocomplete="current-password" class="cc-input">
-                    <button type="submit" class="cc-btn-secondary">Make new backup codes</button>
-                </form>
             @else
                 <p class="mt-xs text-body">Not set up for this account.</p>
             @endif

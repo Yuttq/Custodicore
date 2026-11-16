@@ -210,9 +210,107 @@
         })();
     </script>
 
+    {{-- Live field checks for Register / Edit Officer (forms marked data-staff-validate).
+         Same rules as StaffAccountRequest, shown under each field while the admin types:
+         wrong characters right away, missing/incomplete values once the admin leaves the
+         field, and everything at once on Continue / Save. The server still checks on save. --}}
+    <script>
+        (function () {
+            var NAME = /^\p{L}[\p{L}\p{M} .'’-]*$/u;
+            var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            var NAME_CHARS = 'may only contain letters, spaces, dots, apostrophes and hyphens.';
+
+            function nameCheck(label, required) {
+                return function (v, done) {
+                    if (v === '') return required ? (done ? 'Enter the ' + label + '.' : '') : '';
+                    if (!NAME.test(v)) return 'The ' + label + ' ' + NAME_CHARS;
+                    if (v.replace(/[^\p{L}]/gu, '').length < 2) return done ? 'The ' + label + ' must have at least 2 letters.' : '';
+                    return '';
+                };
+            }
+
+            // Each check returns '' when fine. done = the admin has left the field (or pressed Continue/Save).
+            var CHECKS = {
+                last_name: nameCheck('last name', true),
+                first_name: nameCheck('first name', true),
+                middle_name: nameCheck('middle name', false),
+                role_name: function (v, done) { return v === '' && done ? 'Choose a role.' : ''; },
+                personal_email: function (v, done, form) {
+                    if (v === '') return done && form.getAttribute('data-staff-validate') === 'new'
+                        ? "Enter the officer's email — the setup link is sent there." : '';
+                    if (/\s/.test(v)) return 'An email address cannot contain spaces.';
+                    return done && !EMAIL.test(v) ? 'Enter a valid email address, e.g. juan.delacruz@gmail.com.' : '';
+                },
+                contact_number: function (v, done) {
+                    if (v === '') return done ? 'Enter the mobile number.' : '';
+                    if (/[^0-9\s+\-().]/.test(v)) return 'Use numbers only — letters and other symbols are not allowed.';
+                    var d = v.replace(/\D/g, '');
+                    var ok = (d.length === 11 && /^09/.test(d)) || (d.length === 12 && /^639/.test(d)) || (d.length === 10 && /^9/.test(d));
+                    if (!ok && (done || d.length > 12)) return 'Enter a valid Philippine mobile number, e.g. 0917 123 4567.';
+                    return '';
+                }
+            };
+
+            function errorEl(input) {
+                if (input._ccErr) return input._ccErr;
+                var p = document.createElement('p');
+                p.className = 'text-metadata text-danger';
+                p.setAttribute('role', 'alert');
+                p.style.cssText = 'display:none; margin-top:4px;';
+                // After the duplicate-email message when there is one, else right after the field.
+                var after = input.parentElement.querySelector('.email-check-msg') || input;
+                after.insertAdjacentElement('afterend', p);
+                input._ccErr = p;
+                return p;
+            }
+
+            function run(input, done) {
+                var check = CHECKS[input.name];
+                if (!check) return true;
+                var msg = check((input.value || '').trim(), done, input.form);
+                var el = errorEl(input);
+                el.textContent = msg;
+                el.style.display = msg ? '' : 'none';
+                var dupShown = input.parentElement.querySelector('.email-check-msg');
+                dupShown = dupShown && dupShown.style.display !== 'none' && dupShown.textContent.trim();
+                input.style.borderColor = msg || dupShown ? '#DC2626' : '';
+                return !msg;
+            }
+
+            // Checks every field and shows every problem; returns true when all are fine.
+            window.ccValidateStaffForm = function (form) {
+                var first = null;
+                Array.prototype.forEach.call(form.elements, function (el) {
+                    if (CHECKS[el.name] && !run(el, true) && !first) first = el;
+                });
+                if (first) first.focus();
+                return !first;
+            };
+
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('form[data-staff-validate]').forEach(function (form) {
+                    Array.prototype.forEach.call(form.elements, function (el) {
+                        if (!CHECKS[el.name]) return;
+                        el.addEventListener('input', function () { run(el, el._ccLeft === true); });
+                        el.addEventListener('change', function () { run(el, true); });
+                        el.addEventListener('blur', function () { el._ccLeft = true; run(el, true); });
+                    });
+                });
+            });
+
+            // Edit Officer submits straight to the password popup: stop it while a field is wrong.
+            // (Capture phase, registered before the popup's own listener.)
+            document.addEventListener('submit', function (e) {
+                var form = e.target;
+                if (!form.matches || !form.matches('form[data-staff-validate="edit"]')) return;
+                if (!window.ccValidateStaffForm(form)) { e.preventDefault(); e.stopImmediatePropagation(); }
+            }, true);
+        })();
+    </script>
+
     {{-- "Register Officer" — the admin's only way to create data on this dashboard. --}}
     <dialog id="new-account-modal" class="cc-modal">
-        <form method="POST" action="{{ route('admin.users.store') }}" autocomplete="off">
+        <form method="POST" action="{{ route('admin.users.store') }}" autocomplete="off" data-staff-validate="new">
             @csrf
             <div class="mb-md flex items-center justify-between">
                 <p class="text-card-title">Register BJMP Officer</p>
@@ -329,6 +427,8 @@
                 var reviewBtn = document.getElementById('register-review');
 
                 function review() {
+                    // Every field's own check first (messages under the fields), then the browser's.
+                    if (window.ccValidateStaffForm && !window.ccValidateStaffForm(form)) return;
                     if (!form.reportValidity()) return; // shows the usual "fill this in" hints
                     var v = function (n) { return (form.elements[n] ? form.elements[n].value : '').trim(); };
 
@@ -367,7 +467,7 @@
         @php $mine = old('_edit_id') == $account['id']; @endphp
         <dialog id="edit-account-modal-{{ $account['id'] }}" class="cc-modal">
             {{-- Final step on save: the admin re-enters their own password (data-password-confirm → partials/password-confirm). --}}
-            <form method="POST" action="{{ route('admin.users.update', $account['id']) }}" autocomplete="off"
+            <form method="POST" action="{{ route('admin.users.update', $account['id']) }}" autocomplete="off" data-staff-validate="edit"
                   data-password-confirm="Save changes to {{ $account['full_name'] }}'s account? Enter your password to confirm.">
                 @csrf
                 @method('PATCH')

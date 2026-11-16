@@ -17,8 +17,9 @@ use Tests\TestCase;
 /**
  * Staff two-step verification on the web dashboards (StaffMfaService,
  * MfaController). After the right password the officer is still a guest:
- * only a correct second proof — authenticator code, emailed code or backup
- * code — or a valid "trust this device" cookie creates the web session.
+ * only a correct emailed code (or, for accounts set up earlier with an app,
+ * their app or backup code) or a valid "trust this device" cookie creates
+ * the web session.
  * Visitors and the mobile API are not involved.
  */
 class StaffMfaTest extends TestCase
@@ -107,43 +108,54 @@ class StaffMfaTest extends TestCase
 
     // ---------------------------------------------------------------- first-time setup
 
-    public function test_first_sign_in_sets_up_the_app_and_shows_backup_codes_once(): void
+    public function test_first_sign_in_turns_on_emailed_codes(): void
     {
+        Mail::fake();
         $this->staffLogin('r.salcedo')->assertRedirect(route('mfa.challenge'));
         $this->get(route('mfa.challenge'))->assertRedirect(route('mfa.setup'));
 
-        $page = $this->get(route('mfa.setup'))->assertOk();
+        // Opening the setup page emails the first code (a refresh does not send another).
+        $page = $this->get(route('mfa.setup'))->assertOk()->assertSee('We emailed a 6-digit code')->assertDontSee('authenticator');
         $this->assertStringContainsString('no-store', (string) $page->headers->get('Cache-Control'));
-        $secret = session('mfa_setup_secret');
-        $page->assertSee(Totp::groupSecret($secret));
+        $this->get(route('mfa.setup'))->assertOk();
+        Mail::assertSent(StaffMfaCode::class, 1);
+        $code = Mail::sent(StaffMfaCode::class)->last()->code;
+        Mail::assertSent(StaffMfaCode::class, fn (StaffMfaCode $m) => $m->hasTo('r.salcedo@bjmp.gov.ph'));
 
         // A wrong code turns nothing on and signs nobody in.
-        $this->post(route('mfa.setup.confirm'), ['code' => $this->wrongCode($secret)])->assertSessionHasErrors('code');
+        $this->post(route('mfa.setup.confirm'), ['code' => $code === '000000' ? '111111' : '000000'])->assertSessionHasErrors('code');
         $this->assertGuest('web');
         $this->assertNull($this->recordOfficerAccount->fresh()->mfa_enabled_at);
 
-        $this->post(route('mfa.setup.confirm'), ['code' => Totp::code($secret, Totp::stepAt())])
-            ->assertRedirect(route('account.mfa.backup-codes'));
+        $this->post(route('mfa.setup.confirm'), ['code' => $code])->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
 
         $account = $this->recordOfficerAccount->fresh();
         $this->assertNotNull($account->mfa_enabled_at);
-        $this->assertNotSame($secret, $account->mfa_secret, 'The secret is stored encrypted.');
-        $this->assertSame($secret, app(StaffMfaService::class)->secret($account));
+        $this->assertNull($account->mfa_secret);
         $this->assertNotNull($account->last_login_at);
+        $this->assertTrue(app(StaffMfaService::class)->isEnabled($account));
+    }
 
-        $codesPage = $this->get(route('account.mfa.backup-codes'))->assertOk();
-        $this->assertStringContainsString('no-store', (string) $codesPage->headers->get('Cache-Control'));
-        preg_match_all('/[A-Z2-9]{5}-[A-Z2-9]{5}/', $codesPage->getContent(), $found);
-        $codes = array_values(array_unique($found[0]));
-        $this->assertCount(8, $codes);
-        foreach ($codes as $code) {
-            $this->assertStringNotContainsString($code, (string) $account->mfa_backup_codes, 'Only hashes are stored.');
-            $this->assertStringNotContainsString(str_replace('-', '', $code), (string) $account->mfa_backup_codes);
-        }
+    public function test_each_sign_in_emails_a_new_code_that_works_once(): void
+    {
+        Mail::fake();
+        app(StaffMfaService::class)->enableEmail($this->recordOfficerAccount);
 
-        // Shown once.
-        $this->get(route('account.mfa.backup-codes'))->assertRedirect(route('account.profile'));
+        $this->staffLogin('r.salcedo')->assertRedirect(route('mfa.challenge'));
+        $this->get(route('mfa.challenge'))->assertOk()->assertSee('We emailed a 6-digit code');
+        $this->get(route('mfa.challenge'))->assertOk();
+        Mail::assertSent(StaffMfaCode::class, 1);
+        $code = Mail::sent(StaffMfaCode::class)->last()->code;
+
+        $this->post(route('mfa.verify'), ['code' => $code])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($this->recordOfficerAccount, 'web');
+
+        // The same code does not work for the next sign-in.
+        $this->signOut();
+        $this->staffLogin('r.salcedo');
+        $this->post(route('mfa.verify'), ['code' => $code])->assertSessionHasErrors('code');
+        $this->assertGuest('web');
     }
 
     // ---------------------------------------------------------------- authenticator code
@@ -371,8 +383,8 @@ class StaffMfaTest extends TestCase
 
         $page = $this->actingAs($this->recordOfficerAccount, 'web')->get(route('account.profile'))->assertOk();
         $page->assertSee('Two-step verification')
-            ->assertSee('Backup codes left: 8')
-            ->assertSee('Make new backup codes')
+            ->assertSee('6-digit code we email you')
+            ->assertDontSee('Make new backup codes')
             ->assertDontSee($secret)
             ->assertDontSee(Totp::groupSecret($secret))
             ->assertDontSee($stored->mfa_secret)

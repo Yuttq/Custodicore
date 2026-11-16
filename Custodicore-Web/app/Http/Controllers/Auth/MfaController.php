@@ -28,7 +28,7 @@ class MfaController extends Controller
 
     // ---------------------------------------------------------------- sign-in challenge
 
-    /** GET login/mfa */
+    /** GET login/mfa — sends the emailed code (once) and asks for it. */
     public function challenge(Request $request): Response|RedirectResponse
     {
         $account = $this->mfa->pending($request);
@@ -41,10 +41,14 @@ class MfaController extends Controller
             return redirect()->route('mfa.setup');
         }
 
-        return $this->noStore(view('auth.mfa-challenge', ['account' => $account]));
+        return $this->noStore(view('auth.mfa-challenge', [
+            'account' => $account,
+            'emailTo' => StaffMfaService::maskEmail($this->mfa->emailTarget($account)),
+            'sendError' => $this->sendIfNeeded($request, $account),
+        ]));
     }
 
-    /** POST login/mfa */
+    /** POST login/mfa {code} */
     public function verify(Request $request): RedirectResponse
     {
         $account = $this->mfa->pending($request);
@@ -58,7 +62,7 @@ class MfaController extends Controller
         }
 
         $input = (string) $request->validate(['code' => ['required', 'string', 'max:32']], [
-            'code.required' => 'Enter the code from your authenticator app.',
+            'code.required' => 'Enter the 6-digit code we emailed you.',
         ])['code'];
 
         if ($this->mfa->tooManyAttempts($request, $account)) {
@@ -69,27 +73,22 @@ class MfaController extends Controller
 
         $digits = preg_replace('/\s+/', '', $input) ?? '';
         $ok = false;
-        $method = 'authenticator app';
 
         if (preg_match('/^\d{6}$/', $digits)) {
-            // Either the authenticator code or the emailed one — both are 6 digits.
-            if ($this->mfa->verifyTotp($account, $digits)) {
-                $ok = true;
-            } elseif ($this->mfa->verifyEmailCode($request, $digits)) {
-                $ok = true;
-                $method = 'emailed code';
-            }
+            // The emailed code; accounts set up earlier with an app may still use it.
+            $ok = $this->mfa->verifyEmailCode($request, $digits)
+                || ($account->mfa_secret !== null && $this->mfa->verifyTotp($account, $digits));
         } elseif (StaffMfaService::looksLikeBackupCode($input)) {
-            if ($this->mfa->verifyBackupCode($account, $input)) {
-                $ok = true;
-                $method = 'backup code';
+            $ok = $this->mfa->verifyBackupCode($account, $input);
+            if ($ok) {
+                $this->mfa->audit($account, 'Signed in with a two-step backup code.');
             }
         }
 
         if (! $ok) {
             $this->mfa->hitAttempts($request, $account);
 
-            return back()->withErrors(['code' => 'That code is not right or has expired. Try the newest code, or use a backup code.']);
+            return back()->withErrors(['code' => 'That code is not right or has expired. Use the code in the newest email, or tap "Send a new code".']);
         }
 
         $this->mfa->clearAttempts($request, $account);
@@ -98,40 +97,25 @@ class MfaController extends Controller
             $this->mfa->trustDevice($request, $account);
         }
 
-        $left = $method === 'backup code' ? $this->mfa->backupCodesLeft($account->fresh()) : null;
         $this->mfa->finishLogin($request, $account);
 
-        if ($method === 'backup code') {
-            $this->mfa->audit($account, 'Signed in with a two-step backup code (' . $left . ' left).');
-        }
-
-        $redirect = redirect()->intended($this->homeFor($account));
-
-        return $left !== null && $left <= 2
-            ? $redirect->with('status', $left === 0
-                ? 'That was your last backup code. Make new ones on My Profile.'
-                : "You have {$left} backup " . ($left === 1 ? 'code' : 'codes') . ' left. You can make new ones on My Profile.')
-            : $redirect;
+        return redirect()->intended($this->homeFor($account));
     }
 
-    /** POST login/mfa/email */
+    /** POST login/mfa/email — "Send a new code" on the sign-in or setup page. */
     public function emailCode(Request $request): RedirectResponse
     {
         $account = $this->mfa->pending($request);
 
-        if (! $account || ! $this->mfa->isEnabled($account)) {
+        if (! $account) {
             return $this->backToLogin('Your sign-in took too long. Please sign in again.');
         }
 
         $result = $this->mfa->sendEmailCode($request, $account);
-        $to = $result['to'];
 
-        return match ($result['status']) {
-            'sent' => back()->with('status', "We emailed a 6-digit code to {$to}. It works for " . config('mfa.email_code_minutes') . ' minutes.'),
-            'log_only' => back()->with('status', "Email is not set up on this server yet, so no message reached {$to}. The code was only written to the application log. Use your authenticator app or a backup code, or ask the Admin."),
-            'throttled' => back()->withErrors(['code' => 'Too many emailed codes were requested. Try again in ' . max(1, (int) ceil(($result['wait'] ?? 60) / 60)) . ' minute(s), or use your authenticator app or a backup code.']),
-            default => back()->withErrors(['code' => "We could not send the email to {$to}. Use your authenticator app or a backup code, or ask the Admin."]),
-        };
+        return ($problem = $this->emailProblem($result))
+            ? back()->withErrors(['code' => $problem])
+            : back()->with('status', "We emailed a new 6-digit code to {$result['to']}. It works for " . config('mfa.email_code_minutes') . ' minutes.');
     }
 
     /** GET login/mfa/cancel */
@@ -144,7 +128,7 @@ class MfaController extends Controller
 
     // ---------------------------------------------------------------- first-time setup
 
-    /** GET login/mfa/setup */
+    /** GET login/mfa/setup — first sign-in: email a code and ask for it to turn two-step verification on. */
     public function setup(Request $request): Response|RedirectResponse
     {
         $account = $this->mfa->pending($request);
@@ -157,16 +141,14 @@ class MfaController extends Controller
             return redirect()->route('mfa.challenge');
         }
 
-        $secret = $this->mfa->setupSecret($request);
-
         return $this->noStore(view('auth.mfa-setup', [
             'account' => $account,
-            'otpUri' => $this->mfa->otpUri($account, $secret),
-            'groupedSecret' => Totp::groupSecret($secret),
+            'emailTo' => StaffMfaService::maskEmail($this->mfa->emailTarget($account)),
+            'sendError' => $this->sendIfNeeded($request, $account),
         ]));
     }
 
-    /** POST login/mfa/setup */
+    /** POST login/mfa/setup {code} */
     public function setupConfirm(Request $request): RedirectResponse
     {
         $account = $this->mfa->pending($request);
@@ -180,7 +162,7 @@ class MfaController extends Controller
         }
 
         $input = (string) $request->validate(['code' => ['required', 'string', 'max:10']], [
-            'code.required' => 'Enter the 6-digit code your app shows.',
+            'code.required' => 'Enter the 6-digit code we emailed you.',
         ])['code'];
 
         if ($this->mfa->tooManyAttempts($request, $account)) {
@@ -189,24 +171,49 @@ class MfaController extends Controller
             return $this->backToLogin('Too many wrong codes. Please wait a few minutes and sign in again.');
         }
 
-        $secret = $this->mfa->setupSecret($request);
-        $step = Totp::verify($secret, preg_replace('/\s+/', '', $input) ?? '');
-
-        if ($step === null) {
+        if (! $this->mfa->verifyEmailCode($request, preg_replace('/\s+/', '', $input) ?? '')) {
             $this->mfa->hitAttempts($request, $account);
 
-            return back()->withErrors(['code' => 'That code is not right. Check the app is set to CustodiCore and try the newest code.']);
+            return back()->withErrors(['code' => 'That code is not right or has expired. Use the code in the newest email, or tap "Send a new code".']);
         }
 
         $this->mfa->clearAttempts($request, $account);
+        $this->mfa->enableEmail($account);
 
-        $codes = $this->mfa->enable($account, $secret, $step);
+        if ($request->boolean('trust_device')) {
+            $this->mfa->trustDevice($request, $account);
+        }
+
         $this->mfa->finishLogin($request, $account);
-        $this->mfa->audit($account, 'Two-step verification turned on.');
+        $this->mfa->audit($account, 'Two-step verification turned on (emailed codes).');
 
-        $request->session()->flash('mfa_new_codes', $codes);
+        return redirect()->intended($this->homeFor($account))
+            ->with('status', 'Two-step verification is on. Each time you sign in on a new browser, we will email you a 6-digit code.');
+    }
 
-        return redirect()->route('account.mfa.backup-codes');
+    /**
+     * Emails a code when the page opens, unless one is already waiting (a refresh
+     * does not send another) or the page is showing a wrong-code error.
+     * Returns what went wrong, or null.
+     */
+    private function sendIfNeeded(Request $request, $account): ?string
+    {
+        if ($this->mfa->hasLiveEmailCode($request) || session()->has('errors')) {
+            return null;
+        }
+
+        return $this->emailProblem($this->mfa->sendEmailCode($request, $account));
+    }
+
+    /** Null when the email went out; otherwise what to tell the officer. */
+    private function emailProblem(array $result): ?string
+    {
+        return match ($result['status']) {
+            'sent' => null,
+            'log_only' => "Email is not set up on this server yet, so no message reached {$result['to']}. The code was only written to the application log. Ask the Admin.",
+            'throttled' => 'Too many codes were requested. Try again in ' . max(1, (int) ceil(($result['wait'] ?? 60) / 60)) . ' minute(s).',
+            default => "We could not send the email to {$result['to']}. Try again in a minute, or ask the Admin.",
+        };
     }
 
     // ---------------------------------------------------------------- backup codes (signed in)
