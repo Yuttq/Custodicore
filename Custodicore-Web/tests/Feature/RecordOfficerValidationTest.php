@@ -293,9 +293,11 @@ class RecordOfficerValidationTest extends TestCase
             ->assertSee('data-confirm-title="Add restriction"', false)
             ->assertSee('name="_method" value="PATCH"', false);
 
+        // A pending relationship shows "Return for changes"; an approved one shows "Revoke approval".
+        $this->relationship->update(['verification_status' => 'pending']);
         $this->get("/visitors/{$this->visitor->visitor_id}")
             ->assertOk()
-            ->assertSee('data-confirm-title="Reject relationship"', false)
+            ->assertSee('data-confirm-title="Return for changes"', false)
             ->assertSee('data-confirm-title="Flag visitor"', false);
     }
 }

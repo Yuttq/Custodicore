@@ -25,7 +25,6 @@ use App\Http\Controllers\FrontDesk\ScheduleController as FrontDeskScheduleContro
 use App\Http\Controllers\FrontDesk\VisitorLookupController;
 use App\Http\Controllers\FrontDesk\AttendanceLogController;
 use App\Http\Controllers\FrontDesk\WalkInController;
-use App\Http\Controllers\FrontDesk\SettingsController as FrontDeskSettingsController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -960,17 +959,5 @@ Route::prefix('front-desk')
             '/attendance-log',
             [AttendanceLogController::class, 'index']
         )->name('attendance-log');
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Front Desk Settings
-        |--------------------------------------------------------------------------
-        */
-
-        Route::get(
-            '/settings',
-            [FrontDeskSettingsController::class, 'index']
-        )->name('settings.index');
 
     });

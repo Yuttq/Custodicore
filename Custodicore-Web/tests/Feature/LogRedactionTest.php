@@ -179,7 +179,7 @@ class LogRedactionTest extends TestCase
         $this->assertContains(RedactQueryBindings::class, $daily['tap']);
         $this->assertContains(RedactQueryBindings::class, config('logging.channels.single.tap'));
 
-        // LOG_STACK=daily (as deploy/server-setup.sh sets it) resolves to a real channel.
+        // LOG_STACK=daily (the production setting) resolves to a real channel.
         config([
             'logging.channels.stack.channels' => ['daily'],
             'logging.channels.daily.path' => $this->logDir . DIRECTORY_SEPARATOR . 'laravel.log',

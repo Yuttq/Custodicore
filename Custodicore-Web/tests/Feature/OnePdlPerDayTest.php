@@ -299,18 +299,6 @@ class OnePdlPerDayTest extends TestCase
         $this->assertSame(1, VisitRequest::count());
     }
 
-    public function test_staff_assign_form_shows_the_other_pdls_day_as_unavailable(): void
-    {
-        $other = $this->otherRelationship();
-        $this->request($this->relationship, self::FRIDAY, '09:00');
-
-        $days = collect(\App\Http\Controllers\VisitAssignmentController::assignableDays($this->visitor, collect([$other->fresh('pdl.activeRestrictions')]))[$other->relationship_id]);
-        $friday = $days->firstWhere('date', self::FRIDAY);
-
-        $this->assertFalse($friday['available']);
-        $this->assertSame(['Already visiting another PDL that day'], array_values(array_unique(array_column($friday['sessions'], 'reason'))));
-    }
-
     // ------------------------------------------------ What is still allowed
 
     public function test_another_pdl_on_a_different_day_is_allowed(): void

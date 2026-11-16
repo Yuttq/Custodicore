@@ -118,6 +118,9 @@ class ApiDatabaseUnavailableTest extends TestCase
 
     public function test_web_route_keeps_default_handling(): void
     {
+        // Debug mode prints source code (which mentions the code) on the error page.
+        config(['app.debug' => false]);
+
         $response = $this->get('/test-db/unreachable');
 
         $response->assertStatus(500);

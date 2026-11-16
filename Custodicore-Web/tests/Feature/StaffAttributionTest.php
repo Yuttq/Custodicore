@@ -415,7 +415,7 @@ class StaffAttributionTest extends TestCase
         // Verification is still gated on the checklist.
         $unmet = $this->pendingRelationship($this->newVisitor('verified'));
         $this->post(route('visitor.relationships.verify', [$unmet->visitor_id, $unmet->relationship_id]))
-            ->assertSessionHas('error', fn ($m) => str_starts_with($m, 'This relationship cannot be verified yet.'));
+            ->assertSessionHas('error', fn ($m) => str_starts_with($m, 'This relationship cannot be approved yet.'));
         $this->assertSame('pending', $unmet->fresh()->verification_status);
         $this->assertNull($unmet->fresh()->verified_by);
 
