@@ -36,7 +36,7 @@ import { useAuth } from '../hooks/useAuth';
 import useAutoRefresh from '../hooks/useAutoRefresh';
 import useScheduleAvailability from '../hooks/useScheduleAvailability';
 import useTabBarScrollInset from '../hooks/useTabBarScrollInset';
-import { canRespondToVisit, getMyVisitsTab } from '../mock/assignedVisits.mock';
+import { canRespondToVisit, getMyVisitsTab } from '../utils/visitRules';
 import { visitTimeText } from '../utils/activeVisits';
 import { formatDateLong } from '../utils/scheduleAvailability';
 import {

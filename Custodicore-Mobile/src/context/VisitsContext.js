@@ -18,7 +18,7 @@ const VisitsContext = createContext(null);
 
 /**
  * Visit state for My Assigned Visits, Visit Details, and Unable To Attend.
- * Phase 2: loads from GET /api/visits when USE_MOCK_VISITS is false.
+ * Loads from GET /api/visits.
  */
 export function VisitsProvider({ children }) {
   // Visits need a staff-approved visitor; the API refuses them otherwise.
@@ -95,7 +95,7 @@ export function VisitsProvider({ children }) {
         upsertVisit(updated);
         return updated;
       }
-      // Fallback if mock returned minimal payload
+      // Fallback if the API returned a minimal payload
       upsertVisit({ ...(existing || { id }), status: 'confirmed' });
       return { id, status: 'confirmed' };
     },

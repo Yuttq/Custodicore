@@ -4,7 +4,7 @@ import { buildCompactVisitStepsFromTimeline } from '../utils/visitProgressSnapsh
 
 /**
  * Loads the real timeline for one visit and builds the compact progress steps.
- * Returns no steps (not mock steps) when there is no visit or no events.
+ * Returns no steps when there is no visit or no events.
  *
  * @param {string | null | undefined} visitId — visit_requests.visit_request_id
  * @param {string | undefined} visitStatus — refetches when it changes; `assigned`
@@ -27,7 +27,7 @@ export default function useVisitTimeline(visitId, visitStatus) {
     setLoading(true);
     setError(null);
     try {
-      const events = await fetchVisitTimeline(String(visitId), visitStatus);
+      const events = await fetchVisitTimeline(String(visitId));
       setSteps(events.length > 0 ? buildCompactVisitStepsFromTimeline(events, visitStatus) : []);
     } catch (e) {
       setError(e instanceof Error && e.message.trim() ? e.message : 'Could not load timeline.');

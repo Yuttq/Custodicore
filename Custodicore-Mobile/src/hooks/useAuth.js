@@ -8,7 +8,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { USE_MOCK_AUTH } from '../mock/devFlags';
 import { clearQrPass } from '../services/qrPassStorage';
 import client, {
   getMe,
@@ -249,19 +248,6 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        if (USE_MOCK_AUTH) {
-          setToken(storedToken);
-          setPendingVerification(pending === '1');
-          if (userJson) {
-            try {
-              setUser(JSON.parse(userJson));
-            } catch {
-              setUser(null);
-            }
-          }
-          return;
-        }
-
         try {
           const me = await getMe();
           if (cancelled) return;
@@ -310,21 +296,6 @@ export function AuthProvider({ children }) {
     async (email, password) => {
       setError(null);
       try {
-        if (USE_MOCK_AUTH) {
-          await new Promise((r) => setTimeout(r, 350));
-          if (!String(email || '').trim() || !password) {
-            throw new Error('Please enter your email address and password.');
-          }
-          await applySession('placeholder-token', {
-            id: 'mock',
-            email,
-            fullName: 'Mock Visitor',
-            role: 'Visitor',
-            verificationStatus: 'verified',
-          });
-          return;
-        }
-
         const data = await apiLogin(email, password);
         if (!data?.token) {
           throw new Error('Login succeeded but no session token was returned.');
@@ -557,11 +528,6 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (payload) => {
     setError(null);
     try {
-      if (USE_MOCK_AUTH) {
-        await new Promise((r) => setTimeout(r, 350));
-        return { email: payload?.email ?? null, message: null };
-      }
-
       const data = await apiRegister(buildRegisterRequest(payload));
       if (data?.status !== 'verification_required') {
         throw new Error('Registration could not be confirmed. Please try logging in.');
@@ -585,7 +551,6 @@ export function AuthProvider({ children }) {
    * @param {string} email
    */
   const resendVerificationEmail = useCallback(async (email) => {
-    if (USE_MOCK_AUTH) return { message: null };
     return apiResendVerificationEmail(String(email || '').trim());
   }, []);
 
@@ -600,7 +565,7 @@ export function AuthProvider({ children }) {
 
   /** Re-reads GET /api/me (profile + verification status). */
   const refreshUser = useCallback(async () => {
-    if (USE_MOCK_AUTH || !token) return user;
+    if (!token) return user;
     return storeUser(await getMe());
   }, [token, user, storeUser]);
 
@@ -639,7 +604,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     setError(null);
     try {
-      if (!USE_MOCK_AUTH && token) {
+      if (token) {
         try {
           await apiLogout();
         } catch {

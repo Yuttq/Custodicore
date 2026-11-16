@@ -22,10 +22,10 @@ import {
   typography,
 } from '../designSystem';
 import { useVisits } from '../context/VisitsContext';
-import { UNABLE_TO_ATTEND_REASONS } from '../mock/assignedVisits.mock';
+import { UNABLE_TO_ATTEND_REASONS } from '../utils/visitRules';
 
 /**
- * Unable to attend — reason selection and optional notes (v2.1 / mock API).
+ * Unable to attend — reason selection and optional notes.
  */
 export default function UnableToAttendScreen({ navigation, route }) {
   const visitId = route.params?.visitId;

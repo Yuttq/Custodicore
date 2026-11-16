@@ -35,7 +35,7 @@ import {
   inferNotificationTone,
 } from '../utils/notificationFilters';
 
-/** Feed data comes from `notificationsRepository` (local mock or HTTP per `src/mock/devFlags.js`). */
+/** Feed data comes from `notificationsRepository` (GET /api/notifications). */
 
 const DESCRIPTION_PREVIEW_MAX = 72;
 

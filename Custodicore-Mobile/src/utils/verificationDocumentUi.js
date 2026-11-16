@@ -1,4 +1,16 @@
-/** @typedef {import('../mock/visitorVerificationDocuments.mock').DocumentUploadStatus} DocumentUploadStatus */
+/**
+ * @typedef {'pending' | 'uploaded' | 'under_review' | 'verified' | 'rejected'} DocumentUploadStatus
+ * @typedef {'verification_pending' | 'verification_under_review' | 'verification_verified' | 'verification_rejected'} VisitorVerificationStatus
+ *
+ * @typedef {object} VerificationDocument
+ * @property {string} key
+ * @property {string} label
+ * @property {DocumentUploadStatus} uploadStatus
+ * @property {string | null} [uploadedAt]
+ * @property {string | null} [verifiedAt]
+ * @property {string | null} [rejectionReason]
+ * @property {string | null} [reviewNote]
+ */
 
 export const VERIFICATION_STATUS_COLORS = {
   missing: '#9CA3AF',
@@ -30,7 +42,7 @@ export function getDocumentStatusDisplay(uploadStatus) {
 }
 
 /**
- * @param {import('../mock/visitorVerificationDocuments.mock').MockVerificationDocument[]} documents
+ * @param {VerificationDocument[]} documents
  */
 export function getVerificationProgress(documents) {
   const total = documents.length;
@@ -41,8 +53,8 @@ export function getVerificationProgress(documents) {
 }
 
 /**
- * @param {import('../mock/visitorVerificationDocuments.mock').MockVerificationDocument[]} documents
- * @param {import('../mock/visitorVerificationDocuments.mock').VisitorVerificationStatus} overallStatus
+ * @param {VerificationDocument[]} documents
+ * @param {VisitorVerificationStatus} overallStatus
  */
 export function getVerificationSummaryTitle(documents, overallStatus) {
   const { verifiedCount, total } = getVerificationProgress(documents);

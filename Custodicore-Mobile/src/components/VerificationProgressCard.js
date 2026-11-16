@@ -9,8 +9,8 @@ import {
 
 /**
  * @param {object} props
- * @param {import('../mock/visitorVerificationDocuments.mock').MockVerificationDocument[]} props.documents
- * @param {import('../mock/visitorVerificationDocuments.mock').VisitorVerificationStatus} props.overallStatus
+ * @param {import('../utils/verificationDocumentUi').VerificationDocument[]} props.documents
+ * @param {import('../utils/verificationDocumentUi').VisitorVerificationStatus} props.overallStatus
  */
 export default function VerificationProgressCard({ documents, overallStatus }) {
   const { verifiedCount, total, percent } = useMemo(

@@ -26,7 +26,7 @@ import { useVisits } from '../context/VisitsContext';
 import {
   VISITATION_GUIDELINE_SECTIONS,
   canRespondToVisit,
-} from '../mock/assignedVisits.mock';
+} from '../utils/visitRules';
 import useVisitTimeline from '../hooks/useVisitTimeline';
 import { visitSessionsText, visitTimeText } from '../utils/activeVisits';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
@@ -48,7 +48,7 @@ function InfoRow({ label, value }) {
 
 /**
  * @param {object} props
- * @param {import('../mock/assignedVisits.mock').VisitationGuidelineSection} props.section
+ * @param {import('../utils/visitRules').VisitationGuidelineSection} props.section
  * @param {boolean} props.isLast
  */
 function GuidelineSection({ section, isLast }) {

@@ -1,11 +1,8 @@
-import { USE_MOCK_VISITS } from '../mock/devFlags';
-import { MOCK_ASSIGNED_VISITS } from '../mock/assignedVisits.mock';
-import { mockNetworkDelay } from '../mock/mockDelay';
 import * as api from '../services/api';
 
 /**
- * Assigned visits data access: mock or Laravel API based on `USE_MOCK_VISITS`.
- * Screens should prefer VisitsContext; this module is the HTTP/mock boundary.
+ * Assigned visits data access (Laravel API).
+ * Screens should prefer VisitsContext; this module is the HTTP boundary.
  */
 
 /**
@@ -42,11 +39,6 @@ export function normalizeVisit(raw) {
  * @returns {Promise<object[]>}
  */
 export async function fetchAssignedVisits() {
-  if (USE_MOCK_VISITS) {
-    await mockNetworkDelay();
-    return MOCK_ASSIGNED_VISITS.map((v) => ({ ...v }));
-  }
-
   const data = await api.getVisits();
   const list = Array.isArray(data?.visits)
     ? data.visits
@@ -61,16 +53,12 @@ export async function fetchAssignedVisits() {
  * @returns {Promise<object>}
  */
 export async function confirmAssignedVisit(visitId) {
-  if (USE_MOCK_VISITS) {
-    await mockNetworkDelay(300);
-    return { id: visitId, status: 'confirmed' };
-  }
   return normalizeVisit(await api.confirmSchedule(visitId));
 }
 
 /**
- * Submits a visit request (POST /api/visit-requests). Always hits the API —
- * there is no mock path, so nothing is created unless the backend accepts it.
+ * Submits a visit request (POST /api/visit-requests). Nothing is created
+ * unless the backend accepts it.
  * @param {{ relationshipId: string; date: string; startTime: string; startTimes?: string[] }} params
  * @returns {Promise<object | null>} the created visit (status `assigned`)
  */
@@ -84,15 +72,6 @@ export async function submitVisitRequest(params) {
  * @returns {Promise<object>}
  */
 export async function declineAssignedVisit(visitId, details = {}) {
-  if (USE_MOCK_VISITS) {
-    await mockNetworkDelay(350);
-    return {
-      id: visitId,
-      status: 'declined',
-      cancellationReason: details.reason || null,
-    };
-  }
-
   const reasonParts = [details.reason, details.notes?.trim()].filter(Boolean);
   const reason =
     reasonParts.length > 0
