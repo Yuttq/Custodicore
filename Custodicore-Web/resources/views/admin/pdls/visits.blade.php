@@ -1,17 +1,17 @@
 @extends('layouts.admin')
 
-@section('title', 'Visits by PDL')
+@section('title', $order === 'most' ? 'Most Visited PDLs' : 'PDLs With No Visits Yet')
 
 @section('content')
     <div class="cc-card">
         <div class="mb-md flex flex-col gap-sm lg:flex-row lg:items-center lg:justify-between">
             <div>
-                <p class="text-card-title">{{ $order === 'most' ? 'Most Visited PDLs' : 'Least Visited PDLs' }}</p>
+                <p class="text-card-title">{{ $order === 'most' ? 'Most Visited PDLs' : 'No Visits Yet' }}</p>
                 <p class="text-metadata text-text-secondary">
-                    Every PDL in custody, {{ $order === 'most' ? 'most visits first' : 'fewest visits first' }}
-                    · {{ $pdls->total() }} {{ $pdls->total() === 1 ? 'PDL' : 'PDLs' }}
-                    · {{ $neverVisited }} with no visit yet
+                    {{ $order === 'most' ? 'PDLs who have received visits, most visits first' : 'PDLs in custody who have not received any visit' }}
+                    · {{ $total }} {{ $total === 1 ? 'PDL' : 'PDLs' }}
                     @if ($search) · matching "{{ $search }}"@endif
+                    @if (! $showAll && $total > 5) · <span class="font-semibold text-text-primary">showing the top 5</span>@endif
                 </p>
             </div>
 
@@ -23,7 +23,7 @@
                        @if ($order === 'most') aria-current="page" @endif>Most visited</a>
                     <a href="{{ route('admin.pdls.visits', array_filter(['order' => 'least', 'q' => $search])) }}"
                        class="rounded-[6px] px-md py-[6px] text-body font-semibold {{ $order === 'least' ? 'bg-primary-navy text-white' : 'text-text-secondary hover:text-primary-navy' }}"
-                       @if ($order === 'least') aria-current="page" @endif>Least visited</a>
+                       @if ($order === 'least') aria-current="page" @endif>No visits yet</a>
                 </div>
 
                 <form method="GET" action="{{ route('admin.pdls.visits') }}" class="flex items-center gap-sm">
@@ -80,7 +80,13 @@
                     @empty
                         <tr>
                             <td colspan="6" class="py-lg text-center text-text-secondary">
-                                {{ $search ? 'No PDL matches your search.' : 'No PDLs in custody.' }}
+                                @if ($search)
+                                    No PDL matches your search.
+                                @elseif ($order === 'most')
+                                    No PDL has received a visit yet.
+                                @else
+                                    Every PDL in custody has received at least one visit.
+                                @endif
                             </td>
                         </tr>
                     @endforelse
@@ -88,7 +94,18 @@
             </table>
         </div>
 
-        @include('admin.partials.pagination-footer', ['paginator' => $pdls, 'label' => 'PDLs'])
+        @if (! $showAll && $total > 5)
+            <div class="mt-md flex justify-center">
+                <a href="{{ route('admin.pdls.visits', ['order' => $order, 'all' => 1]) }}" class="cc-btn-secondary">Show all {{ $total }} PDLs</a>
+            </div>
+        @else
+            @include('admin.partials.pagination-footer', ['paginator' => $pdls, 'label' => 'PDLs'])
+            @if ($showAll && ! $search && $total > 5)
+                <p class="mt-sm text-center text-metadata">
+                    <a href="{{ route('admin.pdls.visits', ['order' => $order]) }}" class="font-semibold text-primary-navy hover:underline">Show top 5 only</a>
+                </p>
+            @endif
+        @endif
 
         <p class="mt-sm text-metadata text-text-secondary">
             <a href="{{ route('admin.dashboard') }}" class="font-semibold text-primary-navy hover:underline">&larr; Back to Dashboard</a>

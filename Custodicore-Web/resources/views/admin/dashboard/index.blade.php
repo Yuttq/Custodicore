@@ -108,8 +108,8 @@
 
         <div class="space-y-lg">
             <div class="cc-card">
-                {{-- The heading opens the full list (every PDL, most visits first). --}}
-                <a href="{{ route('admin.pdls.visits', ['order' => 'most']) }}" class="cc-dash-card-head" title="See every PDL, most visited first">
+                {{-- The heading opens the full list (every visited PDL, most visits first). --}}
+                <a href="{{ route('admin.pdls.visits', ['order' => 'most']) }}" class="cc-dash-card-head" title="See every PDL who has received visits">
                     <span>
                         <span class="text-card-title" style="display:block;">Most Visited PDLs</span>
                         <span class="text-metadata text-text-secondary">Top 5 by total visits</span>
@@ -142,21 +142,21 @@
             </div>
 
             <div class="cc-card">
-                {{-- The heading opens the full list (every PDL, fewest visits first). --}}
-                <a href="{{ route('admin.pdls.visits', ['order' => 'least']) }}" class="cc-dash-card-head" title="See every PDL, least visited first">
+                {{-- The heading opens the full list (every PDL with zero visits). --}}
+                <a href="{{ route('admin.pdls.visits', ['order' => 'least']) }}" class="cc-dash-card-head" title="See every PDL who has not received a visit">
                     <span>
-                        <span class="text-card-title" style="display:block;">Least Visited PDLs</span>
+                        <span class="text-card-title" style="display:block;">No Visits Yet</span>
                         <span class="text-metadata text-text-secondary">
-                            PDLs in custody with no visits
+                            PDLs in custody who have not received any visit
                             <span class="cc-chip cc-chip-neutral ml-xs">{{ count($leastVisitedPdls) }}</span>
                         </span>
                     </span>
                     <span class="cc-dash-viewall">View all &rsaquo;</span>
                 </a>
 
-                {{-- Shows about five rows; the rest are reached by scrolling inside the card. --}}
-                <ul class="mt-md max-h-[19.5rem] space-y-sm overflow-y-auto pr-sm">
-                    @forelse ($leastVisitedPdls as $pdl)
+                {{-- Shows the first 5; "View all" above opens the full list. --}}
+                <ul class="mt-md space-y-sm">
+                    @forelse (array_slice($leastVisitedPdls, 0, 5) as $pdl)
                         <li class="border-b border-border pb-sm last:border-0 last:pb-0">
                           <a href="{{ route('admin.pdls.show', $pdl['id']) }}" title="Open {{ $pdl['full_name'] }}'s profile"
                              class="cc-dash-pdl-link flex items-center justify-between gap-sm rounded-sm">

@@ -96,9 +96,10 @@ class PdlController extends Controller
     }
 
     /**
-     * GET admin/pdl-visits?order=most|least — every PDL in custody with how many
-     * visits they have had, opened from the dashboard's Most / Least Visited cards.
-     * Counted the same way as those cards: visits that were assigned a schedule.
+     * GET admin/pdl-visits?order=most|least — opened from the dashboard cards.
+     *   most:  "Most Visited"  — only PDLs who HAVE had visits, most visits first
+     *   least: "No Visits Yet" — only PDLs in custody with zero visits
+     * Visits are counted the same way as those cards: visits that were assigned a schedule.
      */
     public function visits(Request $request): View
     {
@@ -114,9 +115,11 @@ class PdlController extends Controller
                 ->where('full_name', 'like', $like)
                 ->orWhere('pdl_number', 'like', $like)
                 ->orWhere('cell_block', 'like', $like)))
-            ->orderBy('visit_count', $order === 'most' ? 'desc' : 'asc')
+            ->orderBy('visit_count', 'desc')
             ->orderBy('pdl_number')
             ->get()
+            // Most Visited: visited PDLs only. No Visits Yet: unvisited PDLs only.
+            ->filter(fn ($pdl) => $order === 'most' ? $pdl->visit_count > 0 : (int) $pdl->visit_count === 0)
             ->map(fn ($pdl) => [
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
@@ -128,13 +131,20 @@ class PdlController extends Controller
             ])
             ->all();
 
-        $neverVisited = count(array_filter($rows, fn ($r) => $r['visit_count'] === 0));
+        // Opens on the top 5 (most visits first); "Show all" (?all=1) or a search lists everyone.
+        $rows = array_values($rows);
+        $total = count($rows);
+        $showAll = $request->boolean('all') || $search !== null;
+        if (! $showAll) {
+            $rows = array_slice($rows, 0, 5);
+        }
 
         return view('admin.pdls.visits', [
             'pdls' => Pages::of($rows),
             'order' => $order,
             'search' => $search,
-            'neverVisited' => $neverVisited,
+            'showAll' => $showAll,
+            'total' => $total,
         ]);
     }
 
