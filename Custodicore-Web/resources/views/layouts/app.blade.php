@@ -218,5 +218,43 @@
     window.addEventListener('pageshow', function (e) { if (e.persisted) refresh(); });
   })();
 </script>
+<style>
+  img[data-photo-zoom] { cursor: zoom-in; }
+  .photo-zoom { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 16px; background: rgba(15, 23, 42, .82); cursor: zoom-out; }
+  .photo-zoom[hidden] { display: none; }
+  .photo-zoom img { max-width: min(92vw, 640px); max-height: 80vh; border-radius: 10px; object-fit: contain; background: #fff;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .4); }
+  .photo-zoom p { margin: 0; color: #fff; font-weight: 600; text-align: center; }
+  .photo-zoom button { position: absolute; top: 14px; right: 16px; border: 0; background: rgba(255, 255, 255, .15); color: #fff;
+    width: 36px; height: 36px; border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; }
+</style>
+<div class="photo-zoom" id="photoZoom" hidden role="dialog" aria-modal="true" aria-label="Photo">
+  <button type="button" aria-label="Close">&times;</button>
+  <img alt="">
+  <p></p>
+</div>
+<script>
+  // Any profile photo (visitor or PDL) opens larger on click; click anywhere or press Esc to close.
+  (function () {
+    var box = document.getElementById('photoZoom');
+    var big = box.querySelector('img');
+    var caption = box.querySelector('p');
+    document.addEventListener('click', function (e) {
+      var photo = e.target.closest('img[data-photo-zoom]');
+      if (!photo) return;
+      // Photos inside a row link open the photo, not the row.
+      e.preventDefault();
+      e.stopPropagation();
+      big.src = photo.currentSrc || photo.src;
+      big.alt = photo.alt;
+      caption.textContent = photo.dataset.photoCaption || '';
+      box.hidden = false;
+    }, true);
+    function close() { box.hidden = true; big.removeAttribute('src'); }
+    box.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !box.hidden) close(); });
+  })();
+</script>
 </body>
 </html>

@@ -5,7 +5,8 @@
 --}}
 @php $class = $class ?? 'thumb'; @endphp
 @if ($visitor && ($url = $visitor->photoUrl()))
-  <img class="{{ $class }} pdl-photo-img" src="{{ $url }}" alt="Photo of {{ $visitor->full_name }}" loading="lazy">
+  <img class="{{ $class }} pdl-photo-img" src="{{ $url }}" alt="Photo of {{ $visitor->full_name }}" loading="lazy"
+       data-photo-zoom data-photo-caption="{{ $visitor->full_name }}" title="Click to view larger">
 @else
   <div class="{{ $class }} visitor-no-photo" aria-hidden="true" title="No photo yet">{{ $visitor?->initial() ?? '?' }}</div>
 @endif

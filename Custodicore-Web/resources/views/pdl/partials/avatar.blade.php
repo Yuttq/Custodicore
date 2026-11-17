@@ -6,7 +6,8 @@
 --}}
 @php $class = $class ?? 'thumb'; @endphp
 @if ($url = $pdl->photoUrl())
-  <img class="{{ $class }} pdl-photo-img" src="{{ $url }}" alt="Photo of {{ $pdl->full_name }}" loading="lazy">
+  <img class="{{ $class }} pdl-photo-img" src="{{ $url }}" alt="Photo of {{ $pdl->full_name }}" loading="lazy"
+       data-photo-zoom data-photo-caption="{{ $pdl->full_name }}{{ $pdl->pdl_number ? ' · '.$pdl->pdl_number : '' }}" title="Click to view larger">
 @else
   <div class="{{ $class }}" aria-hidden="true">{{ $pdl->initials() }}</div>
 @endif
