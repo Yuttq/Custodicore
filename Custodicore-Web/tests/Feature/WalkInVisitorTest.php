@@ -1064,7 +1064,7 @@ class WalkInVisitorTest extends TestCase
         // The desk sees the files it decides on.
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Marriage Certificate')
-            ->assertSee('Not checked yet')
+            ->assertSee('Files Given at the Desk')
             ->assertSee('Save Walk-in Decision');
         $this->get(route('frontdesk.walk-ins.file', [$walkIn, 'document', $document->document_id]))->assertOk();
         $this->get(route('frontdesk.walk-ins.file', [$walkIn, 'id', $walkIn->idDocuments()->first()->visitor_id_doc_id]))->assertOk();

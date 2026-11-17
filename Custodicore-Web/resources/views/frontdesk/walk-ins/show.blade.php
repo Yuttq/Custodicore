@@ -7,6 +7,15 @@
 @endsection
 
 @section('content')
+    {{-- Warnings first, as on the visitor profile. --}}
+    @if ($checks['flagged'])
+        <div class="cc-card border-l-4 border-l-danger" role="alert">
+            <p class="text-card-title text-danger">Active flag on this visitor</p>
+            <p class="text-metadata text-text-secondary">This walk-in can't be approved until the flag is resolved.</p>
+        </div>
+    @endif
+
+    {{-- Who they are: photo, name, status, then the details on record (as on the visitor profile). --}}
     <div class="cc-card">
         <div class="flex flex-wrap items-start justify-between gap-sm">
             <div class="flex items-center gap-md">
@@ -24,7 +33,7 @@
                         </span>
                     </p>
                     <p class="text-metadata text-text-secondary">
-                        Wants to visit <strong>{{ $visitor->intended_pdl_name ?: '—' }}</strong> · {{ $visitor->relationship_hint }}
+                        Visitor ID <strong>{{ $visitor->visitor_id }}</strong> · Walk-in · Registered {{ $visitor->created_at?->format('M d, Y') ?? '—' }}
                     </p>
                 </div>
             </div>
@@ -80,58 +89,56 @@
             @endswitch
         </template>
 
-        {{-- What was recorded at registration, in two groups: the visitor, then the visit. --}}
         @php
             $id = $visitor->idDocuments->first();
-            $field = 'mt-xs font-semibold text-text-primary';
+            $checkInToday = $status['key'] === 'booked' && $status['visit']->schedule?->schedule_date?->isToday();
         @endphp
-        <div class="mt-lg border-t border-border pt-md">
-            <p class="text-section-label uppercase text-primary-navy">Visitor details</p>
-            <dl class="mt-sm grid grid-cols-1 gap-x-md gap-y-md text-body sm:grid-cols-2 lg:grid-cols-4">
-                <div><dt class="cc-label">Visitor type</dt><dd class="mt-xs"><span class="cc-chip cc-chip-info">Walk-In</span></dd></div>
-                <div><dt class="cc-label">Date of birth / age</dt><dd class="{{ $field }}">{{ $visitor->date_of_birth?->format('M j, Y') }} ({{ $visitor->date_of_birth?->age }})</dd></div>
-                <div><dt class="cc-label">Sex</dt><dd class="{{ $field }}">{{ ucfirst($visitor->gender ?? '—') }}</dd></div>
-                <div><dt class="cc-label">Contact number</dt><dd class="{{ $field }}">{{ $visitor->contact_number && $visitor->contact_number !== 'N/A' ? $visitor->contact_number : '—' }}</dd></div>
-                {{-- Needed for the mobile app (Forgot Password); a walk-in registered without one can get it added here, once. --}}
-                <div>
-                    <dt class="cc-label">Email</dt>
-                    @if ($visitor->account?->email)
-                        <dd class="{{ $field }} break-words">{{ $visitor->account->email }}</dd>
-                    @else
-                        <dd class="mt-xs"><button type="button" data-email-open class="font-semibold text-primary-teal hover:underline">+ Add email</button></dd>
-                    @endif
-                </div>
-                <div><dt class="cc-label">Valid ID</dt><dd class="{{ $field }}">{{ $id ? $id->typeLabel() : '—' }}</dd></div>
-                <div class="sm:col-span-2"><dt class="cc-label">Address</dt><dd class="{{ $field }}">{{ $visitor->address ?: '—' }}</dd></div>
-            </dl>
-        </div>
+        <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-4">
+            <div><dt class="cc-label">Date of birth / age</dt><dd class="mt-xs font-semibold">{{ $visitor->date_of_birth?->format('M j, Y') ?? '—' }} ({{ $visitor->date_of_birth?->age }})</dd></div>
+            <div><dt class="cc-label">Sex</dt><dd class="mt-xs font-semibold">{{ $visitor->gender ? ucfirst($visitor->gender) : '—' }}</dd></div>
+            <div><dt class="cc-label">Contact number</dt><dd class="mt-xs font-semibold">{{ $visitor->contact_number && $visitor->contact_number !== 'N/A' ? $visitor->contact_number : '—' }}</dd></div>
+            {{-- Needed for the mobile app (Forgot Password); a walk-in registered without one can get it added here, once. --}}
+            <div>
+                <dt class="cc-label">Email</dt>
+                @if ($visitor->account?->email)
+                    <dd class="mt-xs break-words font-semibold">{{ $visitor->account->email }}</dd>
+                @else
+                    <dd class="mt-xs"><button type="button" data-email-open class="font-semibold text-primary-teal hover:underline">+ Add email</button></dd>
+                @endif
+            </div>
+            <div class="sm:col-span-2"><dt class="cc-label">Address</dt><dd class="mt-xs font-semibold">{{ $visitor->address ?: '—' }}</dd></div>
+            <div><dt class="cc-label">Valid ID</dt><dd class="mt-xs font-semibold">{{ $id ? $id->typeLabel() : '—' }}</dd></div>
+            <div><dt class="cc-label">Relationship to PDL</dt><dd class="mt-xs font-semibold">{{ $visitor->relationship_hint ?: '—' }}</dd></div>
+        </dl>
+    </div>
 
-        <div class="mt-lg border-t border-border pt-md">
-            <p class="text-section-label uppercase text-primary-navy">Visit details</p>
-            <dl class="mt-sm grid grid-cols-1 gap-x-md gap-y-md text-body sm:grid-cols-2 lg:grid-cols-4">
-                <div><dt class="cc-label">Relationship to PDL</dt><dd class="{{ $field }}">{{ $visitor->relationship_hint ?: '—' }}</dd></div>
-                <div><dt class="cc-label">PDL name (as given)</dt><dd class="{{ $field }}">{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
-                <div><dt class="cc-label">PDL number (as given)</dt><dd class="{{ $field }}">{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
-                <div><dt class="cc-label">Purpose of visit</dt><dd class="{{ $field }}">{{ $assessment?->visit_purpose ?: '—' }}</dd></div>
-                <div class="sm:col-span-2"><dt class="cc-label">PDL selected</dt><dd class="{{ $field }}">{{ $assessment?->pdl ? $assessment->pdl->full_name.' · '.$assessment->pdl->pdl_number : '—' }}</dd></div>
-                <div class="sm:col-span-2"><dt class="cc-label">Visit date and session</dt><dd class="{{ $field }}">{{ $assessment?->requestedVisitLabel() ?? 'Not chosen yet' }}</dd>
-                    @foreach ($assessment?->extraVisitLabels() ?? [] as $label)
-                        <dd class="font-semibold">{{ $label }}</dd>
-                    @endforeach
-                </div>
-            </dl>
-        </div>
-
-
-        @if ($status['key'] === 'booked' && $status['visit']->schedule?->schedule_date?->isToday())
-            <div class="mt-lg">
+    {{-- The visit they came for (as Today's Visit on the visitor profile). --}}
+    <div class="cc-card">
+        <div class="flex flex-wrap items-start justify-between gap-sm">
+            <div>
+                <p class="text-card-title">Visit Details</p>
+                <p class="text-metadata text-text-secondary">What the visitor asked for at the desk.</p>
+            </div>
+            @if ($checkInToday)
                 <a href="{{ route('frontdesk.checkin-checkout', ['checkin' => $visitor->full_name]) }}" class="cc-btn-primary">Check In Now</a>
-            </div>
-        @elseif ($status['key'] === 'inside')
-            <div class="mt-lg">
+            @elseif ($status['key'] === 'inside')
                 <a href="{{ route('frontdesk.checkin-checkout') }}" class="cc-btn-primary">Go to Check-In / Check-Out</a>
+            @endif
+        </div>
+        <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-4">
+            <div><dt class="cc-label">PDL selected</dt><dd class="mt-xs font-semibold">{{ $assessment?->pdl?->full_name ?? '—' }}</dd>
+                @if ($assessment?->pdl)<dd class="text-metadata text-text-secondary">{{ $assessment->pdl->pdl_number }}</dd>@endif
             </div>
-        @endif
+            <div><dt class="cc-label">PDL as given</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_name ?: '—' }}</dd>
+                @if ($visitor->intended_pdl_number)<dd class="text-metadata text-text-secondary">{{ $visitor->intended_pdl_number }}</dd>@endif
+            </div>
+            <div><dt class="cc-label">Purpose of visit</dt><dd class="mt-xs font-semibold">{{ $assessment?->visit_purpose ?: '—' }}</dd></div>
+            <div><dt class="cc-label">Visit date and session</dt><dd class="mt-xs font-semibold">{{ $assessment?->requestedVisitLabel() ?? 'Not chosen yet' }}</dd>
+                @foreach ($assessment?->extraVisitLabels() ?? [] as $label)
+                    <dd class="font-semibold">{{ $label }}</dd>
+                @endforeach
+            </div>
+        </dl>
     </div>
 
     {{-- Every booked day ahead (or today), e.g. this visit plus one for another day. --}}
@@ -150,6 +157,56 @@
                     </li>
                 @endforeach
             </ul>
+        </div>
+    @endif
+
+    {{-- What the desk was given and what the system checked (as IDs on File / PDLs on the visitor profile). --}}
+    @if ($assessment)
+        @php
+            $decided = $assessment->isDecided() || $assessment->visit_request_id;
+            $pdlCheck = $decided && $assessment->pdl_verification ? $assessment->pdl_verification : $checks['pdl_verification'];
+            $checkedPdl = $checks['linkedPdls']->first() ?? $checks['matches']->first();
+            $files = $checks['ids']->map(fn ($doc) => ['label' => 'Valid ID · '.$doc->typeLabel(), 'status' => $doc->verification_status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'id', $doc->visitor_id_doc_id])])
+                ->concat($checks['documents']->map(fn ($doc) => ['label' => $doc->label(), 'status' => $doc->status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'document', $doc->document_id])]));
+        @endphp
+        <div class="grid grid-cols-1 gap-lg lg:grid-cols-2">
+            <div class="cc-card">
+                <p class="text-card-title">Files Given at the Desk</p>
+                <p class="text-metadata text-text-secondary">Compare these with the original ID and documents.</p>
+                <ul class="mt-md divide-y divide-border">
+                    @forelse ($files as $file)
+                        <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
+                            <p class="text-body font-semibold">{{ $file['label'] }}</p>
+                            <div class="flex items-center gap-sm">
+                                @include('admin.partials.status-chip', ['status' => $file['status'] ?? 'pending'])
+                                <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="text-metadata font-semibold text-primary-teal hover:underline">View file</a>
+                            </div>
+                        </li>
+                    @empty
+                        <li class="py-sm text-metadata text-text-secondary">No files.</li>
+                    @endforelse
+                </ul>
+            </div>
+
+            <div class="cc-card">
+                <p class="text-card-title">PDL Check</p>
+                <p class="text-metadata text-text-secondary">Checked automatically against the PDL records.</p>
+                <ul class="mt-md divide-y divide-border">
+                    <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
+                        <div>
+                            <p class="text-body font-semibold">
+                                {{ $checkedPdl?->full_name ?? 'No matching PDL' }}
+                                @if ($checkedPdl)<span class="font-normal text-text-secondary">({{ $checkedPdl->pdl_number }})</span>@endif
+                            </p>
+                            <p class="text-metadata text-text-secondary">{{ $visitor->relationship_hint ?: '—' }}</p>
+                        </div>
+                        <span class="cc-chip gap-xs {{ $pdlCheck === 'verified' ? 'cc-chip-success' : 'cc-chip-danger' }}">
+                            <span class="h-1.5 w-1.5 rounded-full {{ $pdlCheck === 'verified' ? 'bg-success' : 'bg-danger' }}"></span>
+                            {{ \App\Models\WalkInAssessment::OPTIONS['pdl_verification'][$pdlCheck] ?? 'Not checked' }}
+                        </span>
+                    </li>
+                </ul>
+            </div>
         </div>
     @endif
 
@@ -261,15 +318,7 @@
     @endif
     {{-- The walk-in assessment: decided once, by the Front Desk. --}}
     @if ($assessment)
-        @php
-            $decided = $assessment->isDecided() || $assessment->visit_request_id;
-            $options = \App\Models\WalkInAssessment::OPTIONS;
-            $pdlCheck = $decided && $assessment->pdl_verification ? $assessment->pdl_verification : $checks['pdl_verification'];
-            $checkedPdl = $checks['linkedPdls']->first() ?? $checks['matches']->first();
-            $decisionTone = ['approved' => 'success', 'declined' => 'danger'][$assessment->decision] ?? 'warning';
-            $files = $checks['ids']->map(fn ($id) => ['label' => 'Valid ID · '.$id->typeLabel(), 'status' => $id->verification_status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'id', $id->visitor_id_doc_id])])
-                ->concat($checks['documents']->map(fn ($doc) => ['label' => $doc->label(), 'status' => $doc->status, 'url' => route('frontdesk.walk-ins.file', [$visitor, 'document', $doc->document_id])]));
-        @endphp
+        @php $decisionTone = ['approved' => 'success', 'declined' => 'danger'][$assessment->decision] ?? 'warning'; @endphp
         <div class="cc-card" id="assessment">
             <div class="flex flex-wrap items-start justify-between gap-md">
                 <div class="min-w-0 max-w-2xl">
@@ -285,38 +334,8 @@
                 <span class="cc-chip cc-chip-{{ $decisionTone }}">{{ $assessment->label('decision') }}</span>
             </div>
 
-            {{-- 1. What the system checked, and the files given at the desk --}}
-            <div class="mt-lg grid grid-cols-1 gap-md border-t border-border pt-md md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                <div>
-                    <p class="cc-label">PDL verification</p>
-                    <p class="mt-xs font-semibold {{ $pdlCheck === 'verified' ? 'text-success' : 'text-danger' }}">{{ $options['pdl_verification'][$pdlCheck] ?? '—' }}</p>
-                    @if ($checkedPdl)
-                        <p class="text-metadata text-text-secondary">{{ $checkedPdl->full_name }} · {{ $checkedPdl->pdl_number }}</p>
-                    @endif
-                    <p class="mt-xs text-metadata text-text-secondary">Checked automatically.</p>
-                </div>
-                <div>
-                    <p class="cc-label">Files</p>
-                    <ul class="mt-xs divide-y divide-border rounded-lg border border-border">
-                        @forelse ($files as $file)
-                            @php $fileTone = ['verified' => 'success', 'rejected' => 'danger'][$file['status']] ?? 'warning'; @endphp
-                            <li class="flex flex-wrap items-center justify-between gap-sm px-md py-sm text-body">
-                                <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="font-semibold text-primary-teal hover:underline">{{ $file['label'] }}</a>
-                                <span class="cc-chip cc-chip-{{ $fileTone }}">{{ ['verified' => 'Verified', 'rejected' => 'Rejected'][$file['status']] ?? 'Not checked yet' }}</span>
-                            </li>
-                        @empty
-                            <li class="px-md py-sm text-body text-text-secondary">No files.</li>
-                        @endforelse
-                    </ul>
-                </div>
-            </div>
-
-            @if ($checks['flagged'])
-                <p class="mt-md rounded-lg bg-danger/10 px-md py-sm text-body font-semibold text-danger">Active flag: this visitor can't be approved until the flag is resolved.</p>
-            @endif
-
-            {{-- 2. The decision: a form until it is made, then what was decided --}}
-            <div class="mt-lg border-t border-border pt-md">
+            {{-- The decision: a form until it is made, then what was decided --}}
+            <div class="mt-md border-t border-border pt-md">
                 @if ($canAssess)
                     <form method="POST" action="{{ route('frontdesk.walk-ins.assessment', $visitor) }}" class="space-y-md"
                           data-confirm="Save the walk-in decision for {{ $visitor->full_name }}? The decision is final."

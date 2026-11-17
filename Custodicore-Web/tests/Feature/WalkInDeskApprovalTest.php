@@ -239,7 +239,7 @@ class WalkInDeskApprovalTest extends TestCase
         ]);
 
         $this->recordArrival($walkIn)->assertSessionHas('error', fn ($message) => str_contains($message, 'active flag'));
-        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Active flag: this visitor can');
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('Active flag on this visitor')->assertSee("can't be approved until the flag is resolved", false);
 
         $this->assertSame('pending', $walkIn->walkInAssessments()->first()->decision);
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
