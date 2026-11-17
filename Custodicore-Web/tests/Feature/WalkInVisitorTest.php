@@ -686,7 +686,9 @@ class WalkInVisitorTest extends TestCase
             ->assertOk()
             ->assertSee('Booked Visits')
             ->assertSee('Schedule Another Day')
-            ->assertSee('Record New Arrival');
+            ->assertSee('Record New Arrival')
+            // Folded away until the officer opens it.
+            ->assertSee('<details class="cc-card group" id="newArrival" >', false);
 
         // The same day is refused: one visit per day.
         $this->recordArrival($walkIn, 'Family visit', self::FRIDAY)->assertSessionHasErrors('requested_start_times');
@@ -1107,5 +1109,45 @@ class WalkInVisitorTest extends TestCase
         $this->actingAs($this->recordOfficerAccount)->get(route('frontdesk.walk-ins.create'))->assertForbidden();
         $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.walk-ins.create'))->assertOk()->assertSee('Marriage Certificate')
             ->assertSee('Needed if the visitor wants to use the mobile app later.');
+    }
+
+    public function test_the_desk_adds_an_email_to_a_walk_in_registered_without_one(): void
+    {
+        $this->register()->assertSessionHasNoErrors();
+        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
+        $this->assertNull($walkIn->account->email);
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertOk()->assertSee('+ Add email');
+
+        // Must be a real address, not already used by another account.
+        $this->post(route('frontdesk.walk-ins.email.store', $walkIn), ['email' => 'not-an-email'])->assertSessionHasErrors('email');
+        $this->post(route('frontdesk.walk-ins.email.store', $walkIn), ['email' => $this->visitorAccount->email])
+            ->assertSessionHasErrors(['email' => 'This email is already used by another account.']);
+
+        $this->post(route('frontdesk.walk-ins.email.store', $walkIn), ['email' => '  Lourdes.Reyes@Example.com '])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('frontdesk.walk-ins.show', $walkIn));
+        $this->assertSame('lourdes.reyes@example.com', $walkIn->account->fresh()->email);
+        $this->assertTrue(\App\Models\AuditLog::where('description', 'Front Desk added an email to walk-in visitor Lourdes Reyes')->exists());
+
+        $this->get(route('frontdesk.walk-ins.show', $walkIn))->assertSee('lourdes.reyes@example.com')->assertDontSee('+ Add email');
+
+        // Added once: an email on file is not replaced here.
+        $this->post(route('frontdesk.walk-ins.email.store', $walkIn), ['email' => 'other@example.com'])
+            ->assertSessionHas('error', 'This walk-in already has an email on file.');
+        $this->assertSame('lourdes.reyes@example.com', $walkIn->account->fresh()->email);
+    }
+
+    public function test_only_walk_ins_get_an_email_added_at_the_desk(): void
+    {
+        $this->actingAs($this->frontDeskAccount)
+            ->post(route('frontdesk.walk-ins.email.store', $this->visitor), ['email' => 'new@example.com'])
+            ->assertNotFound();
+
+        $this->register()->assertSessionHasNoErrors();
+        $walkIn = VisitorProfile::where('full_name', 'Lourdes Reyes')->firstOrFail();
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('frontdesk.walk-ins.email.store', $walkIn), ['email' => 'new@example.com'])
+            ->assertForbidden();
     }
 }

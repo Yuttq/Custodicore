@@ -87,6 +87,30 @@
             <div><dt class="cc-label">Date of birth / age</dt><dd class="mt-xs font-semibold">{{ $visitor->date_of_birth?->format('M j, Y') }} ({{ $visitor->date_of_birth?->age }})</dd></div>
             <div><dt class="cc-label">Sex</dt><dd class="mt-xs font-semibold">{{ ucfirst($visitor->gender ?? '—') }}</dd></div>
             <div><dt class="cc-label">Contact number</dt><dd class="mt-xs font-semibold">{{ $visitor->contact_number && $visitor->contact_number !== 'N/A' ? $visitor->contact_number : '—' }}</dd></div>
+            {{-- Needed for the mobile app (Forgot Password); a walk-in registered without one can get it added here, once. --}}
+            <div>
+                <dt class="cc-label">Email</dt>
+                @if ($visitor->account?->email)
+                    <dd class="mt-xs break-words font-semibold">{{ $visitor->account->email }}</dd>
+                @else
+                    <dd class="mt-xs">
+                        <details @if ($errors->has('email')) open @endif>
+                            <summary class="cursor-pointer font-semibold text-primary-teal">+ Add email</summary>
+                            <form method="POST" action="{{ route('frontdesk.walk-ins.email.store', $visitor) }}" class="mt-xs space-y-xs"
+                                  data-confirm="Add this email to {{ $visitor->full_name }}'s account? It can't be changed here afterwards."
+                                  data-confirm-title="Add email" data-confirm-ok="Add">
+                                @csrf
+                                <label for="walkInEmail" class="sr-only">Email</label>
+                                <input type="email" id="walkInEmail" name="email" required maxlength="100" value="{{ old('email') }}"
+                                       placeholder="visitor@example.com" @class(['cc-input !mt-0', 'border-danger' => $errors->has('email')]) />
+                                @error('email') <p class="text-metadata text-danger">{{ $message }}</p> @enderror
+                                <p class="text-metadata text-text-secondary">For the mobile app: the visitor then uses Forgot Password to sign in.</p>
+                                <button type="submit" class="cc-btn-primary">Save Email</button>
+                            </form>
+                        </details>
+                    </dd>
+                @endif
+            </div>
             <div class="sm:col-span-2"><dt class="cc-label">Address</dt><dd class="mt-xs font-semibold">{{ $visitor->address ?: '—' }}</dd></div>
             <div><dt class="cc-label">Valid ID</dt><dd class="mt-xs font-semibold">{{ $id ? $id->typeLabel() : '—' }}</dd></div>
             <div><dt class="cc-label">Relationship to PDL</dt><dd class="mt-xs font-semibold">{{ $visitor->relationship_hint ?: '—' }}</dd></div>
@@ -157,9 +181,19 @@
     {{-- A new arrival, no new registration: when the walk-in
          comes back, or to schedule them for another day while a visit is booked. --}}
     @if ($canRecordArrival)
-        <div class="cc-card">
-            <p class="text-card-title">{{ $upcomingVisits->isNotEmpty() ? 'Schedule Another Day' : 'New Arrival' }}</p>
-            <p class="text-metadata text-text-secondary">
+        {{-- Folded away until needed; opens again after a failed submit so the errors show. --}}
+        <details class="cc-card group" id="newArrival" @if (old('visit_purpose') !== null) open @endif>
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-sm [&::-webkit-details-marker]:hidden">
+                <span>
+                    <span class="block text-card-title">{{ $upcomingVisits->isNotEmpty() ? 'Schedule Another Day' : 'New Arrival' }}</span>
+                    <span class="block text-metadata text-text-secondary">{{ $upcomingVisits->isNotEmpty() ? 'Book this visitor for another day.' : 'The visitor is back to visit: record the arrival.' }}</span>
+                </span>
+                <span class="cc-btn-secondary shrink-0">
+                    <span class="group-open:hidden">Open</span><span class="hidden group-open:inline">Close</span>
+                    <svg class="h-4 w-4 transition group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+                </span>
+            </summary>
+            <p class="mt-md border-t border-border pt-md text-metadata text-text-secondary">
                 @if ($upcomingVisits->isNotEmpty())
                     Book this visitor for another day. Days they already have a visit, and weeks where they've reached the weekly limit, can't be chosen.
                 @else
@@ -228,7 +262,7 @@
                 </div>
                 <button type="submit" class="cc-btn-primary">Record New Arrival</button>
             </form>
-        </div>
+        </details>
     @endif
     {{-- The walk-in assessment: decided once, by the Front Desk. --}}
     @if ($assessment)

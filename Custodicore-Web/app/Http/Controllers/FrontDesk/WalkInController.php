@@ -389,6 +389,34 @@ class WalkInController extends Controller
     }
 
     /**
+     * Adds an email to a walk-in registered without one, so the visitor can
+     * sign in to the mobile app later (Forgot Password, then verify the
+     * email). Only once: an email already on file is not changed here.
+     */
+    public function addEmail(Request $request, VisitorProfile $visitor): RedirectResponse
+    {
+        abort_unless($visitor->isWalkIn() && $visitor->account, 404);
+
+        if ($visitor->account->email) {
+            return redirect()->route('frontdesk.walk-ins.show', $visitor)
+                ->with('error', 'This walk-in already has an email on file.');
+        }
+
+        $request->merge(['email' => mb_strtolower(Sanitizer::text((string) $request->input('email')) ?? '')]);
+        $data = $request->validate(
+            ['email' => ['required', 'email', 'max:100', 'unique:accounts,email']],
+            ['email.unique' => 'This email is already used by another account.'],
+        );
+
+        $visitor->account->update(['email' => $data['email']]);
+        \App\Models\AuditLog::record('update', 'visitor_profiles', $visitor->visitor_id,
+            "Front Desk added an email to walk-in visitor {$visitor->full_name}");
+
+        return redirect()->route('frontdesk.walk-ins.show', $visitor)
+            ->with('status', 'Email added. The visitor can now use Forgot Password in the app to sign in.');
+    }
+
+    /**
      * The walk-in assessment, made by the Front Desk: Approve (verifies the
      * visitor, ID and documents, links the PDL and books the chosen session;
      * WalkInService::approveAtDesk) or Reject, with the reason for the

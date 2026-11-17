@@ -964,6 +964,8 @@ Route::prefix('front-desk')
         Route::post('/walk-ins/{visitor}/arrivals', [WalkInController::class, 'storeArrival'])->name('walk-ins.arrivals.store');
         // Another date or session for an arrival not decided yet.
         Route::post('/walk-ins/{visitor}/slot', [WalkInController::class, 'updateSlot'])->name('walk-ins.slot.update');
+        // A walk-in registered without an email: added once, for the mobile app.
+        Route::post('/walk-ins/{visitor}/email', [WalkInController::class, 'addEmail'])->name('walk-ins.email.store');
         // The walk-in assessment (approve or reject) and the files it is decided on.
         Route::post('/walk-ins/{visitor}/assessment', [WalkInController::class, 'assess'])->name('walk-ins.assessment');
         Route::get('/walk-ins/{visitor}/files/{kind}/{file}', [WalkInController::class, 'file'])
