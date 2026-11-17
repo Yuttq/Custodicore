@@ -41,7 +41,7 @@ class WalkInController extends Controller
     private const PER_PAGE = 25;
 
     /** Status tabs: filter => label, hint, accent, icon and the WalkInService::status() keys it groups. */
-    private const CARDS = [
+    public const CARDS = [
         'pending' => ['Pending Approval', 'Waiting for your decision', 'warning', 'clock', ['waiting', 'linking', 'assess']],
         'approved' => ['Approved', 'Approved, not checked in yet', 'success', 'check-circle', ['booked', 'ready']],
         'rejected' => ['Rejected', 'Rejected', 'danger', 'x', ['returned', 'declined']],

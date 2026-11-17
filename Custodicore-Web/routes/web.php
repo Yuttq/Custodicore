@@ -798,6 +798,10 @@ Route::prefix('front-desk')
             [FrontDeskDashboardController::class, 'stats']
         )->name('dashboard.stats');
 
+        // Sidebar badges (FrontDeskNavBadges), refreshed by the layout.
+        Route::get('/nav-badges', \App\Http\Controllers\FrontDesk\NavBadgesController::class)
+            ->name('nav-badges');
+
 
         /*
         |--------------------------------------------------------------------------

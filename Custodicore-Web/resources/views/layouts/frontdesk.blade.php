@@ -28,22 +28,27 @@
             </div>
             @include('partials.menu-toggle', ['class' => 'cc-menu-toggle'])
 
-            <nav class="mt-[6px] flex flex-col gap-[2px]">
+            <nav class="mt-[6px] flex flex-col gap-[2px]" data-desk-badges-url="{{ route('frontdesk.nav-badges') }}">
+                {{-- Badges (FrontDeskNavBadges): what the gate still has to do; refreshed every 30 seconds below. --}}
                 @php
                     $links = [
                         ['route' => 'frontdesk.dashboard', 'label' => 'Dashboard'],
-                        ['route' => 'frontdesk.checkin-checkout', 'label' => 'Check-In / Check-Out'],
-                        ['route' => 'frontdesk.walk-ins.index', 'label' => 'Walk-in Visitors', 'active' => 'frontdesk.walk-ins.*'],
-                        ['route' => 'frontdesk.schedule', 'label' => 'Visit Schedule'],
+                        ['route' => 'frontdesk.checkin-checkout', 'label' => 'Check-In / Check-Out', 'key' => 'checkin'],
+                        ['route' => 'frontdesk.walk-ins.index', 'label' => 'Walk-in Visitors', 'active' => 'frontdesk.walk-ins.*', 'key' => 'walk-ins'],
+                        ['route' => 'frontdesk.schedule', 'label' => 'Visit Schedule', 'key' => 'schedule'],
                         ['route' => 'frontdesk.visitor-lookup', 'label' => 'Visitor Lookup', 'active' => 'frontdesk.visitor-lookup*'],
                         ['route' => 'frontdesk.attendance-log', 'label' => 'Activity Log'],
                     ];
+                    $deskBadges = app(\App\Services\FrontDeskNavBadges::class)->all();
                 @endphp
 
                 @foreach ($links as $link)
-                    <a href="{{ route($link['route']) }}"
+                    <a href="{{ route($link['route']) }}" @isset($link['key']) data-nav="{{ $link['key'] }}" @endisset
                        class="cc-nav-link {{ request()->routeIs($link['active'] ?? $link['route']) ? 'cc-nav-link-active' : '' }}">
-                        {{ $link['label'] }}
+                        <span>{{ $link['label'] }}</span>
+                        @isset($link['key'])
+                            @include('admin.partials.nav-badge', ['badge' => $deskBadges[$link['key']] ?? null])
+                        @endisset
                     </a>
                 @endforeach
             </nav>
@@ -188,5 +193,44 @@
     </script>
 
     @stack('scripts')
+    <style>
+        /* Sidebar badges: one blue pill at the end of the menu item (as on the Admin sidebar). */
+        .cc-admin-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 9999px; background: #DBEAFE; color: #1D4ED8; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; cursor: pointer; }
+        .cc-admin-badge:hover { background: #BFDBFE; }
+    </style>
+    <script>
+        (() => {
+            const nav = document.querySelector('[data-desk-badges-url]');
+            if (!nav) return;
+
+            // Clicking a badge opens the items it counts; the menu name still opens the page.
+            nav.addEventListener('click', e => {
+                const badge = e.target.closest('.cc-admin-badge[data-href]');
+                if (!badge) return;
+                e.preventDefault();
+                location.href = badge.dataset.href;
+            });
+
+            const refresh = async () => {
+                if (document.hidden) return;
+                try {
+                    const response = await fetch(nav.dataset.deskBadgesUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+                    if (!response.ok) return;
+                    const badges = await response.json();
+                    Object.entries(badges).forEach(([key, html]) => {
+                        const link = nav.querySelector(`[data-nav="${key}"]`);
+                        if (!link) return;
+                        link.querySelector('.cc-admin-badge')?.remove();
+                        if (html) link.insertAdjacentHTML('beforeend', html);
+                    });
+                } catch {
+                    // Offline or signed out: keep the last badges and try again next time.
+                }
+            };
+
+            setInterval(refresh, 30000);
+            document.addEventListener('visibilitychange', refresh);
+        })();
+    </script>
 </body>
 </html>
