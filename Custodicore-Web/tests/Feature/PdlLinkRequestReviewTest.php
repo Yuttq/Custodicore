@@ -659,4 +659,25 @@ class PdlLinkRequestReviewTest extends TestCase
         $this->assertSame('verified', $relationship->fresh()->verification_status);
         $this->assertSame('verified', $document->fresh()->status);
     }
+
+    public function test_link_and_approve_also_confirms_the_officer_checks(): void
+    {
+        // A legal guardian needs the officer's "no immediate family" confirmation:
+        // Link & Approve confirms it, so nothing is left to confirm afterwards.
+        \App\Models\VisitorId::create([
+            'visitor_id' => $this->visitor->visitor_id, 'id_type' => 'national_id', 'id_number' => 'N-1',
+            'file_path' => 'x.png', 'verification_status' => 'verified',
+        ]);
+        $request = app(PdlLinkRequestService::class)->submit($this->visitor, [
+            'pdlName' => 'Juan Dela Cruz', 'relationshipType' => 'legal_guardian', 'hasChildrenTogether' => null,
+        ], ['guardianship_authorization' => $this->file()]);
+
+        $this->link($request, ['relationship_type' => 'legal_guardian'])
+            ->assertRedirect(route('pdl-links.index'))
+            ->assertSessionHas('success', fn ($m) => str_starts_with($m, 'Linked and approved'));
+
+        $relationship = VisitorPdlRelationship::where('visitor_id', $this->visitor->visitor_id)->where('pdl_id', $this->other->pdl_id)->sole();
+        $this->assertSame('verified', $relationship->verification_status);
+        $this->assertNotNull($relationship->confirmation('no_immediate_family'));
+    }
 }

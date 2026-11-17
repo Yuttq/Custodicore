@@ -108,13 +108,10 @@ class PdlLinkReviewController extends Controller
             'reopened' => 'The rejected relationship was reopened as pending and its rejected documents were removed (approved ones were kept)',
         ][$result['outcome']];
 
-        // Link & Approve: the documents the visitor sent and the relationship, in one step.
-        // Something only an officer can confirm (e.g. "no immediate family") is left for the
-        // list's Approve, whose pop-up states it; it is never confirmed silently here.
-        $toConfirm = \App\Services\RelationshipApproval::confirmationsNeeded(\App\Services\RelationshipRequirements::for($relationship));
-        $approval = $toConfirm
-            ? ['approved' => false, 'missing' => array_map(fn ($label) => "{$label} (confirm it with Approve in PDL Links)", array_values($toConfirm)), 'documents' => 0]
-            : app(\App\Services\RelationshipApproval::class)->approve($relationship, $staffId);
+        // Link & Approve: the documents the visitor sent, the officer confirmations
+        // (e.g. "no immediate family"; the pop-up says Approve confirms them, as on
+        // the visitor page) and the relationship, in one step.
+        $approval = app(\App\Services\RelationshipApproval::class)->approve($relationship, $staffId);
         if ($approval['approved']) {
             \App\Models\AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
                 "Approved relationship: {$relationship->visitor->full_name} as {$relationship->relationshipLabel()} to {$pdlName} (linked from request #{$pdlLinkRequest->request_id})",

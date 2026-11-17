@@ -118,7 +118,7 @@
     <p class="empty-note">This visitor's account is not approved right now, so the PDL cannot be linked. You can still reject the request.</p>
   @else
     <form method="POST" action="{{ route('pdl-requests.link', $pdlRequest->request_id) }}"
-          data-confirm="Link this request to the selected PDL and approve it? This approves the documents the visitor sent and the relationship in one step. If something only an officer can confirm is missing, it stays pending."
+          data-confirm="Link this request to the selected PDL and approve it? This approves the documents the visitor sent and the relationship in one step, and confirms the officer checks for this relationship (e.g. no immediate family, the adult accompanying a minor)."
           data-confirm-title="Link & Approve" data-confirm-ok="Link & Approve">
       @csrf
       <div class="row cols-3">
