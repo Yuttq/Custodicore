@@ -72,7 +72,7 @@
                             <td class="py-sm pr-md text-text-secondary">{{ $checkin['reference'] }}</td>
                             <td class="py-sm pr-md">
                                 <div class="flex items-center gap-sm">
-                                    @include('admin.partials.avatar', ['name' => $checkin['visitor'], 'size' => 'h-8 w-8'])
+                                    @include('admin.partials.avatar', ['name' => $checkin['visitor'], 'photo' => $checkin['photo'] ?? null, 'size' => 'h-8 w-8'])
                                     <span class="font-semibold">{{ $checkin['visitor'] }}</span>
                                 </div>
                             </td>

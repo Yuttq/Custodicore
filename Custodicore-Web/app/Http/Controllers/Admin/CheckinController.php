@@ -134,6 +134,8 @@ class CheckinController extends Controller
                 'date' => $c->check_in_time?->format('Y-m-d'),
                 'reference' => 'VIS-' . ($c->visitRequest?->created_at?->format('Y-md') ?? now()->format('Y-md')) . '-' . str_pad((string) $c->visit_request_id, 3, '0', STR_PAD_LEFT),
                 'visitor' => $c->visitRequest?->visitor?->full_name ?? 'Unknown',
+                // Staff-only photo for the avatar; null falls back to initials.
+                'photo' => $c->visitRequest?->visitor?->photoUrl(),
                 'pdl' => $c->visitRequest?->pdl?->full_name ?? '—',
                 // There is no separate "purpose" field on a visit request, so it is
                 // worked out from the visitor's relationship to the PDL.
