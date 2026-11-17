@@ -17,7 +17,7 @@
         <div class="flex flex-wrap items-start justify-between gap-sm">
             <div>
                 <p class="text-card-title">Visitor Lookup</p>
-                <p class="text-metadata text-text-secondary">Search by name or contact number, then open the visitor&rsquo;s profile.</p>
+                <p class="text-metadata text-text-secondary">All registered visitors. Search by name or contact number to find one, then open their profile.</p>
             </div>
 
             <form method="GET" action="{{ route('frontdesk.visitor-lookup') }}" class="flex flex-wrap items-center justify-end gap-sm">
@@ -68,12 +68,10 @@
                     @empty
                         <tr>
                             <td colspan="4" class="py-md text-metadata text-text-secondary">
-                                @if ($tooShort)
-                                    Type at least 2 characters to search.
-                                @elseif ($query !== '')
+                                @if ($query !== '')
                                     No visitors matched "{{ $query }}".
                                 @else
-                                    Type a name or contact number above to search.
+                                    No visitors registered yet.
                                 @endif
                             </td>
                         </tr>
@@ -81,6 +79,8 @@
                 </tbody>
             </table>
         </div>
+
+        @include('frontdesk.partials.pagination', ['paginator' => $visitors, 'noun' => 'visitor'])
     </div>
 @endsection
 

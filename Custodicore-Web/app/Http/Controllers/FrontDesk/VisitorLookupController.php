@@ -15,43 +15,44 @@ use Illuminate\View\View;
 
 class VisitorLookupController extends Controller
 {
-    /** Shortest search worth running; one letter matches almost everyone. */
-    private const MIN_QUERY = 2;
+    /** Visitors per page, as on the other Front Desk lists. */
+    private const PER_PAGE = 25;
 
     /** Visit statuses that still lead to a gate visit. */
     private const UPCOMING_STATUSES = ['assigned', 'pending_confirmation', 'confirmed'];
 
+    /**
+     * Every visitor, A–Z, like the Walk-in list; a search (name or contact
+     * number) narrows the list to the matches.
+     */
     public function index(Request $request): View
     {
         // Cleaned (no tags / extra spaces) and capped; matched literally, so % and _ are not wildcards.
         $query = mb_substr(Sanitizer::text((string) $request->input('q', '')) ?? '', 0, 100);
-        $tooShort = $query !== '' && mb_strlen($query) < self::MIN_QUERY;
 
-        $visitors = collect();
-        if ($query !== '' && ! $tooShort) {
-            // A phone number matches however it was typed: 0917 123 4567, 09171234567, +63 917...
-            $digits = preg_replace('/\D+/', '', $query) ?? '';
-            $phoneTail = strlen($digits) >= 7 ? substr($digits, -10) : null;
+        // A phone number matches however it was typed: 0917 123 4567, 09171234567, +63 917...
+        $digits = preg_replace('/\D+/', '', $query) ?? '';
+        $phoneTail = strlen($digits) >= 7 ? substr($digits, -10) : null;
 
-            $visitors = VisitorProfile::query()
-                ->where(function ($q) use ($query, $phoneTail) {
-                    $q->where('full_name', 'like', Sanitizer::like($query))
-                        ->orWhere('contact_number', 'like', Sanitizer::like($query));
+        $visitors = VisitorProfile::query()
+            ->when($query !== '', fn ($q) => $q->where(function ($q) use ($query, $phoneTail) {
+                $q->where('full_name', 'like', Sanitizer::like($query))
+                    ->orWhere('contact_number', 'like', Sanitizer::like($query));
 
-                    if ($phoneTail) {
-                        $q->orWhereRaw(
-                            "REPLACE(REPLACE(REPLACE(contact_number, ' ', ''), '-', ''), '+', '') LIKE ?",
-                            ['%'.$phoneTail]
-                        );
-                    }
-                })
-                ->with(['relationships.pdl', 'activeFlags'])
-                ->orderBy('full_name')
-                ->take(20)
-                ->get();
-        }
+                if ($phoneTail) {
+                    $q->orWhereRaw(
+                        "REPLACE(REPLACE(REPLACE(contact_number, ' ', ''), '-', ''), '+', '') LIKE ?",
+                        ['%'.$phoneTail]
+                    );
+                }
+            }))
+            ->with(['relationships.pdl', 'activeFlags'])
+            ->orderBy('full_name')
+            ->orderBy('visitor_id')
+            ->paginate(self::PER_PAGE)
+            ->withQueryString();
 
-        return view('frontdesk.visitor-lookup', compact('visitors', 'query', 'tooShort'));
+        return view('frontdesk.visitor-lookup', compact('visitors', 'query'));
     }
 
     /**
