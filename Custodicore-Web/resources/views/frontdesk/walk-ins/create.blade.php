@@ -124,7 +124,9 @@
                 </div>
                 <div>
                     <label for="email" class="cc-label">Email (optional)</label>
-                    <input type="email" id="email" name="email" value="{{ old('email') }}" maxlength="100" @class(['cc-input', 'border-danger' => $errors->has('email')]) />
+                    <input type="email" id="email" name="email" value="{{ old('email') }}" maxlength="100" aria-describedby="emailHint" @class(['cc-input', 'border-danger' => $errors->has('email')]) />
+                    {{-- Without an email the visitor cannot sign in to the app later (Forgot Password needs it). --}}
+                    <p id="emailHint" class="mt-xs text-metadata text-text-secondary">Needed if the visitor wants to use the mobile app later.</p>
                     @include('frontdesk.walk-ins.partials.field-error', ['name' => 'email'])
                 </div>
                 <div class="md:col-span-3">

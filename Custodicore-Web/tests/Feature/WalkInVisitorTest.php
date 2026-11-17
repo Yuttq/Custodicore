@@ -1105,6 +1105,7 @@ class WalkInVisitorTest extends TestCase
     public function test_only_front_desk_officers_can_register_walk_ins(): void
     {
         $this->actingAs($this->recordOfficerAccount)->get(route('frontdesk.walk-ins.create'))->assertForbidden();
-        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.walk-ins.create'))->assertOk()->assertSee('Marriage Certificate');
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.walk-ins.create'))->assertOk()->assertSee('Marriage Certificate')
+            ->assertSee('Needed if the visitor wants to use the mobile app later.');
     }
 }
