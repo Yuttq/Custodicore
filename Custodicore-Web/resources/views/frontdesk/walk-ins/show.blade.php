@@ -9,8 +9,8 @@
 @section('content')
     <div class="cc-card">
         <div class="flex flex-wrap items-start justify-between gap-sm">
-            <div class="flex items-center gap-sm">
-                @include('admin.partials.avatar', ['name' => $visitor->full_name, 'size' => 'h-14 w-14', 'photo' => $visitor->photoUrl()])
+            <div class="flex items-center gap-md">
+                @include('frontdesk.partials.visitor-photo', ['visitor' => $visitor])
                 <div>
                     @php
                         $statusTone = ['success' => 'text-success', 'warning' => 'text-warning', 'danger' => 'text-danger', 'info' => 'text-info'][$status['tone']] ?? 'text-text-secondary';

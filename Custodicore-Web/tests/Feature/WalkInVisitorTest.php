@@ -157,7 +157,11 @@ class WalkInVisitorTest extends TestCase
             ->assertSee('Lourdes Reyes')
             ->assertSee('Pending Approval');
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
-            ->assertSee('Fri, Oct 9, 2026 · 09:00');
+            ->assertSee('Fri, Oct 9, 2026 · 09:00')
+            // The photo opens full size, as on Visitor Lookup.
+            ->assertSee('data-photo-open="visitorPhotoDialog"', false)
+            ->assertSee('<dialog id="visitorPhotoDialog"', false)
+            ->assertSee(e($walkIn->photoUrl()), false);
     }
 
     public function test_the_desk_searches_existing_visitors_before_registering(): void

@@ -50,16 +50,7 @@
     {{-- Who they are: photo, name, status, then the details on record (as on the walk-in record). --}}
     <div class="cc-card">
         <div class="flex flex-wrap items-center gap-md">
-            @if ($photoUrl = $visitor->photoUrl())
-                {{-- Big enough to match the face at the gate; click for the full-size photo. --}}
-                <button type="button" id="visitorPhotoOpen" title="Click to enlarge the photo"
-                        class="group relative shrink-0 overflow-hidden rounded-xl border-2 border-border transition hover:border-primary-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-teal focus-visible:ring-offset-2">
-                    <img src="{{ $photoUrl }}" alt="Photo of {{ $visitor->full_name }}" class="h-28 w-28 object-cover">
-                    <span class="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">Enlarge</span>
-                </button>
-            @else
-                @include('admin.partials.avatar', ['name' => $visitor->full_name, 'size' => 'h-28 w-28'])
-            @endif
+            @include('frontdesk.partials.visitor-photo', ['visitor' => $visitor])
             <div class="min-w-0">
                 <p class="flex flex-wrap items-center gap-x-md gap-y-xs">
                     <span class="text-[22px] font-bold leading-tight text-primary-navy">{{ $visitor->full_name }}</span>
@@ -284,32 +275,4 @@
             </ul>
         </div>
     @endif
-
-    @if ($photoUrl)
-        {{-- Full-size photo, opened from the photo in the header. --}}
-        <dialog id="visitorPhotoDialog" class="cc-modal max-w-xl" aria-label="Photo of {{ $visitor->full_name }}">
-            <div class="flex items-center justify-between gap-sm">
-                <p class="text-card-title">{{ $visitor->full_name }}</p>
-                <button type="button" class="cc-modal-close" data-photo-close>Close</button>
-            </div>
-            <img src="{{ $photoUrl }}" alt="Photo of {{ $visitor->full_name }}" class="mt-md max-h-[70vh] w-full rounded-lg border border-border bg-background object-contain">
-            <div class="mt-md flex justify-end gap-sm">
-                <a href="{{ $photoUrl }}" target="_blank" rel="noopener" class="cc-btn-secondary">Open in new tab</a>
-                <button type="button" class="cc-btn-primary" data-photo-close>Done</button>
-            </div>
-        </dialog>
-    @endif
 @endsection
-
-@push('scripts')
-<script>
-    (() => {
-        const dialog = document.getElementById('visitorPhotoDialog');
-        if (!dialog) return;
-        document.getElementById('visitorPhotoOpen')?.addEventListener('click', () => dialog.showModal());
-        dialog.querySelectorAll('[data-photo-close]').forEach(button => button.addEventListener('click', () => dialog.close()));
-        // Clicking the dark area around the photo closes it too.
-        dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
-    })();
-</script>
-@endpush
