@@ -106,6 +106,7 @@ class NavBadges
         $keys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
         $rules = FacilityVisitationRule::query()
+            ->regular()
             ->whereIn('day_of_week', VisitSlotService::VISITING_DAYS)
             ->get();
         $published = VisitSchedule::query()

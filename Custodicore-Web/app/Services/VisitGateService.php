@@ -255,10 +255,14 @@ class VisitGateService
             return $opensAt;
         }
 
+        // Only rules in effect on the session's date, so a special visiting
+        // day (a one-day rule) never changes other weeks of that weekday.
+        $date = $session->schedule_date->toDateString();
         $hasEarlierSession = FacilityVisitationRule::forGroup($rule->groupKey())
             ->where('day_of_week', $rule->day_of_week)
             ->where('time_slot_end', '<=', $session->time_slot_start)
-            ->exists();
+            ->get()
+            ->contains(fn (FacilityVisitationRule $r) => $r->isInEffectOn($date));
 
         return $hasEarlierSession ? $this->startsAt($session) : $opensAt;
     }

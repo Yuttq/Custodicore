@@ -113,6 +113,7 @@ class VisitSlotService
 
         // $classification is a rule group: a classification or "dorm:{id}".
         return FacilityVisitationRule::forGroup($classification)
+            ->regular()
             ->where('day_of_week', self::DAY_KEYS[$date->dayOfWeek])
             ->orderBy('time_slot_start')
             ->get()
@@ -160,11 +161,19 @@ class VisitSlotService
             ]);
         }
 
-        $duplicate = ['schedule_date' => "The {$session} session on {$date->format('M j, Y')} already exists. Edit it instead."];
-
         if ($this->findRow($rule, $date)) {
-            throw ValidationException::withMessages($duplicate);
+            throw ValidationException::withMessages([
+                'schedule_date' => "The {$session} session on {$date->format('M j, Y')} already exists. Edit it instead.",
+            ]);
         }
+
+        return $this->insertSession($rule, $date, $capacity, $open, $session);
+    }
+
+    /** Writes one dated session for $rule (plus its audit entry); the caller has validated it. */
+    private function insertSession(FacilityVisitationRule $rule, CarbonImmutable $date, int $capacity, bool $open, string $session): VisitSchedule
+    {
+        $duplicate = ['schedule_date' => "The {$session} session on {$date->format('M j, Y')} already exists. Edit it instead."];
 
         try {
             $schedule = DB::transaction(function () use ($rule, $date, $capacity, $open) {
@@ -183,7 +192,8 @@ class VisitSlotService
                     'visit_schedules',
                     $schedule->schedule_id,
                     "Created visiting session {$this->label($schedule)} with capacity {$capacity}"
-                        .($open ? '' : ' (closed to new bookings)'),
+                        .($open ? '' : ' (closed to new bookings)')
+                        .($rule->isSpecial() ? " — special visiting day: {$rule->special_reason}" : ''),
                     Module::CODE_VISIT_SCHEDULING
                 );
 
@@ -234,6 +244,99 @@ class VisitSlotService
             fn (string $session) => $this->create($classification, $date, $session, $capacity, $open),
             $toCreate
         ));
+    }
+
+    /**
+     * Special visiting day: opens visiting for one PDL classification on a
+     * date that is not one of its regular visiting days (e.g. a Monday).
+     * Creates a one-day rule per session (morning and afternoon, same hours
+     * as the classification's regular sessions) and the dated sessions with
+     * $capacity seats each, so whole-day booking, visitor limits, PDL
+     * restrictions, QR and the gate all work as on a regular day. Closing
+     * is the usual per-session Close.
+     *
+     * @return array<int, VisitSchedule> the sessions created, in time order
+     */
+    public function createSpecialDay(string $classification, CarbonImmutable $date, int $capacity, string $reason): array
+    {
+        $this->assertCapacityInRange($capacity);
+
+        $today = $this->availability->now()->startOfDay();
+        $horizon = (int) config('visitation.slot_management_horizon_days', 365);
+        if ($date->lt($today)) {
+            throw ValidationException::withMessages(['schedule_date' => 'The visiting date cannot be in the past.']);
+        }
+        if ($date->gt($today->addDays($horizon))) {
+            throw ValidationException::withMessages(['schedule_date' => "The visiting date must be within {$horizon} days from today."]);
+        }
+
+        $group = FacilityVisitationRule::groupLabel($classification);
+        $dayKey = self::DAY_KEYS[$date->dayOfWeek];
+        $day = $date->toDateString();
+
+        $regularToday = FacilityVisitationRule::forGroup($classification)->regular()
+            ->where('day_of_week', $dayKey)->get()
+            ->contains(fn (FacilityVisitationRule $r) => $r->isInEffectOn($day));
+        if ($regularToday) {
+            throw ValidationException::withMessages([
+                'schedule_date' => "{$date->format('l')} is already a regular visiting day for {$group}. Use Create Session instead.",
+            ]);
+        }
+
+        $alreadySpecial = FacilityVisitationRule::forGroup($classification)
+            ->whereNotNull('special_reason')
+            ->whereDate('effective_from', $day)
+            ->exists();
+        if ($alreadySpecial) {
+            throw ValidationException::withMessages([
+                'schedule_date' => "{$date->format('M j, Y')} is already a special visiting day for {$group}.",
+            ]);
+        }
+
+        $toCreate = collect($this->regularSessionHours($classification))
+            ->reject(fn ($hours) => $this->availability->sessionHasEnded($day, $hours[1]));
+        if ($toCreate->isEmpty()) {
+            throw ValidationException::withMessages(['schedule_date' => "Today's visiting sessions have already ended."]);
+        }
+
+        return DB::transaction(fn () => $toCreate->map(function ($hours, $session) use ($classification, $date, $dayKey, $day, $capacity, $reason) {
+            $rule = FacilityVisitationRule::create([
+                'pdl_classification' => $classification,
+                'day_of_week' => $dayKey,
+                'time_slot_start' => $hours[0],
+                'time_slot_end' => $hours[1],
+                'max_capacity' => $capacity,
+                'effective_from' => $day,
+                'effective_to' => $day,
+                'special_reason' => $reason,
+            ]);
+
+            return $this->insertSession($rule, $date, $capacity, true, $session);
+        })->values()->all());
+    }
+
+    /**
+     * Morning and afternoon hours ["HH:MM:SS", "HH:MM:SS"] for a special day,
+     * taken from the classification's regular sessions (09:00–11:30 and
+     * 13:00–16:30 when it has none).
+     *
+     * @return array{morning: array{0:string,1:string}, afternoon: array{0:string,1:string}}
+     */
+    private function regularSessionHours(string $classification): array
+    {
+        $hours = ['morning' => ['09:00:00', '11:30:00'], 'afternoon' => ['13:00:00', '16:30:00']];
+        $today = $this->availability->now()->toDateString();
+
+        $rules = FacilityVisitationRule::forGroup($classification)->regular()->orderBy('time_slot_start')->get()
+            ->filter(fn (FacilityVisitationRule $r) => $r->isInEffectOn($today));
+        foreach (self::SESSIONS as $session) {
+            $rule = $rules->first(fn ($r) => self::sessionOf($r->time_slot_start) === $session);
+            if ($rule) {
+                $hours[$session] = [(string) $rule->time_slot_start, (string) $rule->time_slot_end];
+            }
+        }
+
+        return $hours;
     }
 
     /** Sessions are only held Thursday to Sunday. */

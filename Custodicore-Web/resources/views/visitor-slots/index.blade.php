@@ -11,6 +11,7 @@
 <div class="topbar">
   <h1>Manage Visitor Slots</h1>
   <div class="right">
+    <button type="button" class="btn btn-outline-neutral" onclick="openSpecialModal()">Special Visiting Day</button>
     <button type="button" class="btn btn-primary" onclick="openSlotModal()">Create Session</button>
   </div>
 </div>
@@ -133,7 +134,12 @@
             {{ ucfirst(\App\Services\VisitSlotService::sessionOf($schedule->time_slot_start)) }}
             <span class="muted-cell">{{ substr($schedule->time_slot_start, 0, 5) }}–{{ substr($schedule->time_slot_end, 0, 5) }}</span>
           </td>
-          <td class="muted-cell">{{ $groupLabel($schedule->rule) }}</td>
+          <td class="muted-cell">
+            {{ $groupLabel($schedule->rule) }}
+            @if ($schedule->rule?->isSpecial())
+              <br><span class="badge detained" title="{{ $schedule->rule->special_reason }}"><span class="dot"></span>Special day</span>
+            @endif
+          </td>
           <td>
             <div class="occupancy-chip occupancy-inline {{ $s['remaining'] === 0 && $schedule->status !== 'closed' ? 'is-full' : ($pct >= 80 ? 'is-near' : '') }}" style="background:none;border:none;padding:0;">
               <div class="occupancy-bar"><span style="width:{{ $pct }}%"></span></div>
@@ -228,6 +234,58 @@
     </form>
   </div>
 </div>
+
+{{-- Special visiting day modal --}}
+<div class="modal-overlay" id="specialModal" onclick="if (event.target === this) closeSpecialModal()">
+  <div class="modal modal-narrow">
+    <form method="POST" action="{{ route('visitor-slots.special') }}"
+          data-confirm="Open this special visiting day? Visitors of the chosen classification can book it right away."
+          data-confirm-title="Special visiting day" data-confirm-ok="Open day">
+      @csrf
+      <div class="modal-header">
+        <div>
+          <h2>Special Visiting Day</h2>
+          <div class="sub">Open visiting on a date outside the regular days (e.g. a Monday). Creates the morning and afternoon sessions with the regular hours, so whole-day visits work. To stop it later, close its sessions.</div>
+        </div>
+        <button type="button" class="close" onclick="closeSpecialModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="row cols-2">
+          <div class="field-m">
+            <label for="special_date">Date</label>
+            <input id="special_date" type="date" name="special_date" min="{{ $today }}" value="{{ old('special_date') }}" required>
+          </div>
+          <div class="field-m">
+            <label for="special_classification">PDL Classification</label>
+            <select id="special_classification" name="special_classification" required>
+              <option value="drug_related" @selected(old('special_classification') === 'drug_related')>Drug-related</option>
+              <option value="non_drug_related" @selected(old('special_classification') === 'non_drug_related')>Non-drug-related</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-m">
+          <label for="special_capacity">Maximum Bookings (per session)</label>
+          <input id="special_capacity" type="number" name="special_capacity" min="{{ \App\Services\VisitSlotService::MIN_CAPACITY }}" max="{{ \App\Services\VisitSlotService::MAX_CAPACITY }}" value="{{ old('special_capacity') }}" required>
+        </div>
+        <div class="field-m">
+          <label for="special_reason">Reason</label>
+          <textarea id="special_reason" name="special_reason" rows="3" maxlength="500" required placeholder="e.g. Holiday visiting approved by the Warden">{{ old('special_reason') }}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-neutral" onclick="closeSpecialModal()">Cancel</button>
+        <button type="submit" class="btn btn-blue">Open Special Day</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+  function openSpecialModal() { document.getElementById('specialModal').classList.add('open'); }
+  function closeSpecialModal() { document.getElementById('specialModal').classList.remove('open'); }
+  @if ($errors->hasAny(['special_date', 'special_classification', 'special_capacity', 'special_reason']))
+    document.addEventListener('DOMContentLoaded', openSpecialModal);
+  @endif
+</script>
 
 @php
   // Each visiting group's days and sessions from the weekly sessions still in

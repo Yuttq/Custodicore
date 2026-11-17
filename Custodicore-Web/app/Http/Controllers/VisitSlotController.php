@@ -74,6 +74,7 @@ class VisitSlotController extends Controller
         ];
 
         $rules = FacilityVisitationRule::query()
+            ->regular()
             ->get()
             ->sortBy(fn (FacilityVisitationRule $r) => [
                 $r->cell_block_id ? 1 : 0,
@@ -181,6 +182,55 @@ class VisitSlotController extends Controller
         return redirect()
             ->route('visitor-slots.show', $schedule->schedule_id)
             ->with('success', "Visiting session created with {$schedule->max_capacity} slots.");
+    }
+
+    /**
+     * Special visiting day: morning + afternoon sessions for one
+     * classification on a date outside its regular visiting days.
+     */
+    public function storeSpecial(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'special_date' => ['required', 'date_format:Y-m-d'],
+            'special_classification' => ['required', Rule::in(['drug_related', 'non_drug_related'])],
+            'special_capacity' => $this->capacityRules(),
+            'special_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'special_date.required' => 'Choose the special visiting date.',
+            'special_date.date_format' => 'Enter the visiting date as YYYY-MM-DD.',
+            'special_capacity.required' => 'Enter the number of visitor slots.',
+            'special_capacity.min' => 'Capacity must be at least :min.',
+            'special_capacity.max' => 'Capacity cannot be more than :max.',
+            'special_reason.required' => 'Give the reason for this special visiting day.',
+            'special_reason.min' => 'The reason must be at least :min characters.',
+        ]);
+
+        $date = CarbonImmutable::createFromFormat('Y-m-d', $validated['special_date'], $this->availability->timezone())->startOfDay();
+
+        try {
+            $created = $this->slots->createSpecialDay(
+                $validated['special_classification'],
+                $date,
+                (int) $validated['special_capacity'],
+                trim($validated['special_reason'])
+            );
+        } catch (ValidationException $e) {
+            // Keyed to this form's fields so the special-day modal reopens with the error.
+            $errors = collect($e->errors())->mapWithKeys(fn ($messages, $field) => [
+                match ($field) {
+                    'max_capacity' => 'special_capacity',
+                    default => 'special_date',
+                } => $messages,
+            ])->all();
+
+            return back()->withErrors($errors)->withInput();
+        }
+
+        $names = collect($created)->map(fn ($s) => VisitSlotService::sessionOf($s->time_slot_start))->join(' and ');
+
+        return redirect()
+            ->route('visitor-slots.index', ['from' => $date->toDateString(), 'to' => $date->toDateString()])
+            ->with('success', "Special visiting day opened for {$date->format('D, M j, Y')}: {$names} sessions with {$validated['special_capacity']} slots each.");
     }
 
     public function update(Request $request, VisitSchedule $visitSchedule): RedirectResponse

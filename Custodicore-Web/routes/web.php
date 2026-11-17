@@ -493,6 +493,12 @@ Route::middleware([
         [\App\Http\Controllers\VisitSlotController::class, 'store']
     )->name('visitor-slots.store');
 
+    // Special visiting day: open a date outside the regular Thu–Sun days.
+    Route::post(
+        '/visitor-slots/special',
+        [\App\Http\Controllers\VisitSlotController::class, 'storeSpecial']
+    )->name('visitor-slots.special');
+
     Route::get(
         '/visitor-slots/{visitSchedule}',
         [\App\Http\Controllers\VisitSlotController::class, 'show']

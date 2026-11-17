@@ -18,6 +18,9 @@
       ({{ substr($schedule->time_slot_start, 0, 5) }}–{{ substr($schedule->time_slot_end, 0, 5) }})
     </h1>
     <div class="muted-cell">{{ $group }} PDLs</div>
+    @if ($schedule->rule?->isSpecial())
+      <div class="muted-cell" style="margin-top:4px;"><span class="badge detained"><span class="dot"></span>Special visiting day</span> {{ $schedule->rule->special_reason }}</div>
+    @endif
   </div>
   <div class="right"><span class="badge {{ $badgeClass }}"><span class="dot"></span>{{ $badgeText }}</span></div>
 </div>

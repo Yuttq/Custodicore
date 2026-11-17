@@ -245,7 +245,9 @@ class ScheduleAvailabilityService
         }
 
         $today = $now->startOfDay();
+        // Regular weekly days only; a special visiting day shows in `days`.
         $visitingDays = $classificationRules
+            ->reject(fn ($rule) => $rule->isSpecial())
             ->filter(fn ($rule) => $this->ruleInEffect($rule, $today))
             ->pluck('day_of_week')
             ->unique()

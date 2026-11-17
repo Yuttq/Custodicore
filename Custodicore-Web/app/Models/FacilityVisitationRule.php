@@ -38,6 +38,7 @@ class FacilityVisitationRule extends Model
         'max_capacity',
         'effective_from',
         'effective_to',
+        'special_reason',
     ];
 
     protected $casts = [
@@ -72,6 +73,7 @@ class FacilityVisitationRule extends Model
             // removed falls back to the classification days.
             app()->instance(self::CACHE_KEY, self::query()
                 ->whereNotNull('facility_visitation_rules.cell_block_id')
+                ->whereNull('facility_visitation_rules.special_reason')
                 ->where(fn ($q) => $q->whereNull('effective_to')->orWhereDate('effective_to', '>=', now()->toDateString()))
                 ->join('cell_blocks', 'cell_blocks.cell_block_id', '=', 'facility_visitation_rules.cell_block_id')
                 ->pluck('facility_visitation_rules.cell_block_id', 'cell_blocks.name')
@@ -96,6 +98,21 @@ class FacilityVisitationRule extends Model
     {
         static::saved(fn () => self::flushGroupCache());
         static::deleted(fn () => self::flushGroupCache());
+    }
+
+    /**
+     * A special visiting day's session: a one-day rule (effective_from =
+     * effective_to) opened by a Record Officer outside the regular days.
+     */
+    public function isSpecial(): bool
+    {
+        return $this->special_reason !== null;
+    }
+
+    /** Only the regular weekly rules (no special visiting days). */
+    public function scopeRegular(Builder $query): Builder
+    {
+        return $query->whereNull('special_reason');
     }
 
     public function scopeForGroup(Builder $query, string $groupKey): Builder
@@ -157,7 +174,7 @@ class FacilityVisitationRule extends Model
     {
         $today = now()->toDateString();
         $order = array_keys(self::DAY_LABELS);
-        $rules = collect($rules)->filter(fn (self $r) => $r->isInEffectOn($today) || ($r->effective_from && $r->effective_from->toDateString() > $today));
+        $rules = collect($rules)->reject(fn (self $r) => $r->isSpecial())->filter(fn (self $r) => $r->isInEffectOn($today) ||($r->effective_from && $r->effective_from->toDateString() > $today));
         if ($rules->isEmpty()) {
             return null;
         }
