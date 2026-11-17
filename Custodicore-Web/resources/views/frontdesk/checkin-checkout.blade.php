@@ -822,7 +822,7 @@
             <div class="cc-card">
                 <div class="flex items-center gap-sm">                    <div>
                         <p class="text-card-title">ID Verification</p>
-                        <p class="text-metadata text-text-secondary">Compare the presented physical ID with the registered ID before check-in.</p>
+                        <p class="text-metadata text-text-secondary">Compare the ID the visitor hands over with the ID on file.</p>
                     </div>
                 </div>
 
@@ -866,7 +866,7 @@
 
                 <div id="newIdSection" class="hidden mt-lg rounded-xl border border-border bg-background p-md">
                     <p class="text-card-title">Different ID Presented</p>
-                    <p class="mt-xs text-metadata text-text-secondary">Record the ID actually presented without deleting the previous registered ID.</p>
+                    <p class="mt-xs text-metadata text-text-secondary">Record the ID the visitor handed over. The ID on file is kept.</p>
 
                     <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
                         <div>
@@ -962,7 +962,7 @@
             <div class="cc-card">
                 <div class="flex items-center gap-sm">                    <div>
                         <p class="text-card-title">Check-In Summary</p>
-                        <p class="text-metadata text-text-secondary">Review all visit, visitor, PDL, and ID details before confirming check-in.</p>
+                        <p class="text-metadata text-text-secondary">Check the visit, visitor, PDL and ID details before you confirm.</p>
                     </div>
                 </div>
 
@@ -1052,7 +1052,7 @@
             <div class="flex items-center justify-between gap-sm">
                 <div>
                     <p class="text-card-title">Today's Check-Ins</p>
-                    <p class="text-metadata text-text-secondary">Check-ins for today</p>
+                    <p class="text-metadata text-text-secondary">Visitors checked in today.</p>
                 </div>
                 <span class="cc-chip cc-chip-info">{{ $todayHistory->count() }} today</span>
             </div>
@@ -2113,7 +2113,7 @@
             <div class="flex items-center justify-between gap-sm">
                 <div>
                     <p class="text-card-title">Today's Check-Outs</p>
-                    <p class="text-metadata text-text-secondary">Check-outs for today</p>
+                    <p class="text-metadata text-text-secondary">Visitors checked out today.</p>
                 </div>
                 <span class="cc-chip cc-chip-info">{{ $todayCheckouts->count() }} today</span>
             </div>

@@ -93,7 +93,7 @@
                 @endif
             </header>
 
-            <main class="cc-main relative flex-1 space-y-md px-6 pb-[18px] {{ $isHome ? '-mt-14' : '-mt-8' }}">
+            <main class="cc-main cc-frontdesk relative flex-1 space-y-md px-6 pb-[18px] {{ $isHome ? '-mt-14' : '-mt-8' }}">
                 @if ($errors->any())
                     <div class="cc-card border-l-4 border-l-danger" role="alert">
                         <p class="font-semibold">Please correct the following:</p>
@@ -197,6 +197,9 @@
         /* Sidebar badges: one blue pill at the end of the menu item (as on the Admin sidebar). */
         .cc-admin-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 9999px; background: #DBEAFE; color: #1D4ED8; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; cursor: pointer; }
         .cc-admin-badge:hover { background: #BFDBFE; }
+
+        /* Front Desk cards: a little air between a card's title and its description. */
+        .cc-frontdesk .text-card-title + .text-metadata { margin-top: 4px; line-height: 18px; }
     </style>
     <script>
         (() => {

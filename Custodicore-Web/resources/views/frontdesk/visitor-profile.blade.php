@@ -90,7 +90,7 @@
         <div class="flex flex-wrap items-start justify-between gap-sm">
             <div>
                 <p class="text-card-title">Today's Visit</p>
-                <p class="text-metadata text-text-secondary">{{ now()->format('l, F j, Y') }}. Where the visitor is for today's visit.</p>
+                <p class="text-metadata text-text-secondary">{{ now()->format('l, F j, Y') }}: where the visitor is now.</p>
             </div>
             {{-- Only when there is something to do at the gate: arriving, or inside. --}}
             @if ($todayVisits->contains(fn ($today) => in_array($today['gate']['status'], ['awaiting_arrival', 'checked_in'], true)))

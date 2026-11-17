@@ -24,7 +24,7 @@
 
     <div class="cc-card">
         <p class="text-card-title">Next Arrivals Today</p>
-        <p class="text-metadata text-text-secondary">Confirmed visits not yet checked in</p>
+        <p class="text-metadata text-text-secondary">Approved visits not checked in yet.</p>
 
         <ul class="mt-md divide-y divide-border">
             @forelse ($upcomingArrivals as $visit)

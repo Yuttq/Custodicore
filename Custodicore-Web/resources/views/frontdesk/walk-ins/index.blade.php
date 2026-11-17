@@ -8,7 +8,7 @@
             <div>
                 <p class="text-card-title">Walk-in Visitors</p>
                 <p class="text-metadata text-text-secondary">
-                    Register visitors without the app. Records approves or rejects each request; approved visitors are checked in here.
+                    Visitors registered at the desk without the app. You approve or reject each one here, then check them in at the gate.
                 </p>
             </div>
             <a href="{{ route('frontdesk.walk-ins.create') }}" class="cc-btn-primary">New Walk-in</a>

@@ -268,7 +268,7 @@
         {{-- 4. Visit date and session: one Records opened; approving the walk-in books it. --}}
         <div class="cc-card">
             <p class="text-card-title">4 · Visit Date and Session *</p>
-            <p class="text-metadata text-text-secondary">Only the dates and sessions Records opened are shown. Approving the walk-in books the session chosen here, and any other schedule added for this visitor.</p>
+            <p class="text-metadata text-text-secondary">Only the sessions Records opened are shown. Approving the walk-in books the session you choose here.</p>
             <div class="mt-md">
                 @include('frontdesk.walk-ins.partials.slot-picker', [
                     'id' => 'registrationSlots',
@@ -288,7 +288,7 @@
         {{-- 5. Walk-in Assessment: decided here, with the registration (WalkInService::approveAtDesk). --}}
         <div class="cc-card">
             <p class="text-card-title">5 · Walk-in Assessment</p>
-            <p class="text-metadata text-text-secondary">Check the visitor's original ID and documents against the copies above, then decide. Approving books the session chosen in step 4. The decision is final.</p>
+            <p class="text-metadata text-text-secondary">Check the original ID and documents against the copies above, then decide. Approving books the session from step 4. The decision is final.</p>
 
             <dl class="mt-md text-body">
                 <div>
