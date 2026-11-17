@@ -12,8 +12,9 @@ use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
 
 /**
- * Front Desk Activity Log: a read-only list of one day's gate entries,
- * filterable by visitor or PDL, open to the Front Desk Officer only.
+ * Front Desk Activity Log: a read-only view of one day in two tabs,
+ * Gate Visits (one row per gate entry) and All Activity (every logged
+ * action), sharing search and day; open to the Front Desk Officer only.
  */
 class FrontDeskAttendanceLogTest extends TestCase
 {
@@ -249,19 +250,93 @@ class FrontDeskAttendanceLogTest extends TestCase
         // Records work on other records stays in the Records activity log.
         $log('pdl_profiles', 'Updated PDL record of Juan Dela Cruz', null, '2026-10-19 11:00');
 
-        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log'))->assertOk()
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['tab' => 'activity']))->assertOk()
             ->assertSee('All Activity')
             ->assertSeeInOrder(['System closed the walk-in of Ana Cruz', 'Booked walk-in visit for Lourdes Reyes', 'Front Desk registered walk-in visitor Lourdes Reyes'])
             ->assertSee('09:15')
             ->assertDontSee('Pedro Santos')
             ->assertDontSee('Updated PDL record');
 
-        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['date' => '2026-10-18']))->assertOk()
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'date' => '2026-10-18']))->assertOk()
             ->assertSee('Front Desk registered walk-in visitor Pedro Santos')
             ->assertDontSee('Lourdes Reyes');
 
-        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['q' => 'Booked']))->assertOk()
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'q' => 'Booked']))->assertOk()
             ->assertSee('Booked walk-in visit for Lourdes Reyes')
             ->assertDontSee('System closed the walk-in');
+    }
+
+    private function logActivity(string $type, string $text, string $at): void
+    {
+        \App\Models\AuditLog::create([
+            'account_id' => $this->frontDeskAccount->account_id, 'action_type' => 'update', 'record_type' => $type, 'record_id' => 1,
+            'description' => $text, 'created_at' => Carbon::parse($at),
+            'module_id' => \App\Models\Module::value('module_id'),
+        ]);
+    }
+
+    public function test_gate_visits_is_the_default_tab_and_activity_is_one_click_away(): void
+    {
+        $this->gateEntry('2026-10-19 09:05');
+        $this->logActivity('visit_requests', 'Booked walk-in visit for Lourdes Reyes', '2026-10-19 09:16');
+        $this->actingAs($this->frontDeskAccount);
+
+        // Gate Visits: the gate table and method filter, not the activity feed.
+        $this->get(route('frontdesk.attendance-log'))->assertOk()
+            ->assertSeeInOrder(['Gate Visits', 'All Activity'])
+            ->assertSee('aria-current="page"', false)
+            ->assertSee('HANDLED BY')
+            ->assertSee('name="method"', false)
+            ->assertDontSee('name="type"', false)
+            ->assertDontSee('Booked walk-in visit for Lourdes Reyes');
+
+        // All Activity: the feed and type filter, not the gate table.
+        $this->get(route('frontdesk.attendance-log', ['tab' => 'activity']))->assertOk()
+            ->assertSee('Booked walk-in visit for Lourdes Reyes')
+            ->assertSee('name="type"', false)
+            ->assertSee('name="tab" value="activity"', false)
+            ->assertDontSee('name="method"', false)
+            ->assertDontSee('HANDLED BY');
+
+        // An unknown tab falls back to Gate Visits.
+        $this->get(route('frontdesk.attendance-log', ['tab' => 'nope']))->assertOk()->assertSee('HANDLED BY');
+    }
+
+    public function test_tab_links_keep_the_day_and_search(): void
+    {
+        $this->gateEntry('2026-10-18 09:00');
+        $this->actingAs($this->frontDeskAccount);
+
+        $this->get(route('frontdesk.attendance-log', ['date' => '2026-10-18', 'q' => 'Santos', 'method' => 'qr_scan']))->assertOk()
+            ->assertSee(e(route('frontdesk.attendance-log', ['tab' => 'activity', 'date' => '2026-10-18', 'q' => 'Santos'])), false);
+    }
+
+    public function test_all_activity_filters_by_type(): void
+    {
+        $this->logActivity('visitor_profiles', 'Front Desk registered walk-in visitor Lourdes Reyes', '2026-10-19 09:15');
+        $this->logActivity('visit_requests', 'Booked walk-in visit for Lourdes Reyes', '2026-10-19 09:16');
+        $this->actingAs($this->frontDeskAccount);
+
+        $this->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'type' => 'visit_requests']))->assertOk()
+            ->assertSee('Booked walk-in visit for Lourdes Reyes')
+            ->assertDontSee('registered walk-in visitor Lourdes Reyes');
+
+        $this->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'type' => 'visitor_ids']))->assertOk()
+            ->assertSee('No ID activity for today.');
+
+        // An unknown type is ignored.
+        $this->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'type' => 'pdl_profiles']))->assertOk()
+            ->assertSee('Booked walk-in visit for Lourdes Reyes')
+            ->assertSee('registered walk-in visitor Lourdes Reyes');
+    }
+
+    public function test_tab_counts_show_both_lists(): void
+    {
+        $this->gateEntry('2026-10-19 09:05');
+        $this->gateEntry('2026-10-19 13:20');
+        $this->logActivity('visit_requests', 'Booked walk-in visit for Lourdes Reyes', '2026-10-19 09:16');
+
+        $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log'))->assertOk()
+            ->assertSeeInOrder(['Gate Visits', 'bg-white/20 text-white">2</span>', 'All Activity', 'cc-chip-info">1</span>'], false);
     }
 }
