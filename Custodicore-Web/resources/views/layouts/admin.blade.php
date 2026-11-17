@@ -22,22 +22,24 @@
             </div>
             @include('partials.menu-toggle', ['class' => 'cc-menu-toggle'])
 
-            <nav class="mt-[6px] flex flex-col gap-[2px]">
-                @php
-                    $links = [
-                        ['route' => 'admin.dashboard', 'label' => 'Dashboard'],
-                        ['route' => 'admin.users.index', 'label' => 'Staff Accounts'],
-                        ['route' => 'admin.pdls.index', 'label' => 'PDL Records'],
-                        ['route' => 'admin.visitors.index', 'label' => 'Visitor Records'],
-                        ['route' => 'admin.checkins.index', 'label' => 'Visit Log'],
-                        ['route' => 'admin.audit.index', 'label' => 'Activity History'],
-                    ];
-                @endphp
-
+            {{-- Badges (AdminNavBadges): live counts, always blue; refreshed every 30 seconds below. --}}
+            @php
+                $links = [
+                    ['route' => 'admin.dashboard', 'label' => 'Dashboard', 'key' => 'dashboard'],
+                    ['route' => 'admin.users.index', 'label' => 'Staff Accounts', 'key' => 'users'],
+                    ['route' => 'admin.pdls.index', 'label' => 'PDL Records', 'key' => 'pdls', 'also' => 'admin.pdls.*'],
+                    ['route' => 'admin.visitors.index', 'label' => 'Visitor Records', 'key' => 'visitors', 'also' => 'admin.visitors.*'],
+                    ['route' => 'admin.checkins.index', 'label' => 'Visit Log', 'key' => 'checkins'],
+                    ['route' => 'admin.audit.index', 'label' => 'Activity History', 'key' => 'audit'],
+                ];
+                $adminBadges = app(\App\Services\AdminNavBadges::class)->all();
+            @endphp
+            <nav class="mt-[6px] flex flex-col gap-[2px]" data-admin-badges-url="{{ route('admin.nav-badges') }}">
                 @foreach ($links as $link)
-                    <a href="{{ route($link['route']) }}"
-                       class="cc-nav-link {{ request()->routeIs($link['route']) ? 'cc-nav-link-active' : '' }}">
-                        {{ $link['label'] }}
+                    <a href="{{ route($link['route']) }}" data-nav="{{ $link['key'] }}"
+                       class="cc-nav-link {{ request()->routeIs($link['route']) || (isset($link['also']) && request()->routeIs($link['also'])) ? 'cc-nav-link-active' : '' }}">
+                        <span>{{ $link['label'] }}</span>
+                        @include('admin.partials.nav-badge', ['badge' => $adminBadges[$link['key']] ?? null])
                     </a>
                 @endforeach
             </nav>
@@ -107,6 +109,46 @@
          DOMContentLoaded before touching window.Chart — see dashboard's
          script block for the pattern. --}}
     @stack('scripts')
+
+    <style>
+        /* Admin sidebar badges: one blue pill at the end of the menu item. */
+        .cc-admin-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 9999px; background: #DBEAFE; color: #1D4ED8; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; cursor: pointer; }
+        .cc-admin-badge:hover { background: #BFDBFE; }
+    </style>
+    <script>
+        (function () {
+            var nav = document.querySelector('[data-admin-badges-url]');
+            if (!nav) return;
+
+            // Clicking a badge opens the items it counts; the menu name still opens the page.
+            nav.addEventListener('click', function (e) {
+                var badge = e.target.closest('.cc-admin-badge[data-href]');
+                if (!badge) return;
+                e.preventDefault();
+                location.href = badge.dataset.href;
+            });
+
+            function refresh() {
+                if (document.hidden) return;
+                fetch(nav.dataset.adminBadgesUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (badges) {
+                        if (!badges) return;
+                        Object.keys(badges).forEach(function (key) {
+                            var link = nav.querySelector('[data-nav="' + key + '"]');
+                            if (!link) return;
+                            var old = link.querySelector('.cc-admin-badge');
+                            if (old) old.remove();
+                            if (badges[key]) link.insertAdjacentHTML('beforeend', badges[key]);
+                        });
+                    })
+                    .catch(function () {});
+            }
+
+            setInterval(refresh, 30000);
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+        })();
+    </script>
 
     {{-- "Are you sure? Yes / No" popup for every admin form marked data-confirm (sign out,
          resend invite, ...). Replaces the browser's plain confirm box on these pages. --}}

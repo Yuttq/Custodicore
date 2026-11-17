@@ -14,6 +14,13 @@
             <div>
                 <p class="text-card-title">Visitors Who Entered</p>
                 <p class="text-metadata text-text-secondary">
+                    @if ($todayDefault ?? false)
+                        <span class="font-semibold text-text-primary">Today, {{ now()->format('M j, Y') }}</span> ·
+                        <a href="{{ route('admin.checkins.index', array_filter(['all' => 1, 'filter' => $filter])) }}" class="font-semibold text-primary-navy hover:underline">Show all dates</a> ·
+                    @elseif ($showAll ?? false)
+                        <span class="font-semibold text-text-primary">All dates</span> ·
+                        <a href="{{ route('admin.checkins.index', array_filter(['filter' => $filter])) }}" class="font-semibold text-primary-navy hover:underline">Back to today</a> ·
+                    @endif
                     Checked in and out via QR code at the gate · times in 24-hour format
                     @if ($filter)
                         · <span class="font-semibold text-text-primary">Currently inside only</span>
@@ -31,7 +38,7 @@
             <form method="GET" action="{{ route('admin.checkins.index') }}" class="w-full lg:w-[32rem]">
                 <div class="flex items-center gap-sm">
                     @if ($filter)<input type="hidden" name="filter" value="{{ $filter }}" />@endif
-                    <input type="search" name="q" value="{{ $search }}" maxlength="100"
+                    <input type="search" name="q" value="{{ ($todayDefault ?? false) ? '' : $search }}" maxlength="100"
                            placeholder="Search a date, month, year, visitor or PDL…" autocomplete="off"
                            class="h-[38px] w-full rounded-button border border-border bg-white px-md text-body text-text-primary" />
                     <button type="submit" class="cc-btn-secondary shrink-0">Search</button>

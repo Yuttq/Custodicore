@@ -62,6 +62,12 @@ Route::post('/logout', [LoginController::class, 'logout'])
     ->name('logout')
     ->middleware('auth');
 
+// Opening /logout as a page (Back, Refresh, history, an expired session) used
+// to show "405 Method Not Allowed". It now goes home instead: the sign-in page
+// when signed out, or the officer's dashboard when still signed in. It does NOT
+// sign anyone out — that still needs the Sign out button (a POST with CSRF).
+Route::get('/logout', fn () => redirect('/'));
+
 /*
 |--------------------------------------------------------------------------
 | Terms & Conditions / Privacy Policy
@@ -260,6 +266,14 @@ Route::prefix('admin')
             ->name('pdls.index');
 
         // Read-only profile / legal records / disciplinary records of one PDL.
+        // Every PDL in custody by number of visits (the dashboard's Most / Least Visited cards open it).
+        Route::get('/pdl-visits', [PdlController::class, 'visits'])
+            ->name('pdls.visits');
+
+        // Sidebar badges, refreshed by the admin layout every 30 seconds.
+        Route::get('/nav-badges', \App\Http\Controllers\Admin\NavBadgesController::class)
+            ->name('nav-badges');
+
         Route::get('/pdls/{pdl}', [PdlController::class, 'show'])
             ->name('pdls.show');
 

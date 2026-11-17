@@ -51,6 +51,7 @@ class PdlController extends Controller
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
+                'photo' => self::photoUrl($pdl),
                 'classification' => $pdl->classification,
                 'cell_block' => $pdl->cell_block,
                 'custody_status' => $pdl->custody_status,
@@ -83,6 +84,57 @@ class PdlController extends Controller
             'filter' => $filter,
             'filterLabel' => $filterLabel,
             'totalPdls' => $total,
+        ]);
+    }
+
+    /** The PDL's photo through the admin photo route, or null (initials are shown). */
+    public static function photoUrl(Pdl $pdl): ?string
+    {
+        return $pdl->photo_path
+            ? route('admin.pdls.photo', $pdl->pdl_id) . '?v=' . substr(md5($pdl->photo_path), 0, 8)
+            : null;
+    }
+
+    /**
+     * GET admin/pdl-visits?order=most|least — every PDL in custody with how many
+     * visits they have had, opened from the dashboard's Most / Least Visited cards.
+     * Counted the same way as those cards: visits that were assigned a schedule.
+     */
+    public function visits(Request $request): View
+    {
+        $order = $request->query('order') === 'least' ? 'least' : 'most';
+        $search = Sanitizer::text($request->query('q'));
+        $like = $search !== null ? Sanitizer::like($search) : null;
+
+        $rows = Pdl::query()
+            ->where('custody_status', 'active')
+            ->withCount(['visitRequests as visit_count' => fn ($q) => $q->whereNotNull('assigned_at')])
+            ->withMax(['visitRequests as last_visit_at' => fn ($q) => $q->whereNotNull('assigned_at')], 'assigned_at')
+            ->when($like, fn ($query) => $query->where(fn ($q) => $q
+                ->where('full_name', 'like', $like)
+                ->orWhere('pdl_number', 'like', $like)
+                ->orWhere('cell_block', 'like', $like)))
+            ->orderBy('visit_count', $order === 'most' ? 'desc' : 'asc')
+            ->orderBy('pdl_number')
+            ->get()
+            ->map(fn ($pdl) => [
+                'id' => $pdl->pdl_id,
+                'pdl_number' => $pdl->pdl_number,
+                'full_name' => $pdl->full_name,
+                'photo' => self::photoUrl($pdl),
+                'cell_block' => $pdl->cell_block,
+                'visit_count' => (int) $pdl->visit_count,
+                'last_visit' => $pdl->last_visit_at ? \Illuminate\Support\Carbon::parse($pdl->last_visit_at)->format('M j, Y') : null,
+            ])
+            ->all();
+
+        $neverVisited = count(array_filter($rows, fn ($r) => $r['visit_count'] === 0));
+
+        return view('admin.pdls.visits', [
+            'pdls' => Pages::of($rows),
+            'order' => $order,
+            'search' => $search,
+            'neverVisited' => $neverVisited,
         ]);
     }
 

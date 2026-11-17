@@ -131,6 +131,7 @@ class DashboardController extends Controller
                 'id' => $row->pdl->pdl_id,
                 'pdl_number' => $row->pdl->pdl_number,
                 'full_name' => $row->pdl->full_name,
+                'photo' => PdlController::photoUrl($row->pdl),
                 'visits_this_month' => $row->visits_this_month,
             ])
             ->values()
@@ -152,6 +153,7 @@ class DashboardController extends Controller
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
+                'photo' => PdlController::photoUrl($pdl),
                 'last_visit' => $pdl->last_visit_at ? \Illuminate\Support\Carbon::parse($pdl->last_visit_at)->format('M j, Y') : null,
             ])
             ->all();

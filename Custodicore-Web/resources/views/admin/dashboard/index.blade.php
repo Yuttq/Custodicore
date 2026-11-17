@@ -108,8 +108,14 @@
 
         <div class="space-y-lg">
             <div class="cc-card">
-                <p class="text-card-title">Most Visited PDLs</p>
-                <p class="text-metadata text-text-secondary">Top 5 by total visits</p>
+                {{-- The heading opens the full list (every PDL, most visits first). --}}
+                <a href="{{ route('admin.pdls.visits', ['order' => 'most']) }}" class="cc-dash-card-head" title="See every PDL, most visited first">
+                    <span>
+                        <span class="text-card-title" style="display:block;">Most Visited PDLs</span>
+                        <span class="text-metadata text-text-secondary">Top 5 by total visits</span>
+                    </span>
+                    <span class="cc-dash-viewall">View all &rsaquo;</span>
+                </a>
 
                 <ul class="mt-md space-y-sm">
                     @forelse ($mostVisitedPdls as $pdl)
@@ -117,7 +123,7 @@
                           <a href="{{ route('admin.pdls.show', $pdl['id']) }}" title="Open {{ $pdl['full_name'] }}'s profile"
                              class="cc-dash-pdl-link flex items-center justify-between gap-sm rounded-sm">
                             <div class="flex items-center gap-sm">
-                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
+                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'] ?? null, 'size' => 'h-9 w-9'])
                                 <div>
                                     <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
                                     <p class="text-metadata text-text-secondary">{{ $pdl['pdl_number'] }}</p>
@@ -136,12 +142,17 @@
             </div>
 
             <div class="cc-card">
-                <p class="text-card-title">Least Visited PDLs</p>
-                <p class="text-metadata text-text-secondary">
-                    PDLs in custody with no visits
-                    <span class="cc-chip cc-chip-neutral ml-xs">{{ count($leastVisitedPdls) }}</span>
-                    @if (count($leastVisitedPdls) > 5) · scroll to see all @endif
-                </p>
+                {{-- The heading opens the full list (every PDL, fewest visits first). --}}
+                <a href="{{ route('admin.pdls.visits', ['order' => 'least']) }}" class="cc-dash-card-head" title="See every PDL, least visited first">
+                    <span>
+                        <span class="text-card-title" style="display:block;">Least Visited PDLs</span>
+                        <span class="text-metadata text-text-secondary">
+                            PDLs in custody with no visits
+                            <span class="cc-chip cc-chip-neutral ml-xs">{{ count($leastVisitedPdls) }}</span>
+                        </span>
+                    </span>
+                    <span class="cc-dash-viewall">View all &rsaquo;</span>
+                </a>
 
                 {{-- Shows about five rows; the rest are reached by scrolling inside the card. --}}
                 <ul class="mt-md max-h-[19.5rem] space-y-sm overflow-y-auto pr-sm">
@@ -150,7 +161,7 @@
                           <a href="{{ route('admin.pdls.show', $pdl['id']) }}" title="Open {{ $pdl['full_name'] }}'s profile"
                              class="cc-dash-pdl-link flex items-center justify-between gap-sm rounded-sm">
                             <div class="flex items-center gap-sm">
-                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'size' => 'h-9 w-9'])
+                                @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'] ?? null, 'size' => 'h-9 w-9'])
                                 <div>
                                     <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
                                     <p class="text-metadata text-text-secondary">
@@ -173,6 +184,10 @@
         </div>
     </div>
     <style>
+        .cc-dash-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; color: inherit; text-decoration: none; padding: 6px 8px; margin: -6px -8px; border-radius: 8px; transition: background-color .15s; }
+        .cc-dash-card-head:hover, .cc-dash-card-head:focus-visible { background-color: rgba(15, 61, 122, .06); }
+        .cc-dash-card-head:hover .text-card-title { color: #0F3D7A; text-decoration: underline; }
+        .cc-dash-viewall { flex-shrink: 0; font-size: 13px; font-weight: 600; color: #0F3D7A; white-space: nowrap; }
         .cc-dash-pdl-link { color: inherit; text-decoration: none; padding: 4px 6px; margin: -4px -6px; transition: background-color .15s; }
         .cc-dash-pdl-link:hover, .cc-dash-pdl-link:focus-visible { background-color: rgba(15, 61, 122, .06); }
         .cc-dash-pdl-link:hover p.font-semibold { color: #0F3D7A; text-decoration: underline; }

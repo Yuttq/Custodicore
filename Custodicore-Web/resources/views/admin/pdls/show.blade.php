@@ -8,7 +8,7 @@
         'drug_related' => 'Drug-related',
         'non_drug_related' => 'Non-drug-related',
     ][$pdl->classification] ?? null;
-    $photo = $pdl->photo_path
+    $pdlPhoto = $pdl->photo_path
         ? route('admin.pdls.photo', $pdl->pdl_id) . '?v=' . substr(md5($pdl->photo_path), 0, 8)
         : null;
 
@@ -39,9 +39,9 @@
         <div class="flex items-center gap-md bg-primary-navy px-md py-md sm:px-lg">
             {{-- Thumbnail; tap to open the full-size photo. --}}
             <div class="aspect-[4/5] w-20 shrink-0 overflow-hidden rounded-sm border-2 border-white/40 bg-white/10 sm:w-24">
-                @if ($photo)
-                    <a href="{{ $photo }}" target="_blank" rel="noopener" title="Open full-size photo" class="block h-full w-full">
-                        <img src="{{ $photo }}" alt="Photo of {{ $pdl->full_name }}" class="h-full w-full object-cover">
+                @if ($pdlPhoto)
+                    <a href="{{ $pdlPhoto }}" target="_blank" rel="noopener" title="Open full-size photo" class="block h-full w-full">
+                        <img src="{{ $pdlPhoto }}" alt="Photo of {{ $pdl->full_name }}" class="h-full w-full object-cover">
                     </a>
                 @else
                     @include('admin.partials.person-silhouette')
@@ -143,7 +143,7 @@
                         @foreach ($authorizedVisitors as $rel)
                             <div class="flex items-center justify-between gap-sm px-md py-sm">
                                 <div class="flex min-w-0 items-center gap-sm">
-                                    @include('admin.partials.avatar', ['name' => $rel->visitor->full_name, 'size' => 'h-9 w-9'])
+                                    @include('admin.partials.avatar', ['name' => $rel->visitor->full_name, 'photo' => $rel->visitor->photoUrl(), 'size' => 'h-9 w-9'])
                                     <div class="min-w-0">
                                         <a href="{{ route('admin.visitors.show', $rel->visitor_id) }}"
                                            class="block truncate text-body font-semibold text-primary-navy hover:underline">{{ $rel->visitor->full_name }}</a>

@@ -27,6 +27,15 @@ class CheckinController extends Controller
     public function index(Request $request): View
     {
         $search = Sanitizer::text($request->query('q'));
+
+        // Opening the page shows TODAY's visits. A search shows what it matches,
+        // and "Show all dates" (?all=1) lists every record.
+        $showAll = $request->boolean('all');
+        $todayDefault = $search === null && ! $showAll;
+        if ($todayDefault) {
+            $search = now()->toDateString();
+        }
+
         $parsed = DateSearch::parse($search);
 
         // Clicking "Currently Inside" shows only visitors still inside: ?filter=inside.
@@ -49,11 +58,11 @@ class CheckinController extends Controller
         // longer uses it.
         $suggestedVisitors = VisitorController::verifiedNames();
 
-        $filtered = $search !== null;
+        $filtered = $search !== null && ! $todayDefault;
         $dateLabel = $parsed['label'];
         $checkins = Pages::of($checkins);
 
-        return view('admin.checkins.index', compact('checkins', 'summary', 'suggestedVisitors', 'search', 'filtered', 'dateLabel', 'filter'));
+        return view('admin.checkins.index', compact('checkins', 'summary', 'suggestedVisitors', 'search', 'filtered', 'dateLabel', 'filter', 'todayDefault', 'showAll'));
     }
 
     /** PDF of every row matching the page's filters (24-hour times). */
