@@ -8,6 +8,7 @@ import {
   createAutoCaptureLoop,
   finalPhotoDecision,
   initialAutoCaptureState,
+  isAutoCaptureEnabled,
   nextAutoCaptureState,
 } from './autoCapture.js';
 
@@ -67,39 +68,72 @@ test('a face that moves restarts the run', () => {
 test('missing or unknown quality results never trigger capture', () => {
   const steps = run([UNKNOWN, null, undefined, UNKNOWN, UNKNOWN], 2000);
   assert.equal(steps.some((s) => s.capture), false);
-  assert.equal(steps.every((s) => s.message === AUTO_CAPTURE_MESSAGES.start), true);
+  // Not blamed on the visitor; after a few, the restart hint replaces it.
+  assert.deepEqual(
+    steps.map((s) => s.message),
+    [
+      AUTO_CAPTURE_MESSAGES.start,
+      AUTO_CAPTURE_MESSAGES.start,
+      AUTO_CAPTURE_MESSAGES.unavailable,
+      AUTO_CAPTURE_MESSAGES.unavailable,
+      AUTO_CAPTURE_MESSAGES.unavailable,
+    ],
+  );
   // …and an unknown in the middle of a run resets it.
   assert.equal(run([pass(), pass(), UNKNOWN, pass()], 600)[3].state.streak, 1);
 });
 
-test('repeated detector errors suggest manual capture early', () => {
-  const steps = run([UNKNOWN, null, UNKNOWN], 500);
-  assert.deepEqual(steps.map((s) => s.suggestManual), [false, false, true]);
+test('repeated detector errors suggest restarting the camera, never capture', () => {
+  const steps = run([UNKNOWN, null, UNKNOWN, UNKNOWN], 500);
+  assert.deepEqual(steps.map((s) => s.suggestRestart), [false, false, true, true]);
+  assert.equal(steps[2].message, AUTO_CAPTURE_MESSAGES.unavailable);
+  assert.equal(steps.some((s) => s.capture), false);
   // A real result in between resets the count.
-  assert.equal(run([UNKNOWN, UNKNOWN, FAIL_DARK, UNKNOWN], 500)[3].suggestManual, false);
+  assert.equal(run([UNKNOWN, UNKNOWN, FAIL_DARK, UNKNOWN], 500)[3].suggestRestart, false);
 });
 
-test('final photo: pass or unknown goes to review; a failed automatic capture retries', () => {
-  assert.deepEqual(finalPhotoDecision(pass(), { manual: false, manualFailures: 0 }), {
+test('final photo: only a pass reaches review', () => {
+  assert.deepEqual(finalPhotoDecision(pass()), { action: 'review', message: null });
+});
+
+test('final photo: a FAIL is retaken with its message', () => {
+  assert.deepEqual(finalPhotoDecision(FAIL_DARK), { action: 'retry', message: 'Improve the lighting.' });
+  // Repeated failures never fall through to review.
+  for (let i = 0; i < 5; i += 1) assert.equal(finalPhotoDecision(FAIL_DARK).action, 'retry');
+});
+
+test('final photo: UNKNOWN or no result is retaken, never reviewed unverified', () => {
+  for (const result of [UNKNOWN, null, undefined, {}]) {
+    assert.deepEqual(finalPhotoDecision(result), {
+      action: 'retry',
+      message: AUTO_CAPTURE_MESSAGES.notVerified,
+    });
+  }
+});
+
+test('web: manual capture with no quality check goes to review', () => {
+  // Web has no ML Kit: auto capture is off, so the "Take Photo" button shows.
+  assert.equal(isAutoCaptureEnabled({ platform: 'web', qualityCheckSupported: false }), false);
+  assert.equal(isAutoCaptureEnabled({ platform: 'web', qualityCheckSupported: true }), false);
+  // The web stub's 'unknown' result does not block the manual photo.
+  assert.deepEqual(finalPhotoDecision(UNKNOWN, { qualityCheckAvailable: false }), {
     action: 'review',
     message: null,
-    manualFailures: 0,
   });
-  // A detector error never blocks the visitor.
-  assert.equal(finalPhotoDecision(UNKNOWN, { manual: false, manualFailures: 0 }).action, 'review');
-  assert.equal(finalPhotoDecision(null, { manual: true, manualFailures: 0 }).action, 'review');
-  assert.deepEqual(finalPhotoDecision(FAIL_DARK, { manual: false, manualFailures: 0 }), {
-    action: 'retry',
-    message: 'Improve the lighting.',
-    manualFailures: 0,
-  });
+  assert.equal(finalPhotoDecision(null, { qualityCheckAvailable: false }).action, 'review');
 });
 
-test('final photo: a failed manual capture retries once, then goes to review with the hint', () => {
-  const first = finalPhotoDecision(FAIL_DARK, { manual: true, manualFailures: 0 });
-  assert.deepEqual(first, { action: 'retry', message: 'Improve the lighting.', manualFailures: 1 });
-  const second = finalPhotoDecision(FAIL_DARK, { manual: true, manualFailures: first.manualFailures });
-  assert.deepEqual(second, { action: 'review', message: 'Improve the lighting.', manualFailures: 2 });
+test('phones: automatic capture only (no manual button)', () => {
+  assert.equal(isAutoCaptureEnabled({ platform: 'android', qualityCheckSupported: true }), true);
+  assert.equal(isAutoCaptureEnabled({ platform: 'ios', qualityCheckSupported: true }), true);
+});
+
+test('config: 3 passes over at least 1.2 s, and no manual fallback settings', () => {
+  assert.equal(AUTO_CAPTURE_CONFIG.requiredPasses, 3);
+  assert.equal(AUTO_CAPTURE_CONFIG.minStableMs, 1200);
+  for (const key of ['manualFallbackMs', 'unknownBeforeManual', 'manualFailuresBeforeReview']) {
+    assert.equal(key in AUTO_CAPTURE_CONFIG, false, key);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -142,7 +176,7 @@ function fakeTimers() {
 /** A loop whose snapshots and checks are controllable; records what happened. */
 function harness({ results = [], assessImpl, snapshotImpl, config } = {}) {
   const clock = fakeTimers();
-  const log = { snapshots: 0, discarded: [], updates: [], captures: 0, manual: 0, active: 0, maxActive: 0 };
+  const log = { snapshots: 0, discarded: [], updates: [], restart: [], captures: 0, active: 0, maxActive: 0 };
   let i = 0;
   const loop = createAutoCaptureLoop({
     snapshot:
@@ -164,12 +198,12 @@ function harness({ results = [], assessImpl, snapshotImpl, config } = {}) {
       log.discarded.push(shot.uri);
       log.active -= 1;
     },
-    onUpdate: (u) => log.updates.push(u.message),
+    onUpdate: (u) => {
+      log.updates.push(u.message);
+      log.restart.push(u.suggestRestart);
+    },
     onCapture: () => {
       log.captures += 1;
-    },
-    onManualAvailable: () => {
-      log.manual += 1;
     },
     config: { ...AUTO_CAPTURE_CONFIG, ...(config ?? {}) },
     now: clock.now,
@@ -238,35 +272,28 @@ test('loop: stopping (camera closed) ends polling and waits for the snapshot in 
   await clock.advance(20000);
   assert.equal(log.snapshots, 1, 'no polling after stop');
   assert.equal(log.updates.length, 0, 'no updates after stop');
-  assert.equal(log.manual, 0, 'no fallback timer after stop');
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending(), 0, 'no timers left after stop');
 });
 
-test('loop: manual fallback appears after the timeout without a capture', async () => {
+test('loop: failing checks never capture, however long they go on', async () => {
   const { loop, clock, log } = harness({ results: [FAIL_DARK] });
   loop.start();
-  await clock.advance(AUTO_CAPTURE_CONFIG.manualFallbackMs - 100);
-  assert.equal(log.manual, 0);
-  await clock.advance(200);
-  assert.equal(log.manual, 1);
-  await clock.advance(30000);
-  assert.equal(log.manual, 1, 'offered once');
+  await clock.advance(60000);
+  assert.equal(log.captures, 0);
+  assert.ok(log.snapshots > 10, 'keeps checking');
+  assert.equal(log.restart.some(Boolean), false, 'a real FAIL is not a restart case');
+  loop.stop();
+});
+
+test('loop: a face that passes then fails never captures', async () => {
+  const { loop, clock, log } = harness({ results: [pass(), pass(), FAIL_DARK, pass(), FAIL_DARK] });
+  loop.start();
+  await clock.advance(5000);
   assert.equal(log.captures, 0);
   loop.stop();
 });
 
-test('loop: restarting after a rejected capture keeps the fallback deadline', async () => {
-  const { loop, clock, log } = harness({ results: [FAIL_DARK] });
-  loop.start();
-  await clock.advance(6000);
-  await loop.stop();
-  loop.start(AUTO_CAPTURE_CONFIG.retryDelayMs);
-  await clock.advance(4100);
-  assert.equal(log.manual, 1);
-  loop.stop();
-});
-
-test('loop: detector and camera errors never crash it, and offer manual capture early', async () => {
+test('loop: detector and camera errors never crash it or capture, and suggest a restart', async () => {
   const { loop, clock, log } = harness({
     assessImpl: async () => {
       throw new Error('ML Kit failed');
@@ -275,8 +302,9 @@ test('loop: detector and camera errors never crash it, and offer manual capture 
   loop.start();
   await clock.advance(3000);
   assert.ok(log.snapshots >= 3);
-  assert.equal(log.manual, 1, 'manual offered before the 10 s timeout');
   assert.equal(log.captures, 0);
+  assert.equal(log.restart[2], true, 'restart suggested after 3 unchecked snapshots');
+  assert.equal(log.updates[2], AUTO_CAPTURE_MESSAGES.unavailable);
   assert.equal(log.discarded.length, log.snapshots, 'snapshots still deleted');
 
   const broken = harness({
@@ -287,7 +315,7 @@ test('loop: detector and camera errors never crash it, and offer manual capture 
   broken.loop.start();
   await broken.clock.advance(3000);
   assert.equal(broken.log.captures, 0);
-  assert.equal(broken.log.manual, 1);
+  assert.equal(broken.log.restart.at(-1), true);
   broken.loop.stop();
   loop.stop();
 });

@@ -14,7 +14,9 @@
  * Every check returns `{ status, reason?, value? }` where status is
  *   'pass'    — checked and acceptable
  *   'fail'    — checked and not acceptable; `reason` says why
- *   'unknown' — could not be checked (missing data, detector error): never a rejection
+ *   'unknown' — could not be checked (missing data, detector error): no
+ *               reason is shown, but an unchecked essential check keeps the
+ *               overall result from passing
  *   'skipped' — not applicable (e.g. no face to measure)
  */
 
@@ -23,15 +25,21 @@
  * of the photo's width/height; angles are degrees; luma is 0–255.
  */
 export const PHOTO_QUALITY_THRESHOLDS = Object.freeze({
-  // Face size (face box width ÷ photo width).
-  minFaceWidthRatio: 0.2,
-  maxFaceWidthRatio: 0.85,
-  // Where the oval guide's centre sits in the photo, and how far the face's
-  // centre may stray from it.
+  // Face size (face box width ÷ photo width). The oval is 0.62 wide, so a
+  // face wider than 0.6 cannot fit inside it.
+  minFaceWidthRatio: 0.28,
+  maxFaceWidthRatio: 0.6,
+  // The oval face guide, as shares of the photo's width (X) and height (Y).
+  // The camera preview frame and the saved photo are both 3:4 portrait, so
+  // the same shares describe the drawn guide (see faceGuideLayout) and the
+  // photo. The guide is symmetric left/right, so the mirrored preview and
+  // the unmirrored photo agree.
   guideCenterX: 0.5,
-  guideCenterY: 0.45,
-  maxCenterOffsetX: 0.2,
-  maxCenterOffsetY: 0.22,
+  guideCenterY: 0.47,
+  guideRadiusX: 0.31,
+  guideRadiusY: 0.3,
+  // The face's centre must lie within this share of the guide's radii.
+  maxCenterOffset: 0.35,
   // How much of the face box may fall outside the photo before it counts as cut off.
   maxOutsideRatio: 0.08,
   // Head angles (ML Kit Euler angles, degrees).
@@ -168,7 +176,27 @@ export function checkFaceCount(faces) {
 }
 
 /**
- * Face inside the photo and near the oval guide's centre.
+ * Where to draw the oval guide in a preview frame of `frame` size, from the
+ * same geometry the position check uses: a circle of `size` at (left, top),
+ * stretched by `scaleY` around its own centre into the oval.
+ * @param {{ width: number; height: number }} frame
+ * @param {typeof PHOTO_QUALITY_THRESHOLDS} [t]
+ */
+export function faceGuideLayout(frame, t = PHOTO_QUALITY_THRESHOLDS) {
+  const size = 2 * t.guideRadiusX * frame.width;
+  const ovalHeight = 2 * t.guideRadiusY * frame.height;
+  return {
+    size,
+    scaleY: ovalHeight / size,
+    left: t.guideCenterX * frame.width - size / 2,
+    top: t.guideCenterY * frame.height - size / 2,
+  };
+}
+
+/**
+ * Face inside the photo and inside the oval guide: its centre near the
+ * guide's centre, and the midpoints of all four sides of the face box within
+ * the oval (a face is itself roughly oval, so its box's corners may poke out).
  * @param {NormalizedFace} face
  * @param {{ width: number; height: number } | null | undefined} imageSize
  * @param {typeof PHOTO_QUALITY_THRESHOLDS} [t]
@@ -185,10 +213,30 @@ export function checkFacePosition(face, imageSize, t = PHOTO_QUALITY_THRESHOLDS)
     return { status: 'fail', reason: 'face_cut_off', value: { outsideRatio } };
   }
 
-  const offsetX = (face.x + face.width / 2) / size.width - t.guideCenterX;
-  const offsetY = (face.y + face.height / 2) / size.height - t.guideCenterY;
+  // Everything below in shares of the photo, like the guide.
+  const halfW = face.width / size.width / 2;
+  const halfH = face.height / size.height / 2;
+  const cx = (face.x + face.width / 2) / size.width;
+  const cy = (face.y + face.height / 2) / size.height;
+  const offsetX = cx - t.guideCenterX;
+  const offsetY = cy - t.guideCenterY;
   const value = { offsetX, offsetY, outsideRatio };
-  if (Math.abs(offsetX) > t.maxCenterOffsetX || Math.abs(offsetY) > t.maxCenterOffsetY) {
+
+  // Bigger than the oval: no placement can fit it.
+  if (halfW > t.guideRadiusX || halfH > t.guideRadiusY) {
+    return { status: 'fail', reason: 'face_too_close', value };
+  }
+
+  // (dx/rx)² + (dy/ry)²: at most 1 inside the oval.
+  const ovalDistance = (dx, dy) => (dx / t.guideRadiusX) ** 2 + (dy / t.guideRadiusY) ** 2;
+  const centred = ovalDistance(offsetX, offsetY) <= t.maxCenterOffset ** 2;
+  const sidesInside = [
+    [offsetX - halfW, offsetY],
+    [offsetX + halfW, offsetY],
+    [offsetX, offsetY - halfH],
+    [offsetX, offsetY + halfH],
+  ].every(([dx, dy]) => ovalDistance(dx, dy) <= 1);
+  if (!centred || !sidesInside) {
     return { status: 'fail', reason: 'face_off_center', value };
   }
   return { status: 'pass', value };
@@ -376,13 +424,20 @@ export function checkSharpness(sharpness, t = PHOTO_QUALITY_THRESHOLDS) {
 // Combined assessment.
 // ---------------------------------------------------------------------------
 
+/**
+ * Checks that must each return 'pass' for the photo to pass. Head pose and
+ * eyes block only on 'fail': ML Kit does not always report those values.
+ */
+const ESSENTIAL_CHECKS = ['faceCount', 'position', 'size', 'lighting', 'sharpness'];
+
 const SKIPPED = Object.freeze({ status: 'skipped' });
 const UNKNOWN = Object.freeze({ status: 'unknown' });
 
 /**
  * @typedef {object} PhotoQualityResult
  * @property {'pass' | 'fail' | 'unknown'} status — 'unknown' when nothing failed
- *   but the face checks could not run (detector error); never a rejection
+ *   but an essential check could not run (detector or image error): not
+ *   blamed on the visitor, but not verified either
  * @property {string[]} reasons — failed checks, in PHOTO_QUALITY_REASONS order
  * @property {string | null} message — the visitor-facing line for the first reason
  * @property {Record<string, { status: string; reason?: string; value?: unknown }>} checks
@@ -429,7 +484,10 @@ export function assessPhotoQuality({ faces, imageSize = null, gray = null, thres
       .map((c) => /** @type {string} */ (c.reason)),
   );
   const reasons = PHOTO_QUALITY_REASONS.filter((r) => failed.has(r));
-  const status = reasons.length > 0 ? 'fail' : faceCount.status === 'unknown' ? 'unknown' : 'pass';
+  // 'pass' only when every essential check actually ran and passed; anything
+  // unchecked is 'unknown' (the camera retries, it never goes to review).
+  const verified = ESSENTIAL_CHECKS.every((name) => checks[name].status === 'pass');
+  const status = reasons.length > 0 ? 'fail' : verified ? 'pass' : 'unknown';
   return {
     status,
     reasons,

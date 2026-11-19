@@ -18,6 +18,7 @@ import {
   checkHeadPose,
   checkLighting,
   checkSharpness,
+  faceGuideLayout,
   laplacianVariance,
   lumaStats,
   normalizeFace,
@@ -123,9 +124,42 @@ test('poor positioning: off centre, cut off, too far, too close', () => {
   assert.equal(assess([mlkitFace({ width: 150, height: 200 })]).message, 'Move closer.');
 });
 
-test('positioning is lenient: a slightly off-centre face still passes', () => {
-  assert.equal(assess([mlkitFace({ cx: 600, cy: 700 })]).status, 'pass');
-  assert.equal(assess([mlkitFace({ width: 260, height: 350 })]).status, 'pass');
+test('positioning: a face slightly off centre but inside the oval passes', () => {
+  assert.equal(assess([mlkitFace({ cx: 540, cy: 640 })]).status, 'pass');
+  assert.equal(assess([mlkitFace({ width: 300, height: 400 })]).status, 'pass');
+});
+
+test('positioning: a face that does not fit inside the oval fails', () => {
+  // Accepted by the old ±20% centre rule, but its right side is outside the oval.
+  assert.deepEqual(assess([mlkitFace({ cx: 600, cy: 700 })]).reasons, ['face_off_center']);
+  // Top of the face above the oval (whole face still inside the photo).
+  assert.deepEqual(assess([mlkitFace({ cy: 420 })]).reasons, ['face_off_center']);
+  // Bottom of the face below the oval.
+  assert.deepEqual(assess([mlkitFace({ cy: 800 })]).reasons, ['face_off_center']);
+  // Small face, fully inside the oval, but its centre is far from the guide's.
+  assert.deepEqual(assess([mlkitFace({ cx: 620, width: 300, height: 400 })]).reasons, ['face_off_center']);
+  // Taller than the oval: no placement fits, so "move back".
+  const tall = assess([mlkitFace({ width: 500, height: 850, cy: 640 })]);
+  assert.deepEqual(tall.reasons, ['face_too_close']);
+  assert.equal(tall.message, 'Move back a little.');
+});
+
+test('the drawn oval guide matches the geometry the position check uses', () => {
+  const frame = { width: 300, height: 400 };
+  const g = faceGuideLayout(frame);
+  const t = PHOTO_QUALITY_THRESHOLDS;
+  // Centre of the drawn oval, as shares of the frame.
+  assert.ok(Math.abs((g.left + g.size / 2) / frame.width - t.guideCenterX) < 1e-9);
+  assert.ok(Math.abs((g.top + g.size / 2) / frame.height - t.guideCenterY) < 1e-9);
+  // Width and (stretched) height, as shares of the frame.
+  assert.ok(Math.abs(g.size / frame.width - 2 * t.guideRadiusX) < 1e-9);
+  assert.ok(Math.abs((g.size * g.scaleY) / frame.height - 2 * t.guideRadiusY) < 1e-9);
+  // Same look as before: 62% of the frame wide, stretched ~1.3× into an oval.
+  assert.ok(Math.abs(g.size / frame.width - 0.62) < 1e-9);
+  assert.ok(g.scaleY > 1.25 && g.scaleY < 1.35);
+  // The whole oval stays inside the frame.
+  assert.ok(g.top + g.size / 2 - (g.size * g.scaleY) / 2 > 0);
+  assert.ok(g.top + g.size / 2 + (g.size * g.scaleY) / 2 < frame.height);
 });
 
 test('poor lighting: too dark and too bright', () => {
@@ -163,7 +197,7 @@ test('eyes: closed only when both eyes are reported low', () => {
   assert.equal(missing.checks.eyes.status, 'unknown');
 });
 
-test('missing detector data never rejects a photo', () => {
+test('missing detector data is UNKNOWN: never blamed on the visitor, never a pass', () => {
   // Detection failed (no result at all).
   const failed = assess(null);
   assert.equal(failed.status, 'unknown');
@@ -176,21 +210,23 @@ test('missing detector data never rejects a photo', () => {
   // Faces without a usable box: detector data problem, not "no face".
   assert.equal(assess([{ frame: null }, { headEulerAngleY: 3 }]).status, 'unknown');
 
-  // A face without angles or eye scores: those checks are unknown, the rest pass.
+  // A face without angles or eye scores: those are optional checks, so it
+  // still passes when every essential check passed.
   const sparse = assess([{ frame: mlkitFace().frame }]);
   assert.equal(sparse.status, 'pass');
   assert.equal(sparse.checks.headPose.status, 'unknown');
   assert.equal(sparse.checks.eyes.status, 'unknown');
 
-  // No photo size: position and size cannot be judged, nothing fails.
+  // No photo size: position and size were not verified, so no pass.
   const noSize = assessPhotoQuality({ faces: [mlkitFace()], imageSize: null, gray: SHARP });
-  assert.equal(noSize.status, 'pass');
+  assert.equal(noSize.status, 'unknown');
+  assert.deepEqual(noSize.reasons, []);
   assert.equal(noSize.checks.position.status, 'unknown');
   assert.equal(noSize.checks.size.status, 'unknown');
 
-  // No pixels: light and sharpness unknown.
+  // No pixels: brightness and sharpness were not verified, so no pass.
   const noPixels = assess([mlkitFace()], null);
-  assert.equal(noPixels.status, 'pass');
+  assert.equal(noPixels.status, 'unknown');
   assert.equal(noPixels.checks.lighting.status, 'unknown');
   assert.equal(noPixels.checks.sharpness.status, 'unknown');
 
@@ -205,8 +241,8 @@ test('missing detector data never rejects a photo', () => {
 test('thresholds are configurable per call', () => {
   const offCentre = [mlkitFace({ cx: 760 })];
   assert.deepEqual(assess(offCentre).reasons, ['face_off_center']);
-  assert.equal(assess(offCentre, SHARP, { thresholds: { maxCenterOffsetX: 0.3 } }).status, 'pass');
-  assert.equal(PHOTO_QUALITY_THRESHOLDS.maxCenterOffsetX, 0.2); // defaults untouched
+  assert.equal(assess(offCentre, SHARP, { thresholds: { guideCenterX: 0.76 } }).status, 'pass');
+  assert.equal(PHOTO_QUALITY_THRESHOLDS.guideCenterX, 0.5); // defaults untouched
   assert.throws(() => {
     PHOTO_QUALITY_THRESHOLDS.maxYaw = 90;
   });

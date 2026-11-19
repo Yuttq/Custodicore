@@ -22,21 +22,30 @@ export const AUTO_CAPTURE_CONFIG = Object.freeze({
   minStableMs: 1200,
   /** A pass whose face moved more than this (share of the photo) restarts the run. */
   maxMovement: 0.06,
-  /** Manual capture appears after this long without an automatic capture… */
-  manualFallbackMs: 10000,
-  /** …or sooner, after this many checks in a row that could not run. */
-  unknownBeforeManual: 3,
+  /** After this many checks in a row that could not run, suggest restarting the camera. */
+  unknownBeforeRestart: 3,
   /** After a rejected automatic capture, wait this long before trying again. */
   retryDelayMs: 1500,
-  /** A manual capture that fails the check goes to review anyway after this many tries. */
-  manualFailuresBeforeReview: 2,
 });
 
 export const AUTO_CAPTURE_MESSAGES = Object.freeze({
   start: 'Position your face in the frame.',
   holdStill: 'Hold still.',
   capturing: 'Capturing…',
+  /** The final photo could not be checked: it is retaken, never kept unchecked. */
+  notVerified: "Couldn't check the photo. Hold still.",
+  /** Checks keep failing to run (detector or camera problem). */
+  unavailable: "Can't check your photo right now. Tap Restart Camera.",
 });
+
+/**
+ * Automatic capture runs where the on-device quality check exists (phones).
+ * Elsewhere (web: no ML Kit) the visitor takes the photo with a button.
+ * @param {{ platform: string; qualityCheckSupported: boolean }} env
+ */
+export function isAutoCaptureEnabled({ platform, qualityCheckSupported }) {
+  return Boolean(qualityCheckSupported) && platform !== 'web';
+}
 
 /**
  * @typedef {object} AutoCaptureState
@@ -70,13 +79,13 @@ function facePlacement(result) {
  * - 'pass' extends the run (or restarts it when the face moved);
  * - 'fail' resets it and shows the engine's message;
  * - 'unknown' / no result (detector or camera error) resets it without
- *   blaming the visitor, and repeated unknowns suggest manual capture.
+ *   blaming the visitor, and repeated unknowns suggest restarting the camera.
  * Capture is due only after `requiredPasses` passes spanning `minStableMs`.
  * @param {AutoCaptureState} state
  * @param {any} result — a PhotoQualityResult, or null when the check failed to run
  * @param {number} now — ms
  * @param {typeof AUTO_CAPTURE_CONFIG} [config]
- * @returns {{ state: AutoCaptureState; capture: boolean; message: string; suggestManual: boolean; passing: boolean }}
+ * @returns {{ state: AutoCaptureState; capture: boolean; message: string; suggestRestart: boolean; passing: boolean }}
  */
 export function nextAutoCaptureState(state, result, now, config = AUTO_CAPTURE_CONFIG) {
   const status = result?.status;
@@ -86,18 +95,19 @@ export function nextAutoCaptureState(state, result, now, config = AUTO_CAPTURE_C
       state: { streak: 0, firstPassAt: null, lastFace: null, unknownCount: 0 },
       capture: false,
       message: result.message || AUTO_CAPTURE_MESSAGES.start,
-      suggestManual: false,
+      suggestRestart: false,
       passing: false,
     };
   }
 
   if (status !== 'pass') {
     const unknownCount = state.unknownCount + 1;
+    const suggestRestart = unknownCount >= config.unknownBeforeRestart;
     return {
       state: { streak: 0, firstPassAt: null, lastFace: null, unknownCount },
       capture: false,
-      message: AUTO_CAPTURE_MESSAGES.start,
-      suggestManual: unknownCount >= config.unknownBeforeManual,
+      message: suggestRestart ? AUTO_CAPTURE_MESSAGES.unavailable : AUTO_CAPTURE_MESSAGES.start,
+      suggestRestart,
       passing: false,
     };
   }
@@ -123,36 +133,30 @@ export function nextAutoCaptureState(state, result, now, config = AUTO_CAPTURE_C
     state: next,
     capture,
     message: capture ? AUTO_CAPTURE_MESSAGES.capturing : AUTO_CAPTURE_MESSAGES.holdStill,
-    suggestManual: false,
+    suggestRestart: false,
     passing: true,
   };
 }
 
 /**
  * What to do with the full-quality photo once it is checked.
- * - pass, or 'unknown' (the check could not run): show it for review — an
- *   error never blocks the visitor;
- * - fail on an automatic capture: try again with the message;
- * - fail on a manual capture: try again, but after
- *   `manualFailuresBeforeReview` failed tries show it for review anyway (with
- *   the message), so the check can never trap the visitor. Staff still
- *   review the photo either way.
+ * - pass: show it for review;
+ * - fail: retake, with the check's message;
+ * - unknown / no result (the check could not run): retake. A photo that was
+ *   not verified never reaches review.
+ * Where there is no quality check at all (web, manual capture) the photo goes
+ * to review as before. Staff still review every photo.
  * @param {any} result — PhotoQualityResult or null
- * @param {{ manual: boolean; manualFailures: number }} attempt — failures so far this session
- * @param {typeof AUTO_CAPTURE_CONFIG} [config]
- * @returns {{ action: 'review' | 'retry'; message: string | null; manualFailures: number }}
+ * @param {{ qualityCheckAvailable?: boolean }} [options]
+ * @returns {{ action: 'review' | 'retry'; message: string | null }}
  */
-export function finalPhotoDecision(result, { manual, manualFailures }, config = AUTO_CAPTURE_CONFIG) {
-  if (result?.status !== 'fail') {
-    return { action: 'review', message: null, manualFailures: 0 };
+export function finalPhotoDecision(result, { qualityCheckAvailable = true } = {}) {
+  if (!qualityCheckAvailable) return { action: 'review', message: null };
+  if (result?.status === 'pass') return { action: 'review', message: null };
+  if (result?.status === 'fail') {
+    return { action: 'retry', message: result.message || AUTO_CAPTURE_MESSAGES.start };
   }
-  const message = result.message || AUTO_CAPTURE_MESSAGES.start;
-  if (!manual) return { action: 'retry', message, manualFailures };
-  const failures = manualFailures + 1;
-  if (failures >= config.manualFailuresBeforeReview) {
-    return { action: 'review', message, manualFailures: failures };
-  }
-  return { action: 'retry', message, manualFailures: failures };
+  return { action: 'retry', message: AUTO_CAPTURE_MESSAGES.notVerified };
 }
 
 /**
@@ -165,9 +169,9 @@ export function finalPhotoDecision(result, { manual, manualFailures }, config = 
  * @param {() => Promise<any>} deps.snapshot — takes a low-quality preview photo
  * @param {(shot: any) => Promise<any>} deps.assess — its PhotoQualityResult
  * @param {(shot: any) => void | Promise<void>} deps.discard — deletes the snapshot
- * @param {(update: { message: string; passing: boolean }) => void} deps.onUpdate
+ * @param {(update: { message: string; passing: boolean; suggestRestart: boolean }) => void} deps.onUpdate
+ *   — `suggestRestart` after repeated checks that could not run
  * @param {() => void} deps.onCapture — capture is due (the loop has stopped)
- * @param {() => void} deps.onManualAvailable — called once: timeout or repeated errors
  * @param {typeof AUTO_CAPTURE_CONFIG} [deps.config]
  * @param {() => number} [deps.now]
  * @param {(fn: () => void, ms: number) => any} [deps.setTimer]
@@ -179,7 +183,6 @@ export function createAutoCaptureLoop({
   discard,
   onUpdate,
   onCapture,
-  onManualAvailable,
   config = AUTO_CAPTURE_CONFIG,
   now = Date.now,
   setTimer = setTimeout,
@@ -188,18 +191,8 @@ export function createAutoCaptureLoop({
   let running = false;
   let state = initialAutoCaptureState();
   let timer = null;
-  let manualTimer = null;
-  let manualSent = false;
-  /** Counted from the first start, so restarting after a retry keeps the deadline. */
-  let manualDeadline = null;
   /** @type {Promise<void> | null} */
   let inFlight = null;
-
-  const offerManual = () => {
-    if (manualSent) return;
-    manualSent = true;
-    onManualAvailable();
-  };
 
   async function runCheck() {
     let shot = null;
@@ -234,8 +227,7 @@ export function createAutoCaptureLoop({
 
     const next = nextAutoCaptureState(state, result, now(), config);
     state = next.state;
-    if (next.suggestManual) offerManual();
-    onUpdate({ message: next.message, passing: next.passing });
+    onUpdate({ message: next.message, passing: next.passing, suggestRestart: next.suggestRestart });
     if (next.capture) {
       stopTimers();
       running = false;
@@ -247,9 +239,7 @@ export function createAutoCaptureLoop({
 
   function stopTimers() {
     if (timer != null) clearTimer(timer);
-    if (manualTimer != null) clearTimer(manualTimer);
     timer = null;
-    manualTimer = null;
   }
 
   return {
@@ -259,10 +249,6 @@ export function createAutoCaptureLoop({
       running = true;
       state = initialAutoCaptureState();
       timer = setTimer(tick, delayMs);
-      if (!manualSent) {
-        if (manualDeadline == null) manualDeadline = now() + config.manualFallbackMs;
-        manualTimer = setTimer(offerManual, Math.max(0, manualDeadline - now()));
-      }
     },
     /**
      * Stops the loop. Resolves once any snapshot already in progress has
