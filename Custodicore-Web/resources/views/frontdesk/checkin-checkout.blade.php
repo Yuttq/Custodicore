@@ -165,6 +165,14 @@
 
                 </div>
 
+                {{-- CHECK-IN SCAN ERROR: outside scannerSection so it stays
+                     visible after the camera panel is hidden on a scan. --}}
+                <div
+                    id="scannerError"
+                    role="alert"
+                    class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-center text-metadata font-semibold text-red-700">
+                </div>
+
                 {{-- SCANNER --}}
                 <div
                     id="scannerSection"
@@ -186,12 +194,6 @@
 
                                 Camera is ready. Please present the visitor's QR code.
 
-                            </div>
-
-                            <div
-                                id="scannerError"
-                                role="alert"
-                                class="mt-md hidden rounded-lg border border-red-200 bg-red-50 p-md text-center text-metadata font-semibold text-red-700">
                             </div>
 
                         </div>
