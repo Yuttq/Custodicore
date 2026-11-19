@@ -46,7 +46,7 @@ export const PHOTO_QUALITY_THRESHOLDS = Object.freeze({
   maxYaw: 20,
   maxPitch: 20,
   maxRoll: 20,
-  // Eyes: reject only when BOTH eyes are reported below this.
+  // Eyes: reject when EITHER eye is reported below this.
   minEyeOpenProbability: 0.2,
   // Lighting over the face (or whole photo when there is no face).
   minMeanLuma: 50,
@@ -92,7 +92,7 @@ export const PHOTO_QUALITY_MESSAGES = Object.freeze({
   head_turned: 'Face the camera directly.',
   head_tilted: 'Face the camera directly.',
   head_pitched: 'Face the camera directly.',
-  eyes_closed: 'Keep your eyes open.',
+  eyes_closed: 'Please open your eyes and look at the camera.',
   blurry: 'Hold still.',
 });
 
@@ -274,8 +274,9 @@ export function checkHeadPose(face, t = PHOTO_QUALITY_THRESHOLDS) {
 }
 
 /**
- * Eyes closed only when BOTH probabilities are reported and both are low;
- * glasses or glare can lower one eye's score, so one is never enough.
+ * Both eyes must be reported open: either probability below the threshold
+ * fails. A missing probability is 'unknown' (an essential check, so the
+ * photo cannot pass). The low threshold leaves room for glasses and glare.
  * @param {NormalizedFace} face
  * @param {typeof PHOTO_QUALITY_THRESHOLDS} [t]
  */
@@ -283,7 +284,7 @@ export function checkEyes(face, t = PHOTO_QUALITY_THRESHOLDS) {
   if (!face) return { status: 'unknown' };
   const value = { left: face.leftEyeOpen, right: face.rightEyeOpen };
   if (face.leftEyeOpen == null || face.rightEyeOpen == null) return { status: 'unknown', value };
-  if (face.leftEyeOpen < t.minEyeOpenProbability && face.rightEyeOpen < t.minEyeOpenProbability) {
+  if (face.leftEyeOpen < t.minEyeOpenProbability || face.rightEyeOpen < t.minEyeOpenProbability) {
     return { status: 'fail', reason: 'eyes_closed', value };
   }
   return { status: 'pass', value };
@@ -425,10 +426,10 @@ export function checkSharpness(sharpness, t = PHOTO_QUALITY_THRESHOLDS) {
 // ---------------------------------------------------------------------------
 
 /**
- * Checks that must each return 'pass' for the photo to pass. Head pose and
- * eyes block only on 'fail': ML Kit does not always report those values.
+ * Checks that must each return 'pass' for the photo to pass. Head pose
+ * blocks only on 'fail': ML Kit does not always report those angles.
  */
-const ESSENTIAL_CHECKS = ['faceCount', 'position', 'size', 'lighting', 'sharpness'];
+const ESSENTIAL_CHECKS = ['faceCount', 'position', 'size', 'eyes', 'lighting', 'sharpness'];
 
 const SKIPPED = Object.freeze({ status: 'skipped' });
 const UNKNOWN = Object.freeze({ status: 'unknown' });

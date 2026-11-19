@@ -187,14 +187,57 @@ test('head angles: lenient limits for yaw, roll and pitch', () => {
   assert.equal(assess([mlkitFace({ yaw: 30 })]).message, 'Face the camera directly.');
 });
 
-test('eyes: closed only when both eyes are reported low', () => {
-  assert.deepEqual(assess([mlkitFace({ leftEye: 0.05, rightEye: 0.1 })]).reasons, ['eyes_closed']);
-  // One low eye (glasses, glare, a wink) is never enough.
-  assert.equal(assess([mlkitFace({ leftEye: 0.05, rightEye: 0.9 })]).status, 'pass');
-  // Not reported: not checked, no rejection.
-  const missing = assess([mlkitFace({ leftEye: null, rightEye: undefined })]);
-  assert.equal(missing.status, 'pass');
-  assert.equal(missing.checks.eyes.status, 'unknown');
+test('eyes: both open passes', () => {
+  const open = assess([mlkitFace({ leftEye: 0.95, rightEye: 0.93 })]);
+  assert.equal(open.status, 'pass');
+  assert.equal(open.checks.eyes.status, 'pass');
+  // Exactly at the threshold counts as open.
+  const t = PHOTO_QUALITY_THRESHOLDS.minEyeOpenProbability;
+  assert.equal(assess([mlkitFace({ leftEye: t, rightEye: t })]).status, 'pass');
+});
+
+test('eyes: either eye closed fails with guidance', () => {
+  const message = 'Please open your eyes and look at the camera.';
+  const both = assess([mlkitFace({ leftEye: 0.05, rightEye: 0.1 })]);
+  assert.equal(both.status, 'fail');
+  assert.deepEqual(both.reasons, ['eyes_closed']);
+  assert.equal(both.message, message);
+
+  const left = assess([mlkitFace({ leftEye: 0.05, rightEye: 0.9 })]);
+  assert.equal(left.status, 'fail');
+  assert.deepEqual(left.reasons, ['eyes_closed']);
+  assert.equal(left.message, message);
+
+  const right = assess([mlkitFace({ leftEye: 0.9, rightEye: 0.19 })]);
+  assert.equal(right.status, 'fail');
+  assert.deepEqual(right.reasons, ['eyes_closed']);
+  assert.equal(right.message, message);
+});
+
+test('eyes: a missing eye probability is UNKNOWN and the photo cannot pass', () => {
+  // (mlkitFace() fills in defaults for undefined, so remove the fields instead.)
+  const withoutEyes = (...keys) => {
+    const face = mlkitFace();
+    for (const key of keys) delete face[key];
+    return face;
+  };
+  for (const face of [
+    mlkitFace({ leftEye: null }),
+    mlkitFace({ rightEye: null }),
+    withoutEyes('leftEyeOpenProbability'),
+    withoutEyes('rightEyeOpenProbability'),
+    withoutEyes('leftEyeOpenProbability', 'rightEyeOpenProbability'),
+  ]) {
+    const result = assess([face]);
+    assert.equal(result.checks.eyes.status, 'unknown');
+    assert.equal(result.status, 'unknown');
+    assert.deepEqual(result.reasons, []);
+    assert.equal(result.message, null);
+  }
+  // Out-of-range values are treated as missing, not as open.
+  const junk = assess([{ ...mlkitFace(), leftEyeOpenProbability: 3 }]);
+  assert.equal(junk.checks.eyes.status, 'unknown');
+  assert.equal(junk.status, 'unknown');
 });
 
 test('missing detector data is UNKNOWN: never blamed on the visitor, never a pass', () => {
@@ -210,10 +253,16 @@ test('missing detector data is UNKNOWN: never blamed on the visitor, never a pas
   // Faces without a usable box: detector data problem, not "no face".
   assert.equal(assess([{ frame: null }, { headEulerAngleY: 3 }]).status, 'unknown');
 
-  // A face without angles or eye scores: those are optional checks, so it
-  // still passes when every essential check passed.
+  // A face without head angles: optional, so it still passes.
+  const noAngles = assess([
+    { frame: mlkitFace().frame, leftEyeOpenProbability: 0.9, rightEyeOpenProbability: 0.9 },
+  ]);
+  assert.equal(noAngles.status, 'pass');
+  assert.equal(noAngles.checks.headPose.status, 'unknown');
+
+  // A face without eye scores: eyes are essential, so no pass.
   const sparse = assess([{ frame: mlkitFace().frame }]);
-  assert.equal(sparse.status, 'pass');
+  assert.equal(sparse.status, 'unknown');
   assert.equal(sparse.checks.headPose.status, 'unknown');
   assert.equal(sparse.checks.eyes.status, 'unknown');
 
@@ -250,7 +299,7 @@ test('thresholds are configurable per call', () => {
 
 test('every reason has a short message', () => {
   for (const message of Object.values(PHOTO_QUALITY_MESSAGES)) {
-    assert.ok(message.length > 0 && message.length <= 40, message);
+    assert.ok(message.length > 0 && message.length <= 48, message);
   }
 });
 
