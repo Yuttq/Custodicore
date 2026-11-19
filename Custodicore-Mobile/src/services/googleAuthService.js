@@ -80,6 +80,14 @@ export async function signInWithGoogle() {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     }
 
+    // Always show the account picker: drop any cached native Google session
+    // so the visitor can choose (or switch) accounts on every attempt.
+    try {
+      await GoogleSignin.signOut();
+    } catch {
+      // Best effort — a failed sign-out must not block sign-in.
+    }
+
     const response = await GoogleSignin.signIn();
     if (response?.type === 'cancelled') {
       throw new GoogleSignInCancelledError();
