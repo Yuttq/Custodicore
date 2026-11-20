@@ -15,6 +15,10 @@
         data-confirm-title="Register PDL" data-confirm-ok="Register">
     @csrf
 
+    @if ($duplicate)
+      @include('pdl.partials.duplicate-match', ['match' => $duplicate])
+    @endif
+
     <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'user'])</span> Personal Details</p>
     <div class="row">
       @include('pdl.partials.photo-field', ['required' => true])
@@ -35,6 +39,7 @@
     </div>
 
     <div class="row cols-3">
+      @include('pdl.partials.suffix-select', ['selected' => old('suffix')])
       <div class="field-m">
         <label>Alias (optional)</label>
         <input type="text" name="alias" value="{{ old('alias') }}" maxlength="150">

@@ -8,6 +8,7 @@
                       server enforces.
     $classification — the PDL's classification on the edit page (or null). On
                       Register PDL it is read live from the offense picked above.
+    $selectId       — id of the dropdown (default "cell_block"; unique when the page has two)
     $pdl            — the PDL being edited (or null): their own case numbers are
                       checked for co-accused, and they are left out of the matches.
   Capacity is only a recommendation (dorms are overpopulated in practice):
@@ -29,6 +30,7 @@
   $required = $required ?? true;
   $classification = $classification ?? null;
   $pdl = $pdl ?? null;
+  $selectId = $selectId ?? 'cell_block';
   $ownCases = $pdl ? $pdl->legalRecords->map(fn ($r) => \App\Models\PdlLegalRecord::normalizeCaseNumber($r->case_number))->unique()->values() : collect();
   // Most space left first; dorms already over their recommended number last.
   $ordered = $cellBlocks->sortBy(fn ($b) => [$b->isOver() ? 1 : 0, -$b->available(), $b->name])->values();
@@ -40,12 +42,12 @@
      data-coaccused='@json(\App\Models\PdlLegalRecord::coAccusedMap())'
      data-own-cases='@json($ownCases)'
      data-self-id="{{ $pdl?->pdl_id }}">
-  <label for="cell_block">Cell/Block</label>
+  <label for="{{ $selectId }}">Cell/Block</label>
 
   @if ($cellBlocks->isEmpty())
     <p class="field-hint">No cell blocks set up yet. <a href="{{ route('cell-blocks.index') }}">Add cell blocks</a> first.</p>
   @else
-    <select id="cell_block" name="cell_block" data-cell-select {{ $required ? 'required' : '' }}>
+    <select id="{{ $selectId }}" name="cell_block" data-cell-select {{ $required ? 'required' : '' }}>
       <option value="">— Select a cell/block —</option>
       @foreach ($ordered as $block)
         @php
@@ -101,7 +103,8 @@
 
 @once
 <script>
-  document.querySelectorAll('[data-cell-block-picker]').forEach(function (picker) {
+  // After the page loads: this partial can appear more than once on a page (PDL profile: Edit + Re-admit).
+  document.addEventListener('DOMContentLoaded', function () { document.querySelectorAll('[data-cell-block-picker]').forEach(function (picker) {
     var select = picker.querySelector('[data-cell-select]');
     if (!select) return;
     var form = picker.closest('form');
@@ -231,6 +234,6 @@
     if (offense) offense.addEventListener('change', filterGender);
     if (caseInput) caseInput.addEventListener('input', filterGender);
     filterGender();
-  });
+  }); });
 </script>
 @endonce

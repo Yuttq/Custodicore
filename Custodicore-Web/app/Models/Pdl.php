@@ -27,6 +27,7 @@ class Pdl extends Model
         'first_name',
         'middle_name',
         'last_name',
+        'suffix',
         'alias',
         'date_of_birth',
         'gender',
@@ -49,7 +50,7 @@ class Pdl extends Model
         // keep it in sync whenever the separate name parts are set.
         static::saving(function (Pdl $pdl) {
             if ($pdl->first_name !== null || $pdl->last_name !== null) {
-                $pdl->full_name = self::composeFullName($pdl->first_name, $pdl->middle_name, $pdl->last_name);
+                $pdl->full_name = self::composeFullName($pdl->first_name, $pdl->middle_name, $pdl->last_name, $pdl->suffix);
             }
         });
 
@@ -64,9 +65,29 @@ class Pdl extends Model
         });
     }
 
-    public static function composeFullName(?string $first, ?string $middle, ?string $last): string
+    /** "Juan Santos Dela Cruz Jr." — the suffix (optional) goes last. */
+    public static function composeFullName(?string $first, ?string $middle, ?string $last, ?string $suffix = null): string
     {
-        return implode(' ', array_filter(array_map(fn ($part) => trim((string) $part), [$first, $middle, $last]), fn ($part) => $part !== ''));
+        return implode(' ', array_filter(array_map(fn ($part) => trim((string) $part), [$first, $middle, $last, $suffix]), fn ($part) => $part !== ''));
+    }
+
+    /**
+     * Another PDL who looks like the same person: same full name (ignoring
+     * case) and same date of birth. $exceptId leaves out the PDL being edited.
+     */
+    public static function findSamePerson(string $fullName, string $dateOfBirth, ?int $exceptId = null): ?self
+    {
+        return self::whereRaw('LOWER(full_name) = ?', [mb_strtolower($fullName)])
+            ->whereDate('date_of_birth', $dateOfBirth)
+            ->when($exceptId, fn ($q) => $q->where('pdl_id', '!=', $exceptId))
+            ->orderBy('pdl_id')
+            ->first();
+    }
+
+    /** Released or transferred: the PDL can be taken back into custody on the same record. */
+    public function canBeReadmitted(): bool
+    {
+        return in_array($this->custody_status, ['released', 'transferred'], true);
     }
 
     /**
@@ -77,18 +98,21 @@ class Pdl extends Model
     public function nameParts(): array
     {
         if ($this->first_name !== null || $this->last_name !== null) {
-            return ['first' => $this->first_name, 'middle' => $this->middle_name, 'last' => $this->last_name];
+            return ['first' => $this->first_name, 'middle' => $this->middle_name, 'last' => $this->last_name, 'suffix' => $this->suffix];
         }
 
         $words = preg_split('/\s+/', trim((string) $this->full_name), -1, PREG_SPLIT_NO_EMPTY);
         if (count($words) < 2) {
-            return ['first' => $words[0] ?? '', 'middle' => null, 'last' => ''];
+            return ['first' => $words[0] ?? '', 'middle' => null, 'last' => '', 'suffix' => null];
         }
 
+        // A suffix in an old full name stays in the guessed last name for
+        // the officer to move; guessing here could drop it on save.
         return [
             'first' => array_shift($words),
             'last' => array_pop($words),
             'middle' => $words ? implode(' ', $words) : null,
+            'suffix' => null,
         ];
     }
 

@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
  * changes an EXISTING person's / record's details:
  *   - admin.users.update, admin.users.toggle-status   (Admin / Warden)
  *   - admin.visitors.account-status                   (Admin / Warden)
- *   - pdl.update                                      (Record Officer)
+ *   - pdl.update, pdl.readmit                         (Record Officer)
  *
  * The signed-in staff member must submit their OWN password in a
  * `current_password` field. The shared modal in

@@ -265,6 +265,7 @@ class PdlController extends Controller
             'first_name' => Sanitizer::name($request->input('first_name')),
             'middle_name' => Sanitizer::name($request->input('middle_name')),
             'last_name' => Sanitizer::name($request->input('last_name')),
+            'suffix' => Sanitizer::suffix($request->input('suffix')),
             'alias' => Sanitizer::text($request->input('alias')),
             'cell_block' => Sanitizer::text($request->input('cell_block')),
         ]);
@@ -277,16 +278,27 @@ class PdlController extends Controller
     {
         $cellBlocks = $this->assignableCellBlocks();
 
-        return view('pdl.create', compact('cellBlocks'));
+        // Set by validateProfile() when the name + date of birth match a PDL
+        // already on file: the form shows that record so the officer can
+        // re-admit them instead, or confirm it is a different person.
+        $duplicate = session('duplicate_pdl_id')
+            ? Pdl::with('legalRecords')->find(session('duplicate_pdl_id'))
+            : null;
+
+        return view('pdl.create', compact('cellBlocks', 'duplicate'));
     }
 
     public function store(Request $request)
     {
         $this->cleanPdlInput($request);
+        $request->merge(['duplicate_reason' => Sanitizer::text($request->input('duplicate_reason'))]);
 
         $this->cleanCaseInput($request);
 
         $validated = $this->validateProfile($request, [
+            // Only used when the name + date of birth match a PDL on file.
+            'not_duplicate' => ['nullable', 'boolean'],
+            'duplicate_reason' => ['nullable', 'required_if_accepted:not_duplicate', 'string', 'min:10', 'max:255'],
             'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($request->input('gender'))],
             'photo' => ['required', ...self::PHOTO_RULES],
             // The case they're detained for; it becomes their first legal record.
@@ -296,8 +308,15 @@ class PdlController extends Controller
         $this->checkCaseDetails($validated, $validated['date_of_birth'] ?? null);
         $case = [...$this->caseAttributes($validated), ...$this->caseDetailAttributes($validated)];
         $caseInput = $validated;
+        // The PDL already on file that the officer confirmed is someone else (or null).
+        $overridden = $request->boolean('not_duplicate')
+            ? Pdl::findSamePerson(
+                Pdl::composeFullName($validated['first_name'], $validated['middle_name'] ?? null, $validated['last_name'], $validated['suffix'] ?? null),
+                $validated['date_of_birth']
+            )
+            : null;
         $validated = array_diff_key($validated, array_flip(['photo', 'case_number', 'offense_code', 'offense_other', 'court',
-            ...array_keys($this->caseDetailRules($request))]));
+            'not_duplicate', 'duplicate_reason', ...array_keys($this->caseDetailRules($request))]));
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
@@ -342,6 +361,16 @@ class PdlController extends Controller
             $pdl->pdl_id,
             "Registered new PDL: {$pdl->full_name} ({$pdl->pdl_number})"
         );
+
+        if ($overridden) {
+            $this->logAudit(
+                'create',
+                'pdl_profiles',
+                $pdl->pdl_id,
+                "Duplicate check overridden: {$pdl->pdl_number} has the same name and date of birth as {$overridden->pdl_number}. "
+                    . "Officer confirmed a different person. Reason: {$caseInput['duplicate_reason']}"
+            );
+        }
 
         return redirect()
             ->route('pdl.show', $pdl->pdl_id)
@@ -490,6 +519,96 @@ class PdlController extends Controller
         return redirect()
             ->route('pdl.show', $pdl->pdl_id)
             ->with('success', 'PDL profile updated.');
+    }
+
+    // -----------------------------------------------------------------
+    // RE-ADMIT a released or transferred PDL on their existing record
+    // -----------------------------------------------------------------
+
+    /**
+     * Back into custody on the same record (not a new registration), so the
+     * PDL keeps their number, linked visitors, cases and history. Takes the
+     * new admission date and cell, plus the new case when there is one (a
+     * transferred PDL coming back may still be on a case already on file).
+     */
+    public function readmit(Request $request, Pdl $pdl)
+    {
+        if (! $pdl->canBeReadmitted()) {
+            return redirect()->route('pdl.show', $pdl->pdl_id)
+                ->with('error', 'Only a released or transferred PDL can be re-admitted.');
+        }
+
+        $newCase = $request->boolean('new_case');
+        $request->merge(['cell_block' => Sanitizer::text($request->input('cell_block'))]);
+        if ($newCase) {
+            $this->cleanCaseInput($request);
+        }
+
+        $after = $pdl->admission_date ? $pdl->admission_date->toDateString() : $pdl->date_of_birth->toDateString();
+        $validated = validator($request->all(), [
+            'admission_date' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:' . $after],
+            'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($pdl->gender, $pdl, 'active')],
+            ...($newCase ? [...$this->caseRules($pdl), ...$this->caseDetailRules($request)] : []),
+        ], [
+            ...self::CASE_MESSAGES,
+            'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
+            'admission_date.after_or_equal' => 'The new admission date cannot be before the previous one (' . \Carbon\Carbon::parse($after)->format('M j, Y') . ').',
+            'cell_block.required' => 'Please select a cell for this PDL.',
+        ])->validate();
+        if ($newCase) {
+            $this->checkCaseDetails($validated, $pdl->date_of_birth?->toDateString());
+        }
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return redirect()->back()->withInput()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $previousStatus = $pdl->custody_status;
+        $previousAdmission = $pdl->admission_date?->format('M j, Y') ?? '—';
+
+        try {
+            $record = \Illuminate\Support\Facades\DB::transaction(function () use ($pdl, $validated, $newCase, $staffId) {
+                $pdl->update([
+                    'custody_status' => 'active',
+                    'admission_date' => $validated['admission_date'],
+                    'cell_block' => $validated['cell_block'],
+                ]);
+
+                if (! $newCase) {
+                    return null;
+                }
+
+                $record = PdlLegalRecord::create([
+                    ...$this->caseAttributes($validated),
+                    ...$this->caseDetailAttributes($validated),
+                    'pdl_id' => $pdl->pdl_id,
+                    'recorded_by' => $staffId,
+                ]);
+                $this->addHearing($record, $validated, $staffId);
+                $pdl->refreshClassification();
+
+                return $record;
+            });
+        } catch (\Throwable $e) {
+            Log::error('PDL re-admission failed: ' . $e->getMessage());
+            return redirect()->back()->withInput()
+                ->with('error', 'Could not re-admit this PDL. ' . $this->friendlyMessage($e));
+        }
+
+        $this->logAudit(
+            'update',
+            'pdl_custody_status',
+            $pdl->pdl_id,
+            "Re-admitted: custody status {$previousStatus} → active; admitted " . $pdl->admission_date->format('M j, Y')
+                . " (previous admission {$previousAdmission}); Cell/Block: {$pdl->cell_block}"
+                . ($record ? "; new case {$record->case_number}" : '; no new case')
+                . ' (password re-confirmed)'
+        );
+
+        return redirect()
+            ->route('pdl.show', $pdl->pdl_id)
+            ->with('success', "{$pdl->full_name} has been re-admitted on their existing record ({$pdl->pdl_number}).");
     }
 
     /** Serves the PDL's photo from the private disk to signed-in staff. */
@@ -789,6 +908,7 @@ class PdlController extends Controller
             'first_name' => ['required', ...$name],
             'middle_name' => ['nullable', ...$name],
             'last_name' => ['required', ...$name],
+            'suffix' => ['nullable', Rule::in(Sanitizer::SUFFIXES)],
             'alias' => ['nullable', 'string', 'max:150'],
             'date_of_birth' => ['required', 'date', 'before:today', 'after:1900-01-01'],
             'gender' => ['required', 'in:male,female,other'],
@@ -799,6 +919,9 @@ class PdlController extends Controller
             'first_name.regex' => 'First name may only contain letters, spaces, dots, apostrophes and dashes.',
             'middle_name.regex' => 'Middle name may only contain letters, spaces, dots, apostrophes and dashes.',
             'last_name.regex' => 'Last name may only contain letters, spaces, dots, apostrophes and dashes.',
+            'suffix.in' => 'Choose a suffix from the list (Jr., Sr., II, III, IV, V) or leave it blank.',
+            'duplicate_reason.required_if_accepted' => 'Explain how you confirmed this is a different person.',
+            'duplicate_reason.min' => 'Explain how you confirmed this is a different person (at least 10 characters).',
             'date_of_birth.before' => 'The date of birth must be in the past.',
             'date_of_birth.after' => 'Please enter a valid date of birth.',
             'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
@@ -813,11 +936,11 @@ class PdlController extends Controller
         ]);
 
         $validator->after(function ($v) use ($request, $pdl) {
-            if ($v->errors()->hasAny(['first_name', 'middle_name', 'last_name', 'date_of_birth', 'admission_date'])) {
+            if ($v->errors()->hasAny(['first_name', 'middle_name', 'last_name', 'suffix', 'date_of_birth', 'admission_date'])) {
                 return;
             }
 
-            $fullName = Pdl::composeFullName($request->input('first_name'), $request->input('middle_name'), $request->input('last_name'));
+            $fullName = Pdl::composeFullName($request->input('first_name'), $request->input('middle_name'), $request->input('last_name'), $request->input('suffix'));
             if (mb_strlen($fullName) > 150) {
                 $v->errors()->add('last_name', 'The full name is too long (150 characters at most in total).');
             }
@@ -827,11 +950,29 @@ class PdlController extends Controller
                 $v->errors()->add('date_of_birth', 'A PDL must be at least 18 years old on the admission date.');
             }
 
-            $duplicate = Pdl::where('full_name', $fullName)
-                ->whereDate('date_of_birth', $birth->toDateString())
-                ->when($pdl, fn ($q) => $q->where('pdl_id', '!=', $pdl->pdl_id))
-                ->first();
-            if ($duplicate) {
+            // Editing without touching the name or birth date: nothing to
+            // re-check (two PDLs may share both after a confirmed override).
+            if ($pdl && mb_strtolower($fullName) === mb_strtolower((string) $pdl->full_name)
+                && $pdl->date_of_birth?->toDateString() === $birth->toDateString()) {
+                return;
+            }
+
+            $duplicate = Pdl::findSamePerson($fullName, $birth->toDateString(), $pdl?->pdl_id);
+            if (! $duplicate) {
+                return;
+            }
+
+            if ($pdl) {
+                $v->errors()->add('first_name', "Another PDL with this name and date of birth is already registered ({$duplicate->pdl_number}). "
+                    . 'Check the name and date of birth, or add a suffix if they are different people.');
+                return;
+            }
+
+            // Registering: the officer may confirm it is a different person
+            // (with a reason, checked by the duplicate_reason rule). Flashed
+            // either way so the form shows the match again if anything fails.
+            session()->flash('duplicate_pdl_id', $duplicate->pdl_id);
+            if (! $request->boolean('not_duplicate')) {
                 $v->errors()->add('first_name', "A PDL with this name and date of birth is already registered ({$duplicate->pdl_number}).");
             }
         });
