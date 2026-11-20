@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\Role;
 use App\Models\SystemSetting;
+use App\Services\ScheduleAvailabilityService;
 use App\Support\FacilityContact;
 use App\Support\Sanitizer;
 use Illuminate\Http\RedirectResponse;
@@ -58,8 +59,52 @@ class SettingsController extends Controller
         ];
 
         $facilityContact = FacilityContact::current();
+        // The limit bookings use now (2 when the row does not exist yet).
+        $maxPerWeek = app(ScheduleAvailabilityService::class)->maxVisitsPerWeek();
 
-        return view('admin.settings.index', compact('settings', 'roles', 'summary', 'facilityContact'));
+        return view('admin.settings.index', compact('settings', 'roles', 'summary', 'facilityContact', 'maxPerWeek'));
+    }
+
+    /**
+     * PUT /admin/settings/visiting-rules — the weekly visit limit per visitor
+     * (all PDLs together). Behind `reauth`. New bookings, staff assignments,
+     * walk-ins and the app calendar read the setting on every check, so the
+     * change applies at once; visits already booked are left as they are.
+     */
+    public function updateVisitingRules(Request $request, ScheduleAvailabilityService $availability): RedirectResponse
+    {
+        $data = $request->validate([
+            'max_per_week' => ['required', 'integer', 'between:'.SystemSetting::MAX_PER_WEEK_MIN.','.SystemSetting::MAX_PER_WEEK_MAX],
+        ], [
+            'max_per_week.between' => 'Enter a number from '.SystemSetting::MAX_PER_WEEK_MIN.' to '.SystemSetting::MAX_PER_WEEK_MAX.'.',
+            'max_per_week.integer' => 'Enter a whole number.',
+        ]);
+
+        $staffId = $request->user()?->staffProfile?->staff_id;
+        abort_unless($staffId, 403, 'Only staff with a profile can change settings.');
+
+        $before = $availability->maxVisitsPerWeek();
+        $after = (int) $data['max_per_week'];
+
+        $setting = SystemSetting::updateOrCreate(
+            ['setting_key' => SystemSetting::KEY_MAX_PER_WEEK],
+            ['setting_value' => (string) $after, 'updated_by' => $staffId, 'updated_at' => now()]
+        );
+
+        if ($before !== $after) {
+            AuditLog::record(
+                'update',
+                'system_settings',
+                (int) $setting->setting_id,
+                "Changed weekly visit limit from {$before} to {$after} per visitor",
+                Module::CODE_VISIT_SCHEDULING
+            );
+        }
+
+        return redirect()->route('admin.settings.index')
+            ->with('status', $before !== $after
+                ? "Weekly visit limit set to {$after}. It applies to new bookings now; visits already booked are not changed."
+                : "Weekly visit limit is still {$after}.");
     }
 
     /**

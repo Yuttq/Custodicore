@@ -46,6 +46,33 @@
     </div>
 
     <div class="cc-card">
+        <p class="text-card-title">Visiting Rules</p>
+        <p class="text-metadata text-text-secondary">
+            Counts all PDLs together, Monday–Sunday. A whole-day visit counts as one.
+            A change applies to new bookings right away; visits already booked are not changed.
+        </p>
+
+        <form method="POST" action="{{ route('admin.settings.visiting-rules') }}" class="mt-md"
+              data-password-confirm="Change the weekly visit limit? Enter your password to confirm.">
+            @csrf
+            @method('PUT')
+            <div class="grid grid-cols-1 gap-sm sm:grid-cols-3">
+                <div>
+                    <label class="cc-label" for="visiting-max-per-week">Visits per Visitor per Week
+                        <span class="normal-case">({{ \App\Models\SystemSetting::MAX_PER_WEEK_MIN }}–{{ \App\Models\SystemSetting::MAX_PER_WEEK_MAX }})</span></label>
+                    <input id="visiting-max-per-week" type="number" name="max_per_week" required
+                           min="{{ \App\Models\SystemSetting::MAX_PER_WEEK_MIN }}" max="{{ \App\Models\SystemSetting::MAX_PER_WEEK_MAX }}" step="1"
+                           value="{{ old('max_per_week', $maxPerWeek) }}" class="cc-input" />
+                    @error('max_per_week') <p class="mt-xs text-metadata text-danger">{{ $message }}</p> @enderror
+                </div>
+            </div>
+            <div class="mt-md flex justify-end">
+                <button type="submit" class="cc-btn-primary">Save Rules</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="cc-card">
         <p class="text-card-title">System Settings</p>
 
         <div class="mt-md overflow-x-auto">

@@ -323,8 +323,10 @@ class QrPassValidityTest extends TestCase
             ->assertOk()
             ->assertDontSee('qr.expiry_minutes')
             ->assertDontSee('Minutes a generated QR code stays valid')
-            ->assertSee('visit.max_per_week')
-            ->assertSee('Maximum visits a single visitor may attend per week');
+            // The weekly limit moved from the read-only table to its own Visiting Rules card.
+            ->assertDontSee('visit.max_per_week')
+            ->assertSee('Visiting Rules')
+            ->assertSee('name="max_per_week"', false);
 
         $this->assertSame('180', SystemSetting::value('qr.expiry_minutes'));
     }

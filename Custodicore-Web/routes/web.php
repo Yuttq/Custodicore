@@ -335,6 +335,10 @@ Route::prefix('admin')
         Route::put('/settings/facility-contact', [SettingsController::class, 'updateFacilityContact'])
             ->middleware('reauth')
             ->name('settings.facility-contact');
+        // Weekly visit limit per visitor; admin re-enters their password.
+        Route::put('/settings/visiting-rules', [SettingsController::class, 'updateVisitingRules'])
+            ->middleware('reauth')
+            ->name('settings.visiting-rules');
     });
 
 

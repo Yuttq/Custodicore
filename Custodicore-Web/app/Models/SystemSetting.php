@@ -21,6 +21,13 @@ class SystemSetting extends Model
         'schedule.slot_capacity_default' => 'Default visitor capacity per time slot',
     ];
 
+    /** Weekly visit limit per visitor (all PDLs); edited in the Visiting Rules card. */
+    const KEY_MAX_PER_WEEK = 'visit.max_per_week';
+
+    /** At least one visit; at most seven, since a visitor holds one visit per day. */
+    const MAX_PER_WEEK_MIN = 1;
+    const MAX_PER_WEEK_MAX = 7;
+
     /**
      * Kept in the table but no longer used, so not listed on settings pages.
      * qr.expiry_minutes: a QR pass is valid until the visit's last session
@@ -28,6 +35,8 @@ class SystemSetting extends Model
      */
     const HIDDEN = [
         'qr.expiry_minutes',
+        // Edited in its own Visiting Rules card.
+        self::KEY_MAX_PER_WEEK,
         // Edited in their own Facility Contact card (App\Support\FacilityContact).
         'facility_contact.name',
         'facility_contact.phone',
