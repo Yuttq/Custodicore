@@ -97,11 +97,6 @@ class PdlLinkReviewController extends Controller
         $relationship = $result['relationship']->load(['visitor', 'pdl']);
         $pdlName = $relationship->pdl?->full_name ?? 'a PDL';
 
-        // Same notification as staff adding a PDL from the visitor page.
-        VisitorController::notifyAdditionalPdl($relationship->visitor, $relationship, 'relationship_linked', 'PDL Added To Your Account',
-            "Facility staff matched your request and linked {$pdlName} to your account as your {$relationship->relationshipLabel()}. "
-            . 'Staff will now review the documents you sent. You can request visits with this PDL once the relationship is approved.');
-
         $done = [
             'created' => 'A new pending relationship was created',
             'reused' => 'The existing pending relationship was used',
@@ -112,6 +107,16 @@ class PdlLinkReviewController extends Controller
         // (e.g. "no immediate family"; the pop-up says Approve confirms them, as on
         // the visitor page) and the relationship, in one step.
         $approval = app(\App\Services\RelationshipApproval::class)->approve($relationship, $staffId);
+
+        // One notification per Link: "approved" when Link & Approve finished it,
+        // otherwise "added" (its "staff will review" text is only true then).
+        if (! $approval['approved']) {
+            // Same notification as staff adding a PDL from the visitor page.
+            VisitorController::notifyAdditionalPdl($relationship->visitor, $relationship, 'relationship_linked', 'PDL Added To Your Account',
+                "Facility staff matched your request and linked {$pdlName} to your account as your {$relationship->relationshipLabel()}. "
+                . 'Staff will now review the documents you sent. You can request visits with this PDL once the relationship is approved.');
+        }
+
         if ($approval['approved']) {
             \App\Models\AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
                 "Approved relationship: {$relationship->visitor->full_name} as {$relationship->relationshipLabel()} to {$pdlName} (linked from request #{$pdlLinkRequest->request_id})",

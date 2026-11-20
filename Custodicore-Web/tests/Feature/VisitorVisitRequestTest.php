@@ -518,10 +518,13 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame('confirmed', $visit->status);
         $this->assertNotNull($visit->confirmed_at);
         $this->assertSame(1, $this->schedule->fresh()->slots_taken, 'Confirming keeps the seat.');
-        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)
+        $confirmed = Notification::where('account_id', $this->visitorAccount->account_id)
             ->where('title', 'Visit Confirmed')
             ->where('related_record_id', $visit->visit_request_id)
-            ->exists());
+            ->sole();
+        // Says the visit is confirmed (with the PDL), not that the visitor attended.
+        $this->assertStringStartsWith("You confirmed your visit with {$this->pdl->full_name} on ", $confirmed->message);
+        $this->assertStringNotContainsString('attendance has been recorded', $confirmed->message);
         $this->assertTrue(AuditLog::where('record_type', 'visit_requests')
             ->where('record_id', $visit->visit_request_id)
             ->where('description', 'Visitor confirmed attendance via mobile app')

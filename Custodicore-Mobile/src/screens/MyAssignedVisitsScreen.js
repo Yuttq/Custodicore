@@ -362,7 +362,7 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
         await confirmVisit(id);
         Alert.alert(
           'Attendance confirmed',
-          'Your attendance has been recorded. Please arrive on time with valid ID.',
+          'You confirmed your visit. Please arrive 15 minutes early with valid ID.',
         );
       } catch (e) {
         const message =

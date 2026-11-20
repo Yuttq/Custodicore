@@ -637,7 +637,12 @@ class PdlLinkRequestReviewTest extends TestCase
         $relationship = VisitorPdlRelationship::where('visitor_id', $this->visitor->visitor_id)->where('pdl_id', $this->other->pdl_id)->sole();
         $this->assertSame('verified', $relationship->verification_status);
         $this->assertSame('verified', $document->fresh()->status);
-        $this->assertTrue(Notification::where('account_id', $this->visitor->account_id)->where('notification_type', 'relationship_approved')->exists());
+
+        // One notification, not "PDL Added … staff will review" followed by "Approved".
+        $sent = Notification::where('account_id', $this->visitor->account_id)
+            ->where('related_record_id', $relationship->relationship_id)
+            ->pluck('notification_type')->all();
+        $this->assertSame(['relationship_approved'], $sent);
     }
 
     public function test_pending_link_is_approved_from_the_list_with_its_documents(): void

@@ -169,28 +169,35 @@ class VisitAssignmentService
      * session the Record Officer created and left open with seats. Creates the request as
      * `assigned` (awaiting Record Officer review).
      *
+     * $notifySubmitted = false skips the "Visit Request Submitted" notice, for
+     * a walk-in booking that is approved in the same step (WalkInService): the
+     * visitor then only gets "Visit Request Approved", not "awaiting review" too.
+     *
      * @param  string|array<int, string>  $startTimes
      */
     public function submitVisitorRequest(
         VisitorProfile $visitor,
         VisitorPdlRelationship $relationship,
         CarbonImmutable $date,
-        string|array $startTimes
+        string|array $startTimes,
+        bool $notifySubmitted = true
     ): VisitRequest {
         return $this->bookSessions(
             $visitor, $relationship, $date, $startTimes, 'assigned', null,
             'You already have a visit with this PDL on this date.',
             self::ONE_PDL_PER_DAY_MESSAGE,
-            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
+            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor, $notifySubmitted) {
                 $scheduleLabel = $this->visitLabel($visitRequest);
-                Notification::notify(
-                    $visitor->account_id,
-                    'visits',
-                    'Visit Request Submitted',
-                    "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
-                    'visit_requests',
-                    $visitRequest->visit_request_id
-                );
+                if ($notifySubmitted) {
+                    Notification::notify(
+                        $visitor->account_id,
+                        'visits',
+                        'Visit Request Submitted',
+                        "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
+                        'visit_requests',
+                        $visitRequest->visit_request_id
+                    );
+                }
 
                 AuditLog::record(
                     'create',
@@ -513,11 +520,13 @@ class VisitAssignmentService
 
             $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
 
+            // Says the visit is confirmed, not that the visitor attended (that is check-in).
+            $scheduleLabel = $this->visitLabel($visitRequest);
             Notification::notify(
                 $visitRequest->visitor->account_id,
                 'visit_confirmed',
                 'Visit Confirmed',
-                'Your attendance has been recorded. Arrive 15 minutes early with valid ID.',
+                "You confirmed your visit with {$visitRequest->pdl->full_name} on {$scheduleLabel}. Arrive 15 minutes early with valid ID.",
                 'visit_requests',
                 $visitRequest->visit_request_id
             );

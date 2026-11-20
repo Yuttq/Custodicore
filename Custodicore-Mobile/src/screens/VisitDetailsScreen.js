@@ -95,7 +95,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
       await confirmVisit(visit.id);
       Alert.alert(
         'Attendance confirmed',
-        'Your attendance has been recorded. Please arrive on time with valid ID.',
+        'You confirmed your visit. Please arrive 15 minutes early with valid ID.',
         [{ text: 'OK', onPress: () => goBackOr(navigation) }],
       );
     } catch (e) {

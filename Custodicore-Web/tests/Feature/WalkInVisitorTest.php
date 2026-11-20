@@ -342,6 +342,11 @@ class WalkInVisitorTest extends TestCase
         $this->assertSame(1, (int) $this->todaysSchedule()->slots_taken);
         $this->assertSame($visit->visit_request_id, $walkIn->walkInAssessments()->first()->visit_request_id);
 
+        // Booked and approved in one step: only "Approved", never "awaiting review" first.
+        $visitNotices = \App\Models\Notification::where('account_id', $walkIn->account_id)
+            ->where('related_record_type', 'visit_requests')->pluck('title')->all();
+        $this->assertSame(['Visit Request Approved'], $visitNotices);
+
         // Phase 5: the desk verifies the ID, takes it and checks the visitor in.
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertOk()
