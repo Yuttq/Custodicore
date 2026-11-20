@@ -140,7 +140,13 @@ class VisitorApiController extends Controller
             );
         } catch (ValidationException $e) {
             // Same 422 body, plus a `code` the app can match instead of the message text.
-            if (in_array(VisitAssignmentService::WEEKLY_LIMIT_MESSAGE, $e->errors()['schedule_id'] ?? [], true)) {
+            $scheduleErrors = $e->errors()['schedule_id'] ?? [];
+            $weeklyLimitMessage = collect($scheduleErrors)->contains(
+                fn ($message) => str_starts_with((string) $message, 'You have reached the maximum of ')
+                    && str_contains((string) $message, ' allowed for the Monday–Sunday week')
+            );
+
+            if ($weeklyLimitMessage) {
                 return response()->json([
                     'message' => $e->getMessage(),
                     'errors' => $e->errors(),

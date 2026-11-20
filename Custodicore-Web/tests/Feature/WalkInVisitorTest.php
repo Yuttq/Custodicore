@@ -549,7 +549,7 @@ class WalkInVisitorTest extends TestCase
         ]);
 
         $this->assessAtDesk($walkIn)
-            ->assertSessionHas('error', fn ($message) => str_contains($message, VisitAssignmentService::WEEKLY_LIMIT_MESSAGE));
+            ->assertSessionHas('error', fn ($message) => str_contains($message, VisitAssignmentService::weeklyLimitMessage(1)));
 
         $this->assertSame(1, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count(), 'No walk-in visit is created.');
         $assessment = $walkIn->walkInAssessments()->first();

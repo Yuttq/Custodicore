@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\DB;
 
 /** System settings + the role -> module access matrix (Module 1.1) — both real tables now. */
 class SettingsController extends Controller
@@ -86,20 +87,22 @@ class SettingsController extends Controller
         $before = $availability->maxVisitsPerWeek();
         $after = (int) $data['max_per_week'];
 
-        $setting = SystemSetting::updateOrCreate(
-            ['setting_key' => SystemSetting::KEY_MAX_PER_WEEK],
-            ['setting_value' => (string) $after, 'updated_by' => $staffId, 'updated_at' => now()]
-        );
-
-        if ($before !== $after) {
-            AuditLog::record(
-                'update',
-                'system_settings',
-                (int) $setting->setting_id,
-                "Changed weekly visit limit from {$before} to {$after} per visitor",
-                Module::CODE_VISIT_SCHEDULING
+        DB::transaction(function () use ($before, $after, $staffId) {
+            $setting = SystemSetting::updateOrCreate(
+                ['setting_key' => SystemSetting::KEY_MAX_PER_WEEK],
+                ['setting_value' => (string) $after, 'updated_by' => $staffId, 'updated_at' => now()]
             );
-        }
+
+            if ($before !== $after) {
+                AuditLog::record(
+                    'update',
+                    'system_settings',
+                    (int) $setting->setting_id,
+                    "Changed weekly visit limit from {$before} to {$after} per visitor",
+                    Module::CODE_VISIT_SCHEDULING
+                );
+            }
+        });
 
         return redirect()->route('admin.settings.index')
             ->with('status', $before !== $after

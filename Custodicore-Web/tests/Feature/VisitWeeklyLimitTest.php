@@ -36,7 +36,7 @@ class VisitWeeklyLimitTest extends TestCase
 
     private const FRIDAY = '2026-10-09';
 
-    private const LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
+    private const LIMIT_MESSAGE = 'You have reached the maximum of 2 visits allowed for the Monday–Sunday week of the selected date.';
 
     protected function setUp(): void
     {
@@ -288,24 +288,43 @@ class VisitWeeklyLimitTest extends TestCase
 
     // ------------------------------------------------------- Setting values
 
-    public function test_zero_or_negative_limit_allows_no_visits(): void
+    public function test_zero_and_negative_limits_fall_back_to_two(): void
     {
         $this->setLimit('0');
-        $this->assertBlocked(fn () => $this->submit());
+        $this->existingVisit('2026-10-05');
+        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertBlocked(fn () => $this->assign($this->scheduleOn('2026-10-11')));
 
         SystemSetting::where('setting_key', 'visit.max_per_week')->update(['setting_value' => '-1']);
-        $this->assertBlocked(fn () => $this->assign());
+        $this->assertSame(2, app(\App\Services\ScheduleAvailabilityService::class)->maxVisitsPerWeek());
     }
 
     public function test_invalid_limit_falls_back_to_two(): void
     {
-        $this->setLimit('not-a-number');
-        $this->existingVisit('2026-10-05');
+        foreach (['not-a-number', '2.5', '0', '-1', '8', '999'] as $value) {
+            SystemSetting::query()->updateOrCreate(
+                ['setting_key' => 'visit.max_per_week'],
+                ['setting_value' => $value, 'updated_by' => StaffProfile::first()->staff_id]
+            );
 
-        $this->assertSame('assigned', $this->submit()->status);
+            $this->assertSame(2, app(\App\Services\ScheduleAvailabilityService::class)->maxVisitsPerWeek(), $value);
+        }
+    }
 
-        $sunday = $this->scheduleOn('2026-10-11');
-        $this->assertBlocked(fn () => $this->assign($sunday));
+    public function test_missing_limit_falls_back_to_two(): void
+    {
+        $this->assertDatabaseMissing('system_settings', ['setting_key' => 'visit.max_per_week']);
+        $this->assertSame(2, app(\App\Services\ScheduleAvailabilityService::class)->maxVisitsPerWeek());
+    }
+
+    public function test_valid_limits_from_one_through_seven_are_accepted(): void
+    {
+        foreach (range(1, 7) as $limit) {
+            $this->setLimit((string) $limit);
+            $this->assertSame($limit, app(\App\Services\ScheduleAvailabilityService::class)->maxVisitsPerWeek());
+
+            SystemSetting::where('setting_key', 'visit.max_per_week')->delete();
+        }
     }
 
     public function test_higher_limit_allows_more_visits(): void

@@ -573,10 +573,10 @@ class ScheduleAvailabilityApiTest extends TestCase
         ]);
         Sanctum::actingAs($this->visitorAccount);
 
-        // Zero allows no visits, even in a week with none booked.
+        // Zero is corrupt data and falls back to the default of 2.
         $relationship = $this->availability()->assertOk()->json('relationships.0');
-        $this->assertSame([], $this->availableDays($relationship));
-        $this->assertSame('weekly_limit', $this->slot($relationship, '2026-10-16', '13:00')['reason']);
+        $this->assertSame(2, $this->availability()->assertOk()->json('weeklyLimit.limit'));
+        $this->assertNotEmpty($this->availableDays($relationship));
 
         $setting->update(['setting_value' => '3']);
         $this->visitOn($this->relationship, '2026-10-09', '09:00');
@@ -730,6 +730,25 @@ class ScheduleAvailabilityApiTest extends TestCase
         // The rest of the range is untouched.
         $this->assertSame(0, $this->weeklyUsed($response)['2026-10-05']);
         $this->assertSame(0, $this->weeklyUsed($response)['2026-10-19']);
+    }
+
+    public function test_api_counter_matches_a_configured_limit(): void
+    {
+        SystemSetting::create([
+            'setting_key' => 'visit.max_per_week',
+            'setting_value' => '5',
+            'updated_by' => StaffProfile::first()->staff_id,
+        ]);
+
+        $this->visitOn($this->relationship, '2026-10-09', '09:00');
+        Sanctum::actingAs($this->visitorAccount);
+
+        $response = $this->availability(['from' => '2026-10-05', 'to' => '2026-10-11'])->assertOk();
+        $week = $response->json('weeklyLimit.weeks.0');
+
+        $this->assertSame(5, $response->json('weeklyLimit.limit'));
+        $this->assertSame(1, $week['used']);
+        $this->assertSame(4, $week['remaining']);
     }
 
     // ------------------------------------------------------- Announcements

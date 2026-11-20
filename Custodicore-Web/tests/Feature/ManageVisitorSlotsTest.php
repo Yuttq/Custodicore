@@ -843,7 +843,7 @@ class ManageVisitorSlotsTest extends TestCase
 
         $this->book($this->visitorAccount, $this->relationship, ['date' => self::SUNDAY])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['schedule_id' => VisitAssignmentService::WEEKLY_LIMIT_MESSAGE]);
+            ->assertJsonValidationErrors(['schedule_id' => VisitAssignmentService::weeklyLimitMessage(1)]);
 
         $this->assertSame('1', SystemSetting::value('visit.max_per_week'));
         $this->assertSame(1, VisitRequest::count());

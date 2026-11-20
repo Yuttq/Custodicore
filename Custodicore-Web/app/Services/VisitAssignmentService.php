@@ -71,7 +71,14 @@ class VisitAssignmentService
      * week the request is made in. The visitor API also sends
      * WEEKLY_LIMIT_CODE with it, which the app matches instead of this text.
      */
-    public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
+    public const WEEKLY_LIMIT_MESSAGE = 'You have reached the maximum of 2 visits allowed for the Monday–Sunday week of the selected date.';
+
+    public static function weeklyLimitMessage(int $limit): string
+    {
+        $number = $limit === 1 ? '1 visit' : "{$limit} visits";
+
+        return "You have reached the maximum of {$number} allowed for the Monday–Sunday week of the selected date.";
+    }
 
     /** Machine-readable `code` of a weekly-limit rejection (visitor API). */
     public const WEEKLY_LIMIT_CODE = 'weekly_limit';
@@ -1369,8 +1376,9 @@ class VisitAssignmentService
         $count = $this->availability->weeklyVisitCounts($visitor, $day, $day)[$this->availability->weekStart($day)] ?? 0;
 
         if ($count >= $this->availability->maxVisitsPerWeek()) {
+            $limit = $this->availability->maxVisitsPerWeek();
             throw ValidationException::withMessages([
-                'schedule_id' => self::WEEKLY_LIMIT_MESSAGE,
+                'schedule_id' => self::weeklyLimitMessage($limit),
             ]);
         }
     }
@@ -1454,7 +1462,10 @@ class VisitAssignmentService
             ScheduleAvailabilityService::REASON_ALREADY_SCHEDULED => ['startTime', 'You already have a visit with this PDL on this date.'],
             ScheduleAvailabilityService::REASON_DAILY_LIMIT => ['schedule_id', self::ONE_PDL_PER_DAY_MESSAGE],
             ScheduleAvailabilityService::REASON_FULL => ['startTime', 'This visiting slot is full. Choose another available slot.'],
-            ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => ['schedule_id', self::WEEKLY_LIMIT_MESSAGE],
+            ScheduleAvailabilityService::REASON_WEEKLY_LIMIT => [
+                'schedule_id',
+                self::weeklyLimitMessage($this->availability->maxVisitsPerWeek()),
+            ],
             default => ['startTime', 'This visiting slot is not available.'],
         };
     }

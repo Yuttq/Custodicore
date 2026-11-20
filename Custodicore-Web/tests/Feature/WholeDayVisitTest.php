@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\FrontDesk\CheckinCheckoutController;
+use App\Models\Account;
 use App\Models\FacilityVisitationRule;
 use App\Models\QrCode;
 use App\Models\StaffProfile;
 use App\Models\SystemSetting;
 use App\Models\VisitCheckin;
 use App\Models\VisitorId;
+use App\Models\VisitorPdlRelationship;
+use App\Models\VisitorProfile;
 use App\Models\VisitRequest;
 use App\Models\VisitSchedule;
 use App\Models\VisitSession;
@@ -16,6 +19,7 @@ use App\Services\ScheduleAvailabilityService;
 use App\Services\VisitAssignmentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SeedsVisitAssignmentFixtures;
 use Tests\TestCase;
@@ -40,7 +44,7 @@ class WholeDayVisitTest extends TestCase
     private const FRIDAY = '2026-10-09';
     private const SUNDAY = '2026-10-11';
 
-    private const LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
+    private const LIMIT_MESSAGE = 'You have reached the maximum of 1 visit allowed for the Monday–Sunday week of the selected date.';
 
     protected function setUp(): void
     {
@@ -236,6 +240,70 @@ class WholeDayVisitTest extends TestCase
             ->assertJsonValidationErrors(['startTime' => 'You already have a visit with this PDL on this date.']);
         $this->assertSame(1, VisitRequest::count());
         $this->assertSame(1, $this->weeklyCount());
+    }
+
+    // ------------------------------- Several visitors for the same PDL
+
+    /**
+     * Design decision (2026-11-17): Custodicore sets no per-PDL visitor limit.
+     * The one-visit-per-day rule is per VISITOR; different visitors (e.g. a
+     * spouse and a parent) may book the same PDL on the same day, in the
+     * same or overlapping sessions, while the session has seats. Crowding is
+     * controlled by session capacity. Not a confirmed BJMP rule — change
+     * these tests deliberately if the facility sets a per-PDL limit.
+     */
+    private function secondVisitorRequest(array $startTimes, string $date = self::FRIDAY): \Illuminate\Testing\TestResponse
+    {
+        $account = Account::create([
+            'role_id' => $this->visitorRole->role_id,
+            'username' => 'rosa.santos',
+            'email' => 'rosa.santos@example.com',
+            'password_hash' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+        $account->forceFill(['email_verified_at' => now()])->save();
+        $visitor = VisitorProfile::create([
+            'account_id' => $account->account_id,
+            'full_name' => 'Rosa P. Santos',
+            'date_of_birth' => '1960-05-20',
+            'gender' => 'female',
+            'contact_number' => '09181234567',
+            'verification_status' => 'verified',
+        ]);
+        $relationship = VisitorPdlRelationship::create([
+            'visitor_id' => $visitor->visitor_id,
+            'pdl_id' => $this->pdl->pdl_id,
+            'relationship_type' => 'immediate_family',
+            'priority_tier' => 'high_priority',
+            'verification_status' => 'verified',
+        ]);
+
+        Sanctum::actingAs($account);
+
+        return $this->postJson('/api/visit-requests', [
+            'relationshipId' => $relationship->relationship_id,
+            'date' => $date,
+            'startTimes' => $startTimes,
+        ]);
+    }
+
+    public function test_two_visitors_may_book_the_same_pdl_in_the_same_session(): void
+    {
+        $this->request(['09:00'])->assertCreated();
+        $this->secondVisitorRequest(['09:00'])->assertCreated();
+
+        $this->assertSame(2, VisitRequest::where('pdl_id', $this->pdl->pdl_id)->count());
+        $this->assertSame(2, (int) $this->schedule->fresh()->slots_taken);
+    }
+
+    public function test_one_visitor_whole_day_and_another_the_afternoon_may_book_the_same_pdl(): void
+    {
+        $this->request(['09:00', '13:00'])->assertCreated();
+        $this->secondVisitorRequest(['13:00'])->assertCreated();
+
+        $this->assertSame(2, VisitRequest::where('pdl_id', $this->pdl->pdl_id)->count());
+        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertSame(2, (int) $this->afternoonSchedule()->slots_taken);
     }
 
     public function test_availability_offers_the_whole_day_as_one_visit(): void

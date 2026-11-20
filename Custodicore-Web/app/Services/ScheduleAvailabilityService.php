@@ -115,7 +115,7 @@ class ScheduleAvailabilityService
         ))->values()->all();
     }
 
-    /** Zero or negative allows no visits; a missing or non-integer value falls back to 2. */
+    /** Only integer stored values from 1 through 7 are valid; missing/corrupt values fall back to 2. */
     public function maxVisitsPerWeek(): int
     {
         $raw = trim((string) SystemSetting::value('visit.max_per_week', '2'));
@@ -124,7 +124,9 @@ class ScheduleAvailabilityService
             return 2;
         }
 
-        return max((int) $raw, 0);
+        $limit = (int) $raw;
+
+        return $limit >= 1 && $limit <= 7 ? $limit : 2;
     }
 
     /**

@@ -265,7 +265,7 @@ class VisitBookingConcurrencyTest extends TestCase
 
         $errors = $this->validationErrors(fn () => $this->request(self::FRIDAY, '09:00'));
 
-        $this->assertSame([VisitAssignmentService::WEEKLY_LIMIT_MESSAGE], $errors['schedule_id']);
+        $this->assertSame([VisitAssignmentService::weeklyLimitMessage(1)], $errors['schedule_id']);
         $this->assertSame(1, VisitRequest::count());
         $this->assertSame(self::SUNDAY, VisitRequest::sole()->schedule->schedule_date->toDateString());
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken, 'The refused request reserved no seat.');
@@ -278,7 +278,7 @@ class VisitBookingConcurrencyTest extends TestCase
 
         $errors = $this->validationErrors(fn () => $this->assign($this->schedule));
 
-        $this->assertSame([VisitAssignmentService::WEEKLY_LIMIT_MESSAGE], $errors['schedule_id']);
+        $this->assertSame([VisitAssignmentService::weeklyLimitMessage(1)], $errors['schedule_id']);
         $this->assertSame(1, VisitRequest::count());
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
     }

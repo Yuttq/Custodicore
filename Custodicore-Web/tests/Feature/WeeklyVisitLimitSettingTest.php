@@ -39,7 +39,7 @@ class WeeklyVisitLimitSettingTest extends TestCase
     private const ADMIN_PASSWORD = 'Correct-admin-pass1';
     private const FRIDAY = '2026-10-09';
     private const SUNDAY = '2026-10-11';
-    private const LIMIT_MESSAGE = 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.';
+    private const LIMIT_MESSAGE = 'You have reached the maximum of 2 visits allowed for the Monday–Sunday week of the selected date.';
 
     private Account $admin;
 
@@ -169,6 +169,25 @@ class WeeklyVisitLimitSettingTest extends TestCase
         $this->assertDatabaseMissing('audit_logs', ['record_type' => 'system_settings']);
     }
 
+    public function test_audit_failure_rolls_back_the_setting_update(): void
+    {
+        $this->withoutExceptionHandling();
+        \App\Models\AuditLog::creating(function () {
+            throw new \RuntimeException('Simulated audit logging failure');
+        });
+
+        try {
+            $this->save('3');
+            $this->fail('Expected the simulated audit failure.');
+        } catch (\Throwable $e) {
+            $this->assertStringContainsString('Simulated audit logging failure', $e->getMessage());
+        }
+
+        $this->assertDatabaseMissing('system_settings', ['setting_key' => 'visit.max_per_week']);
+        $this->assertSame(2, $this->limit());
+        $this->assertDatabaseMissing('audit_logs', ['record_type' => 'system_settings']);
+    }
+
     public function test_values_outside_1_to_7_or_not_whole_numbers_are_refused(): void
     {
         foreach (['0', '8', '-1', '', 'abc', '2.5', '1e1'] as $bad) {
@@ -186,6 +205,18 @@ class WeeklyVisitLimitSettingTest extends TestCase
 
         $this->save('7')->assertSessionHasNoErrors();
         $this->assertSame(7, $this->limit());
+    }
+
+    public function test_dynamic_validation_messages_reflect_the_configured_limit(): void
+    {
+        $this->assertSame(
+            'You have reached the maximum of 1 visit allowed for the Monday–Sunday week of the selected date.',
+            VisitAssignmentService::weeklyLimitMessage(1)
+        );
+        $this->assertSame(
+            'You have reached the maximum of 3 visits allowed for the Monday–Sunday week of the selected date.',
+            VisitAssignmentService::weeklyLimitMessage(3)
+        );
     }
 
     public function test_wrong_or_missing_password_saves_nothing(): void
@@ -224,7 +255,9 @@ class WeeklyVisitLimitSettingTest extends TestCase
 
         $this->request(self::SUNDAY)
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['schedule_id' => self::LIMIT_MESSAGE]);
+            ->assertJsonValidationErrors([
+                'schedule_id' => VisitAssignmentService::weeklyLimitMessage(1),
+            ]);
         $this->assertSame(1, VisitRequest::count());
 
         // Raising it again lets the same request through.
@@ -246,7 +279,10 @@ class WeeklyVisitLimitSettingTest extends TestCase
             ]);
             $this->fail('A staff assignment over the weekly limit was accepted.');
         } catch (ValidationException $e) {
-            $this->assertSame(self::LIMIT_MESSAGE, collect($e->errors())->flatten()->first());
+            $this->assertSame(
+                VisitAssignmentService::weeklyLimitMessage(1),
+                collect($e->errors())->flatten()->first()
+            );
         }
 
         $this->assertSame(1, VisitRequest::count());

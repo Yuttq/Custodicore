@@ -421,7 +421,7 @@ class VisitorVisitRequestTest extends TestCase
         $this->submit(['startTime' => '13:00'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
-                'schedule_id' => 'You have reached the maximum number of visits allowed for the week (Monday–Sunday) of the selected date.',
+                'schedule_id' => 'You have reached the maximum of 2 visits allowed for the Monday–Sunday week of the selected date.',
             ])
             ->assertJsonPath('code', 'weekly_limit');
 
