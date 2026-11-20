@@ -179,6 +179,31 @@ class VisitorApiController extends Controller
         )));
     }
 
+    /**
+     * Visitor cancels their own `assigned` or `confirmed` visit, until its
+     * first session starts (VisitAssignmentService::cancelByVisitor). A reason
+     * is required; optional notes are kept with it.
+     */
+    public function cancel(Request $request, VisitRequest $visitRequest, VisitAssignmentService $assignments): JsonResponse
+    {
+        $this->authorizeOwnership($request, $visitRequest);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:100'],
+            'notes' => ['nullable', 'string', 'max:150'],
+        ], [
+            'reason.required' => 'Please select a reason.',
+        ]);
+
+        $reason = trim($data['reason']);
+        $notes = trim((string) ($data['notes'] ?? ''));
+
+        return response()->json($this->visitPayload($assignments->cancelByVisitor(
+            $visitRequest,
+            $notes !== '' ? "{$reason}: {$notes}" : $reason
+        )));
+    }
+
     public function qr(Request $request, VisitRequest $visitRequest): JsonResponse
     {
         $this->authorizeOwnership($request, $visitRequest);
@@ -360,6 +385,18 @@ class VisitorApiController extends Controller
                 'id' => 'request_rejected',
                 'title' => 'Request Rejected',
                 'description' => 'Your visit request was rejected by facility staff.'
+                    .($visitRequest->cancellation_reason ? " Reason: {$visitRequest->cancellation_reason}" : ''),
+                'occurredAt' => $visitRequest->cancelled_at,
+                'terminal' => true,
+            ];
+        } elseif ($this->cancelledByVisitor($visitRequest)) {
+            // The visitor cancelled their own request, or a visit they had
+            // already confirmed (cancelByVisitor). Declining a staff-assigned
+            // visit before confirming it is the plain "Visit Declined" below.
+            $steps[] = [
+                'id' => 'visit_cancelled',
+                'title' => 'Visit Cancelled',
+                'description' => 'You cancelled this visit.'
                     .($visitRequest->cancellation_reason ? " Reason: {$visitRequest->cancellation_reason}" : ''),
                 'occurredAt' => $visitRequest->cancelled_at,
                 'terminal' => true,
@@ -837,6 +874,18 @@ class VisitorApiController extends Controller
     }
 
     // -----------------------------------------------------------------
+    /**
+     * A `declined` visit the visitor cancelled themselves (cancelByVisitor):
+     * their own request (no confirmation deadline — staff assignments always
+     * set one) or a visit they had already confirmed. Declining a
+     * staff-assigned visit before confirming it is not a cancellation.
+     */
+    private function cancelledByVisitor(VisitRequest $visitRequest): bool
+    {
+        return $visitRequest->status === 'declined'
+            && ($visitRequest->confirmation_deadline === null || $visitRequest->confirmed_at !== null);
+    }
+
     private function authorizeOwnership(Request $request, VisitRequest $visitRequest): void
     {
         $visitor = $this->currentVisitor($request);
@@ -900,6 +949,7 @@ class VisitorApiController extends Controller
             'referenceNumber' => $this->referenceNumber($v),
             'visitType' => 'regular',
             'status' => $v->status,
+            'cancelledByVisitor' => $this->cancelledByVisitor($v),
             'cancellationReason' => $v->cancellation_reason,
         ];
     }

@@ -27,6 +27,17 @@ test('scheduled reads as awaiting confirmation', () => {
   assert.equal(resolveVisitStatusChip('scheduled'), 'pending_confirmation');
 });
 
+test('a visit the visitor cancelled reads as Cancelled; a declined assignment stays Declined', () => {
+  assert.equal(resolveVisitStatusChip('declined', { cancelledByVisitor: true }), 'cancelled');
+  assert.equal(resolveVisitStatusChip('declined', { cancelledByVisitor: false }), 'declined');
+  assert.equal(resolveVisitStatusChip('declined', {}), 'declined');
+  assert.equal(resolveVisitStatusChip('declined'), 'declined');
+  // A whole visit object can be passed; only the flag matters, and only for declined.
+  assert.equal(resolveVisitStatusChip('declined', { id: '7', cancelledByVisitor: true }), 'cancelled');
+  assert.equal(resolveVisitStatusChip('confirmed', { cancelledByVisitor: true }), 'confirmed');
+  assert.equal(resolveVisitStatusChip('declined', { cancelledByVisitor: 'yes' }), 'declined');
+});
+
 test('unable_to_attend reads as declined', () => {
   assert.equal(resolveVisitStatusChip('unable_to_attend'), 'declined');
 });

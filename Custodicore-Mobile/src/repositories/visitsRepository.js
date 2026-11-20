@@ -29,6 +29,8 @@ export function normalizeVisit(raw) {
     referenceNumber: raw.referenceNumber ?? null,
     visitType: raw.visitType ?? 'regular',
     status: raw.status ?? 'pending_confirmation',
+    // A `declined` visit the visitor cancelled themselves (shown as Cancelled).
+    cancelledByVisitor: raw.cancelledByVisitor === true,
     cancellationReason: raw.cancellationReason ?? null,
     unableReason: raw.unableReason ?? null,
     unableNotes: raw.unableNotes ?? null,
@@ -81,4 +83,14 @@ export async function declineAssignedVisit(visitId, details = {}) {
   return normalizeVisit(
     await api.declineSchedule(visitId, { reason }),
   );
+}
+
+/**
+ * The visitor cancels their own `assigned` or `confirmed` visit.
+ * @param {string} visitId
+ * @param {{ reason: string; notes?: string }} details
+ * @returns {Promise<object | null>}
+ */
+export async function cancelVisit(visitId, { reason, notes } = {}) {
+  return normalizeVisit(await api.cancelSchedule(visitId, { reason, notes }));
 }

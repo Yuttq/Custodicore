@@ -126,7 +126,7 @@ function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
  * @param {(id: string) => void} props.onUnablePress
  */
 function VisitCard({ item, onPress, showPendingActions, onConfirmPress, onUnablePress }) {
-  const chipStatus = resolveVisitStatusChip(item.status);
+  const chipStatus = resolveVisitStatusChip(item.status, item);
 
   return (
     <Card style={styles.visitCard}>

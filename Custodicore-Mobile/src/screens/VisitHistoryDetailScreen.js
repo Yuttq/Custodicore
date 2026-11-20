@@ -17,6 +17,7 @@ import { useVisits } from '../context/VisitsContext';
 import { goBackOr } from '../utils/safeNavigation';
 import { fetchVisitationHistory } from '../repositories/visitHistoryRepository';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
+import { getHistoryReasonLabel } from '../utils/visitHistoryNormalize';
 
 /** @typedef {ReturnType<typeof import('../utils/visitHistoryNormalize').normalizeVisitHistoryRecord>} HistoryRecord */
 
@@ -135,7 +136,7 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
           <Card style={styles.card}>
             <Text style={styles.visitDate}>{record.dateDisplay}</Text>
             <View style={styles.chipRow}>
-              <StatusChip status={resolveVisitStatusChip(record.status)} />
+              <StatusChip status={resolveVisitStatusChip(record.status, record)} />
             </View>
 
             <DetailField label="Date" value={record.dateDisplay} />
@@ -150,7 +151,7 @@ export default function VisitHistoryDetailScreen({ navigation, route }) {
             {record.status !== 'completed' && record.cancellationReason ? (
               <View style={styles.cancellationBox}>
                 <Text style={styles.cancellationTitle}>
-                  {record.status === 'declined' ? 'Decline Reason' : 'Cancellation Reason'}
+                  {getHistoryReasonLabel(record)}
                 </Text>
                 <Text style={styles.cancellationBody}>{record.cancellationReason}</Text>
               </View>

@@ -25,6 +25,7 @@ import { goBackOr } from '../utils/safeNavigation';
 import { useVisits } from '../context/VisitsContext';
 import {
   VISITATION_GUIDELINE_SECTIONS,
+  canCancelVisit,
   canRespondToVisit,
 } from '../utils/visitRules';
 import useVisitTimeline from '../hooks/useVisitTimeline';
@@ -76,6 +77,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
   const [submitting, setSubmitting] = useState(false);
 
   const showActions = visit && canRespondToVisit(visit.status);
+  const showCancel = canCancelVisit(visit);
   const showQrPass =
     visit && (visit.status === 'confirmed' || visit.status === 'checked_in');
 
@@ -110,6 +112,11 @@ export default function VisitDetailsScreen({ navigation, route }) {
   const onUnableToAttend = useCallback(() => {
     if (!visit) return;
     navigation.navigate('UnableToAttend', { visitId: visit.id });
+  }, [visit, navigation]);
+
+  const onCancelVisit = useCallback(() => {
+    if (!visit) return;
+    navigation.navigate('UnableToAttend', { visitId: visit.id, mode: 'cancel' });
   }, [visit, navigation]);
 
   const onShowQrPass = useCallback(() => {
@@ -147,7 +154,7 @@ export default function VisitDetailsScreen({ navigation, route }) {
       <StackScreenHeader title="Visit Details" navigation={navigation} />
 
       <View style={styles.statusRow}>
-        <StatusChip status={resolveVisitStatusChip(visit.status)} />
+        <StatusChip status={resolveVisitStatusChip(visit.status, visit)} />
       </View>
 
       <View style={commonStyles.segmentedControl}>
@@ -220,6 +227,19 @@ export default function VisitDetailsScreen({ navigation, route }) {
                   accessibilityLabel="Unable to attend"
                 >
                   <Text style={styles.unableBtnText}>Unable To Attend</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {showCancel ? (
+              <View style={commonStyles.actionsStack}>
+                <Pressable
+                  onPress={onCancelVisit}
+                  style={({ pressed }) => [styles.unableBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel this visit"
+                >
+                  <Text style={styles.unableBtnText}>Cancel Visit</Text>
                 </Pressable>
               </View>
             ) : null}

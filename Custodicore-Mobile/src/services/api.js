@@ -486,6 +486,27 @@ export async function declineSchedule(scheduleId, options = {}) {
 }
 
 /**
+ * Cancels the visitor's own `assigned` or `confirmed` visit, until its first
+ * session starts. The reason is required; notes are optional.
+ * Backend route: POST /api/schedules/{visitRequest}/cancel
+ * @param {string} scheduleId
+ * @param {{ reason: string; notes?: string }} options
+ */
+export async function cancelSchedule(scheduleId, { reason, notes } = {}) {
+  try {
+    const body = { reason };
+    if (notes && notes.trim()) body.notes = notes.trim();
+    const { data } = await client.post(
+      `/schedules/${encodeURIComponent(scheduleId)}/cancel`,
+      body,
+    );
+    return data;
+  } catch (error) {
+    throw toRequestError(error);
+  }
+}
+
+/**
  * Returns list history of past visits for the signed-in visitor.
  */
 export async function getVisitHistory() {

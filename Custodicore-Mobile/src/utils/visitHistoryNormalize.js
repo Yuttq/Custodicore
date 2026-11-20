@@ -58,6 +58,8 @@ export function normalizeVisitHistoryRecord(raw, index) {
     referenceNumber,
     visitType,
     status,
+    // A `declined` visit the visitor cancelled themselves (API flag).
+    cancelledByVisitor: raw.cancelledByVisitor === true,
     cancellationReason,
   };
 }
@@ -83,9 +85,25 @@ export function getHistoryTab(status) {
   return status === 'completed' ? 'completed' : 'cancelled';
 }
 
-/** @param {string} status */
-export function getHistoryStatusLabel(status) {
+/**
+ * @param {string} status
+ * @param {boolean} [cancelledByVisitor] — a `declined` visit the visitor cancelled reads as Cancelled
+ */
+export function getHistoryStatusLabel(status, cancelledByVisitor = false) {
+  if (status === 'declined' && cancelledByVisitor === true) return HISTORY_STATUS_LABELS.cancelled;
   return HISTORY_STATUS_LABELS[status] ?? String(status || '—');
+}
+
+/**
+ * Heading for the reason of a visit that ended without happening: only
+ * declining a staff-assigned visit is a "Decline Reason"; a visitor's own
+ * cancellation and every other ending is a "Cancellation Reason".
+ * @param {{ status?: string; cancelledByVisitor?: boolean }} record
+ */
+export function getHistoryReasonLabel(record) {
+  return record?.status === 'declined' && record?.cancelledByVisitor !== true
+    ? 'Decline Reason'
+    : 'Cancellation Reason';
 }
 
 /**

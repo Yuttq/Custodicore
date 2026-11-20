@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import {
+  cancelVisit as cancelVisitApi,
   confirmAssignedVisit,
   declineAssignedVisit,
   fetchAssignedVisits,
@@ -150,6 +151,20 @@ export function VisitsProvider({ children }) {
     [getVisitById, upsertVisit],
   );
 
+  /** The visitor cancels their own assigned or confirmed visit (reason required). */
+  const cancelVisit = useCallback(
+    async (id, { reason, notes }) => {
+      const existing = getVisitById(id);
+      const scheduleId = existing?.scheduleId || id;
+      const updated = await cancelVisitApi(scheduleId, { reason, notes });
+      upsertVisit(
+        updated || { ...(existing || { id }), status: 'declined', cancelledByVisitor: true },
+      );
+      return updated;
+    },
+    [getVisitById, upsertVisit],
+  );
+
   const value = useMemo(
     () => ({
       visits,
@@ -159,6 +174,7 @@ export function VisitsProvider({ children }) {
       confirmVisit,
       submitVisitRequest,
       submitUnableToAttend,
+      cancelVisit,
       refreshVisits,
       clearVisits,
     }),
@@ -170,6 +186,7 @@ export function VisitsProvider({ children }) {
       confirmVisit,
       submitVisitRequest,
       submitUnableToAttend,
+      cancelVisit,
       refreshVisits,
       clearVisits,
     ],

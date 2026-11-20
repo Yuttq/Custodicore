@@ -111,6 +111,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/schedules/{visitRequest}/confirm', [VisitorApiController::class, 'confirm']);
         Route::post('/schedules/{visitRequest}/decline', [VisitorApiController::class, 'decline']);
+        Route::post('/schedules/{visitRequest}/cancel', [VisitorApiController::class, 'cancel'])->middleware('throttle:10,1');
         Route::get('/schedules/{visitRequest}/qr', [VisitorApiController::class, 'qr']);
         Route::get('/schedules/{visitRequest}/timeline', [VisitorApiController::class, 'timeline']);
     });

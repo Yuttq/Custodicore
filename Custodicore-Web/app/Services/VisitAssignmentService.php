@@ -31,6 +31,9 @@ use Illuminate\Validation\ValidationException;
  * `assigned` is staff review only — the visitor API never confirms or
  * declines it. Both paths reserve schedule capacity on creation.
  *
+ * The visitor may cancel their own `assigned` or `confirmed` visit until its
+ * first session starts (cancelByVisitor()): -> declined, seats released, QR void.
+ *
  * A visit is one day with one PDL and covers one or more sessions
  * (visit_sessions): a visitor request may take the morning, the afternoon or
  * both (whole day); a staff assignment takes one schedule. A visitor holds
@@ -92,6 +95,9 @@ class VisitAssignmentService
      * purpose: the actual reason is staff-only and kept in the audit log.
      */
     public const PDL_UNAVAILABLE_REASON = 'The PDL is not available for visitation on this date. Please contact the facility.';
+
+    /** Statuses the visitor may cancel themselves (cancelByVisitor); `pending_confirmation` is declined instead. */
+    public const VISITOR_CANCELLABLE = ['assigned', 'confirmed'];
 
     /** Statuses cancelled when the PDL becomes unavailable (`assigned` goes through review). */
     private const CANCELLABLE_WHEN_PDL_UNAVAILABLE = ['confirmed', 'pending_confirmation'];
@@ -546,6 +552,87 @@ class VisitAssignmentService
 
             return $visitRequest->fresh(['pdl', 'schedule']);
         });
+    }
+
+    /**
+     * Visitor cancels their own visit: `assigned` (awaiting review) or
+     * `confirmed` -> `declined`, until the visit's first session starts and
+     * never after a check-in. Releases the seat of every session and voids
+     * the QR pass. `declined` means "the visitor backed out", the same status
+     * as declining a staff assignment (pending_confirmation, which keeps
+     * using declineAssignedVisit()). The row lock and status re-check mean a
+     * repeated or racing cancel fails instead of releasing the seats twice.
+     */
+    public function cancelByVisitor(VisitRequest $visitRequest, string $reason): VisitRequest
+    {
+        return DB::transaction(function () use ($visitRequest, $reason) {
+            $locked = VisitRequest::whereKey($visitRequest->visit_request_id)->lockForUpdate()->first();
+
+            if ($locked?->status === 'pending_confirmation') {
+                throw ValidationException::withMessages([
+                    'status' => 'This visit is waiting for your answer. Use Unable to Attend to decline it.',
+                ]);
+            }
+
+            if (! $locked || ! in_array($locked->status, self::VISITOR_CANCELLABLE, true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This visit can no longer be cancelled.',
+                ]);
+            }
+
+            if ($locked->checkins()->whereNotNull('check_in_time')->exists()) {
+                throw ValidationException::withMessages([
+                    'status' => 'You have already checked in for this visit, so it can no longer be cancelled.',
+                ]);
+            }
+
+            $firstStart = $this->firstSessionStart($locked);
+            if (! $firstStart || now()->gte($firstStart)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This visit has already started and can no longer be cancelled.',
+                ]);
+            }
+
+            $locked->update([
+                'status' => 'declined',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $reason,
+            ]);
+
+            $this->releaseSessionSlots($locked);
+            $locked->qrCode()->where('status', 'active')->update(['status' => 'void']);
+
+            $locked->load(['visitor', 'pdl']);
+            $scheduleLabel = $this->visitLabel($locked);
+
+            Notification::notify(
+                $locked->visitor->account_id,
+                'visits',
+                'Visit Cancelled',
+                "You cancelled your visit with {$locked->pdl->full_name} on {$scheduleLabel}.",
+                'visit_requests',
+                $locked->visit_request_id
+            );
+
+            AuditLog::record('update', 'visit_requests', $locked->visit_request_id,
+                "Visitor cancelled visit via mobile app ({$scheduleLabel}). Reason: {$reason}",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return $locked->fresh(['pdl', 'schedule']);
+        });
+    }
+
+    /** Start of the visit's earliest session (app timezone), or null when it has none. */
+    private function firstSessionStart(VisitRequest $visitRequest): ?Carbon
+    {
+        $first = $visitRequest->sessionSchedules()
+            ->orderBy('schedule_date')
+            ->orderBy('time_slot_start')
+            ->first() ?? $visitRequest->schedule;
+
+        return $first
+            ? Carbon::parse($first->schedule_date->toDateString().' '.$first->time_slot_start)
+            : null;
     }
 
     /** IDs of staff-assigned visits whose confirmation deadline has passed unanswered. */

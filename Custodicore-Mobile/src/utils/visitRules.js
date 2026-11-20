@@ -74,3 +74,21 @@ export function getMyVisitsTab(status) {
 export function canRespondToVisit(status) {
   return status === 'pending_confirmation' || status === 'scheduled';
 }
+
+/**
+ * Whether the visitor can cancel the visit themselves: their own request
+ * awaiting review (`assigned`) or a `confirmed` visit, until its first
+ * session starts. A visit awaiting their answer (`pending_confirmation`)
+ * is declined instead (canRespondToVisit). The server checks the same
+ * rules, plus that the visitor has not checked in.
+ * @param {{ status?: string; scheduledAt?: string | null } | null | undefined} visit
+ * @param {number} [now] — ms since epoch
+ */
+export function canCancelVisit(visit, now = Date.now()) {
+  if (!visit || (visit.status !== 'assigned' && visit.status !== 'confirmed')) {
+    return false;
+  }
+  const start = visit.scheduledAt ? Date.parse(visit.scheduledAt) : Number.NaN;
+  // Unknown start: let the server decide.
+  return Number.isNaN(start) || now < start;
+}

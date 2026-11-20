@@ -27,11 +27,15 @@ const FALLBACK_CHIP = 'pending';
 
 /**
  * @param {unknown} status raw visit status, e.g. "checked_out" or "Checked-Out"
+ * @param {{ cancelledByVisitor?: boolean }} [options] — `cancelledByVisitor`
+ *   from the API: a `declined` visit the visitor cancelled themselves reads
+ *   as Cancelled; declining a staff-assigned visit stays Declined
  * @returns {string} a StatusChip `status` key
  */
-export function resolveVisitStatusChip(status) {
+export function resolveVisitStatusChip(status, { cancelledByVisitor = false } = {}) {
   if (typeof status !== 'string') return FALLBACK_CHIP;
   const key = status.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if (key === 'declined' && cancelledByVisitor === true) return 'cancelled';
   return Object.prototype.hasOwnProperty.call(VISIT_STATUS_CHIP, key)
     ? VISIT_STATUS_CHIP[key]
     : FALLBACK_CHIP;

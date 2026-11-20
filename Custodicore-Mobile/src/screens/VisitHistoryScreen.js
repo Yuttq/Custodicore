@@ -53,7 +53,7 @@ function HistorySkeleton() {
  * @param {HistoryRecord} item
  */
 function getStatusLabel(item) {
-  return getHistoryStatusLabel(item.status);
+  return getHistoryStatusLabel(item.status, item.cancelledByVisitor);
 }
 
 /**
