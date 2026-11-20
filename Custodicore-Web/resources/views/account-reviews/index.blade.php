@@ -82,6 +82,27 @@
         </div>
       @endif
 
+      {{-- Maybe already registered as a walk-in under a slightly different name: one person keeps one account. --}}
+      @php $walkInMatches = $tab === 'pending' ? \App\Services\WalkInService::possibleWalkInMatches($visitor) : collect(); @endphp
+      @if ($walkInMatches->isNotEmpty())
+        <div class="elig-note is-warn" style="margin:0 20px 14px;" data-walk-in-match>
+          <strong>Possibly already registered as a walk-in.</strong>
+          @foreach ($walkInMatches as $match)
+            <div style="margin-top:4px;">
+              <a href="{{ route('visitor.show', $match['visitor']->visitor_id) }}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;">{{ $match['visitor']->full_name }}</a>
+              · born {{ $match['visitor']->date_of_birth?->format('M j, Y') ?? '—' }}
+              · {{ $match['visitor']->contact_number ?: 'no number' }}
+              · registered at the Front Desk {{ $match['visitor']->created_at?->format('M j, Y') }}
+              <span style="opacity:.8;">({{ implode(', ', $match['reasons']) }})</span>
+            </div>
+          @endforeach
+          <div style="margin-top:6px;">
+            Compare the photos and IDs. If it is the same person, return this registration instead of approving it:
+            they should sign in with their walk-in account (the Front Desk adds their email, then they use Forgot Password in the app).
+          </div>
+        </div>
+      @endif
+
       {{-- What the visitor told us --}}
       <dl class="acct-facts">
         <div><dt>Date of Birth</dt><dd>{{ $visitor->date_of_birth ? $visitor->date_of_birth->format('M j, Y') . " ({$age})" : '—' }}</dd></div>

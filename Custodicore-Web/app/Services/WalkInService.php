@@ -503,6 +503,69 @@ class WalkInService
     }
 
     /**
+     * Walk-ins who may be the same person as this app sign-up, for the Review
+     * Queue card. Sign-up already refuses an exact name + birthday match
+     * (matchingWalkIn), so these are the near misses: the same birthday and
+     * a name word in common (e.g. the surname, or a middle name added), or
+     * the same mobile number. Only a warning: the Records Officer decides.
+     *
+     * @return \Illuminate\Support\Collection<int, array{visitor: VisitorProfile, reasons: array<int, string>}>
+     */
+    public static function possibleWalkInMatches(VisitorProfile $visitor): \Illuminate\Support\Collection
+    {
+        if ($visitor->isWalkIn()) {
+            return collect();
+        }
+
+        // Name words worth comparing: 3+ letters, not a suffix ("jr", "iii").
+        $words = function (?string $name): array {
+            $parts = preg_split('/[^\p{L}]+/u', mb_strtolower((string) $name), -1, PREG_SPLIT_NO_EMPTY);
+
+            return array_values(array_unique(array_filter($parts,
+                fn ($w) => mb_strlen($w) >= 3 && ! in_array($w, ['jr', 'sr', 'iii'], true))));
+        };
+        // Last 10 digits, so 0917… and +63917… compare equal.
+        $phone = function (?string $number): ?string {
+            $digits = preg_replace('/\D/', '', (string) $number);
+
+            return strlen($digits) >= 10 ? substr($digits, -10) : null;
+        };
+
+        $myWords = $words($visitor->full_name . ' ' . $visitor->first_name . ' ' . $visitor->last_name);
+        $myPhone = $phone($visitor->contact_number);
+        $born = $visitor->date_of_birth?->toDateString();
+
+        if (! $born && ! $myPhone) {
+            return collect();
+        }
+
+        return VisitorProfile::where('registered_via', 'walk_in')
+            ->where('visitor_id', '!=', $visitor->visitor_id)
+            // Narrow in SQL (same birthday, or a number ending the same);
+            // the exact checks run below.
+            ->where(function ($q) use ($born, $myPhone) {
+                $q->when($born, fn ($w) => $w->orWhereDate('date_of_birth', $born))
+                    ->when($myPhone, fn ($w) => $w->orWhere('contact_number', 'like', '%' . substr($myPhone, -7)));
+            })
+            ->orderBy('created_at')
+            ->get()
+            ->map(function (VisitorProfile $walkIn) use ($words, $phone, $myWords, $myPhone, $born) {
+                $reasons = [];
+                $shared = array_intersect($myWords, $words($walkIn->full_name . ' ' . $walkIn->first_name . ' ' . $walkIn->last_name));
+                if ($born && $walkIn->date_of_birth?->toDateString() === $born && $shared) {
+                    $reasons[] = 'same birthday and a similar name';
+                }
+                if ($myPhone && $phone($walkIn->contact_number) === $myPhone) {
+                    $reasons[] = 'same mobile number';
+                }
+
+                return ['visitor' => $walkIn, 'reasons' => $reasons];
+            })
+            ->filter(fn ($match) => $match['reasons'] !== [])
+            ->values();
+    }
+
+    /**
      * Statuses (status()) from which the Front Desk can record a new arrival:
      * also while a visit is booked or under way, so the desk can schedule the
      * same visitor for another day. The booking rules (one visit per day,
