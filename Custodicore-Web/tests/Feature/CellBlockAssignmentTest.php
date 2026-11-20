@@ -322,4 +322,22 @@ class CellBlockAssignmentTest extends TestCase
             ->assertSee('id="blocks"', false)
             ->assertSee('href="' . route('pdl.index', ['status' => 'active']) . '"', false);
     }
+
+    public function test_recommended_capacity_card_shows_the_per_dorm_number(): void
+    {
+        \App\Models\CellBlock::query()->delete();
+        \App\Models\CellBlock::create(['name' => 'Dorm A', 'capacity' => 10, 'designation' => 'any']);
+        \App\Models\CellBlock::create(['name' => 'Dorm B', 'capacity' => 10, 'designation' => 'any']);
+        \App\Models\CellBlock::create(['name' => 'Dorm C', 'capacity' => 10, 'designation' => 'any']);
+        // Inactive dorms don't count.
+        \App\Models\CellBlock::create(['name' => 'Dorm Old', 'capacity' => 99, 'designation' => 'any', 'is_active' => false]);
+
+        $this->get(route('cell-blocks.index'))
+            ->assertSeeInOrder(['Recommended Capacity', '<div class="stat-value">10</div>', 'per dorm · 30 in total'], false);
+
+        // Dorms with different capacities: the range.
+        \App\Models\CellBlock::where('name', 'Dorm C')->update(['capacity' => 15]);
+        $this->get(route('cell-blocks.index'))
+            ->assertSeeInOrder(['Recommended Capacity', '<div class="stat-value">10–15</div>', 'per dorm · 35 in total'], false);
+    }
 }

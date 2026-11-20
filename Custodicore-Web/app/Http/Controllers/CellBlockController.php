@@ -25,9 +25,16 @@ class CellBlockController extends Controller
     {
         $cellBlocks = CellBlock::withOccupancy()->with('visitationRules')->orderBy('name')->get();
 
+        // Recommended capacity is set per dorm, so the card shows that number
+        // (or the range, when dorms differ) with the facility total beside it.
+        $activeCapacities = $cellBlocks->where('is_active', true)->pluck('capacity');
+        $min = $activeCapacities->min();
+        $max = $activeCapacities->max();
+
         $stats = [
-            'blocks' => $cellBlocks->where('is_active', true)->count(),
-            'capacity' => $cellBlocks->where('is_active', true)->sum('capacity'),
+            'blocks' => $activeCapacities->count(),
+            'capacity' => $activeCapacities->sum(),
+            'capacity_per_dorm' => $min === null ? '—' : ($min === $max ? (string) $min : "{$min}–{$max}"),
             'occupied' => $cellBlocks->sum('occupied_count'),
             // Over the recommended capacity (still allowed; shown in yellow).
             'over' => $cellBlocks->where('is_active', true)->filter->isOver()->count(),
