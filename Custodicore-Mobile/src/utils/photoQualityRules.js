@@ -1,8 +1,7 @@
 /**
  * Visitor photo quality rules (Phase 2): is there exactly one face, is it
  * placed and sized for the oval guide, is the head roughly straight, are the
- * eyes open, is the lower face clearly uncovered (no hand over part of it),
- * is the light usable and is the photo sharp?
+ * eyes open, is the light usable and is the photo sharp?
  *
  * Pure functions only (no React / React Native imports) so they can be unit
  * tested with `node --test`. src/services/photoQuality.js feeds them ML Kit
@@ -61,18 +60,6 @@ export const PHOTO_QUALITY_THRESHOLDS = Object.freeze({
   // The face region used for lighting/sharpness is the face box shrunk to
   // this share, to leave out hair and background.
   faceRegionScale: 0.7,
-  // Hand or object over the face: the lower face (nose, mouth, cheeks) is
-  // compared with its own mirror image. The area runs from this share of the
-  // face box's height down to the second, and this share of its width to
-  // each side of the nose.
-  coverRegionTop: 0.4,
-  coverRegionBottom: 0.9,
-  coverHalfWidth: 0.4,
-  // Average brightness difference (0–255) between mirrored left/right areas,
-  // after removing light that falls evenly from one side. A face is roughly
-  // symmetric; a hand over part of it is not. A hand across the nose and
-  // cheek measured about 24. Kept lenient: tune on real phones.
-  maxCoverAsymmetry: 18,
 });
 
 /** Reasons in the order their message is shown (first wins). */
@@ -88,7 +75,6 @@ export const PHOTO_QUALITY_REASONS = [
   'head_turned',
   'head_tilted',
   'head_pitched',
-  'face_covered',
   'eyes_closed',
   'blurry',
 ];
@@ -106,7 +92,6 @@ export const PHOTO_QUALITY_MESSAGES = Object.freeze({
   head_turned: 'Face the camera directly.',
   head_tilted: 'Face the camera directly.',
   head_pitched: 'Face the camera directly.',
-  face_covered: 'Keep your hands away from your face.',
   eyes_closed: 'Please open your eyes and look at the camera.',
   blurry: 'Hold still.',
 });
@@ -127,19 +112,7 @@ function finite(n) {
  * @property {number | null} roll — headEulerAngleZ (tilt)
  * @property {number | null} leftEyeOpen
  * @property {number | null} rightEyeOpen
- * @property {number | null} noseX — x of the nose base landmark, when reported
  */
-
-/**
- * The nose base landmark's x, or null. Android sends ML Kit's landmark type
- * number as text (NOSE_BASE is 6); iOS sends the name.
- * @param {unknown} landmarks
- */
-function noseBaseX(landmarks) {
-  if (!Array.isArray(landmarks)) return null;
-  const nose = landmarks.find((l) => l?.type === 'noseBase' || String(l?.type) === '6');
-  return finite(nose?.position?.x);
-}
 
 /**
  * One ML Kit face (`@infinitered/react-native-mlkit-face-detection`, frame
@@ -171,7 +144,6 @@ export function normalizeFace(raw) {
     roll: finite(raw.headEulerAngleZ),
     leftEyeOpen: probability(raw.leftEyeOpenProbability),
     rightEyeOpen: probability(raw.rightEyeOpenProbability),
-    noseX: noseBaseX(raw.landmarks),
   };
 }
 
@@ -449,85 +421,6 @@ export function checkSharpness(sharpness, t = PHOTO_QUALITY_THRESHOLDS) {
   return { status: 'pass', value: sharpness };
 }
 
-/** Mirrored cells per side (columns) and down the area (rows). */
-const COVER_COLUMNS = 4;
-const COVER_ROWS = 6;
-
-/** @param {GrayImage} gray @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1 */
-function cellMean(gray, x0, y0, x1, y1) {
-  let sum = 0;
-  for (let y = y0; y < y1; y += 1) {
-    const row = y * gray.width;
-    for (let x = x0; x < x1; x += 1) sum += gray.data[row + x];
-  }
-  return sum / ((x1 - x0) * (y1 - y0));
-}
-
-/**
- * How different the two sides of the lower face look: the area below the
- * eyes is cut into cells, each left cell is compared with its mirror cell on
- * the right, and the average difference is returned (0–255). The overall
- * left/right brightness offset (light from one side) is removed first.
- * Cells are averaged, so skin texture and a slightly misplaced midline do
- * not count. The midline is the nose when ML Kit reports it near the box
- * centre, otherwise the box centre.
- *
- * This is a heuristic for obvious cases (a hand or object over part of the
- * face). A hand covering the face evenly on both sides can still pass.
- * @param {NormalizedFace | null} face
- * @param {{ width: number; height: number } | null | undefined} imageSize — the photo the face box refers to
- * @param {GrayImage | null} gray — small copy of the same photo
- * @param {typeof PHOTO_QUALITY_THRESHOLDS} [t]
- * @returns {number | null} null when it cannot be measured
- */
-export function faceCoverAsymmetry(face, imageSize, gray, t = PHOTO_QUALITY_THRESHOLDS) {
-  const size = validSize(imageSize);
-  if (!face || !size || !gray) return null;
-  const sx = gray.width / size.width;
-  const sy = gray.height / size.height;
-
-  const centreX = face.x + face.width / 2;
-  const nearCentre = face.noseX != null && Math.abs(face.noseX - centreX) <= face.width / 4;
-  const mid = (nearCentre ? /** @type {number} */ (face.noseX) : centreX) * sx;
-  // Stay inside the face box and the image on both sides.
-  const half = Math.min(
-    t.coverHalfWidth * face.width * sx,
-    mid - face.x * sx,
-    (face.x + face.width) * sx - mid,
-    mid,
-    gray.width - mid,
-  );
-  const top = Math.max(0, (face.y + t.coverRegionTop * face.height) * sy);
-  const bottom = Math.min(gray.height, (face.y + t.coverRegionBottom * face.height) * sy);
-  const cellW = half / COVER_COLUMNS;
-  const cellH = (bottom - top) / COVER_ROWS;
-  if (!(cellW >= 2 && cellH >= 2)) return null;
-
-  const diffs = [];
-  for (let r = 0; r < COVER_ROWS; r += 1) {
-    const y0 = Math.round(top + r * cellH);
-    const y1 = Math.round(top + (r + 1) * cellH);
-    for (let c = 0; c < COVER_COLUMNS; c += 1) {
-      const inner = Math.round(c * cellW);
-      const outer = Math.round((c + 1) * cellW);
-      const m = Math.round(mid);
-      diffs.push(cellMean(gray, m - outer, y0, m - inner, y1) - cellMean(gray, m + inner, y0, m + outer, y1));
-    }
-  }
-  const offset = diffs.reduce((a, b) => a + b, 0) / diffs.length;
-  return diffs.reduce((a, d) => a + Math.abs(d - offset), 0) / diffs.length;
-}
-
-/**
- * @param {number | null} asymmetry — from faceCoverAsymmetry
- * @param {typeof PHOTO_QUALITY_THRESHOLDS} [t]
- */
-export function checkFaceCovered(asymmetry, t = PHOTO_QUALITY_THRESHOLDS) {
-  if (asymmetry == null || !Number.isFinite(asymmetry)) return { status: 'unknown' };
-  if (asymmetry > t.maxCoverAsymmetry) return { status: 'fail', reason: 'face_covered', value: asymmetry };
-  return { status: 'pass', value: asymmetry };
-}
-
 // ---------------------------------------------------------------------------
 // Combined assessment.
 // ---------------------------------------------------------------------------
@@ -536,7 +429,7 @@ export function checkFaceCovered(asymmetry, t = PHOTO_QUALITY_THRESHOLDS) {
  * Checks that must each return 'pass' for the photo to pass. Head pose
  * blocks only on 'fail': ML Kit does not always report those angles.
  */
-const ESSENTIAL_CHECKS = ['faceCount', 'position', 'size', 'eyes', 'covered', 'lighting', 'sharpness'];
+const ESSENTIAL_CHECKS = ['faceCount', 'position', 'size', 'eyes', 'lighting', 'sharpness'];
 
 const SKIPPED = Object.freeze({ status: 'skipped' });
 const UNKNOWN = Object.freeze({ status: 'unknown' });
@@ -572,7 +465,6 @@ export function assessPhotoQuality({ faces, imageSize = null, gray = null, thres
     size: face ? checkFaceSize(face, imageSize, t) : faceCount.status === 'unknown' ? UNKNOWN : SKIPPED,
     headPose: face ? checkHeadPose(face, t) : faceCount.status === 'unknown' ? UNKNOWN : SKIPPED,
     eyes: face ? checkEyes(face, t) : faceCount.status === 'unknown' ? UNKNOWN : SKIPPED,
-    covered: face ? UNKNOWN : faceCount.status === 'unknown' ? UNKNOWN : SKIPPED,
     lighting: UNKNOWN,
     sharpness: UNKNOWN,
   };
@@ -585,7 +477,6 @@ export function assessPhotoQuality({ faces, imageSize = null, gray = null, thres
       checks.lighting = checkLighting(lumaStats(gray, region, t), t);
       checks.sharpness = face ? checkSharpness(laplacianVariance(gray, region), t) : SKIPPED;
     }
-    if (face) checks.covered = checkFaceCovered(faceCoverAsymmetry(face, imageSize, gray, t), t);
   }
 
   const failed = new Set(

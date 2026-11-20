@@ -426,21 +426,17 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
               ) : null}
             </View>
             {AUTO_CAPTURE_ENABLED ? (
-              <>
-                {/* One short status line, announced by screen readers as it changes. */}
-                <Text
-                  style={[styles.status, passing && styles.statusPassing]}
-                  accessibilityLiveRegion="polite"
-                  accessibilityRole="text"
-                >
-                  {status}
-                </Text>
-                <Text style={styles.hint}>Keep your hands and other objects away from your face.</Text>
-              </>
+              // One short status line, announced by screen readers as it changes.
+              <Text
+                style={[styles.status, passing && styles.statusPassing]}
+                accessibilityLiveRegion="polite"
+                accessibilityRole="text"
+              >
+                {status}
+              </Text>
             ) : (
               <Text style={styles.hint}>
-                Center your face in the oval. Use good light, without a hat or sunglasses. Keep
-                your hands and other objects away from your face.
+                Center your face in the oval. Use good light, without a hat or sunglasses.
               </Text>
             )}
             {error ? <Text style={styles.error}>{error}</Text> : null}
