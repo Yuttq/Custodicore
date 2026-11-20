@@ -49,7 +49,11 @@ class VisitorController extends Controller
                         ->orWhere('contact_number', 'like', "%{$query}%");
                 });
             })
-            ->when($status !== '', fn ($q) => $q->where('verification_status', $status))
+            // Walk-ins are approved at the Front Desk, so "Pending" means app
+            // sign-ups waiting for Records; pending walk-ins have their own filter.
+            ->when($status === 'pending', fn ($q) => $q->where('verification_status', 'pending')->notWalkIn())
+            ->when($status === 'walk_in_pending', fn ($q) => $q->where('verification_status', 'pending')->where('registered_via', 'walk_in'))
+            ->when(in_array($status, ['verified', 'rejected'], true), fn ($q) => $q->where('verification_status', $status))
             ->when($flagged, fn ($q) => $q->whereHas('activeFlags'))
             ->withCount(['idDocuments', 'activeFlags'])
             ->orderBy('created_at', 'desc')
@@ -61,7 +65,8 @@ class VisitorController extends Controller
 
         $stats = [
             'approved_visitors' => VisitorProfile::where('verification_status', 'verified')->count(),
-            'pending_verification' => VisitorProfile::where('verification_status', 'pending')->count(),
+            // Same as the Review Queue's Accounts step: walk-ins are decided at the Front Desk.
+            'pending_verification' => \App\Services\ReviewQueue::accountsQuery()->count(),
             'flagged' => VisitorProfile::whereHas('activeFlags')->count(),
             'pending_visit_requests' => $pendingVisitRequests->count(),
         ];

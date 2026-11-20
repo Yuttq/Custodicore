@@ -6,6 +6,10 @@
   $reviewStatus = $visitor->verification_status;
   $reviewBadge = $reviewStatus === 'verified' ? 'active' : ($reviewStatus === 'rejected' ? 'rejected' : 'transferred');
   $reviewLabel = ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$reviewStatus] ?? strtoupper($reviewStatus);
+  // A pending walk-in waits for the Front Desk's decision, not for Records.
+  if ($reviewStatus === 'pending' && $visitor->isWalkIn()) {
+      $reviewLabel = 'AT FRONT DESK';
+  }
   // The sign-up hints only help while a PDL still has to be linked or reviewed.
   $showSignUpHints = $visitor->relationships->isEmpty()
       || $visitor->relationships->contains(fn ($r) => $r->verification_status === 'pending');

@@ -47,7 +47,8 @@
     <label for="status">Verification Status</label>
     <select id="status" name="status">
       <option value="" {{ $status === '' ? 'selected' : '' }}>All Statuses</option>
-      <option value="pending" {{ $status === 'pending' ? 'selected' : '' }}>Pending</option>
+      <option value="pending" {{ $status === 'pending' ? 'selected' : '' }}>Pending (Review Queue)</option>
+      <option value="walk_in_pending" {{ $status === 'walk_in_pending' ? 'selected' : '' }}>At Front Desk (walk-in)</option>
       <option value="verified" {{ $status === 'verified' ? 'selected' : '' }}>Verified</option>
       <option value="rejected" {{ $status === 'rejected' ? 'selected' : '' }}>Returned</option>
     </select>
@@ -77,9 +78,14 @@
           </td>
           <td class="muted-cell">{{ $visitor->contact_number }}</td>
           <td>
-            <span class="badge {{ $visitor->verification_status === 'verified' ? 'active' : ($visitor->verification_status === 'rejected' ? 'released' : 'transferred') }}">
-              <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$visitor->verification_status] ?? strtoupper($visitor->verification_status) }}
-            </span>
+            @if ($visitor->verification_status === 'pending' && $visitor->isWalkIn())
+              {{-- Decided at the Front Desk (they hold the original requirements); nothing for Records to do. --}}
+              <span class="badge transferred" title="Walk-in: waiting for the Front Desk to approve or reject"><span class="dot"></span>AT FRONT DESK</span>
+            @else
+              <span class="badge {{ $visitor->verification_status === 'verified' ? 'active' : ($visitor->verification_status === 'rejected' ? 'released' : 'transferred') }}">
+                <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'RETURNED'][$visitor->verification_status] ?? strtoupper($visitor->verification_status) }}
+              </span>
+            @endif
           </td>
           <td class="muted-cell">{{ $visitor->id_documents_count }}</td>
           <td class="muted-cell">
