@@ -32,6 +32,9 @@
                     ['route' => 'admin.checkins.index', 'label' => 'Visit Log', 'key' => 'checkins'],
                     ['route' => 'admin.audit.index', 'label' => 'Activity History', 'key' => 'audit'],
                 ];
+                if (auth()->user()->isRole('System Administrator/Warden')) {
+                    $links[] = ['route' => 'admin.settings.index', 'label' => 'Settings', 'key' => 'settings', 'also' => 'admin.settings.*'];
+                }
                 $adminBadges = app(\App\Services\AdminNavBadges::class)->all();
             @endphp
             <nav class="mt-[6px] flex flex-col gap-[2px]" data-admin-badges-url="{{ route('admin.nav-badges') }}">

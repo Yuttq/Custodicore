@@ -125,6 +125,9 @@ class WeeklyVisitLimitSettingTest extends TestCase
     {
         $this->actingAs($this->admin, 'web')->get(route('admin.settings.index'))
             ->assertOk()
+            ->assertSee('href="'.route('admin.settings.index').'"', false)
+            ->assertSee('>Settings</span>', false)
+            ->assertSee('cc-nav-link-active', false)
             ->assertSee('Visiting Rules')
             ->assertSee('name="max_per_week"', false)
             ->assertSee('value="2"', false)
