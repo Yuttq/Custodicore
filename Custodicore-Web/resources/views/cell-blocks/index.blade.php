@@ -15,8 +15,8 @@
     <div class="muted-cell">all cell blocks ↓</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('cell-blocks.index') }}#blocks" title="See and edit each dorm's capacity">
-    <div class="stat-label">Recommended Capacity</div><div class="stat-value">{{ $stats['capacity'] }}</div>
-    <div class="muted-cell">capacity per dorm ↓</div>
+    <div class="stat-label">Recommended Capacity</div><div class="stat-value">{{ $stats['capacity_per_dorm'] }}</div>
+    <div class="muted-cell">per dorm · {{ $stats['capacity'] }} in total ↓</div>
   </a>
   <a class="stat-card stat-link" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-label">PDLs Housed</div><div class="stat-value">{{ $stats['occupied'] }}</div></a>
   <a class="stat-card stat-link {{ $stats['over'] ? 'is-over-card' : '' }} {{ $overOnly ? 'is-selected' : '' }}" href="{{ $overOnly ? route('cell-blocks.index') : route('cell-blocks.index', ['over' => 1]) }}" style="text-decoration:none;color:inherit;" title="{{ $overOnly ? 'Show all dorms' : 'Show only dorms over capacity' }}"><div class="stat-label">Over Capacity</div><div class="stat-value">{{ $stats['over'] }}</div>@if ($overOnly)<div class="muted-cell">showing these only · click to show all</div>@endif</a>

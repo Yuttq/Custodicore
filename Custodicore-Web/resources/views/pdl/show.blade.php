@@ -10,10 +10,15 @@
 
   // Open the edit form again after a failed save (wrong password, invalid
   // field), and the matching "Add …" form after its own validation error.
-  $profileFields = ['first_name', 'middle_name', 'last_name', 'alias', 'gender', 'date_of_birth', 'admission_date', 'cell_block', 'custody_status', 'photo', 'current_password'];
-  $editing = $errors->hasAny($profileFields);
+  // Re-admit (released/transferred PDL back into custody): opened from the
+  // button, from Register PDL's "already registered" panel (?readmit=1), or
+  // again after its own failed submit (old('readmit_form')).
+  $canReadmit = $pdl->canBeReadmitted();
+  $readmitting = $canReadmit && (old('readmit_form') || request()->boolean('readmit'));
+  $profileFields = ['first_name', 'middle_name', 'last_name', 'suffix', 'alias', 'gender', 'date_of_birth', 'admission_date', 'cell_block', 'custody_status', 'photo', 'current_password'];
+  $editing = ! old('readmit_form') && $errors->hasAny($profileFields);
   // Errors from a record's Update window re-open that window instead (old('editing_record')).
-  $openLegal = ! old('editing_record') && $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'date_filed',
+  $openLegal = ! old('editing_record') && ! old('readmit_form') && $errors->hasAny(['case_number', 'offense_code', 'offense_other', 'court', 'case_status', 'date_filed',
     'next_hearing_at', 'hearing_notes', 'convicted_on', 'sentence_years', 'sentence_months', 'sentence_days', 'remarks']);
   $openDisciplinary = $errors->hasAny(['incident_date', 'description', 'action_taken']);
   $openRestriction = $errors->hasAny(['restriction_type', 'start_date', 'end_date', 'reason', 'disciplinary_record_id']);
@@ -47,7 +52,10 @@
       </div>
     </div>
     <div class="pdl-hero-actions">
-      <button type="button" class="btn btn-blue" data-edit-open {{ $editing ? 'hidden' : '' }}>Edit Profile</button>
+      @if ($canReadmit)
+        <a class="btn btn-blue" href="{{ route('pdl.show', ['pdl' => $pdl->pdl_id, 'readmit' => 1]) }}#readmit" data-readmit-open {{ $readmitting ? 'hidden' : '' }}>Re-admit</a>
+      @endif
+      <button type="button" class="btn {{ $canReadmit ? 'btn-outline-neutral' : 'btn-blue' }}" data-edit-open {{ $editing ? 'hidden' : '' }}>Edit Profile</button>
       <a class="btn btn-outline-neutral" href="{{ route('visitation-tracking.show', $pdl->pdl_id) }}">Visit History</a>
     </div>
   </div>
@@ -111,7 +119,10 @@
       <div class="field-m"><label>Last Name</label><input type="text" name="last_name" value="{{ old('last_name', $nameParts['last']) }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only"></div>
     </div>
     <div class="row cols-3">
+      @include('pdl.partials.suffix-select', ['selected' => old('suffix', $nameParts['suffix'])])
       <div class="field-m"><label>Alias</label><input type="text" name="alias" value="{{ old('alias', $pdl->alias) }}" maxlength="150"></div>
+    </div>
+    <div class="row cols-3">
       <div class="field-m">
         <label>Gender</label>
         <select name="gender">
@@ -133,7 +144,7 @@
         <div class="readonly-field">{{ $classificationLabels[$pdl->classification] ?? '—' }}</div>
         <p class="field-hint">Set automatically from the offense. Add a case under Legal Records to change it.</p>
       </div>
-      <div class="field-m"><label>Admission Date</label><input type="date" name="admission_date" value="{{ old('admission_date', optional($pdl->admission_date)->format('Y-m-d')) }}" required max="{{ now()->toDateString() }}"></div>
+      <div class="field-m"><label>Admission Date</label><input type="date" name="admission_date" value="{{ old('readmit_form') ? optional($pdl->admission_date)->format('Y-m-d') : old('admission_date', optional($pdl->admission_date)->format('Y-m-d')) }}" required max="{{ now()->toDateString() }}"></div>
       <div class="field-m">
         <label>Custody Status</label>
         <select name="custody_status">
@@ -144,7 +155,7 @@
       </div>
     </div>
     <div class="row">
-      @include('pdl.partials.cell-block-select', ['selected' => old('cell_block', $pdl->cell_block), 'current' => $pdl->cell_block, 'required' => false, 'classification' => $pdl->classification, 'pdl' => $pdl])
+      @include('pdl.partials.cell-block-select', ['selected' => old('readmit_form') ? $pdl->cell_block : old('cell_block', $pdl->cell_block), 'current' => $pdl->cell_block, 'required' => false, 'classification' => $pdl->classification, 'pdl' => $pdl])
     </div>
 
     <div class="form-actions">
@@ -153,6 +164,71 @@
     </div>
   </form>
 </div>
+
+{{-- ================= RE-ADMIT (released / transferred PDL back into custody) ================= --}}
+@if ($canReadmit)
+  @php $newCaseOn = old('readmit_form') ? (bool) old('new_case') : $pdl->custody_status === 'released'; @endphp
+  <div class="panel" style="margin-bottom:14px;" id="readmit" data-readmit-panel {{ $readmitting ? '' : 'hidden' }}>
+    <div class="panel-header">
+      <h2>Re-admit {{ $pdl->full_name }}</h2>
+      <span class="muted-cell">Back into custody on this record. Saved after you confirm with your password.</span>
+    </div>
+    <p class="field-hint" style="margin:0 0 14px;">
+      {{ $pdl->full_name }} keeps PDL number {{ $pdl->pdl_number }}, their cases, linked visitors and visit history.
+      The previous admission ({{ $pdl->admission_date?->format('M j, Y') ?? '—' }}) is kept in the Custody History.
+    </p>
+
+    <form method="POST" action="{{ route('pdl.readmit', $pdl->pdl_id) }}" data-readmit-form
+          data-password-confirm="Re-admit {{ $pdl->full_name }} ({{ $pdl->pdl_number }}) into custody? Enter your password to confirm.">
+      @csrf
+      <input type="hidden" name="readmit_form" value="1">
+      {{-- For the cell list: only dorms that match the PDL's gender are offered. --}}
+      <input type="hidden" name="gender" value="{{ $pdl->gender }}">
+
+      <p class="section-title"><span class="icon">@include('partials.icon', ['name' => 'building'])</span> Custody Details</p>
+      <div class="row cols-3">
+        <div class="field-m">
+          <label>New Admission Date</label>
+          <input type="date" name="admission_date" value="{{ old('readmit_form') ? old('admission_date') : now()->toDateString() }}" required
+                 min="{{ $pdl->admission_date?->toDateString() }}" max="{{ now()->toDateString() }}">
+        </div>
+      </div>
+      <div class="row">
+        @include('pdl.partials.cell-block-select', ['selected' => old('readmit_form') ? old('cell_block') : null, 'pdl' => $pdl, 'selectId' => 'readmit_cell_block'])
+      </div>
+
+      <p class="section-title" style="margin-top:20px;"><span class="icon">@include('partials.icon', ['name' => 'scale'])</span> Case</p>
+      <label class="dup-match-check" style="margin-bottom:12px;">
+        <input type="checkbox" name="new_case" value="1" data-readmit-new-case {{ $newCaseOn ? 'checked' : '' }}>
+        Admitted for a new case (add it below)
+      </label>
+      <p class="field-hint" style="margin:-4px 0 12px;">Untick if they are back on a case already on file, for example returning from a transfer.</p>
+      <fieldset data-readmit-case style="border:0;padding:0;margin:0;" {{ $newCaseOn ? '' : 'disabled hidden' }}>
+        @include('pdl.partials.case-fields')
+        @include('pdl.partials.case-status-fields', ['useOld' => (bool) old('readmit_form')])
+      </fieldset>
+
+      <div class="form-actions">
+        <button class="btn btn-blue" type="submit">Re-admit PDL</button>
+        <a class="btn btn-outline-neutral" href="{{ route('pdl.show', $pdl->pdl_id) }}" data-readmit-cancel>Cancel</a>
+      </div>
+    </form>
+  </div>
+  <script>
+    (function () {
+      var box = document.querySelector('[data-readmit-new-case]');
+      var fields = document.querySelector('[data-readmit-case]');
+      // A disabled fieldset is neither sent nor checked by the browser.
+      box.addEventListener('change', function () { fields.disabled = !box.checked; fields.hidden = !box.checked; });
+      document.querySelector('[data-readmit-open]')?.addEventListener('click', function (e) {
+        e.preventDefault();
+        document.querySelector('[data-readmit-panel]').hidden = false;
+        this.hidden = true;
+        document.getElementById('readmit').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    })();
+  </script>
+@endif
 
 {{-- ================= VISITORS (linked to this PDL) ================= --}}
 @php

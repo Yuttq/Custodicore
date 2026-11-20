@@ -376,6 +376,19 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .add-record > summary{list-style:none;display:inline-flex;}
 .add-record > summary::-webkit-details-marker{display:none;}
 .add-record[open] > summary{background:var(--gray-bg);}
+/* Register PDL: a PDL with the same name + date of birth is already on file. */
+.dup-match{border:1px solid var(--amber);background:var(--amber-bg);border-radius:12px;padding:16px 18px;margin:0 0 20px;}
+.dup-match-title{margin:0 0 4px;font-weight:700;color:var(--amber-text);}
+.dup-match-text{margin:0;font-size:13.5px;color:var(--text);}
+.dup-match-card{display:flex;gap:12px;align-items:flex-start;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;}
+.dup-match-card .thumb{width:56px;height:56px;font-size:16px;object-fit:cover;}
+.dup-match-body{min-width:0;display:flex;flex-direction:column;gap:3px;}
+.dup-match-name{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-weight:700;}
+.dup-match-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+.dup-match-other{margin-top:14px;border-top:1px solid var(--border);padding-top:10px;}
+.dup-match-other > summary{cursor:pointer;font-weight:600;font-size:13.5px;}
+.dup-match-check{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;}
+.dup-match-check input{width:auto;margin-top:3px;}
 /* Stacked record lists (visitors, restrictions, legal, disciplinary): no sideways scrolling on phones. */
 .rec-list{border:1px solid var(--border);border-radius:12px;overflow:hidden;}
 .rec{padding:10px 14px;}

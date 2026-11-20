@@ -54,7 +54,8 @@
 
 @once
 <script>
-  document.querySelectorAll('[data-case-fields]').forEach(function (box) {
+  // After the page loads: this partial can appear more than once on a page (PDL profile: Edit + Re-admit).
+  document.addEventListener('DOMContentLoaded', function () { document.querySelectorAll('[data-case-fields]').forEach(function (box) {
     var select = box.querySelector('[data-offense-select]');
     var otherRow = box.querySelector('[data-offense-other]');
     var otherInput = otherRow.querySelector('input');
@@ -78,6 +79,6 @@
 
     select.addEventListener('change', update);
     update();
-  });
+  }); });
 </script>
 @endonce

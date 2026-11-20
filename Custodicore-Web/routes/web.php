@@ -427,6 +427,12 @@ Route::middleware([
         [\App\Http\Controllers\PdlController::class, 'update']
     )->middleware('reauth')->name('pdl.update');
 
+    // A released or transferred PDL back into custody on the same record.
+    Route::post(
+        '/pdls/{pdl}/readmit',
+        [\App\Http\Controllers\PdlController::class, 'readmit']
+    )->middleware('reauth')->name('pdl.readmit');
+
     Route::post(
         '/pdls/{pdl}/legal-records',
         [\App\Http\Controllers\PdlController::class, 'storeLegalRecord']
