@@ -939,6 +939,174 @@ class VisitAssignmentService
         });
     }
 
+    // ------------------------------------------------------------------
+    // Reminders (`php artisan visits:remind`). Same pattern as visits:expire:
+    // a query for candidate ids, then one locked transaction per visit that
+    // re-checks everything. A reminder is sent at most once per visit: the
+    // notifications table already holds it (type + related visit), so no
+    // extra column is needed. Reminders change no visit state.
+    // ------------------------------------------------------------------
+
+    public const REMINDER_CONFIRM_TYPE = 'visit_reminder_confirm';
+
+    public const REMINDER_TODAY_TYPE = 'visit_reminder_today';
+
+    /** The confirmation reminder goes out this many hours before the deadline. */
+    public const CONFIRM_REMINDER_HOURS = 24;
+
+    /**
+     * Staff-assigned visits still waiting for the visitor's answer whose
+     * deadline is in the next 24 hours and that were not reminded yet.
+     */
+    public function confirmationReminderDueIds(): Collection
+    {
+        return VisitRequest::where('status', 'pending_confirmation')
+            ->whereNotNull('confirmation_deadline')
+            ->where('confirmation_deadline', '>', now())
+            ->where('confirmation_deadline', '<=', now()->addHours(self::CONFIRM_REMINDER_HOURS))
+            ->whereNotExists(fn ($q) => $this->reminderSentQuery($q, self::REMINDER_CONFIRM_TYPE))
+            ->orderBy('visit_request_id')
+            ->get(['visit_request_id', 'status', 'confirmation_deadline', 'created_at'])
+            ->filter(fn (VisitRequest $visit) => $this->confirmationReminderDue($visit))
+            ->pluck('visit_request_id')
+            ->values();
+    }
+
+    /**
+     * "Please confirm" reminder, once, 24 hours before the deadline. Returns
+     * false (nothing sent) when the visit was answered, cancelled or expired
+     * meanwhile, was already reminded, or belongs to a walk-in without the app.
+     */
+    public function sendConfirmationReminder(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (
+                ! $visitRequest
+                || ! $this->confirmationReminderDue($visitRequest)
+                || $this->reminderAlreadySent($visitRequest, self::REMINDER_CONFIRM_TYPE)
+            ) {
+                return false;
+            }
+
+            $visitRequest->load(['visitor.account', 'pdl']);
+            if (! $this->remindable($visitRequest)) {
+                return false;
+            }
+
+            $deadline = $visitRequest->confirmation_deadline->copy()
+                ->timezone(config('app.timezone'))->format('M j, Y g:i A');
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                self::REMINDER_CONFIRM_TYPE,
+                'Reminder: Confirm Your Visit',
+                "Please confirm or decline your visit with {$visitRequest->pdl->full_name} on {$this->visitLabel($visitRequest)} in the CustodiCore app before {$deadline}. If you do not answer by then, the visit will be cancelled.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            return true;
+        });
+    }
+
+    /** Confirmed visits taking place today that were not reminded yet. */
+    public function visitDayReminderIds(): Collection
+    {
+        return VisitRequest::where('status', 'confirmed')
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', today()->toDateString()))
+            ->whereNotExists(fn ($q) => $this->reminderSentQuery($q, self::REMINDER_TODAY_TYPE))
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * Visit-day reminder (7:00 AM), once, for a visit still confirmed for
+     * today. Returns false when the visit is no longer confirmed or not today,
+     * the visitor already checked in, it was already sent, or the visitor is
+     * a walk-in without the app.
+     */
+    public function sendVisitDayReminder(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (
+                ! $visitRequest
+                || $visitRequest->status !== 'confirmed'
+                || $this->reminderAlreadySent($visitRequest, self::REMINDER_TODAY_TYPE)
+            ) {
+                return false;
+            }
+
+            $visitRequest->load(['visitor.account', 'pdl', 'schedule']);
+            if (
+                ! $visitRequest->schedule?->schedule_date?->isSameDay(today())
+                || $visitRequest->checkins()->whereNotNull('check_in_time')->exists()
+                || ! $this->remindable($visitRequest)
+            ) {
+                return false;
+            }
+
+            Notification::notify(
+                $visitRequest->visitor->account_id,
+                self::REMINDER_TODAY_TYPE,
+                'Visit Today',
+                "Your visit with {$visitRequest->pdl->full_name} is today, {$this->visitLabel($visitRequest)}. Please arrive 15 minutes early with a valid ID and your QR pass from the CustodiCore app.",
+                'visit_requests',
+                $visitRequest->visit_request_id
+            );
+
+            return true;
+        });
+    }
+
+    /**
+     * Still waiting for an answer, deadline in the next 24 hours, and the
+     * original window was longer than 24 hours (a short custom deadline would
+     * otherwise be "reminded" right after the assignment notice).
+     *
+     * Uses created_at (set by the app's clock), not assigned_at, which only
+     * gets the database's CURRENT_TIMESTAMP default and may be in another
+     * time zone than the deadline.
+     */
+    private function confirmationReminderDue(VisitRequest $visitRequest): bool
+    {
+        $deadline = $visitRequest->confirmation_deadline;
+
+        return $visitRequest->status === 'pending_confirmation'
+            && $deadline !== null
+            && $deadline->isFuture()
+            && $deadline->lte(now()->addHours(self::CONFIRM_REMINDER_HOURS))
+            && $visitRequest->created_at !== null
+            && $visitRequest->created_at->lt($deadline->copy()->subHours(self::CONFIRM_REMINDER_HOURS));
+    }
+
+    /** A visitor with an app account; walk-ins who never signed in to the app are skipped. */
+    private function remindable(VisitRequest $visitRequest): bool
+    {
+        return $visitRequest->visitor?->account_id !== null
+            && $visitRequest->pdl !== null
+            && ! $visitRequest->visitor->usesNoApp();
+    }
+
+    private function reminderAlreadySent(VisitRequest $visitRequest, string $type): bool
+    {
+        return Notification::where('notification_type', $type)
+            ->where('related_record_type', 'visit_requests')
+            ->where('related_record_id', $visitRequest->visit_request_id)
+            ->exists();
+    }
+
+    private function reminderSentQuery($query, string $type): void
+    {
+        $query->select(DB::raw(1))
+            ->from('notifications')
+            ->where('notifications.notification_type', $type)
+            ->where('notifications.related_record_type', 'visit_requests')
+            ->whereColumn('notifications.related_record_id', 'visit_requests.visit_request_id');
+    }
+
     /** Visit sessions on this schedule whose visit still holds a seat. */
     public function occupiedSlots(VisitSchedule $schedule): int
     {
