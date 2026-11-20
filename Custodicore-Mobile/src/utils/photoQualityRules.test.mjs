@@ -13,6 +13,8 @@ import {
   base64ToBytes,
   checkEyes,
   checkFaceCount,
+  checkFaceCovered,
+  faceCoverAsymmetry,
   checkFacePosition,
   checkFaceSize,
   checkHeadPose,
@@ -240,6 +242,59 @@ test('eyes: a missing eye probability is UNKNOWN and the photo cannot pass', () 
   assert.equal(junk.status, 'unknown');
 });
 
+// The default face (cx 500, cy 600, 450 × 600) on the 240 × 320 small copy:
+// midline x 120, lower face (the cover check's area) about y 130–202.
+/** SHARP with a bright, flat patch (a hand) over part of the left lower face. */
+const HAND_LEFT = grayImage((x, y) =>
+  x >= 88 && x < 118 && y >= 130 && y < 170 ? 205 : SHARP.data[y * 240 + x],
+);
+/** SHARP with light falling evenly from the right: the right half is brighter. */
+const SIDE_LIT = grayImage((x, y) => SHARP.data[y * 240 + x] + (x >= 120 ? 30 : 0));
+
+test('face covered: a hand over part of the lower face fails with guidance', () => {
+  const result = assess([mlkitFace()], HAND_LEFT);
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(result.reasons, ['face_covered']);
+  assert.equal(result.message, 'Keep your hands away from your face.');
+  assert.ok(result.checks.covered.value > PHOTO_QUALITY_THRESHOLDS.maxCoverAsymmetry);
+});
+
+test('face covered: an uncovered face and light from one side both pass', () => {
+  const clear = assess([mlkitFace()]);
+  assert.equal(clear.checks.covered.status, 'pass');
+  assert.ok(clear.checks.covered.value < 5);
+  const sideLit = assess([mlkitFace()], SIDE_LIT);
+  assert.equal(sideLit.checks.covered.status, 'pass');
+  assert.equal(sideLit.status, 'pass');
+});
+
+test('face covered: the nose landmark sets the midline (Android type number or iOS name)', () => {
+  const withNose = (type, x) => ({ ...mlkitFace(), landmarks: [{ type, position: { x, y: 650 } }] });
+  assert.equal(normalizeFace(withNose('6', 510)).noseX, 510); // Android: NOSE_BASE as text
+  assert.equal(normalizeFace(withNose('noseBase', 490)).noseX, 490); // iOS
+  assert.equal(normalizeFace(withNose('4', 510)).noseX, null); // another landmark
+  // The hand is caught with the midline on the nose as well.
+  assert.deepEqual(assess([withNose('6', 505)], HAND_LEFT).reasons, ['face_covered']);
+  // A nose far from the box centre (a detector glitch) is ignored: box centre used.
+  const glitch = normalizeFace(withNose('6', 900));
+  assert.equal(
+    faceCoverAsymmetry(glitch, IMAGE, SHARP),
+    faceCoverAsymmetry(normalizeFace(mlkitFace()), IMAGE, SHARP),
+  );
+});
+
+test('face covered: cannot measure means UNKNOWN, and the photo cannot pass', () => {
+  assert.equal(faceCoverAsymmetry(null, IMAGE, SHARP), null);
+  assert.equal(faceCoverAsymmetry(normalizeFace(mlkitFace()), null, SHARP), null);
+  // A face at the very edge leaves no room for mirrored cells.
+  assert.equal(faceCoverAsymmetry(normalizeFace(mlkitFace({ cx: 2, width: 40 })), IMAGE, SHARP), null);
+  assert.deepEqual(checkFaceCovered(null), { status: 'unknown' });
+  assert.equal(checkFaceCovered(Number.NaN).status, 'unknown');
+  assert.equal(assess([mlkitFace()], null).checks.covered.status, 'unknown');
+  assert.equal(assess([]).checks.covered.status, 'skipped');
+  assert.equal(assess(null).checks.covered.status, 'unknown');
+});
+
 test('missing detector data is UNKNOWN: never blamed on the visitor, never a pass', () => {
   // Detection failed (no result at all).
   const failed = assess(null);
@@ -328,6 +383,7 @@ test('face normalization reads the ML Kit frame and rejects junk values', () => 
     roll: 1,
     leftEyeOpen: 0.95,
     rightEyeOpen: 0.93,
+    noseX: null,
   });
   assert.equal(normalizeFace({ frame: { origin: { x: 1, y: 1 }, size: { x: 0, y: 10 } } }), null);
   assert.equal(normalizeFace(null), null);
