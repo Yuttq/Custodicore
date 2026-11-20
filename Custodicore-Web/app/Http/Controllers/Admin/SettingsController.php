@@ -16,22 +16,11 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
 
-/** System settings + the role -> module access matrix (Module 1.1) — both real tables now. */
+/** Settings page: facility contact, visiting rules and the role -> module access matrix (Module 1.1). */
 class SettingsController extends Controller
 {
     public function index(): View
     {
-        $settings = SystemSetting::query()
-            ->whereNotIn('setting_key', SystemSetting::HIDDEN)
-            ->orderBy('setting_key')
-            ->get()
-            ->map(fn ($s) => [
-                'key' => $s->setting_key,
-                'value' => $s->setting_value,
-                'description' => $s->description(),
-            ])
-            ->all();
-
         $roles = Role::with(['rolePermissions.module'])->orderBy('role_id')->get()->map(function ($role) {
             if ($role->role_name === 'Visitor') {
                 return ['role_name' => $role->role_name, 'access' => 'Own profile, own schedules and QR (mobile app only)'];
@@ -55,7 +44,6 @@ class SettingsController extends Controller
         })->all();
 
         $summary = [
-            ['label' => 'Configured Settings', 'value' => (string) count($settings), 'icon' => 'cog', 'accent' => 'info'],
             ['label' => 'Roles Defined', 'value' => (string) count($roles), 'icon' => 'users', 'accent' => 'success'],
         ];
 
@@ -63,7 +51,7 @@ class SettingsController extends Controller
         // The limit bookings use now (2 when the row does not exist yet).
         $maxPerWeek = app(ScheduleAvailabilityService::class)->maxVisitsPerWeek();
 
-        return view('admin.settings.index', compact('settings', 'roles', 'summary', 'facilityContact', 'maxPerWeek'));
+        return view('admin.settings.index', compact('roles', 'summary', 'facilityContact', 'maxPerWeek'));
     }
 
     /**
