@@ -86,6 +86,20 @@
       <dd>{{ $visiting['weekly'] ?: 'No schedule set' }}<div class="muted-cell" style="font-weight:500;font-size:11.5px;">{{ $visiting['source'] }}</div></dd>
     </div>
   </dl>
+  {{-- Every case acquitted or dismissed while still in custody: remind the officer to
+       release them (by hand: release waits for the court's release order). --}}
+  @if ($pdl->custody_status === 'active' && $pdl->legalRecords->isNotEmpty() && $pdl->legalRecords->every->isClosed())
+    <div class="dup-match" style="margin:16px 0 0;" data-all-closed>
+      <p class="dup-match-title">All of this PDL's cases are closed</p>
+      <p class="dup-match-text">
+        Every case on file is acquitted or dismissed, but {{ $pdl->full_name }} is still recorded as in custody.
+        Once the court's release order is received, mark them as Released. Until then they still count in the population and can still be visited.
+      </p>
+      <div class="dup-match-actions">
+        <button type="button" class="btn btn-blue" data-release-open>Mark as Released</button>
+      </div>
+    </div>
+  @endif
   @if ($pdl->first_name === null && $pdl->last_name === null)
     <p class="field-hint" style="margin:10px 0 0;">Only a full name is on file for this record. Open <strong>Edit Profile</strong> to confirm the first, middle and last name.</p>
   @endif
@@ -205,7 +219,7 @@
       <p class="field-hint" style="margin:-4px 0 12px;">Untick if they are back on a case already on file, for example returning from a transfer.</p>
       <fieldset data-readmit-case style="border:0;padding:0;margin:0;" {{ $newCaseOn ? '' : 'disabled hidden' }}>
         @include('pdl.partials.case-fields')
-        @include('pdl.partials.case-status-fields', ['useOld' => (bool) old('readmit_form')])
+        @include('pdl.partials.case-status-fields', ['useOld' => (bool) old('readmit_form'), 'openOnly' => true])
       </fieldset>
 
       <div class="form-actions">
@@ -605,6 +619,14 @@
     }
 
     openBtn.addEventListener('click', function () { setEditing(true); });
+    // "All cases closed" prompt: open Edit Profile with Released chosen; the officer still saves with their password.
+    document.querySelector('[data-release-open]')?.addEventListener('click', function () {
+      setEditing(true);
+      var status = form.querySelector('select[name="custody_status"]');
+      status.value = 'released';
+      status.dispatchEvent(new Event('change', { bubbles: true }));
+      status.focus({ preventScroll: true });
+    });
     document.querySelector('[data-edit-cancel]').addEventListener('click', function () {
       form.reset(); // throw away unsaved edits
       form.querySelectorAll('input[type="file"]').forEach(function (f) { f.dispatchEvent(new Event('change')); });

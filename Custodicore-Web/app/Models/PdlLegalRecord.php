@@ -20,6 +20,8 @@ class PdlLegalRecord extends Model
     public const STATUSES = [self::PENDING, self::CONVICTED, self::ON_APPEAL, self::ACQUITTED, self::DISMISSED];
     public const CONVICTED_STATUSES = [self::CONVICTED, self::ON_APPEAL];
     public const CLOSED_STATUSES = [self::ACQUITTED, self::DISMISSED];
+    /** A case someone can be admitted (detained) on: not acquitted or dismissed. */
+    public const OPEN_STATUSES = [self::PENDING, self::CONVICTED, self::ON_APPEAL];
 
     protected $fillable = [
         'pdl_id',

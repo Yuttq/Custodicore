@@ -4,11 +4,14 @@
   record's Update form.
     $record — the legal record being updated (or null for a new one)
     $useOld — fill from old() input (true when this form was the one submitted)
+    $openOnly — true on Register PDL and Re-admit: the case they are detained
+                for can't already be acquitted or dismissed
 --}}
 @php
   use App\Models\PdlLegalRecord;
   $record = $record ?? null;
   $useOld = $useOld ?? true;
+  $statusOptions = ($openOnly ?? false) ? PdlLegalRecord::OPEN_STATUSES : PdlLegalRecord::STATUSES;
   $value = fn (string $key, $fallback = null) => $useOld ? old($key, $fallback) : $fallback;
   $status = $value('case_status', $record?->case_status ?? PdlLegalRecord::PENDING);
   $next = $record?->nextHearing();
@@ -18,7 +21,7 @@
     <div class="field-m">
       <label>Case Status</label>
       <select name="case_status" required data-case-status-select>
-        @foreach (PdlLegalRecord::STATUSES as $option)
+        @foreach ($statusOptions as $option)
           <option value="{{ $option }}" @selected($status === $option)>{{ $option }}</option>
         @endforeach
       </select>

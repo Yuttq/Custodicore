@@ -188,13 +188,14 @@ class PdlController extends Controller
      * conviction date and sentence. Shared by Register PDL, Add Legal Record
      * and Update Legal Record.
      */
-    private function caseDetailRules(Request $request): array
+    private function caseDetailRules(Request $request, bool $openOnly = false): array
     {
         $convicted = in_array($request->input('case_status'), PdlLegalRecord::CONVICTED_STATUSES, true);
 
         return [
             // Missing means a new case: Pending trial (the forms always send one).
-            'case_status' => ['nullable', Rule::in(PdlLegalRecord::STATUSES)],
+            // $openOnly (Register PDL, Re-admit): no one is detained on an acquitted or dismissed case.
+            'case_status' => ['nullable', Rule::in($openOnly ? PdlLegalRecord::OPEN_STATUSES : PdlLegalRecord::STATUSES)],
             'date_filed' => ['nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
             'next_hearing_at' => ['nullable', 'date', 'after_or_equal:today', 'before:' . now()->addYears(5)->toDateString()],
             'hearing_notes' => ['nullable', 'string', 'max:255'],
@@ -303,7 +304,7 @@ class PdlController extends Controller
             'photo' => ['required', ...self::PHOTO_RULES],
             // The case they're detained for; it becomes their first legal record.
             ...$this->caseRules(),
-            ...$this->caseDetailRules($request),
+            ...$this->caseDetailRules($request, openOnly: true),
         ]);
         $this->checkCaseDetails($validated, $validated['date_of_birth'] ?? null);
         $case = [...$this->caseAttributes($validated), ...$this->caseDetailAttributes($validated)];
@@ -548,7 +549,7 @@ class PdlController extends Controller
         $validated = validator($request->all(), [
             'admission_date' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:' . $after],
             'cell_block' => ['required', 'string', 'max:50', $this->cellBlockRule($pdl->gender, $pdl, 'active')],
-            ...($newCase ? [...$this->caseRules($pdl), ...$this->caseDetailRules($request)] : []),
+            ...($newCase ? [...$this->caseRules($pdl), ...$this->caseDetailRules($request, openOnly: true)] : []),
         ], [
             ...self::CASE_MESSAGES,
             'admission_date.before_or_equal' => 'The admission date cannot be in the future.',
@@ -747,7 +748,12 @@ class PdlController extends Controller
         $this->logAudit('update', 'pdl_legal_records', $record->legal_record_id,
             "Updated legal record {$record->case_number} for {$pdl->full_name}: " . implode('; ', $changes));
 
-        return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', "Legal record {$record->case_number} updated.");
+        $message = "Legal record {$record->case_number} updated.";
+        if ($record->isClosed() && $pdl->custody_status === 'active' && $pdl->legalRecords()->get()->every->isClosed()) {
+            $message .= " All of {$pdl->full_name}'s cases are now closed. Mark them as Released once the release order is received.";
+        }
+
+        return redirect()->route('pdl.show', $pdl->pdl_id)->with('success', $message);
     }
 
     // -----------------------------------------------------------------

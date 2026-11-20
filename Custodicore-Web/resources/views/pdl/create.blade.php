@@ -66,7 +66,7 @@
     {{-- The case decides the classification (drug_related -> Thu/Sat visits, non_drug_related -> Fri/Sun). --}}
     <p class="section-title" style="margin-top:26px;"><span class="icon">@include('partials.icon', ['name' => 'scale'])</span> Case Details</p>
     @include('pdl.partials.case-fields', ['showClassification' => true])
-    @include('pdl.partials.case-status-fields')
+    @include('pdl.partials.case-status-fields', ['openOnly' => true])
 
     <p class="section-title" style="margin-top:26px;"><span class="icon">@include('partials.icon', ['name' => 'building'])</span> Custody Details</p>
     <div class="row cols-2">
