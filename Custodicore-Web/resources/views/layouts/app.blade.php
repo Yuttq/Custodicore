@@ -57,7 +57,6 @@
       </a>
     </nav>
     <div class="sidebar-bottom">
-      <a href="#" class="support-link">Support</a>
       <a href="{{ route('account.profile') }}" class="sidebar-footer" title="My profile and picture" style="text-decoration:none;color:inherit;">
         @php $myPhoto = auth()->user()?->staffProfile?->photoUrl(); @endphp
         @if ($myPhoto)
