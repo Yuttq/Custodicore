@@ -53,6 +53,57 @@ export function getPhotoAction(verification) {
 }
 
 /**
+ * The photo's own review status (GET /api/documents `photoStatus`) as a
+ * StatusChip variant and label; null when there is no status (older backends).
+ * @param {unknown} photoStatus — pending | verified | rejected
+ * @returns {{ status: string; label: string } | null}
+ */
+export function getPhotoStatusChip(photoStatus) {
+  if (photoStatus === 'verified') return { status: 'document_verified', label: 'Approved' };
+  if (photoStatus === 'rejected') return { status: 'document_rejected', label: 'Rejected' };
+  if (photoStatus === 'pending') return { status: 'document_under_review', label: 'Under Review' };
+  return null;
+}
+
+/**
+ * One plain sentence under the photo on Verification Documents.
+ * @param {{ hasPhoto?: boolean; photoStatus?: string | null } | null | undefined} verification
+ * @returns {string}
+ */
+export function getPhotoMessage(verification) {
+  if (!verification?.hasPhoto) {
+    return 'Take a photo of yourself with the front camera. Staff compare it with your government ID.';
+  }
+  if (verification.photoStatus === 'rejected') {
+    return 'Staff did not accept your photo. Retake it with the front camera so they can review it again.';
+  }
+  if (verification.photoStatus === 'verified') return 'Your photo has been approved.';
+  return 'Your photo is waiting for staff review. You can retake it only if staff reject it.';
+}
+
+/**
+ * Whether Verification Documents shows the photo section: whenever there is
+ * a photo (to show its status) or one can be taken.
+ * @param {{ hasPhoto?: boolean; canReplacePhoto?: boolean } | null | undefined} verification
+ */
+export function shouldShowPhotoSection(verification) {
+  return verification?.hasPhoto === true || getPhotoAction(verification) !== null;
+}
+
+/**
+ * Home reminder for an approved visitor who cannot book new visits until
+ * staff accept a replacement (GET /api/documents `bookingBlockedBy`), or null.
+ * @param {{ backendStatus?: string | null; bookingBlockedBy?: string[] } | null | undefined} verification
+ * @returns {string | null}
+ */
+export function getBookingBlockedMessage(verification) {
+  if (verification?.backendStatus !== 'verified') return null;
+  const items = Array.isArray(verification.bookingBlockedBy) ? verification.bookingBlockedBy : [];
+  if (items.length === 0) return null;
+  return `Replace your ${items.join(', ')} to book visits`;
+}
+
+/**
  * One plain sentence for the account's own verification
  * (visitor_profiles.verification_status), shown on Verification Documents.
  * Additional PDLs have their own status under My PDLs.

@@ -96,11 +96,18 @@ class VisitorCorrectionPermissionsTest extends TestCase
         $this->assertSame('visitor-photos/current.png', $this->visitor->fresh()->photo_path);
     }
 
-    public function test_returned_account_retakes_once_then_the_photo_is_locked_again(): void
+    public function test_returned_account_retakes_only_a_rejected_photo_then_it_is_locked_again(): void
     {
-        $this->visitor->update(['photo_path' => 'visitor-photos/current.png']);
+        // Reject-only review: returning the whole account does not unlock the photo;
+        // staff rejecting the photo itself does.
+        $this->visitor->update(['photo_path' => 'visitor-photos/current.png', 'photo_status' => 'pending']);
         $this->asVisitorWithStatus('rejected');
 
+        $this->getJson('/api/documents')->assertJsonPath('canReplacePhoto', false);
+        $this->retakePhoto()->assertStatus(409);
+
+        $this->visitor->update(['photo_status' => 'rejected', 'photo_rejection_reason' => 'Your face is covered.']);
+        Sanctum::actingAs($this->visitorAccount->fresh());
         $this->getJson('/api/documents')->assertJsonPath('canReplacePhoto', true);
         $this->retakePhoto()->assertCreated();
         $this->assertSame('pending', $this->visitor->fresh()->verification_status);
@@ -147,23 +154,30 @@ class VisitorCorrectionPermissionsTest extends TestCase
         $this->uploadId()->assertStatus(409);
     }
 
-    public function test_returned_account_can_replace_an_id_waiting_for_review(): void
+    public function test_returned_account_cannot_replace_an_id_waiting_for_review(): void
     {
+        // Pending items stay locked even when the whole account is returned
+        // (this also stops duplicate pending IDs).
         $this->giveId('pending');
         $this->asVisitorWithStatus('rejected');
 
-        $this->getJson('/api/documents')->assertJsonPath('canUploadGovernmentId', true);
-        $this->uploadId()->assertCreated();
-        $this->assertSame('pending', $this->visitor->fresh()->verification_status);
-        // Back under review: locked again.
+        $this->getJson('/api/documents')->assertJsonPath('canUploadGovernmentId', false);
         $this->uploadId()->assertStatus(409);
+        $this->assertSame(1, VisitorId::where('visitor_id', $this->visitor->visitor_id)->count());
+        $this->assertSame('rejected', $this->visitor->fresh()->verification_status);
     }
 
-    public function test_approved_account_keeps_its_id_upload_rule(): void
+    public function test_approved_account_replaces_its_id_only_when_staff_ask_for_one(): void
     {
-        $this->giveId('verified');
+        $id = $this->giveId('verified');
         Sanctum::actingAs($this->visitorAccount); // fixture visitor is approved
 
+        $this->getJson('/api/documents')->assertJsonPath('canUploadGovernmentId', false);
+        $this->uploadId()->assertStatus(409);
+
+        // Staff asked for a new one (Request replacement): only then it can be replaced.
+        VisitorId::where('visitor_id', $this->visitor->visitor_id)->update(['verification_status' => 'rejected', 'rejection_reason' => 'Expired.']);
+        Sanctum::actingAs($this->visitorAccount->fresh());
         $this->getJson('/api/documents')->assertJsonPath('canUploadGovernmentId', true);
         $this->uploadId()->assertCreated();
     }
@@ -221,13 +235,15 @@ class VisitorCorrectionPermissionsTest extends TestCase
         $this->assertSame('rejected', $this->visitor->fresh()->verification_status);
     }
 
-    public function test_approved_account_can_still_swap_a_document_waiting_for_review(): void
+    public function test_approved_account_cannot_swap_a_document_waiting_for_review(): void
     {
+        // Pending documents cannot be replaced, for approved accounts too.
         Sanctum::actingAs($this->visitorAccount); // approved
         $this->relationship->update(['relationship_type' => 'spouse', 'verification_status' => 'pending', 'verified_by' => null, 'verified_at' => null]);
         $this->checklistDocument($this->relationship, 'pending');
 
-        $this->uploadChecklist($this->relationship)->assertCreated();
+        $this->uploadChecklist($this->relationship)->assertStatus(409);
+        $this->assertSame(1, RelationshipDocument::where('relationship_id', $this->relationship->relationship_id)->count());
     }
 
     // ---------------------------------------------------------------

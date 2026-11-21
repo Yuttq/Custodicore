@@ -3,8 +3,11 @@
   Expects:
     $relationship — VisitorPdlRelationship (with visitor + documents loaded)
     $items        — App\Services\RelationshipRequirements::for($relationship)
-  Officer actions (verify/reject files, confirmations, details) are hidden
-  once the relationship is verified: its requirements are then locked.
+  Each file has its own Reject (or Request replacement once approved), with
+  a reason; files are approved with the relationship's Approve (or the
+  account's), and a replacement on a verified relationship with Accept
+  replacements. Other officer actions (confirmations, details) are hidden
+  once the relationship is verified.
 --}}
 @php
   $visitorId = $relationship->visitor_id;
@@ -59,10 +62,21 @@
           @endif
         </div>
 
+        {{-- Reject only, one file at a time (the relationship's Return stays for exceptional cases). --}}
+        @if ($item['kind'] === 'document' && $item['document'] && in_array($item['document']->status, ['pending', 'verified'], true)
+             && $relationship->verification_status !== 'rejected')
+          <div class="req-actions">
+            @include('partials.item-reject', [
+              'action' => route('relationship-documents.reject', $item['document']->document_id),
+              'label' => $item['label'],
+              'approved' => $item['document']->status === 'verified',
+            ])
+          </div>
+        @endif
+
         @unless ($locked)
           <div class="req-actions">
-            {{-- Files have no buttons of their own: the relationship's Approve approves them,
-                 and its Return sends them back with what to fix. --}}
+            {{-- The relationship's Approve approves the files; its Return sends them all back. --}}
             {{-- Officer confirmations: approving the relationship confirms them (its pop-up says so). --}}
             @if ($item['kind'] === 'confirmation' && $item['status'] !== 'met')
               <span class="muted-cell" style="font-size:12px;">Confirmed when you approve</span>

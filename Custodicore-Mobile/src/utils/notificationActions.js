@@ -43,6 +43,8 @@ const REASON_PATTERNS = {
   relationship_rejected: /Reason:\s*([\s\S]+?)\s*(?:To visit this PDL\b[\s\S]*)?$/,
   // VisitorController::reject: "… What to fix: {reason}"
   account_rejected: /What to fix:\s*([\s\S]+?)\s*$/,
+  // DocumentRejectionNotice::sendPhoto: "Your photo was not accepted. Reason: {reason} Please retake it …"
+  photo_rejected: /Reason:\s*([\s\S]+?)\s*(?:Please retake it\b[\s\S]*)?$/,
 };
 
 /** The notification's record id when it is of `type`, else null. */
@@ -81,7 +83,11 @@ export function extractNotificationReason(category, body) {
  */
 export function extractRejectedDocumentLabel(body) {
   if (typeof body !== 'string') return null;
-  const match = body.match(/^\s*Your\s+(.+?)\s+was not accepted\./);
+  // "Your {label} was not accepted." (rejected under review) or
+  // "Facility staff need a new copy of your {label}." (replacement requested).
+  const match =
+    body.match(/^\s*Your\s+(.+?)\s+was not accepted\./) ??
+    body.match(/^\s*Facility staff need a new copy of your\s+(.+?)\.\s+Reason:/);
   return match?.[1]?.trim() || null;
 }
 
@@ -117,6 +123,9 @@ export function extractRejectedDocumentLabel(body) {
  *   that document (it shows the staff reason), or the Verification
  *   Documents list when the document cannot be pinned down. Only while a
  *   replaceable document is still rejected.
+ * - `photo_rejected` → "Retake Photo" opens Verification Documents (the
+ *   photo section shows the reason and the camera), only while the photo is
+ *   still rejected and can be retaken.
  *
  * @param {{ category?: unknown; body?: unknown; relatedType?: string | null; relatedId?: string | null }} notification
  * @param {{ backendStatus?: string | null; pdlRequests?: any[]; pdlRequestLimit?: { max: number; open: number } | null; pdlRelationships?: any[]; documents?: any[] } | null | undefined} verification
@@ -131,6 +140,12 @@ export function resolveNotificationAction(notification, verification) {
   if (type === 'account_rejected') {
     return verification.backendStatus === 'rejected'
       ? { label: 'Fix My Account', route: 'VisitorVerificationDocuments' }
+      : null;
+  }
+
+  if (type === 'photo_rejected') {
+    return verification.photoStatus === 'rejected' && verification.canReplacePhoto === true
+      ? { label: 'Retake Photo', route: 'VisitorVerificationDocuments' }
       : null;
   }
 
@@ -213,6 +228,8 @@ export function notificationIconName(category) {
   if (type === 'document_rejected') return 'document-text';
   if (type === 'pdl_request_rejected') return 'person-add';
   if (type === 'account_rejected') return 'alert-circle';
+  if (type === 'photo_rejected') return 'camera';
+  if (type === 'replacement_accepted') return 'shield-checkmark';
   if (type === 'account_approved' || type === 'relationship_approved') return 'shield-checkmark';
   if (type === 'relationship_linked') return 'people';
   if (type === 'relationship_rejected') return 'close-circle';

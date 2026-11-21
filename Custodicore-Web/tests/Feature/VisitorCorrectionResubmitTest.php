@@ -21,7 +21,8 @@ use Tests\TestCase;
  * Visitor correction workflow:
  *   1. a returned account goes back to Account Review after a saved correction;
  *   2. a rejected registration document can be replaced from the app;
- *   3. the photo can be retaken until the account is approved;
+ *   3. the photo can be retaken only once staff reject it (a whole-account
+ *      return does not unlock it);
  *   4. rejecting a single ID or document notifies the visitor with the reason.
  * Nothing is approved automatically; approved visitors keep their rules.
  */
@@ -195,16 +196,19 @@ class VisitorCorrectionResubmitTest extends TestCase
         $this->get('/account-reviews')->assertSee('Rejected · waiting for a new file')->assertSee('Reason given: The page is cut off.');
     }
 
-    public function test_registration_document_of_an_approved_visitor_still_cannot_be_reviewed_unlinked(): void
+    public function test_registration_document_of_an_approved_visitor_can_be_rejected_on_its_own(): void
     {
+        // Reject-only review: an unlinked registration file of an approved
+        // visitor is rejected on its own; the account stays approved.
         $document = $this->registrationDocument($this->visitor, 'marriage_certificate');
 
         $this->asRecordOfficer();
         $this->post("/relationship-documents/{$document->document_id}/reject", ['rejection_reason' => 'The page is cut off.'])
-            ->assertSessionHas('error');
+            ->assertSessionHas('success');
 
-        $this->assertSame('pending', $document->fresh()->status);
-        $this->assertSame(0, Notification::count());
+        $this->assertSame('rejected', $document->fresh()->status);
+        $this->assertSame('verified', $this->visitor->fresh()->verification_status);
+        $this->assertSame(1, Notification::where('notification_type', 'document_rejected')->count());
     }
 
     public function test_walk_in_documents_keep_their_own_review_flow(): void
@@ -289,11 +293,16 @@ class VisitorCorrectionResubmitTest extends TestCase
         $this->assertSame(1, RelationshipDocument::where('visitor_id', $visitor->visitor_id)->count());
         $this->assertSame('rejected', $visitor->fresh()->verification_status);
 
-        // Approved visitors use the relationship checklist instead.
-        $this->registrationDocument($this->visitor, 'marriage_certificate', 'rejected');
+        // An approved visitor replaces a registration file only once staff reject it.
+        $this->registrationDocument($this->visitor, 'marriage_certificate', 'pending');
         Sanctum::actingAs($this->visitorAccount);
         $this->post('/api/registration-documents/marriage_certificate', ['file' => $this->fakePhoto('cert.png')],
             ['Accept' => 'application/json'])->assertStatus(409);
+        RelationshipDocument::where('visitor_id', $this->visitor->visitor_id)->update(['status' => 'rejected']);
+        Sanctum::actingAs($this->visitorAccount->fresh());
+        $this->post('/api/registration-documents/marriage_certificate', ['file' => $this->fakePhoto('cert.png')],
+            ['Accept' => 'application/json'])->assertCreated();
+        $this->assertSame('verified', $this->visitor->fresh()->verification_status);
     }
 
     public function test_replaced_document_is_approved_only_through_one_step_approval(): void
@@ -328,8 +337,9 @@ class VisitorCorrectionResubmitTest extends TestCase
 
     public function test_returned_visitor_retakes_the_photo_and_goes_back_to_pending(): void
     {
+        // The photo itself was rejected (a whole-account return alone does not unlock it).
         $visitor = $this->visitorWithStatus('rejected');
-        $visitor->update(['photo_path' => 'visitor-photos/old.png']);
+        $visitor->update(['photo_path' => 'visitor-photos/old.png', 'photo_status' => 'rejected', 'photo_rejection_reason' => 'Blurry photo.']);
         Storage::disk('local')->put('visitor-photos/old.png', 'old');
         $this->signInAs($visitor);
 

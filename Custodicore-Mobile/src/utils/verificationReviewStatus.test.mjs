@@ -151,3 +151,30 @@ test('Check Status notice matches each state', () => {
     /contact facility staff/,
   );
 });
+
+test('a rejected photo on a pending account needs correcting, with its own reason', () => {
+  const state = getVerificationReviewState({
+    accountStatus: 'pending',
+    documents: [doc('government_id', 'under_review')],
+    photo: { status: 'rejected', reason: 'Your face is covered by a mask.' },
+  });
+  assert.equal(state.kind, 'action_required');
+  assert.equal(state.documentsNeedingAttention.length, 1);
+  assert.equal(state.documentsNeedingAttention[0].key, 'photo');
+  assert.equal(state.documentsNeedingAttention[0].reason, 'Your face is covered by a mask.');
+  assert.equal(state.showDocumentsAction, true);
+});
+
+test('a pending or approved photo never asks for a correction', () => {
+  for (const status of ['pending', 'verified', null]) {
+    const state = getVerificationReviewState({
+      accountStatus: 'pending',
+      documents: [doc('government_id', 'under_review')],
+      photo: { status },
+    });
+    assert.equal(state.kind, 'under_review');
+  }
+  // Documents not loaded yet: the photo is not guessed either.
+  const unknown = getVerificationReviewState({ accountStatus: 'pending', documents: null, photo: { status: 'rejected' } });
+  assert.equal(unknown.documentsNeedingAttention.length, 0);
+});

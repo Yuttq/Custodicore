@@ -63,11 +63,17 @@ function plural(n, one, many) {
  * @param {string | null | undefined} input.accountStatus — /me verificationStatus
  * @param {string | null | undefined} [input.accountReason] — /me rejectionReason
  * @param {ReviewDocument[] | null | undefined} [input.documents] — normalized documents, or null while unknown
+ * @param {{ status?: string | null; reason?: string | null } | null | undefined} [input.photo] — the
+ *   visitor's own photo review (GET /api/documents photoStatus / photoRejectionReason); a
+ *   rejected photo needs correcting like a rejected document
  * @returns {VerificationReviewState}
  */
-export function getVerificationReviewState({ accountStatus, accountReason, documents }) {
+export function getVerificationReviewState({ accountStatus, accountReason, documents, photo }) {
   const documentsKnown = Array.isArray(documents);
-  const list = documentsKnown ? /** @type {ReviewDocument[]} */ (documents) : [];
+  const list = documentsKnown ? /** @type {ReviewDocument[]} */ ([...documents]) : [];
+  if (documentsKnown && photo?.status === 'rejected') {
+    list.unshift({ key: 'photo', label: 'Your Photo', uploadStatus: 'rejected', rejectionReason: photo.reason ?? null });
+  }
 
   /** @type {AttentionDocument[]} */
   const documentsNeedingAttention = list

@@ -2,18 +2,17 @@
   Relationship documents the visitor sent with the registration that are not
   on a relationship checklist yet (no PDL linked, or the linked relationship
   does not ask for them). Newest file per requirement.
-  While an app-registered account is not approved, staff can reject a file here; the
-  visitor is notified and replaces it from the app. Files are approved only
-  together with the account (one-step approval), or on the relationship
-  checklist after the PDL is linked.
+  Reject only: staff reject a file waiting for review, or ask for a new copy
+  of an approved one, with a reason; the visitor is notified and replaces
+  only that file from the app. Files are approved together with the account
+  (final Approve), or on the relationship checklist after the PDL is linked.
   Expects: $visitor — VisitorProfile with registrationDocuments loaded.
-  Optional: $allowReject (default true) — false on the Review Queue card, where
-  the decision is Approve or Return for the whole account.
+  Optional: $allowReject (default true) — false hides the Reject controls.
 --}}
 @php
   $registrationDocs = $visitor->registrationDocuments->unique('requirement_key');
   // Walk-ins keep their own document review (at the Front Desk, WalkInService::approveAtDesk).
-  $canRejectRegistrationDocs = ($allowReject ?? true) && $visitor->verification_status !== 'verified' && ! $visitor->isWalkIn();
+  $canRejectRegistrationDocs = ($allowReject ?? true) && ! $visitor->isWalkIn();
 @endphp
 @if ($registrationDocs->isNotEmpty())
   <div class="req-panel" style="margin-top:12px;">
@@ -40,19 +39,13 @@
               <div class="req-meta">Reason given: {{ $doc->rejection_reason }}</div>
             @endif
           </div>
-          @if ($canRejectRegistrationDocs && $doc->status === 'pending')
+          @if ($canRejectRegistrationDocs && in_array($doc->status, ['pending', 'verified'], true))
             <div class="acct-id-actions">
-              <details class="acct-reject">
-                <summary class="btn btn-outline-neutral acct-small elig-reject">Reject</summary>
-                <form method="POST" action="{{ route('relationship-documents.reject', $doc->document_id) }}" class="acct-reject-form"
-                      data-confirm="Reject {{ $visitor->full_name }}'s {{ $doc->label() }}? They will be notified and asked to upload a new one."
-                      data-confirm-title="Reject document" data-confirm-ok="Reject" data-confirm-danger>
-                  @csrf
-                  <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="Why the document was rejected (shown to the visitor)"
-                            placeholder="e.g. The certificate is cut off. Please upload a photo of the whole page."></textarea>
-                  <button type="submit" class="btn btn-outline-neutral acct-small elig-reject">Confirm reject</button>
-                </form>
-              </details>
+              @include('partials.item-reject', [
+                'action' => route('relationship-documents.reject', $doc->document_id),
+                'label' => $doc->label(),
+                'approved' => $doc->status === 'verified',
+              ])
             </div>
           @endif
         </li>

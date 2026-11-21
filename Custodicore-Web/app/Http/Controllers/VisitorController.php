@@ -14,6 +14,7 @@ use App\Mail\VisitorAccountApproved;
 use App\Services\RelationshipRequirements;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -318,16 +319,16 @@ class VisitorController extends Controller
         return Storage::disk($disk)->response($idDocument->file_path);
     }
 
+    /**
+     * Reject one government ID with a reason shown to the visitor. On an ID
+     * waiting for review it is an ordinary rejection; on an approved ID it
+     * asks the visitor for a new one ("Request replacement"). Only this ID
+     * changes; an approved visitor stays approved but cannot book new visits
+     * until a new ID is accepted (VisitorProfile::bookingBlockers).
+     */
     public function rejectId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
     {
         abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
-
-        // An approved ID stays approved: ordinary review only decides IDs that
-        // are waiting (walk-ins included). A new ID the visitor uploads later
-        // is pending and can be rejected on its own.
-        if ($idDocument->verification_status === 'verified') {
-            return back()->with('error', 'This ID is already approved and cannot be rejected.');
-        }
 
         // Shown to the visitor in the app — keep it to what they can act on.
         $data = $request->validate([
@@ -341,31 +342,241 @@ class VisitorController extends Controller
         if ($idDocument->verification_status === 'rejected') {
             return back()->with('error', 'This ID document is already rejected.');
         }
+        if ($idDocument->isSuperseded()) {
+            return back()->with('error', 'This ID was set aside as a duplicate.');
+        }
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
             return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
         }
 
+        $wasApproved = $idDocument->verification_status === 'verified';
+
+        // A replacement is requested only for the current (newest) ID; older
+        // approved IDs are kept unchanged as history.
+        if ($wasApproved && $visitor->currentGovernmentId()?->visitor_id_doc_id !== $idDocument->visitor_id_doc_id) {
+            return back()->with('error', 'A newer ID is on file. Request a replacement of the current ID instead; older IDs are kept as history.');
+        }
+
         try {
-            $idDocument->update([
-                'verification_status' => 'rejected',
-                'verified_by' => $staffId,
-                'verified_at' => now(),
-                'rejection_reason' => $reason,
-            ]);
+            // Only the status the officer saw: a second click (or officer) cannot reject it twice.
+            $rejected = VisitorId::whereKey($idDocument->visitor_id_doc_id)
+                ->where('verification_status', $idDocument->verification_status)
+                ->update([
+                    'verification_status' => 'rejected',
+                    'verified_by' => $staffId,
+                    'verified_at' => now(),
+                    'rejection_reason' => $reason,
+                ]);
         } catch (\Throwable $e) {
             Log::error('ID rejection failed: ' . $e->getMessage());
             return back()->with('error', 'Could not reject this ID. ' . $e->getMessage());
         }
+        if ($rejected === 0) {
+            return back()->with('error', 'This ID changed while you were reviewing it. Check it again.');
+        }
 
-        $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
-            "Rejected {$idDocument->typeLabel()} for {$visitor->full_name}: {$reason}");
+        $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id, $wasApproved
+            ? "Requested a replacement of the approved {$idDocument->typeLabel()} for {$visitor->full_name}: {$reason}"
+            : "Rejected {$idDocument->typeLabel()} for {$visitor->full_name}: {$reason}");
 
         \App\Support\DocumentRejectionNotice::send($visitor, $idDocument->typeLabel(), $reason,
-            'visitor_ids', $idDocument->visitor_id_doc_id);
+            'visitor_ids', $idDocument->visitor_id_doc_id, replacementRequested: $wasApproved);
 
-        return back()->with('success', 'ID document rejected.');
+        return back()->with('success', $wasApproved
+            ? 'Replacement requested. The visitor has been notified. Their other documents are unchanged.'
+            : 'ID document rejected.');
+    }
+
+    /**
+     * Set aside a duplicate government ID waiting for review (two or more
+     * IDs pending block the final Approve). The ID is kept with its file and
+     * history as `superseded`; the visitor is not notified (they still have
+     * another ID under review). The reason is a staff note.
+     */
+    public function setAsideId(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
+    {
+        abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'reason.required' => 'Say why this ID is set aside (for example: duplicate upload).',
+            'reason.min' => 'Give a reason of at least 5 characters.',
+        ]);
+        $reason = trim((string) $data['reason']);
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $error = DB::transaction(function () use ($visitor, $idDocument, $staffId, $reason) {
+            // Same row lock as the final Approve, so the two never cross.
+            VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
+
+            if ($visitor->pendingIdCount() < 2) {
+                return 'Only a duplicate can be set aside: this visitor has no other ID waiting for review.';
+            }
+            $updated = VisitorId::whereKey($idDocument->visitor_id_doc_id)
+                ->where('verification_status', 'pending')
+                ->update([
+                    'verification_status' => VisitorId::STATUS_SUPERSEDED,
+                    'verified_by' => $staffId,
+                    'verified_at' => now(),
+                    'rejection_reason' => $reason,
+                ]);
+
+            return $updated === 0 ? 'Only an ID waiting for review can be set aside.' : null;
+        });
+
+        if ($error !== null) {
+            return back()->with('error', $error);
+        }
+
+        $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
+            "Set aside duplicate {$idDocument->typeLabel()} of {$visitor->full_name}: {$reason}");
+
+        return back()->with('success', 'Duplicate ID set aside. It is kept in the records and was not approved.');
+    }
+
+    /**
+     * Reject the visitor's own photo with a reason shown to the visitor. On a
+     * photo waiting for review it is an ordinary rejection; on an approved
+     * photo it asks for a new one ("Request replacement"). Neither changes
+     * the account, IDs or documents. A walk-in's photo is retaken at the
+     * Front Desk.
+     */
+    public function rejectPhoto(Request $request, VisitorProfile $visitor)
+    {
+        $data = $request->validate([
+            'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'rejection_reason.required' => 'Tell the visitor why the photo was rejected.',
+            'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
+        ]);
+        $reason = trim((string) $data['rejection_reason']);
+
+        if ($visitor->isWalkIn()) {
+            return back()->with('error', 'A walk-in\'s photo is taken at the Front Desk. Ask the Front Desk to retake it.');
+        }
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $seenPath = $visitor->photo_path;
+        $wasApproved = $visitor->photo_status === VisitorProfile::PHOTO_VERIFIED;
+
+        try {
+            // Rechecked under the same row lock the final Approve takes.
+            $error = DB::transaction(function () use ($visitor, $seenPath, $staffId, $reason) {
+                $current = VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()
+                    ->first(['visitor_id', 'photo_path', 'photo_status']);
+
+                if (! $current?->photo_path) {
+                    return 'This visitor has no photo yet.';
+                }
+                if ($current->photo_status === VisitorProfile::PHOTO_REJECTED) {
+                    return 'This photo is already rejected.';
+                }
+                if ($current->photo_path !== $seenPath) {
+                    return 'The visitor sent a new photo while you were reviewing. Check it again.';
+                }
+
+                VisitorProfile::whereKey($visitor->visitor_id)->update([
+                    'photo_status' => VisitorProfile::PHOTO_REJECTED,
+                    'photo_rejection_reason' => $reason,
+                    'photo_reviewed_by' => $staffId,
+                    'photo_reviewed_at' => now(),
+                ]);
+
+                return null;
+            });
+        } catch (\Throwable $e) {
+            Log::error('Photo rejection failed: ' . $e->getMessage());
+            return back()->with('error', 'Could not reject this photo. ' . $e->getMessage());
+        }
+
+        if ($error !== null) {
+            return back()->with('error', $error);
+        }
+
+        $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id, $wasApproved
+            ? "Requested a new photo from {$visitor->full_name}: {$reason}"
+            : "Rejected photo for {$visitor->full_name}: {$reason}");
+
+        \App\Support\DocumentRejectionNotice::sendPhoto($visitor, $reason, replacementRequested: $wasApproved);
+
+        return back()->with('success', 'Photo rejected. The visitor has been notified to retake it. Their ID and documents are unchanged.');
+    }
+
+    /**
+     * Approved visitor: accept the replacements they sent after staff
+     * rejected an item or asked for a new copy (VisitorProfile::itemReviewState
+     * awaitingReview). Only those replacements, and only while still waiting:
+     * anything the officer rejected meanwhile is left alone. Booking opens
+     * again once nothing else needs replacing.
+     */
+    public function acceptReplacements(VisitorProfile $visitor)
+    {
+        if (! $visitor->isVerified()) {
+            return back()->with('error', 'This account is not approved yet. Its items are approved together with the account (Approve).');
+        }
+
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        $result = DB::transaction(function () use ($visitor, $staffId) {
+            $locked = VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
+            $state = $locked->itemReviewState();
+
+            if ($state['awaitingReview'] === []) {
+                return ['error' => 'There are no replacements waiting for review.'];
+            }
+            if ($locked->pendingIdCount() > 1) {
+                return ['error' => 'More than one government ID is waiting. Set aside the duplicate first.'];
+            }
+
+            if (in_array('Visitor Photo', $state['awaitingReview'], true)) {
+                $locked->verifyPendingPhoto($staffId, "Accepted the new photo of {$locked->full_name}");
+            }
+
+            if (in_array('Government ID', $state['awaitingReview'], true)) {
+                foreach ($locked->idDocuments()->where('verification_status', 'pending')->get() as $id) {
+                    $updated = VisitorId::whereKey($id->visitor_id_doc_id)->where('verification_status', 'pending')
+                        ->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
+                    if ($updated) {
+                        AuditLog::record('update', 'visitor_ids', $id->visitor_id_doc_id,
+                            "Accepted the new {$id->typeLabel()} of {$locked->full_name}", \App\Models\Module::CODE_VISITOR_MANAGEMENT);
+                    }
+                }
+            }
+
+            foreach (\App\Models\RelationshipDocument::whereIn('document_id', $state['awaitingDocumentIds'])->get() as $document) {
+                $updated = \App\Models\RelationshipDocument::whereKey($document->document_id)->where('status', 'pending')
+                    ->update(['status' => 'verified', 'rejection_reason' => null, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+                if ($updated) {
+                    AuditLog::record('update', 'relationship_documents', $document->document_id,
+                        "Accepted the new {$document->label()} of {$locked->full_name}", \App\Models\Module::CODE_VISITOR_MANAGEMENT);
+                }
+            }
+
+            return ['accepted' => $state['awaitingReview'], 'stillNeeded' => $locked->itemReviewState()['needsReplacement']];
+        });
+
+        if (isset($result['error'])) {
+            return back()->with('error', $result['error']);
+        }
+
+        \App\Support\ReplacementAcceptedNotice::send($visitor, $result['accepted'], $result['stillNeeded']);
+
+        return back()->with('success', 'Replacements accepted: ' . implode(', ', $result['accepted']) . '.'
+            . ($result['stillNeeded'] === [] ? ' The visitor can book visits again.' : ' Still waiting for: ' . implode(', ', $result['stillNeeded']) . '.'));
     }
 
     // -----------------------------------------------------------------

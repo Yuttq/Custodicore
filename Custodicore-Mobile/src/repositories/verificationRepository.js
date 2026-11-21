@@ -156,9 +156,10 @@ export function normalizeVerification(data, relationshipKey) {
   const relationships = Array.isArray(o.relationships) ? o.relationships : [];
   const registrationDocuments = buildRegistrationDocuments(o.registrationDocuments);
 
-  // Prefer a verified ID; otherwise the most recent upload (API is newest-first).
-  const currentId =
-    governmentIds.find((d) => d?.status === 'verified') ?? governmentIds[0] ?? null;
+  // The current ID is the newest one (API is newest-first, set-aside duplicates
+  // excluded), as the backend decides replacement and booking by it; older
+  // approved IDs are history.
+  const currentId = governmentIds[0] ?? null;
 
   /** @type {VerificationDocument[]} */
   const documents = [
@@ -209,10 +210,21 @@ export function normalizeVerification(data, relationshipKey) {
     // newest first, and how many may be open at once.
     pdlRequests,
     pdlRequestLimit: normalizePdlRequestLimit(o.pdlRequestLimit, pdlRequests),
-    // The visitor's own photo (GET /api/me/photo); retakeable until approval.
+    // The visitor's own photo (GET /api/me/photo). Retakeable only when there is
+    // none yet or staff rejected it (backend canReplacePhoto).
     hasPhoto: o.hasPhoto === true,
     photoUploadedAt: typeof o.photoUploadedAt === 'string' ? o.photoUploadedAt : null,
     canReplacePhoto: o.canReplacePhoto === true,
+    // Its own review: pending | verified | rejected (null: none, or an older backend).
+    photoStatus: ['pending', 'verified', 'rejected'].includes(o.photoStatus) ? o.photoStatus : null,
+    photoRejectionReason:
+      o.photoStatus === 'rejected' && typeof o.photoRejectionReason === 'string' && o.photoRejectionReason.trim()
+        ? o.photoRejectionReason.trim()
+        : null,
+    // Approved visitors: items to replace (and have accepted) before new visits can be booked.
+    bookingBlockedBy: Array.isArray(o.bookingBlockedBy)
+      ? o.bookingBlockedBy.filter((label) => typeof label === 'string' && label.trim())
+      : [],
   };
 }
 

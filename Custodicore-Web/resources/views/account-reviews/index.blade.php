@@ -6,7 +6,7 @@
     'pending' => ['Waiting for approval', ''],
     'rejected' => ['Returned', ''],
   ];
-  $idBadge = ['verified' => ['active', 'Approved'], 'pending' => ['transferred', 'Not checked yet'], 'rejected' => ['rejected', 'Rejected']];
+  $idBadge = ['verified' => ['active', 'Approved'], 'pending' => ['transferred', 'Not checked yet'], 'rejected' => ['rejected', 'Rejected'], 'superseded' => ['released', 'Set aside']];
   $typeLabels = \App\Models\VisitorPdlRelationship::TYPE_LABELS;
 @endphp
 
@@ -82,6 +82,17 @@
         </div>
       @endif
 
+      {{-- Approved visitor with replacements to check: no account decision, only the replacements. --}}
+      @if ($visitor->isVerified())
+        <div class="elig-note" style="margin:0 20px 4px;">
+          <span class="badge active"><span class="dot"></span>Approved · replacement to check</span>
+          Staff asked this visitor for new copies. Open each replacement, reject any that is not acceptable, then accept the rest.
+        </div>
+        @include('partials.replacements-review', ['visitor' => $visitor])
+        </article>
+        @continue
+      @endif
+
       {{-- Maybe already registered as a walk-in under a slightly different name: one person keeps one account. --}}
       @php $walkInMatches = $tab === 'pending' ? \App\Services\WalkInService::possibleWalkInMatches($visitor) : collect(); @endphp
       @if ($walkInMatches->isNotEmpty())
@@ -129,18 +140,35 @@
         @endif
       </dl>
 
-      {{-- The visitor's own photo, to compare with the ID picture --}}
+      {{-- The visitor's own photo, to compare with the ID picture. Reject only; approved with the account. --}}
       <div class="acct-ids acct-photo">
-        <div class="elig-reqs-title" style="margin-bottom:8px;">Visitor Photo</div>
+        <div class="elig-reqs-title" style="margin-bottom:8px;">
+          Visitor Photo
+          @if ($visitor->photo_path && $visitor->photo_status)
+            @php [$photoBadgeClass, $photoBadgeText] = $idBadge[$visitor->photo_status] ?? ['released', ucfirst($visitor->photo_status)]; @endphp
+            <span class="badge {{ $photoBadgeClass }}" style="margin-left:6px;"><span class="dot"></span>{{ $photoBadgeText }}</span>
+          @endif
+        </div>
         @if ($visitor->photo_path)
           <div class="acct-photo-row">
             <a href="{{ $visitor->photoUrl() }}" target="_blank" rel="noopener">
               @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'acct-photo-img'])
             </a>
-            <p class="muted-cell" style="margin:0;">
+            <p class="muted-cell" style="margin:0;flex:1;">
               Taken in the app {{ $visitor->photo_uploaded_at?->format('M j, Y H:i') }}.<br>
-              Open the ID below and check that it shows the same person.
+              @if ($visitor->photo_status === 'rejected')
+                <span style="color:var(--red);">Rejected: {{ $visitor->photo_rejection_reason }}</span> Waiting for the visitor to retake it.
+              @elseif ($visitor->photo_status === 'pending' && $visitor->photo_rejection_reason)
+                Retaken after: {{ $visitor->photo_rejection_reason }}
+              @else
+                Open the ID below and check that it shows the same person.
+              @endif
             </p>
+            @if (in_array($visitor->photo_status, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
+              <div class="acct-id-actions">
+                @include('partials.item-reject', ['action' => route('visitor.photo.reject', $visitor->visitor_id), 'label' => 'photo', 'approved' => $visitor->photo_status === 'verified'])
+              </div>
+            @endif
           </div>
         @else
           <p class="muted-cell" style="margin:0;">No photo yet. The visitor takes it in the CustodiCore app when creating their account.</p>
@@ -153,6 +181,16 @@
         @if ($visitor->idDocuments->isEmpty())
           <p class="muted-cell" style="margin:0;">No ID uploaded yet. The visitor uploads it from the CustodiCore app.</p>
         @else
+          @php
+            // Two or more IDs waiting: the older ones can be set aside (kept, never approved).
+            $pendingIds = $visitor->idDocuments->where('verification_status', 'pending');
+            $newestPendingId = $pendingIds->first()?->visitor_id_doc_id;
+            // Request replacement only on the current (newest) ID; older ones are history.
+            $currentIdKey = $visitor->currentGovernmentId()?->visitor_id_doc_id;
+          @endphp
+          @if ($pendingIds->count() > 1)
+            <div class="elig-note is-warn" style="margin:0 0 8px;">{{ $pendingIds->count() }} government IDs are waiting. Set aside the duplicate before approving.</div>
+          @endif
           @foreach ($visitor->idDocuments as $doc)
             @php [$badgeClass, $badgeText] = $idBadge[$doc->verification_status] ?? ['released', ucfirst($doc->verification_status)]; @endphp
             <div class="acct-id-row">
@@ -167,6 +205,8 @@
                   <span class="muted-cell">by {{ $doc->verifiedBy->full_name }}</span>
                 @elseif ($doc->verification_status === 'pending')
                   <span class="muted-cell">approved together with the account</span>
+                @elseif (in_array($doc->verification_status, ['rejected', 'superseded'], true) && $doc->rejection_reason)
+                  <span class="muted-cell">{{ $doc->verification_status === 'superseded' ? 'Set aside' : 'Reason' }}: {{ $doc->rejection_reason }}</span>
                 @endif
               </div>
               <div class="acct-id-actions">
@@ -175,20 +215,34 @@
                 @else
                   <span class="muted-cell">No picture (entered at front desk)</span>
                 @endif
+                @if ($doc->verification_status === 'pending' && $pendingIds->count() > 1 && $doc->visitor_id_doc_id !== $newestPendingId)
+                  @include('partials.item-reject', ['action' => route('visitor.ids.set-aside', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'field' => 'reason', 'title' => 'Set aside duplicate', 'notify' => false])
+                @endif
+                @if ($doc->verification_status === 'pending' || ($doc->verification_status === 'verified' && $doc->visitor_id_doc_id === $currentIdKey))
+                  @include('partials.item-reject', ['action' => route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'approved' => $doc->verification_status === 'verified'])
+                @endif
               </div>
             </div>
           @endforeach
         @endif
       </div>
 
-      @include('partials.registration-documents', ['visitor' => $visitor, 'allowReject' => false])
+      {{-- Each file can be rejected on its own (reject only; approved with the account). --}}
+      @include('partials.registration-documents', ['visitor' => $visitor])
 
       {{-- One-step approval: who they will visit, and what Approve will do. --}}
       @php
         $idDoc = $visitor->idDocuments->firstWhere('verification_status', 'pending') ?? $visitor->idDocuments->firstWhere('verification_status', 'verified');
+        $corrections = array_map(fn ($label) => $label . ': waiting for the visitor to replace it', $visitor->itemReviewState()['needsReplacement']);
+        if ($visitor->idDocuments->where('verification_status', 'pending')->count() > 1) {
+            $corrections[] = 'Two or more government IDs waiting: set aside the duplicate';
+        }
         $panelData = [
           'mode' => $linked ? 'linked' : ($visitor->isWalkIn() ? 'walkin' : 'pick'),
           'id' => $idDoc ? ['label' => $idDoc->typeLabel(), 'approved' => $idDoc->verification_status === 'verified'] : null,
+          // Items to correct first (rejected and not replaced yet; duplicate IDs): Approve stays off.
+          'corrections' => $corrections,
+          'photo' => $visitor->photo_path ? $visitor->photo_status : null,
           'linked' => $linked ? ['pdl' => $linked->pdl?->full_name, 'type' => $linked->relationshipLabel()] : null,
           'typeLabels' => $typeLabels,
           'preview' => $needsLink ? app(\App\Services\AccountApproval::class)->preview($visitor) : null,
@@ -309,6 +363,8 @@
           <div class="elig-status" data-approve-status>
             @if (! $usableId)
               <span class="elig-status-wait">Waiting for the visitor to upload a valid ID.</span>
+            @elseif ($corrections !== [])
+              <span class="elig-status-wait">Approve is off. Still needed: {{ implode('; ', $corrections) }}.</span>
             @elseif ($needsLink)
               <span class="elig-status-ok">Check the ID and documents, confirm the PDL, then approve.</span>
             @else
@@ -335,7 +391,9 @@
                   data-confirm-title="Approve" data-confirm-ok="Approve">
               @csrf
               <input type="hidden" name="review_card" value="{{ $visitor->visitor_id }}">
-              @if ($usableId)
+              @if ($usableId && $corrections !== [])
+                <button type="submit" class="btn btn-blue" data-approve-button disabled title="Still needed: {{ implode('; ', $corrections) }}">Approve</button>
+              @elseif ($usableId)
                 <button type="submit" class="btn btn-blue" data-approve-button>Approve</button>
               @else
                 <button type="submit" class="btn btn-blue" disabled title="The visitor has to upload a government ID first">Approve</button>
@@ -406,6 +464,9 @@
 
       if (data.id) add('ok', data.id.approved ? data.id.label + ' already approved' : 'Approve the ' + data.id.label);
       else { add('bad', 'No government ID uploaded yet'); missing.push('a government ID from the visitor'); }
+      if (data.photo === 'pending') add('ok', 'Approve the visitor photo');
+      else if (data.photo === 'verified') add('ok', 'Visitor photo already approved');
+      (data.corrections || []).forEach(function (text) { add('bad', text); missing.push(text.split(':')[0]); });
       add('ok', 'Approve the account');
 
       if (data.mode === 'linked') {

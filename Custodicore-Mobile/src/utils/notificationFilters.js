@@ -71,6 +71,8 @@ export function inferNotificationCategory(raw) {
     if (category.startsWith('pdl_request')) return 'updates';
     // Account and PDL relationship decisions (approved, returned, linked…).
     if (category.startsWith('account_') || category.startsWith('relationship_')) return 'updates';
+    // The visitor's own photo (`photo_rejected`) and accepted replacements (`replacement_accepted`).
+    if (category.startsWith('photo_') || category.startsWith('replacement_')) return 'updates';
   }
   if (typeof raw.type === 'string') {
     const type = raw.type.toLowerCase();
@@ -120,6 +122,7 @@ export function inferNotificationTone(raw) {
       'document_rejected',
       'relationship_rejected',
       'account_rejected',
+      'photo_rejected',
     ].includes(raw.category.toLowerCase())
   ) {
     return 'warning';

@@ -54,10 +54,15 @@ class VisitorPhotoTest extends TestCase
         $this->getJson('/api/me')->assertJsonPath('hasPhoto', true)->assertJsonPath('photoUrl', url('/api/me/photo'));
         $this->get('/api/me/photo')->assertOk()->assertHeader('Content-Type', 'image/png');
 
-        // Retaking (allowed once staff return the account) replaces the old file.
+        // Waiting for review: locked, even when the whole account is returned.
         $this->visitor->update(['verification_status' => 'rejected']);
+        $this->post('/api/me/photo', ['photo' => $this->fakePhoto('again.png')], ['Accept' => 'application/json'])->assertStatus(409);
+
+        // Retaking (allowed once staff reject the photo itself) replaces the old file.
+        $this->visitor->update(['photo_status' => 'rejected', 'photo_rejection_reason' => 'Your face is covered.']);
         $this->post('/api/me/photo', ['photo' => $this->fakePhoto('again.png')], ['Accept' => 'application/json'])->assertCreated();
         Storage::disk('local')->assertMissing($path);
+        $this->assertSame('pending', $this->visitor->fresh()->photo_status);
     }
 
     public function test_photo_must_be_a_picture(): void

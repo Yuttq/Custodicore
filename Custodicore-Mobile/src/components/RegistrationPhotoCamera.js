@@ -436,7 +436,7 @@ export default function RegistrationPhotoCamera({ visible, onClose, onConfirm })
               </Text>
             ) : (
               <Text style={styles.hint}>
-                Center your face in the oval. Use good light, without a hat or sunglasses.
+                Center your face in the oval. Use good light, and remove any face mask, hat or sunglasses.
               </Text>
             )}
             {error ? <Text style={styles.error}>{error}</Text> : null}

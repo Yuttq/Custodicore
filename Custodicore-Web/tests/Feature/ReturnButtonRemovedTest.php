@@ -61,11 +61,11 @@ class ReturnButtonRemovedTest extends TestCase
 
         $this->actingAs($this->recordOfficerAccount, 'web');
 
-        // Review Queue card: Approve or Return the whole account, no item Reject.
+        // Review Queue card: Approve or Return the whole account, and a Reject per item.
         $this->get('/account-reviews')->assertOk()
             ->assertSee($returnUrl, false)
             ->assertSee(route('visitor.approve', $visitor->visitor_id), false)
-            ->assertDontSee($idRejectUrl, false);
+            ->assertSee($idRejectUrl, false);
 
         // Visitor page: no Return; the ID keeps its Reject.
         $this->get("/visitors/{$visitor->visitor_id}")->assertOk()

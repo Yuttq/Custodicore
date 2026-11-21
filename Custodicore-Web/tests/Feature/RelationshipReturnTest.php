@@ -64,13 +64,15 @@ class RelationshipReturnTest extends TestCase
             ->assertSessionHas('error', 'Only a pending relationship can be returned.');
     }
 
-    public function test_pages_show_approve_return_reject_and_no_reject_per_file(): void
+    public function test_pages_show_return_and_the_visitor_page_has_a_reject_per_file(): void
     {
+        // The whole-relationship Return stays for exceptional cases.
         foreach ([route('visitor.show', $this->visitor->visitor_id), route('pdl-links.index')] as $page) {
-            $this->get($page)->assertOk()
-                ->assertSee($this->returnUrl(), false)
-                ->assertDontSee(route('relationship-documents.reject', $this->file->document_id), false);
+            $this->get($page)->assertOk()->assertSee($this->returnUrl(), false);
         }
+        // Reject-only review: each file has its own Reject on the checklist.
+        $this->get(route('visitor.show', $this->visitor->visitor_id))->assertOk()
+            ->assertSee(route('relationship-documents.reject', $this->file->document_id), false);
     }
 
     private function guardianLink(): VisitorPdlRelationship

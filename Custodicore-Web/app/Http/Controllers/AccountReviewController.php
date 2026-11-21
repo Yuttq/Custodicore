@@ -22,9 +22,9 @@ class AccountReviewController extends Controller
         $tab = $request->query('tab') === 'rejected' ? 'rejected' : 'pending';
 
         $queries = [
-            // Walk-ins are approved at the Front Desk, not here.
-            'pending' => VisitorProfile::where('verification_status', 'pending')
-                ->notWalkIn()
+            // Walk-ins are approved at the Front Desk, not here. Approved
+            // visitors with replacements to accept are listed too.
+            'pending' => \App\Services\ReviewQueue::accountsQuery()
                 ->orderBy('created_at'),
             'rejected' => VisitorProfile::where('verification_status', 'rejected')->orderByDesc('verified_at'),
         ];
@@ -37,6 +37,7 @@ class AccountReviewController extends Controller
                 'idDocuments' => fn ($q) => $q->orderByDesc('uploaded_at'),
                 'idDocuments.verifiedBy',
                 'relationships.pdl',
+                'relationships.documents',
                 'registrationDocuments',
                 'flags',
                 'walkInAssessments',

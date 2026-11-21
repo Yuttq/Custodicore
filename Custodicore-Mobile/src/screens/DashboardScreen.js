@@ -39,6 +39,7 @@ import { noAvailabilityNotice } from '../utils/noAvailabilityMessage';
 import { buildVisitDateMarkers, visitsForRelationship } from '../utils/visitCalendarMarkers';
 import { RELATIONSHIP_NOT_VERIFIED_SCHEDULE } from '../utils/visitGuidance';
 import { resolveVisitStatusChip } from '../utils/visitStatusChip';
+import { getBookingBlockedMessage } from '../utils/visitorVerificationDocuments';
 
 /** Only the avatar photo is device-local — the backend has no photo field. */
 const LOCAL_PHOTO_DEFAULTS = { photoUri: null };
@@ -70,6 +71,16 @@ function getInitials(fullName) {
  * @param {string | null | undefined} meStatus — pending | verified | rejected
  */
 function resolveVerificationReminder(verification, meStatus) {
+  // Approved, but staff asked for a new copy of something: booking waits for it.
+  const blocked = getBookingBlockedMessage(verification);
+  if (blocked) {
+    return {
+      label: blocked,
+      icon: 'alert-circle-outline',
+      accent: colors.warning,
+      bg: 'rgba(245, 158, 11, 0.12)',
+    };
+  }
   const status = verification?.backendStatus ?? meStatus;
   if (status === 'rejected') {
     return {

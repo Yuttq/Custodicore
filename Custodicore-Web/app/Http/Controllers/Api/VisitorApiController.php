@@ -460,7 +460,7 @@ class VisitorApiController extends Controller
 
         if (! $visitor->canUploadGovernmentId()) {
             return response()->json([
-                'message' => 'Your government ID is already approved or waiting for review. You can replace it only if facility staff reject it or return your account for correction.',
+                'message' => 'Your government ID is already approved or waiting for review. You can replace it only if facility staff reject it or ask you for a new one.',
             ], 409);
         }
 
@@ -555,7 +555,8 @@ class VisitorApiController extends Controller
             // Same rule as /me: only when the account was rejected.
             'rejectionReason' => $visitor->verification_status === 'rejected' ? $visitor->rejection_reason : null,
             'relationshipHint' => $visitor->relationship_hint,
-            'governmentIds' => $visitor->idDocuments->map(fn ($d) => $this->governmentIdPayload($d))->values(),
+            // Set-aside duplicates are staff records only.
+            'governmentIds' => $visitor->idDocuments->reject(fn ($d) => $d->isSuperseded())->map(fn ($d) => $this->governmentIdPayload($d))->values(),
             // Whether POST /documents accepts a new government ID right now.
             'canUploadGovernmentId' => $visitor->canUploadGovernmentId(),
             'relationships' => $visitor->relationships->map(fn ($r) => $this->relationshipPayload($r))->values(),
@@ -570,15 +571,22 @@ class VisitorApiController extends Controller
                     'uploadedAt' => $d->uploaded_at?->toIso8601String(),
                     // Only the visitor-facing reason staff entered, only when rejected.
                     'rejectionReason' => $d->status === 'rejected' ? $d->rejection_reason : null,
-                    // A rejected file can be replaced while the account is not approved
-                    // (POST /registration-documents/{key}).
-                    'canReplace' => $d->status === 'rejected' && $visitor->verification_status !== 'verified',
+                    // Only a file staff rejected (or asked to replace) can be replaced
+                    // (POST /registration-documents/{key}); pending and approved ones are locked.
+                    'canReplace' => $d->status === 'rejected',
                 ])->values(),
-            // The visitor's own photo (GET /me/photo); retakeable only while the
-            // account is returned for correction (VisitorProfile::canChangePhoto).
+            // The visitor's own photo (GET /me/photo); retakeable only when there
+            // is none yet or staff rejected it (VisitorProfile::canChangePhoto).
             'hasPhoto' => (bool) $visitor->photo_path,
             'photoUploadedAt' => $visitor->photo_uploaded_at?->toIso8601String(),
             'canReplacePhoto' => $visitor->canChangePhoto(),
+            // Its own review: pending | verified | rejected (null: no photo).
+            'photoStatus' => $visitor->photo_path ? $visitor->photo_status : null,
+            // Only the visitor-facing reason staff entered, only when rejected.
+            'photoRejectionReason' => $visitor->photo_status === VisitorProfile::PHOTO_REJECTED ? $visitor->photo_rejection_reason : null,
+            // Approved visitors: new visits cannot be booked until these are
+            // replaced and accepted (VisitorProfile::bookingBlockers).
+            'bookingBlockedBy' => $visitor->bookingBlockers(),
             // Phase 5B: the requests to add another PDL — every open one plus
             // the rejected / cancelled ones from the last 30 days, newest first.
             'pdlRequests' => ($pdlRequestService = app(\App\Services\PdlLinkRequestService::class))
@@ -657,18 +665,13 @@ class VisitorApiController extends Controller
      * with the account. A returned account goes back to Account Review.
      *
      *   201 { document }   404 not sent with the registration
-     *   409 approved account, or the newest file is not rejected
+     *   409 the newest file is not rejected (waiting for review or approved)
      */
     public function replaceRegistrationDocument(Request $request, string $requirementKey): JsonResponse
     {
         $visitor = $this->currentVisitor($request);
 
-        if ($visitor->verification_status === 'verified') {
-            return response()->json([
-                'message' => 'Your account is already approved. Upload documents from your PDL\'s requirements under My PDLs.',
-            ], 409);
-        }
-
+        // Any account status: only a file staff rejected (or asked to replace).
         $latest = $visitor->registrationDocuments()->where('requirement_key', $requirementKey)->first();
         if (! $latest) {
             return response()->json(['message' => 'This document was not sent with your registration.'], 404);
@@ -753,17 +756,18 @@ class VisitorApiController extends Controller
         $visitor = $this->currentVisitor($request);
         abort_unless((int) $relationship->visitor_id === (int) $visitor->visitor_id, 404);
 
-        if ($relationship->verification_status === 'verified') {
-            return response()->json([
-                'message' => 'This relationship is already verified. Its documents cannot be replaced.',
-                'status' => 'verified',
-            ], 409);
-        }
         if ($relationship->verification_status === 'rejected') {
             return response()->json(self::rejectedRelationshipBody(), 409);
         }
 
         $item = collect(RelationshipRequirements::for($relationship))->firstWhere('key', $requirementKey);
+        // A verified relationship's files are locked, except one staff asked to replace.
+        if ($relationship->verification_status === 'verified' && ($item['status'] ?? null) !== 'rejected') {
+            return response()->json([
+                'message' => 'This relationship is already verified. Its documents cannot be replaced.',
+                'status' => 'verified',
+            ], 409);
+        }
         if (! $item || $item['kind'] !== 'document') {
             return response()->json(['message' => 'This document is not required for this relationship.'], 422);
         }
@@ -834,20 +838,23 @@ class VisitorApiController extends Controller
 
     /**
      * Whether the visitor may upload this checklist document of this one
-     * relationship (each PDL link has its own checklist). Never for a
-     * verified relationship or item. Before the account is approved only a
-     * missing document or one staff rejected; one waiting for review stays
-     * as it is. Approved accounts keep the checklist's own rule.
+     * relationship (each PDL link has its own checklist): only a missing
+     * document or one staff rejected (or asked to replace). One waiting for
+     * review or approved stays as it is, for approved accounts too. On a
+     * verified relationship only a file staff asked to replace.
      *
      * @param  array<string, mixed>  $item  one RelationshipRequirements::for() entry
      */
     private static function visitorCanUploadRequirement(array $item, VisitorPdlRelationship $relationship, ?VisitorProfile $visitor): bool
     {
-        if (! $item['canUpload'] || $relationship->verification_status === 'verified') {
+        if (! $item['canUpload']) {
             return false;
         }
+        if ($relationship->verification_status === 'verified') {
+            return $item['status'] === 'rejected';
+        }
 
-        return ($visitor?->isVerified() ?? false) || in_array($item['status'], ['missing', 'rejected'], true);
+        return in_array($item['status'], ['missing', 'rejected'], true);
     }
 
     private function relationshipPayload(VisitorPdlRelationship $r): array

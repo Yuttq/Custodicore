@@ -12,7 +12,12 @@
     ];
     $variant = $map[$status] ?? 'neutral';
     // Gate record closed by staff without a check-out (no exit time recorded).
-    $label = $status === 'exit_unrecorded' ? 'Exit Not Recorded' : ucwords(str_replace('_', ' ', (string) $status));
+    // A duplicate government ID staff set aside (visitor_ids 'superseded').
+    $label = match ($status) {
+        'exit_unrecorded' => 'Exit Not Recorded',
+        'superseded' => 'Set aside',
+        default => ucwords(str_replace('_', ' ', (string) $status)),
+    };
     $dot = [
         'success' => 'bg-success', 'warning' => 'bg-warning',
         'danger' => 'bg-danger', 'info' => 'bg-info', 'neutral' => 'bg-text-secondary',

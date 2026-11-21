@@ -63,9 +63,11 @@ export function buildRelationshipRequirementDocuments(relationships) {
         .filter((item) => item && item.kind === 'document' && typeof item.key === 'string')
         .map((item) => {
           const uploadStatus = toRequirementUploadStatus(item.status);
-          // Backend `canUpload` is per relationship and requirement: before
-          // approval only missing or rejected documents (enforced by the API).
-          const canUpload = Boolean(item.canUpload) && !relationshipVerified;
+          // Backend `canUpload` is per relationship and requirement: only
+          // missing or rejected documents (enforced by the API). On a verified
+          // relationship only a file staff asked to replace; the others stay locked.
+          const canUpload =
+            Boolean(item.canUpload) && (!relationshipVerified || item.status === 'rejected');
           return {
             key: toRelationshipDocumentKey(r.id, item.key),
             label: String(item.label ?? item.key),

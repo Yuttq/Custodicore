@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Button,
   StackScreenHeader,
+  StatusChip,
   colors,
   commonStyles,
   layout,
@@ -22,7 +23,10 @@ import { getDocumentStatusDisplay } from '../utils/verificationDocumentUi';
 import {
   getAccountStatusMessage,
   getPhotoAction,
+  getPhotoMessage,
+  getPhotoStatusChip,
   groupVerificationDocuments,
+  shouldShowPhotoSection,
 } from '../utils/visitorVerificationDocuments';
 
 /**
@@ -66,16 +70,19 @@ function DocumentCompactRow({ document: doc, isLast, onPress }) {
 }
 
 /**
- * The visitor's own photo, retakeable only while staff have returned the
- * account for correction, or added when there is none yet (front
- * camera only, same component and checks as registration). Loaded from
- * GET /api/me/photo with the visitor's token.
+ * The visitor's own photo with its own review status (Under Review,
+ * Approved, Rejected) and, when rejected, the staff reason. Retake only
+ * while the backend allows it (`canReplacePhoto`: photo rejected, or none
+ * yet) — front camera only, same component and checks as registration.
+ * Loaded from GET /api/me/photo with the visitor's token.
  * @param {object} props
- * @param {boolean} props.hasPhoto
- * @param {string | null} props.photoUploadedAt — also busts the image cache after a retake
+ * @param {{ hasPhoto: boolean; photoUploadedAt: string | null; photoStatus?: string | null; photoRejectionReason?: string | null; canReplacePhoto?: boolean }} props.verification
  * @param {() => void} props.onSaved
  */
-function RegistrationPhotoSection({ hasPhoto, photoUploadedAt, onSaved }) {
+function RegistrationPhotoSection({ verification, onSaved }) {
+  const { hasPhoto, photoUploadedAt } = verification;
+  const action = getPhotoAction(verification);
+  const chip = hasPhoto ? getPhotoStatusChip(verification.photoStatus) : null;
   const [token, setToken] = useState(/** @type {string | null} */ (null));
   const [imageFailed, setImageFailed] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -141,25 +148,32 @@ function RegistrationPhotoSection({ hasPhoto, photoUploadedAt, onSaved }) {
             {hasPhoto ? 'Your photo could not be shown right now.' : 'No photo saved yet.'}
           </Text>
         )}
-        <Text style={styles.requestText}>
-          {hasPhoto
-            ? 'Staff returned your account for correction. Retake your photo with the front camera if they asked for a new one.'
-            : 'Take a photo of yourself with the front camera. Staff compare it with your government ID.'}
-        </Text>
-        <Button
-          title={hasPhoto ? 'Retake Photo' : 'Take Photo'}
-          variant="secondary"
-          onPress={() => setCameraOpen(true)}
-          loading={saving}
-          disabled={saving}
-          accessibilityLabel={hasPhoto ? 'Retake your photo' : 'Take your photo'}
-        />
+        {chip ? <StatusChip status={chip.status} label={chip.label} /> : null}
+        <Text style={styles.requestText}>{getPhotoMessage(verification)}</Text>
+        {verification.photoStatus === 'rejected' && verification.photoRejectionReason ? (
+          <View style={styles.photoReason}>
+            <Text style={styles.photoReasonLabel}>Reason from staff</Text>
+            <Text style={styles.photoReasonText}>{verification.photoRejectionReason}</Text>
+          </View>
+        ) : null}
+        {action ? (
+          <Button
+            title={action === 'retake' ? 'Retake Photo' : 'Take Photo'}
+            variant="secondary"
+            onPress={() => setCameraOpen(true)}
+            loading={saving}
+            disabled={saving}
+            accessibilityLabel={action === 'retake' ? 'Retake your photo' : 'Take your photo'}
+          />
+        ) : null}
       </View>
-      <RegistrationPhotoCamera
-        visible={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onConfirm={savePhoto}
-      />
+      {action ? (
+        <RegistrationPhotoCamera
+          visible={cameraOpen}
+          onClose={() => setCameraOpen(false)}
+          onConfirm={savePhoto}
+        />
+      ) : null}
     </>
   );
 }
@@ -267,13 +281,9 @@ export default function VisitorVerificationDocumentsScreen({ navigation }) {
                 onRequestAgainForPdl={requestAgainForRelationship}
               />
             ) : null}
-            {/* Only while the backend allows it (returned account or no photo yet). */}
-            {getPhotoAction(verification) ? (
-              <RegistrationPhotoSection
-                hasPhoto={verification.hasPhoto}
-                photoUploadedAt={verification.photoUploadedAt}
-                onSaved={reload}
-              />
+            {/* Its status whenever there is a photo; Retake only while the backend allows it. */}
+            {shouldShowPhotoSection(verification) ? (
+              <RegistrationPhotoSection verification={verification} onSaved={reload} />
             ) : null}
             {/* One card: the account's documents, then each PDL's, under a small label. */}
             <View style={styles.docList}>
@@ -390,6 +400,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.lg,
     alignItems: 'stretch',
+  },
+  photoReason: {
+    padding: spacing.sm,
+    borderRadius: layout.cardRadius,
+    backgroundColor: colors.background,
+  },
+  photoReasonLabel: {
+    ...typography.statusLabel,
+    color: colors.textSecondary,
+  },
+  photoReasonText: {
+    ...typography.metadata,
+    color: colors.textPrimary,
+    marginTop: 2,
   },
   photoPreview: {
     width: 120,

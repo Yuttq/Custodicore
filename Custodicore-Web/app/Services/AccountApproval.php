@@ -126,6 +126,8 @@ class AccountApproval
                     : 'Every ID this visitor uploaded was rejected. Wait for a new one before approving.',
             ]);
         }
+        // Rechecked under a row lock inside the transaction below.
+        $this->assertNothingToCorrect($visitor);
 
         $relationship = $visitor->relationships()->where('verification_status', '!=', 'rejected')->first();
         if (! $relationship && ! $visitor->isWalkIn()) {
@@ -151,15 +153,26 @@ class AccountApproval
         return DB::transaction(function () use ($visitor, $staffId, $ids, $relationship, $pdlId, $relationshipType, $hasChildrenTogether, $confirmations, $accompanyingAdult) {
             $notes = [];
 
+            // 0. Lock the visitor row (the same lock a photo rejection or a
+            //    duplicate set-aside takes) and recheck: an officer may have
+            //    rejected an item after the check above. Throws (rolls back) if so.
+            $locked = VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
+            $this->assertNothingToCorrect($locked);
+
             // 1. IDs waiting for review: the officer checked them on the card.
-            foreach ($ids->where('verification_status', 'pending') as $id) {
-                $id->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
-                AuditLog::record('update', 'visitor_ids', $id->visitor_id_doc_id,
-                    "Approved {$id->typeLabel()} for {$visitor->full_name} (with the account)", Module::CODE_VISITOR_MANAGEMENT);
+            //    Only IDs still pending: rejected and set-aside IDs are never changed.
+            foreach ($visitor->idDocuments()->where('verification_status', 'pending')->get() as $id) {
+                $updated = \App\Models\VisitorId::whereKey($id->visitor_id_doc_id)->where('verification_status', 'pending')
+                    ->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
+                if ($updated) {
+                    AuditLog::record('update', 'visitor_ids', $id->visitor_id_doc_id,
+                        "Approved {$id->typeLabel()} for {$visitor->full_name} (with the account)", Module::CODE_VISITOR_MANAGEMENT);
+                }
             }
 
-            // 2. The account.
+            // 2. The account, and its photo if still waiting (the officer saw it on the card).
             $visitor->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
+            $visitor->verifyPendingPhoto($staffId, "Approved photo for {$visitor->full_name} (with the account)");
 
             // 3. The PDL link the visitor asked for. Creating it moves their
             //    registration uploads onto its checklist.
@@ -205,12 +218,61 @@ class AccountApproval
                     $notes[] = 'Relationship still needs: ' . implode(', ', RelationshipRequirements::unmetLabels($requirements))
                         . '. Finish it on the visitor\'s page.';
                 }
+            } elseif ($relationship && $relationship->verification_status === 'verified') {
+                // Already verified link: its files still waiting are approved with the account.
+                $verified = RelationshipDocument::where('relationship_id', $relationship->relationship_id)
+                    ->where('status', 'pending')
+                    ->update(['status' => 'verified', 'rejection_reason' => null, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+                if ($verified) {
+                    AuditLog::record('update', 'visitor_pdl_relationships', $relationship->relationship_id,
+                        "Approved {$verified} waiting file(s) of {$visitor->full_name}'s relationship (with the account)",
+                        Module::CODE_VISITOR_MANAGEMENT);
+                }
+            }
+
+            // 5. Files sent with the registration that are on no checklist: the
+            //    officer saw them on the card. Only files still pending.
+            $registrationFiles = RelationshipDocument::registrationUploads()
+                ->where('visitor_id', $visitor->visitor_id)
+                ->where('status', 'pending')
+                ->get();
+            foreach ($registrationFiles as $document) {
+                $updated = RelationshipDocument::whereKey($document->document_id)->where('status', 'pending')
+                    ->update(['status' => 'verified', 'rejection_reason' => null, 'reviewed_by' => $staffId, 'reviewed_at' => now()]);
+                if ($updated) {
+                    AuditLog::record('update', 'relationship_documents', $document->document_id,
+                        "Approved {$document->label()} sent with the registration of {$visitor->full_name} (with the account)",
+                        Module::CODE_VISITOR_MANAGEMENT);
+                }
             }
 
             $visitor->unsetRelation('relationships');
 
             return ['notes' => $notes, 'relationship' => $relationship?->fresh()];
         });
+    }
+
+    /**
+     * Refuses the final Approve while anything needs correcting: an item
+     * staff rejected (photo, government ID, a file) that the visitor has not
+     * replaced yet, or two or more government IDs waiting (set aside the
+     * duplicate first). Read from the database, not cached relations.
+     *
+     * @throws ValidationException
+     */
+    public function assertNothingToCorrect(VisitorProfile $visitor): void
+    {
+        $needs = $visitor->itemReviewState()['needsReplacement'];
+        if ($needs !== []) {
+            throw ValidationException::withMessages([
+                'items' => 'Waiting for the visitor to replace: ' . implode(', ', $needs) . '. Nothing was approved.',
+            ]);
+        }
+        if ($visitor->pendingIdCount() > 1) {
+            throw ValidationException::withMessages([
+                'id' => 'More than one government ID is waiting for review. Set aside the duplicate first.',
+            ]);
+        }
     }
 
     /**

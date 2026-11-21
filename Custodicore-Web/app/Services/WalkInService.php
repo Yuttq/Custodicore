@@ -150,7 +150,8 @@ class WalkInService
                     ]);
                 }
 
-                $profile->update(['photo_path' => $photoPath, 'photo_uploaded_at' => $now]);
+                // Taken at the desk; verified together with the walk-in (approveAtDesk / AccountApproval).
+                $profile->update(['photo_path' => $photoPath, 'photo_uploaded_at' => $now, 'photo_status' => VisitorProfile::PHOTO_PENDING]);
 
                 WalkInAssessment::create([
                     'visitor_id' => $profile->visitor_id,
@@ -856,6 +857,9 @@ class WalkInService
                     "Front Desk approved walk-in account of {$visitor->full_name}",
                     Module::CODE_VISITOR_MANAGEMENT);
             }
+
+            // The photo taken at the desk, if still waiting.
+            $visitor->verifyPendingPhoto($staffId, "Front Desk verified photo of walk-in {$visitor->full_name} (taken at the desk)");
 
             $pending = RelationshipDocument::where('status', 'pending')
                 ->where(fn ($q) => $q->where('visitor_id', $visitor->visitor_id)

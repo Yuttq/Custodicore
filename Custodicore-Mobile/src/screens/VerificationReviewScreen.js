@@ -126,6 +126,9 @@ export default function VerificationReviewScreen({ navigation }) {
         accountStatus: user?.verificationStatus,
         accountReason: user?.rejectionReason,
         documents: verification?.documents ?? null,
+        photo: verification
+          ? { status: verification.photoStatus, reason: verification.photoRejectionReason }
+          : null,
       }),
     [user?.verificationStatus, user?.rejectionReason, verification],
   );

@@ -4,7 +4,11 @@ import assert from 'node:assert/strict';
 
 import {
   canUploadGovernmentIdEntry,
+  getBookingBlockedMessage,
   getPhotoAction,
+  getPhotoMessage,
+  getPhotoStatusChip,
+  shouldShowPhotoSection,
 } from './visitorVerificationDocuments.js';
 import {
   getDocumentDetailAction,
@@ -99,4 +103,34 @@ test('the first PDL stays first when it has no documents listed (e.g. rejected)'
   // Name falls back to the document's "For …" detail.
   assert.deepEqual(sections.map((s) => [s.title, s.kind]), [['Cy Reyes', 'additional_pdl']]);
   assert.deepEqual(groupVerificationDocuments(undefined, undefined), []);
+});
+
+test('photo: its own review status, message, and Retake only when rejected', () => {
+  assert.deepEqual(getPhotoStatusChip('pending'), { status: 'document_under_review', label: 'Under Review' });
+  assert.deepEqual(getPhotoStatusChip('verified'), { status: 'document_verified', label: 'Approved' });
+  assert.deepEqual(getPhotoStatusChip('rejected'), { status: 'document_rejected', label: 'Rejected' });
+  assert.equal(getPhotoStatusChip(null), null);
+
+  const rejected = { hasPhoto: true, photoStatus: 'rejected', canReplacePhoto: true };
+  assert.equal(getPhotoAction(rejected), 'retake');
+  assert.match(getPhotoMessage(rejected), /did not accept your photo/);
+  // Pending or approved: shown with its status, never retakeable (even on a returned account).
+  const pending = { hasPhoto: true, photoStatus: 'pending', canReplacePhoto: false, backendStatus: 'rejected' };
+  assert.equal(shouldShowPhotoSection(pending), true);
+  assert.equal(getPhotoAction(pending), null);
+  assert.match(getPhotoMessage(pending), /waiting for staff review/);
+  assert.equal(getPhotoMessage({ hasPhoto: true, photoStatus: 'verified' }), 'Your photo has been approved.');
+  assert.equal(shouldShowPhotoSection({ hasPhoto: false, canReplacePhoto: true }), true);
+  assert.equal(shouldShowPhotoSection({ hasPhoto: false, canReplacePhoto: false }), false);
+  assert.equal(shouldShowPhotoSection(null), false);
+});
+
+test('booking-blocked reminder only for an approved visitor with replacements to finish', () => {
+  assert.equal(
+    getBookingBlockedMessage({ backendStatus: 'verified', bookingBlockedBy: ['Government ID'] }),
+    'Replace your Government ID to book visits',
+  );
+  assert.equal(getBookingBlockedMessage({ backendStatus: 'verified', bookingBlockedBy: [] }), null);
+  assert.equal(getBookingBlockedMessage({ backendStatus: 'pending', bookingBlockedBy: ['Government ID'] }), null);
+  assert.equal(getBookingBlockedMessage(null), null);
 });

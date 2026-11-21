@@ -635,6 +635,24 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'rejectId']
     )->name('visitor.ids.reject');
 
+    // A duplicate ID waiting for review, set aside (kept, never approved).
+    Route::post(
+        '/visitors/{visitor}/ids/{idDocument}/set-aside',
+        [\App\Http\Controllers\VisitorController::class, 'setAsideId']
+    )->name('visitor.ids.set-aside');
+
+    // The visitor's own photo: reject it, or ask for a new one (reject only; no per-item approve).
+    Route::post(
+        '/visitors/{visitor}/photo/reject',
+        [\App\Http\Controllers\VisitorController::class, 'rejectPhoto']
+    )->name('visitor.photo.reject');
+
+    // Approved visitor: accept the replacements they sent.
+    Route::post(
+        '/visitors/{visitor}/replacements/accept',
+        [\App\Http\Controllers\VisitorController::class, 'acceptReplacements']
+    )->name('visitor.replacements.accept');
+
     // PDL search for the "Add PDL Relationship" form (JSON).
     Route::get(
         '/visitors/{visitor}/relatable-pdls',

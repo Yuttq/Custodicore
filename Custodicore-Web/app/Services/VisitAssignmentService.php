@@ -120,6 +120,7 @@ class VisitAssignmentService
         $schedule = VisitSchedule::with('rule')->find($input['schedule_id']);
 
         $this->assertVisitorAssignable($visitor);
+        $this->assertNoReplacementPending($visitor);
         $this->assertPdlAssignable($pdl, $schedule?->schedule_date);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
         $this->assertScheduleAssignable($schedule, $pdl);
@@ -328,6 +329,7 @@ class VisitAssignmentService
         $visitor->loadMissing('account');
         $pdl = Pdl::with('activeRestrictions')->find($relationship->pdl_id);
         $this->assertVisitorAssignable($visitor);
+        $this->assertNoReplacementPending($visitor);
         $this->assertPdlAssignable($pdl, $date);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
 
@@ -1132,6 +1134,23 @@ class VisitAssignmentService
             ->lockForUpdate()
             ->get()
             ->each->releaseSlot();
+    }
+
+    /**
+     * New bookings only (visitor requests, staff assignments, walk-in
+     * bookings): an approved visitor stays approved while staff wait for a
+     * replacement they asked for, but no new visit is booked until it is
+     * sent and accepted (VisitorProfile::bookingBlockers). Approving or
+     * confirming a visit already booked is not affected.
+     */
+    private function assertNoReplacementPending(VisitorProfile $visitor): void
+    {
+        $blockers = $visitor->bookingBlockers();
+        if ($blockers !== []) {
+            throw ValidationException::withMessages([
+                'visitor_id' => 'New visits cannot be booked until these are replaced and accepted by facility staff: ' . implode(', ', $blockers) . '.',
+            ]);
+        }
     }
 
     private function assertVisitorAssignable(?VisitorProfile $visitor): void

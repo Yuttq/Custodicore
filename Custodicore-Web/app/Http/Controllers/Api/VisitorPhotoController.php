@@ -20,8 +20,10 @@ use Illuminate\Validation\ValidationException;
  *   GET  /api/me/photo  the visitor's own photo (for the profile screen)
  *
  * The photo is required with registration (AuthController::register and
- * registerWithGoogle, field "photo"). Once staff have approved the account the photo is locked,
- * because officers compared it with the government ID during Account Review.
+ * registerWithGoogle, field "photo"). It is reviewed on its own like a
+ * government ID (photo_status): a retake is allowed only when there is none
+ * yet or staff rejected it or asked for a new one (canChangePhoto). A photo
+ * waiting for review or approved stays locked.
  */
 class VisitorPhotoController extends Controller
 {
@@ -29,15 +31,11 @@ class VisitorPhotoController extends Controller
     {
         $visitor = $this->visitor($request);
 
-        if ($visitor->verification_status === 'verified' && $visitor->photo_path) {
-            return response()->json([
-                'message' => 'Your account is already approved, so your photo can no longer be changed here. Please ask the facility staff.',
-            ], 409);
-        }
-
         if (! $visitor->canChangePhoto()) {
             return response()->json([
-                'message' => 'Your photo is being reviewed with your registration. You can retake it only if facility staff return your account for correction.',
+                'message' => $visitor->photo_status === VisitorProfile::PHOTO_VERIFIED
+                    ? 'Your photo is already approved, so it can no longer be changed here. Please ask the facility staff.'
+                    : 'Your photo is waiting for review. You can retake it only if facility staff reject it.',
             ], 409);
         }
 
@@ -50,7 +48,8 @@ class VisitorPhotoController extends Controller
 
         self::storeFor($visitor, $request->file('photo'));
 
-        // A returned account goes back to Account Review with the new photo.
+        // A returned account goes back to Account Review with the new photo;
+        // otherwise only the photo goes back to review (IDs and documents untouched).
         $visitor->resubmitIfReturned('new photo');
 
         return response()->json([
@@ -58,6 +57,7 @@ class VisitorPhotoController extends Controller
             'hasPhoto' => true,
             'photoUrl' => url('/api/me/photo'),
             'photoUploadedAt' => $visitor->fresh()->photo_uploaded_at?->toIso8601String(),
+            'photoStatus' => VisitorProfile::PHOTO_PENDING,
         ], 201);
     }
 
@@ -103,7 +103,15 @@ class VisitorPhotoController extends Controller
     {
         $old = $visitor->photo_path;
 
-        $visitor->update(['photo_path' => $path, 'photo_uploaded_at' => now()]);
+        // Every new photo waits for review. A previous rejection reason is kept
+        // so staff see what was asked for; verifying the photo clears it.
+        $visitor->update([
+            'photo_path' => $path,
+            'photo_uploaded_at' => now(),
+            'photo_status' => VisitorProfile::PHOTO_PENDING,
+            'photo_reviewed_by' => null,
+            'photo_reviewed_at' => null,
+        ]);
 
         if ($old && $old !== $path) {
             Storage::disk('local')->delete($old);

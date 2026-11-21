@@ -147,8 +147,12 @@ class VisitApprovalEligibilityTest extends TestCase
 
     // ----------------------------------------------------------- Rejected
 
-    public function test_rejected_assessment_blocks_approval(): void
+    public function test_a_visitor_whose_only_id_was_rejected_cannot_book(): void
     {
+        // Reject-only review: an approved visitor with no acceptable ID must
+        // replace it (and have it accepted) before a new visit is booked, so
+        // the request is refused before any eligibility assessment. A rejected
+        // assessment blocking approval is covered by the two tests around this one.
         VisitorId::create([
             'visitor_id' => $this->visitor->visitor_id,
             'id_type' => 'national_id',
@@ -156,14 +160,15 @@ class VisitApprovalEligibilityTest extends TestCase
             'file_path' => 'x.png',
             'verification_status' => 'rejected',
         ]);
-        $visit = $this->submittedRequest();
-        $this->assertSame('rejected', $visit->eligibilityAssessment->overall_result);
 
-        $this->approve($visit)->assertSessionHasErrors([
-            'eligibility' => 'The eligibility assessment rejected this request (Visitor identity document was rejected.). Reject the request instead.',
-        ]);
+        try {
+            $this->submittedRequest();
+            $this->fail('The booking should be refused.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('cannot be booked until', collect($e->errors())->flatten()->first());
+        }
 
-        $this->assertStillAwaitingReview($visit);
+        $this->assertSame(0, VisitRequest::where('visitor_id', $this->visitor->visitor_id)->count());
     }
 
     public function test_assessment_rejected_after_submission_blocks_approval_through_the_service(): void

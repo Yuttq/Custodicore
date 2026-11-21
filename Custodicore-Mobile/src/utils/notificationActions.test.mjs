@@ -364,3 +364,54 @@ test('with several requests, each rejection notice prefills its own request', ()
   const older = { category: 'pdl_request_rejected', body: PDL_BODY.replace('Juan Dela Cruz', 'Pedro Santos') };
   assert.equal(resolveNotificationAction(older, state)?.params?.prefill?.pdlName, 'Pedro Santos');
 });
+
+// ---------------------------------------------------------------------------
+// Reject-only item review: the visitor's own photo and accepted replacements.
+// ---------------------------------------------------------------------------
+test('photo_rejected offers "Retake Photo" only while the photo can still be retaken', () => {
+  const n = {
+    category: 'photo_rejected',
+    body: 'Your photo was not accepted. Reason: Your face is covered by a mask. Please retake it in the CustodiCore app so staff can review it again.',
+  };
+  assert.deepEqual(
+    resolveNotificationAction(n, { photoStatus: 'rejected', canReplacePhoto: true }),
+    { label: 'Retake Photo', route: 'VisitorVerificationDocuments' },
+  );
+  // Already retaken (pending again) or approved since: nothing to do.
+  assert.equal(resolveNotificationAction(n, { photoStatus: 'pending', canReplacePhoto: false }), null);
+  assert.equal(resolveNotificationAction(n, { photoStatus: 'verified', canReplacePhoto: false }), null);
+  assert.equal(resolveNotificationAction(n, null), null);
+  assert.equal(extractNotificationReason('photo_rejected', n.body), 'Your face is covered by a mask.');
+  assert.equal(notificationIconName('photo_rejected'), 'camera');
+  assert.equal(notificationIconName('replacement_accepted'), 'shield-checkmark');
+  // An accepted replacement has no shortcut.
+  assert.equal(resolveNotificationAction({ category: 'replacement_accepted', body: 'Facility staff accepted your new Government ID.' }, { backendStatus: 'verified' }), null);
+});
+
+test('a staff-requested replacement reuses the document_rejected notice and its Replace action', () => {
+  const n = {
+    category: 'document_rejected',
+    body: 'Your National ID was not accepted. Reason: The ID has expired. Please upload a new one in the CustodiCore app so staff can review it again.',
+  };
+  assert.equal(extractRejectedDocumentLabel(n.body), 'National ID');
+  assert.equal(extractNotificationReason('document_rejected', n.body), 'The ID has expired.');
+});
+
+test('"Replacement Requested" wording keeps the label, the reason and the Replace action', () => {
+  const body = 'Facility staff need a new copy of your Marriage Certificate. Reason: The copy is unreadable. Please upload a new one in the CustodiCore app so staff can review it again.';
+  assert.equal(extractRejectedDocumentLabel(body), 'Marriage Certificate');
+  assert.equal(extractNotificationReason('document_rejected', body), 'The copy is unreadable.');
+  // A reopened file of a verified relationship: opens its own upload screen.
+  const action = resolveNotificationAction(
+    { category: 'document_rejected', body },
+    { documents: [{ key: 'rel:7:marriage_certificate', label: 'Marriage Certificate', uploadStatus: 'rejected', canUpload: true }] },
+  );
+  assert.deepEqual(action, { label: 'Replace Document', route: 'UploadID', params: { documentKey: 'rel:7:marriage_certificate' } });
+
+  const photo = 'Facility staff need a new photo of you. Reason: Please send a recent photo. Please retake it in the CustodiCore app so staff can review it again.';
+  assert.equal(extractNotificationReason('photo_rejected', photo), 'Please send a recent photo.');
+  assert.deepEqual(
+    resolveNotificationAction({ category: 'photo_rejected', body: photo }, { photoStatus: 'rejected', canReplacePhoto: true }),
+    { label: 'Retake Photo', route: 'VisitorVerificationDocuments' },
+  );
+});

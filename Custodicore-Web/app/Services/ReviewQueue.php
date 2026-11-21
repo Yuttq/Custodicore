@@ -30,7 +30,10 @@ class ReviewQueue
     public static function accountsQuery(): Builder
     {
         // Walk-ins are approved at the Front Desk (WalkInService::approveAtDesk).
-        return VisitorProfile::where('verification_status', 'pending')->notWalkIn();
+        // Also approved visitors whose replacements wait for Accept replacements.
+        return VisitorProfile::where(fn (Builder $q) => $q
+            ->where(fn (Builder $pending) => $pending->where('verification_status', 'pending')->notWalkIn())
+            ->orWhere(fn (Builder $approved) => $approved->withReplacementsAwaitingReview()));
     }
 
     public static function visitsQuery(): Builder

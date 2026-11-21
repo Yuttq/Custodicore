@@ -66,10 +66,23 @@ test('rejection reason, upload date and review date come from the document', () 
   assert.equal(verified.canUpload, false);
 });
 
-test('a verified relationship is listed read-only', () => {
+test('a verified relationship is read-only except a file staff asked to replace', () => {
   const docs = buildRelationshipRequirementDocuments([relationship({ status: 'verified' })]);
   assert.ok(docs.length > 0);
-  assert.ok(docs.every((d) => d.canUpload === false));
+  // Only the file staff reopened (status rejected) can be replaced; missing,
+  // pending and approved files stay locked, and the relationship is not reopened.
+  const replaceable = docs.filter((d) => d.canUpload);
+  assert.deepEqual(replaceable.map((d) => d.requirementKey), ['child_birth_certificate']);
+  assert.equal(replaceable[0].uploadStatus, 'rejected');
+  assert.equal(replaceable[0].rejectionReason, 'Blurry photo');
+  // A rejected item the backend does not allow (canUpload false) stays locked too.
+  const locked = buildRelationshipRequirementDocuments([
+    relationship({
+      status: 'verified',
+      requirements: [{ key: 'marriage_certificate', kind: 'document', label: 'Marriage Certificate', status: 'rejected', canUpload: false }],
+    }),
+  ]);
+  assert.equal(locked[0].canUpload, false);
 });
 
 test('rejected relationships are skipped; two linked PDLs never share a key', () => {

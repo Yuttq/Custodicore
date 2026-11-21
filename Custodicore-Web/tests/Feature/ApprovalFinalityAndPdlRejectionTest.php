@@ -145,17 +145,19 @@ class ApprovalFinalityAndPdlRejectionTest extends TestCase
         $this->assertSame('rejected', $id->fresh()->verification_status);
     }
 
-    public function test_an_approved_government_id_cannot_be_rejected(): void
+    public function test_staff_can_ask_for_a_replacement_of_an_approved_government_id(): void
     {
+        // Request replacement: only this ID changes; the account stays approved.
         $id = $this->id($this->visitor, 'verified');
 
-        $this->post(route('visitor.ids.reject', [$this->visitor->visitor_id, $id->visitor_id_doc_id]), ['rejection_reason' => 'The ID photo is blurry.'])
-            ->assertSessionHas('error', fn ($m) => str_contains($m, 'already approved'));
+        $this->post(route('visitor.ids.reject', [$this->visitor->visitor_id, $id->visitor_id_doc_id]), ['rejection_reason' => 'The ID has expired.'])
+            ->assertSessionHas('success', fn ($m) => str_contains($m, 'Replacement requested'));
 
         $fresh = $id->fresh();
-        $this->assertSame('verified', $fresh->verification_status);
-        $this->assertNull($fresh->rejection_reason);
-        $this->assertCount(0, $this->notifications($this->visitor, 'document_rejected'));
+        $this->assertSame('rejected', $fresh->verification_status);
+        $this->assertSame('The ID has expired.', $fresh->rejection_reason);
+        $this->assertSame('verified', $this->visitor->fresh()->verification_status);
+        $this->assertCount(1, $this->notifications($this->visitor, 'document_rejected'));
     }
 
     public function test_rejecting_a_new_pending_id_leaves_the_approved_one_approved(): void
@@ -171,19 +173,31 @@ class ApprovalFinalityAndPdlRejectionTest extends TestCase
         $this->assertSame('verified', $this->visitor->fresh()->verification_status);
     }
 
-    public function test_the_reject_action_is_shown_only_for_a_pending_id(): void
+    public function test_each_id_has_reject_or_request_replacement_and_no_approve(): void
     {
         $visitor = $this->pendingVisitor();
         $approved = $this->id($visitor, 'verified', 'N-1');
         $pending = $this->id($visitor, 'pending', 'N-2');
+        $rejected = $this->id($visitor, 'rejected', 'N-3');
 
+        // Reject-only review: Reject on a pending ID, nothing on a rejected one,
+        // no per-ID Approve, and no Request replacement on an approved ID that
+        // is not the current (newest) one: older IDs are history.
         $this->get("/visitors/{$visitor->visitor_id}")->assertOk()
             ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false)
-            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $approved->visitor_id_doc_id]), false);
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $approved->visitor_id_doc_id]), false)
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $rejected->visitor_id_doc_id]), false)
+            ->assertDontSee(route('visitor.ids.verify', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
 
-        // The Review Queue card has no item Reject: Approve or Return the whole account.
+        // The Review Queue card has the same per-item Reject.
         $this->get('/account-reviews')->assertOk()
-            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
+            ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
+
+        // An approved ID that is the current one offers Request replacement.
+        $current = $this->id($this->visitor, 'verified', 'N-9');
+        $this->get("/visitors/{$this->visitor->visitor_id}")->assertOk()
+            ->assertSee(route('visitor.ids.reject', [$this->visitor->visitor_id, $current->visitor_id_doc_id]), false)
+            ->assertSee('Request replacement');
     }
 
     // ---------------------------------------------------------------

@@ -43,3 +43,12 @@ test('existing types keep their mapping', () => {
   assert.equal(inferNotificationCategory({ category: 'verification_approved', title: 'Account Approved' }), 'updates');
   assert.equal(inferNotificationTone({ category: 'relationship_approved', title: 'PDL Relationship Approved' }), 'success');
 });
+
+test('photo and replacement notices are updates; a rejected photo is a warning', () => {
+  const rejected = { category: 'photo_rejected', title: 'Photo Not Accepted', message: '…' };
+  assert.equal(inferNotificationCategory(rejected), 'updates');
+  assert.equal(inferNotificationTone(rejected), 'warning');
+  const accepted = { category: 'replacement_accepted', title: 'Replacement Accepted', message: '…' };
+  assert.equal(inferNotificationCategory(accepted), 'updates');
+  assert.notEqual(inferNotificationTone(accepted), 'warning');
+});

@@ -186,7 +186,7 @@
           <tr>
             <td>{{ $doc->typeLabel() }} · {{ filled($doc->id_number) && strtoupper($doc->id_number) !== 'PENDING' ? $doc->id_number : 'No number given' }}</td>
             <td><span class="badge released"><span class="dot"></span>Identity</span></td>
-            <td><span class="badge {{ $statusBadge($doc->verification_status) }}"><span class="dot"></span>{{ ucfirst($doc->verification_status) }}</span></td>
+            <td><span class="badge {{ $statusBadge($doc->verification_status) }}"><span class="dot"></span>{{ $doc->verification_status === 'superseded' ? 'Set aside' : ucfirst($doc->verification_status) }}</span></td>
             <td class="muted-cell">
               @if ($doc->verification_status === 'rejected') {{ $doc->rejection_reason ?: 'Rejected.' }}
               @elseif ($doc->verification_status === 'verified') Verified by {{ $doc->verifiedBy?->full_name ?? 'staff' }}
@@ -279,10 +279,18 @@
         @php
           $usableId = $visitor->idDocuments->whereIn('verification_status', ['pending', 'verified'])->isNotEmpty();
           $hasLink = $visitor->isWalkIn() || $visitor->relationships->contains(fn ($r) => $r->verification_status !== 'rejected');
+          // Rejected items not replaced yet, and duplicate IDs: the final Approve is refused.
+          $corrections = $visitor->itemReviewState()['needsReplacement'];
+          if ($visitor->pendingIdCount() > 1) {
+              $corrections[] = 'a duplicate government ID to set aside';
+          }
         @endphp
         @if (! $usableId)
           <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="The visitor has to upload a government ID first">Approve Visitor</button>
           <div class="field-hint" style="margin-top:6px;">Waiting for the visitor to upload a government ID.</div>
+        @elseif ($corrections !== [])
+          <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="Still needed: {{ implode(', ', $corrections) }}">Approve Visitor</button>
+          <div class="field-hint" style="margin-top:6px;">Still needed before approving: {{ implode(', ', $corrections) }}.</div>
         @elseif (! $hasLink)
           <a class="btn btn-blue" href="{{ route('account-reviews.index') }}">Approve in the Review Queue</a>
           <div class="field-hint" style="margin-top:6px;">Confirm the PDL they will visit on their Review Queue card, or add the PDL relationship below, then approve.</div>
@@ -300,22 +308,69 @@
 <div class="panel" id="identity" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Identity Documents</h2></div>
 
-  @if ($visitor->idDocuments->isEmpty())
+  {{-- Approved visitor: replacements staff asked for (each with Reject), then Accept replacements. --}}
+  @if ($visitor->isVerified())
+    @include('partials.replacements-review', ['visitor' => $visitor, 'compact' => false])
+  @endif
+
+  @php
+    $pendingIdRows = $visitor->idDocuments->where('verification_status', 'pending')->sortByDesc('uploaded_at');
+    $newestPendingIdRow = $pendingIdRows->first()?->visitor_id_doc_id;
+    // Request replacement only on the current (newest) ID; older ones are history.
+    $currentIdRow = $visitor->currentGovernmentId()?->visitor_id_doc_id;
+  @endphp
+  @if ($visitor->idDocuments->isEmpty() && ! $visitor->photo_path)
     <p class="empty-note">No ID documents uploaded yet.</p>
   @else
+    @if ($pendingIdRows->count() > 1)
+      <div class="elig-note is-warn" style="margin:0 0 10px;">{{ $pendingIdRows->count() }} government IDs are waiting. Set aside the duplicate before approving.</div>
+    @endif
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Approved By</th><th></th></tr></thead>
+      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Reviewed By</th><th></th></tr></thead>
       <tbody>
+        @if ($visitor->photo_path)
+          {{-- The visitor's own photo: reject only (approved with the account). --}}
+          @php $photoStatus = $visitor->photo_status; @endphp
+          <tr>
+            <td>Visitor Photo</td>
+            <td class="muted-cell">
+              Taken {{ $visitor->photo_uploaded_at?->format('M j, Y H:i') ?? '—' }}
+              @if ($photoStatus === 'rejected' && $visitor->photo_rejection_reason)
+                <div style="color:var(--red);">Rejected: {{ $visitor->photo_rejection_reason }}</div>
+              @elseif ($photoStatus === 'pending' && $visitor->photo_rejection_reason)
+                <div>Retaken after: {{ $visitor->photo_rejection_reason }}</div>
+              @endif
+            </td>
+            <td>
+              <span class="badge {{ $photoStatus === 'verified' ? 'active' : ($photoStatus === 'rejected' ? 'rejected' : 'transferred') }}">
+                <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'REJECTED', 'pending' => 'NOT CHECKED YET'][$photoStatus] ?? '—' }}
+              </span>
+            </td>
+            <td class="muted-cell">{{ $photoStatus !== 'pending' ? ($visitor->photoReviewedBy?->full_name ?? '—') : '—' }}</td>
+            <td>
+              <div style="display:flex;gap:8px;align-items:flex-start;">
+                <a class="row-action" href="{{ route('visitor.photo', $visitor->visitor_id) }}" target="_blank" rel="noopener">View</a>
+                {{-- A walk-in's photo is retaken at the Front Desk. --}}
+                @if (in_array($photoStatus, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
+                  @include('partials.item-reject', ['action' => route('visitor.photo.reject', $visitor->visitor_id), 'label' => 'photo', 'approved' => $photoStatus === 'verified', 'compact' => false])
+                @endif
+              </div>
+            </td>
+          </tr>
+        @endif
         @foreach ($visitor->idDocuments as $doc)
         <tr>
           <td>{{ $doc->typeLabel() }}</td>
           {{-- 'PENDING' is stored when the visitor gave no number; it is not an ID number. --}}
           <td class="muted-cell">{{ filled($doc->id_number) && strtoupper($doc->id_number) !== 'PENDING' ? $doc->id_number : 'No number given' }}</td>
           <td>
-            <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'rejected' : 'transferred') }}">
-              <span class="dot"></span>{{ strtoupper($doc->verification_status === 'verified' ? 'approved' : $doc->verification_status) }}
+            <span class="badge {{ $doc->verification_status === 'verified' ? 'active' : ($doc->verification_status === 'rejected' ? 'rejected' : ($doc->verification_status === 'superseded' ? 'released' : 'transferred')) }}">
+              <span class="dot"></span>{{ ['verified' => 'APPROVED', 'pending' => 'NOT CHECKED YET', 'superseded' => 'SET ASIDE'][$doc->verification_status] ?? strtoupper($doc->verification_status) }}
             </span>
+            @if (in_array($doc->verification_status, ['rejected', 'superseded'], true) && $doc->rejection_reason)
+              <div class="muted-cell" style="margin-top:2px;">{{ $doc->rejection_reason }}</div>
+            @endif
           </td>
           <td class="muted-cell">{{ $doc->verifiedBy?->full_name ?? '—' }}</td>
           <td>
@@ -323,28 +378,12 @@
               @if ($doc->file_path)
                 <a class="row-action" href="{{ route('visitor.ids.file', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" target="_blank" rel="noopener">View ID</a>
               @endif
-              @if ($doc->verification_status !== 'verified')
-                <form method="POST" action="{{ route('visitor.ids.verify', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}"
-                      data-confirm="Approve this {{ $doc->typeLabel() }}? Only do this after checking it matches the visitor."
-                      data-confirm-title="Approve ID" data-confirm-ok="Approve">
-                  @csrf
-                  <button type="submit" class="row-action" style="color:var(--green);">Approve</button>
-                </form>
+              {{-- Reject only: IDs are approved with the account (or Accept replacements). --}}
+              @if ($doc->verification_status === 'pending' && $pendingIdRows->count() > 1 && $doc->visitor_id_doc_id !== $newestPendingIdRow)
+                @include('partials.item-reject', ['action' => route('visitor.ids.set-aside', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'field' => 'reason', 'title' => 'Set aside duplicate', 'notify' => false, 'compact' => false])
               @endif
-              {{-- Only an ID waiting for review: an approved ID stays approved. --}}
-              @if ($doc->verification_status === 'pending')
-                <details class="acct-reject">
-                  <summary class="row-action" style="cursor:pointer;color:var(--red);">Reject</summary>
-                  <form method="POST" action="{{ route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" class="acct-reject-form"
-                        data-confirm="Reject this {{ $doc->typeLabel() }}? The visitor will need to upload a new one."
-                        data-confirm-title="Reject ID" data-confirm-ok="Reject" data-confirm-danger>
-                    @csrf
-                    <textarea name="rejection_reason" required minlength="5" maxlength="500" aria-label="Why the ID was rejected (shown to the visitor)"
-                              data-label="Why the ID was rejected (shown to the visitor)"
-                              placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
-                    <button type="submit" class="row-action" style="color:var(--red);">Confirm Reject</button>
-                  </form>
-                </details>
+              @if ($doc->verification_status === 'pending' || ($doc->verification_status === 'verified' && $doc->visitor_id_doc_id === $currentIdRow))
+                @include('partials.item-reject', ['action' => route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'approved' => $doc->verification_status === 'verified', 'compact' => false])
               @endif
             </div>
           </td>

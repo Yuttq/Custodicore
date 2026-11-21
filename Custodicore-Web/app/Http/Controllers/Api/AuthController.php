@@ -780,6 +780,10 @@ class AuthController extends Controller
             // The visitor's own photo: load it from photoUrl with the same Bearer token.
             'hasPhoto' => (bool) $profile?->photo_path,
             'photoUrl' => $profile?->photo_path ? url('/api/me/photo') : null,
+            // The photo's own review: pending | verified | rejected (null: no photo).
+            'photoStatus' => $profile?->photo_path ? $profile->photo_status : null,
+            // Approved visitors: what must be replaced and accepted before new visits can be booked.
+            'bookingBlockedBy' => $profile?->bookingBlockers() ?? [],
         ];
     }
 

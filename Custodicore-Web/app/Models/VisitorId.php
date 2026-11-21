@@ -63,6 +63,24 @@ class VisitorId extends Model
         'uploaded_at' => 'datetime',
     ];
 
+    /**
+     * A duplicate ID staff set aside (VisitorController::setAsideId). Kept
+     * with its file and history, never approved and never shown to the
+     * visitor. rejection_reason holds the staff note.
+     */
+    public const STATUS_SUPERSEDED = 'superseded';
+
+    /** IDs still in play: everything except a set-aside duplicate. */
+    public function scopeActive($query)
+    {
+        return $query->where('verification_status', '!=', self::STATUS_SUPERSEDED);
+    }
+
+    public function isSuperseded(): bool
+    {
+        return $this->verification_status === self::STATUS_SUPERSEDED;
+    }
+
     public function visitor()
     {
         return $this->belongsTo(
