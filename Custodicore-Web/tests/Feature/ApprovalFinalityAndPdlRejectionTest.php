@@ -180,18 +180,17 @@ class ApprovalFinalityAndPdlRejectionTest extends TestCase
         $pending = $this->id($visitor, 'pending', 'N-2');
         $rejected = $this->id($visitor, 'rejected', 'N-3');
 
-        // Reject-only review: Reject on a pending ID, nothing on a rejected one,
-        // no per-ID Approve, and no Request replacement on an approved ID that
-        // is not the current (newest) one: older IDs are history.
+        // Before approval: no per-ID buttons at all (no Approve, no Reject).
+        // Items go back with Return's "upload again" checklist instead.
         $this->get("/visitors/{$visitor->visitor_id}")->assertOk()
-            ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false)
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false)
             ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $approved->visitor_id_doc_id]), false)
             ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $rejected->visitor_id_doc_id]), false)
             ->assertDontSee(route('visitor.ids.verify', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
 
-        // The Review Queue card has the same per-item Reject.
+        // The Review Queue card has no per-item Reject either (Return's checklist instead).
         $this->get('/account-reviews')->assertOk()
-            ->assertSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
+            ->assertDontSee(route('visitor.ids.reject', [$visitor->visitor_id, $pending->visitor_id_doc_id]), false);
 
         // An approved ID that is the current one offers Request replacement.
         $current = $this->id($this->visitor, 'verified', 'N-9');

@@ -625,6 +625,12 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'reject']
     )->name('visitor.reject');
 
+    // Returned accounts left uncorrected: close (Closed tab) and reopen.
+    Route::post('/visitors/{visitor}/close-return', [\App\Http\Controllers\VisitorController::class, 'closeReturn'])
+        ->name('visitor.return.close');
+    Route::post('/visitors/{visitor}/reopen-return', [\App\Http\Controllers\VisitorController::class, 'reopenReturn'])
+        ->name('visitor.return.reopen');
+
     Route::post(
         '/visitors/{visitor}/ids/{idDocument}/verify',
         [\App\Http\Controllers\VisitorController::class, 'verifyId']

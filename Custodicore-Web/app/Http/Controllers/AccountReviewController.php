@@ -19,14 +19,16 @@ class AccountReviewController extends Controller
 {
     public function index(Request $request)
     {
-        $tab = $request->query('tab') === 'rejected' ? 'rejected' : 'pending';
+        $tab = in_array($request->query('tab'), ['rejected', 'closed'], true) ? $request->query('tab') : 'pending';
 
         $queries = [
             // Walk-ins are approved at the Front Desk, not here. Approved
             // visitors with replacements to accept are listed too.
             'pending' => \App\Services\ReviewQueue::accountsQuery()
                 ->orderBy('created_at'),
-            'rejected' => VisitorProfile::where('verification_status', 'rejected')->orderByDesc('verified_at'),
+            // Returned and still open; closed ones (left uncorrected) have their own tab.
+            'rejected' => \App\Services\ReturnedAccounts::openQuery()->orderByDesc('verified_at'),
+            'closed' => \App\Services\ReturnedAccounts::closedQuery()->orderByDesc('return_closed_at'),
         ];
 
         $counts = collect($queries)->map(fn ($q) => (clone $q)->count());

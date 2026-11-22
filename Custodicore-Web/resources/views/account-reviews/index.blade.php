@@ -5,6 +5,8 @@
   $tabs = [
     'pending' => ['Waiting for approval', ''],
     'rejected' => ['Returned', ''],
+    // Returned and left uncorrected (ReturnedAccounts): closed by staff or after CLOSE_AFTER_DAYS.
+    'closed' => ['Closed', ''],
   ];
   $idBadge = ['verified' => ['active', 'Approved'], 'pending' => ['transferred', 'Not checked yet'], 'rejected' => ['rejected', 'Rejected'], 'superseded' => ['released', 'Set aside']];
   $typeLabels = \App\Models\VisitorPdlRelationship::TYPE_LABELS;
@@ -30,6 +32,7 @@
     <div class="elig-empty-icon">✓</div>
     <div class="empty-title">
       @if ($tab === 'rejected') No accounts are waiting on the visitor.
+      @elseif ($tab === 'closed') No closed accounts.
       @else No accounts are waiting for approval.
       @endif
     </div>
@@ -164,7 +167,8 @@
                 Open the ID below and check that it shows the same person.
               @endif
             </p>
-            @if (in_array($visitor->photo_status, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
+            {{-- Before approval items go back with Return's checklist; once approved, ask for a replacement here. --}}
+            @if ($visitor->isVerified() && in_array($visitor->photo_status, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
               <div class="acct-id-actions">
                 @include('partials.item-reject', ['action' => route('visitor.photo.reject', $visitor->visitor_id), 'label' => 'photo', 'approved' => $visitor->photo_status === 'verified'])
               </div>
@@ -182,14 +186,14 @@
           <p class="muted-cell" style="margin:0;">No ID uploaded yet. The visitor uploads it from the CustodiCore app.</p>
         @else
           @php
-            // Two or more IDs waiting: the older ones can be set aside (kept, never approved).
+            // Two or more IDs waiting: Approve keeps the newest and sets the older ones aside
+            // (AccountApproval::setAsideOlderPendingIds).
             $pendingIds = $visitor->idDocuments->where('verification_status', 'pending');
-            $newestPendingId = $pendingIds->first()?->visitor_id_doc_id;
-            // Request replacement only on the current (newest) ID; older ones are history.
+            // Request replacement (approved accounts) only on the current (newest) ID; older ones are history.
             $currentIdKey = $visitor->currentGovernmentId()?->visitor_id_doc_id;
           @endphp
           @if ($pendingIds->count() > 1)
-            <div class="elig-note is-warn" style="margin:0 0 8px;">{{ $pendingIds->count() }} government IDs are waiting. Set aside the duplicate before approving.</div>
+            <div class="elig-note is-warn" style="margin:0 0 8px;">{{ $pendingIds->count() }} government IDs are waiting. Approve uses the newest one; the older ones are set aside (kept, not approved).</div>
           @endif
           @foreach ($visitor->idDocuments as $doc)
             @php [$badgeClass, $badgeText] = $idBadge[$doc->verification_status] ?? ['released', ucfirst($doc->verification_status)]; @endphp
@@ -215,10 +219,7 @@
                 @else
                   <span class="muted-cell">No picture (entered at front desk)</span>
                 @endif
-                @if ($doc->verification_status === 'pending' && $pendingIds->count() > 1 && $doc->visitor_id_doc_id !== $newestPendingId)
-                  @include('partials.item-reject', ['action' => route('visitor.ids.set-aside', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'field' => 'reason', 'title' => 'Set aside duplicate', 'notify' => false])
-                @endif
-                @if ($doc->verification_status === 'pending' || ($doc->verification_status === 'verified' && $doc->visitor_id_doc_id === $currentIdKey))
+                @if ($visitor->isVerified() && in_array($doc->verification_status, ['pending', 'verified'], true) && $doc->visitor_id_doc_id === $currentIdKey)
                   @include('partials.item-reject', ['action' => route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'approved' => $doc->verification_status === 'verified'])
                 @endif
               </div>
@@ -234,9 +235,6 @@
       @php
         $idDoc = $visitor->idDocuments->firstWhere('verification_status', 'pending') ?? $visitor->idDocuments->firstWhere('verification_status', 'verified');
         $corrections = array_map(fn ($label) => $label . ': waiting for the visitor to replace it', $visitor->itemReviewState()['needsReplacement']);
-        if ($visitor->idDocuments->where('verification_status', 'pending')->count() > 1) {
-            $corrections[] = 'Two or more government IDs waiting: set aside the duplicate';
-        }
         $panelData = [
           'mode' => $linked ? 'linked' : ($visitor->isWalkIn() ? 'walkin' : 'pick'),
           'id' => $idDoc ? ['label' => $idDoc->typeLabel(), 'approved' => $idDoc->verification_status === 'verified'] : null,
@@ -342,7 +340,28 @@
         </div>
       </section>
 
-      @if ($tab === 'rejected' && $visitor->rejection_reason)
+      @if (in_array($tab, ['rejected', 'closed'], true))
+        {{-- Follow-up of the return (ReturnedAccounts): reminder after 7 days, closed after 45. --}}
+        @php
+          $returnedOn = $visitor->verified_at;
+          $closesOn = $returnedOn?->copy()->addDays(\App\Services\ReturnedAccounts::CLOSE_AFTER_DAYS);
+          $closedOn = $visitor->return_closed_at ? \Illuminate\Support\Carbon::parse($visitor->return_closed_at) : null;
+          $remindedOn = $visitor->return_reminded_at ? \Illuminate\Support\Carbon::parse($visitor->return_reminded_at) : null;
+        @endphp
+        <div class="elig-note" data-return-follow-up>
+          Returned {{ $returnedOn?->format('M j, Y') ?? '—' }}
+          @if ($remindedOn) · reminder sent {{ $remindedOn->format('M j, Y') }} @endif
+          @if ($closedOn)
+            · closed {{ $closedOn->format('M j, Y') }}
+            {{ $visitor->return_closed_by ? 'by ' . (\App\Models\StaffProfile::find($visitor->return_closed_by)?->full_name ?? 'staff') : '(not corrected within ' . \App\Services\ReturnedAccounts::CLOSE_AFTER_DAYS . ' days)' }}.
+            If the visitor corrects it in the app, it comes back for review.
+          @elseif ($closesOn)
+            · closes automatically on {{ $closesOn->format('M j, Y') }} if not corrected.
+          @endif
+        </div>
+      @endif
+
+      @if (in_array($tab, ['rejected', 'closed'], true) && $visitor->rejection_reason)
         <div class="elig-note is-warn">Returned. What to fix: {{ $visitor->rejection_reason }}</div>
       @elseif ($visitor->rejection_reason)
         {{-- Back from the visitor after a correction (resubmitIfReturned keeps the reason until approval). --}}
@@ -372,6 +391,22 @@
             @endif
           </div>
           <div class="elig-buttons">
+            @if ($tab === 'rejected')
+              {{-- Left uncorrected: move it off the Returned list (it closes by itself after 45 days). --}}
+              <form method="POST" action="{{ route('visitor.return.close', $visitor->visitor_id) }}"
+                    data-confirm="Close {{ $visitor->full_name }}'s returned account? It moves to the Closed tab and the visitor is notified. They can still correct it in the app, which brings it back for review."
+                    data-confirm-title="Close account" data-confirm-ok="Close">
+                @csrf
+                <button type="submit" class="btn btn-outline-neutral">Close</button>
+              </form>
+            @elseif ($tab === 'closed')
+              <form method="POST" action="{{ route('visitor.return.reopen', $visitor->visitor_id) }}"
+                    data-confirm="Reopen {{ $visitor->full_name }}'s account? It goes back on the Returned list. The visitor is not notified."
+                    data-confirm-title="Reopen account" data-confirm-ok="Reopen">
+                @csrf
+                <button type="submit" class="btn btn-outline-neutral">Reopen</button>
+              </form>
+            @endif
             {{-- Approve, or Return the whole account with what to fix; the visitor corrects it in the app and resubmits. --}}
             <details class="acct-reject">
               <summary class="btn btn-outline-neutral elig-reject">Return</summary>

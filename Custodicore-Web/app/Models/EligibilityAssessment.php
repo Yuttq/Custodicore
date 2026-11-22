@@ -82,16 +82,16 @@ class EligibilityAssessment extends Model
         $pdl = $visitRequest->pdl;
         $relationship = $visitRequest->relationship;
 
-        // 1. Identity check
+        // 1. Identity check — the visitor's CURRENT government ID only (newest,
+        // set-aside duplicates excluded; VisitorProfile::currentGovernmentId,
+        // the same ID the booking rules use). An older ID rejected before a
+        // replacement was approved is history and must not block the visit.
         $identityResult = 'flagged';
-        if ($visitor) {
-            $hasRejectedId = $visitor->idDocuments()->where('verification_status', 'rejected')->exists();
-            $hasVerifiedId = $visitor->idDocuments()->where('verification_status', 'verified')->exists();
-            if ($hasRejectedId) {
-                $identityResult = 'rejected';
-            } elseif ($hasVerifiedId) {
-                $identityResult = 'pass';
-            }
+        $currentId = $visitor?->currentGovernmentId();
+        if ($currentId?->verification_status === 'rejected') {
+            $identityResult = 'rejected';
+        } elseif ($currentId?->verification_status === 'verified') {
+            $identityResult = 'pass';
         }
 
         // 2. Relationship check

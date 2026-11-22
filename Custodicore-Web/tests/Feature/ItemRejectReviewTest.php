@@ -320,7 +320,7 @@ class ItemRejectReviewTest extends TestCase
     // Duplicate IDs
     // ---------------------------------------------------------------
 
-    public function test_duplicate_ids_block_approval_until_one_is_set_aside_and_nothing_is_deleted(): void
+    public function test_approve_keeps_the_newest_of_duplicate_ids_and_sets_the_older_aside(): void
     {
         $visitor = $this->pendingVisitor();
         $older = VisitorId::where('visitor_id', $visitor->visitor_id)->first();
@@ -328,22 +328,13 @@ class ItemRejectReviewTest extends TestCase
         $newer = $this->id($visitor, 'pending', 'N-2');
         $this->asRecordOfficer();
 
+        // No "Set aside duplicate" button any more: the card explains what Approve does.
         $this->get(route('account-reviews.index'))->assertOk()
-            ->assertSee(route('visitor.ids.set-aside', [$visitor->visitor_id, $older->visitor_id_doc_id]), false)
-            ->assertDontSee(route('visitor.ids.set-aside', [$visitor->visitor_id, $newer->visitor_id_doc_id]), false);
-        $this->post(route('visitor.approve', $visitor->visitor_id))->assertSessionHas('error', fn ($m) => str_contains($m, 'duplicate'));
-
-        $this->post(route('visitor.ids.set-aside', [$visitor->visitor_id, $older->visitor_id_doc_id]), ['reason' => 'Duplicate upload.'])
-            ->assertSessionHas('success');
-        $this->assertSame('superseded', $older->fresh()->verification_status);
-        $this->assertSame('Duplicate upload.', $older->fresh()->rejection_reason);
-        $this->assertSame(0, Notification::where('account_id', $visitor->account_id)->count());
-
-        // The last pending ID cannot be set aside.
-        $this->post(route('visitor.ids.set-aside', [$visitor->visitor_id, $newer->visitor_id_doc_id]), ['reason' => 'Duplicate upload.'])
-            ->assertSessionHas('error');
+            ->assertDontSee(route('visitor.ids.set-aside', [$visitor->visitor_id, $older->visitor_id_doc_id]), false)
+            ->assertSee('Approve uses the newest one');
 
         $this->post(route('visitor.approve', $visitor->visitor_id))->assertSessionHas('success');
+        $this->assertSame(0, Notification::where('account_id', $visitor->account_id)->where('notification_type', '!=', 'account_approved')->count());
         $this->assertSame('verified', $newer->fresh()->verification_status);
         $this->assertSame('superseded', $older->fresh()->verification_status);
         $this->assertSame(2, VisitorId::where('visitor_id', $visitor->visitor_id)->count());

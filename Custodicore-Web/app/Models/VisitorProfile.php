@@ -370,7 +370,9 @@ class VisitorProfile extends Model
 
         $moved = static::whereKey($this->visitor_id)
             ->where('verification_status', 'rejected')
-            ->update(['verification_status' => 'pending', 'updated_at' => now()]) > 0;
+            // A correction also reopens a closed return and resets its reminder (ReturnedAccounts).
+            ->update(['verification_status' => 'pending', 'updated_at' => now(),
+                'return_reminded_at' => null, 'return_closed_at' => null, 'return_closed_by' => null]) > 0;
 
         if ($moved) {
             $this->verification_status = 'pending';

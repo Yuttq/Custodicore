@@ -250,6 +250,9 @@ class VisitorController extends Controller
                     'verified_at' => now(),
                     'rejection_reason' => $reason,
                 ]);
+                // A fresh return: its own reminder and closing date (ReturnedAccounts).
+                VisitorProfile::whereKey($visitor->visitor_id)
+                    ->update(['return_reminded_at' => null, 'return_closed_at' => null, 'return_closed_by' => null]);
 
                 return $redone;
             });
@@ -278,6 +281,31 @@ class VisitorController extends Controller
 
         return back()->with('success', 'Account returned. The visitor has been notified of what to fix.'
             . ($redone !== [] ? ' They can now upload a new ' . implode(', ', $redone) . '.' : ''));
+    }
+
+    /** Closes a returned account the visitor has not corrected (Review Queue → Returned). */
+    public function closeReturn(VisitorProfile $visitor)
+    {
+        $staffId = $this->actingStaffId();
+        if ($staffId === null) {
+            return back()->with('error', self::NO_STAFF_PROFILE_MESSAGE);
+        }
+
+        if (! app(\App\Services\ReturnedAccounts::class)->close($visitor, $staffId)) {
+            return back()->with('error', 'Only a returned account that is still open can be closed.');
+        }
+
+        return back()->with('success', "{$visitor->full_name}'s returned account was closed. The visitor was notified and can still correct it in the app.");
+    }
+
+    /** Puts a closed returned account back on the Returned list. */
+    public function reopenReturn(VisitorProfile $visitor)
+    {
+        if (! app(\App\Services\ReturnedAccounts::class)->reopen($visitor)) {
+            return back()->with('error', 'This account is not a closed returned account.');
+        }
+
+        return back()->with('success', "{$visitor->full_name}'s account is back on the Returned list.");
     }
 
     // -----------------------------------------------------------------
@@ -399,6 +427,8 @@ class VisitorController extends Controller
 
         \App\Support\DocumentRejectionNotice::send($visitor, $idDocument->typeLabel(), $reason,
             'visitor_ids', $idDocument->visitor_id_doc_id, replacementRequested: $wasApproved);
+        // The current ID changed: refresh waiting visit requests' identity checks.
+        \App\Models\EligibilityAssessment::recheckAwaitingReview(visitorId: $visitor->visitor_id);
 
         return back()->with('success', $wasApproved
             ? 'Replacement requested. The visitor has been notified. Their other documents are unchanged.'
@@ -554,15 +584,13 @@ class VisitorController extends Controller
             if ($state['awaitingReview'] === []) {
                 return ['error' => 'There are no replacements waiting for review.'];
             }
-            if ($locked->pendingIdCount() > 1) {
-                return ['error' => 'More than one government ID is waiting. Set aside the duplicate first.'];
-            }
-
             if (in_array('Visitor Photo', $state['awaitingReview'], true)) {
                 $locked->verifyPendingPhoto($staffId, "Accepted the new photo of {$locked->full_name}");
             }
 
             if (in_array('Government ID', $state['awaitingReview'], true)) {
+                // Two or more new IDs: accept the newest, set the older ones aside.
+                app(\App\Services\AccountApproval::class)->setAsideOlderPendingIds($locked, $staffId);
                 foreach ($locked->idDocuments()->where('verification_status', 'pending')->get() as $id) {
                     $updated = VisitorId::whereKey($id->visitor_id_doc_id)->where('verification_status', 'pending')
                         ->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
@@ -588,6 +616,9 @@ class VisitorController extends Controller
         if (isset($result['error'])) {
             return back()->with('error', $result['error']);
         }
+
+        // The current ID may have changed: refresh waiting visit requests' checks.
+        \App\Models\EligibilityAssessment::recheckAwaitingReview(visitorId: $visitor->visitor_id);
 
         \App\Support\ReplacementAcceptedNotice::send($visitor, $result['accepted'], $result['stillNeeded']);
 

@@ -161,6 +161,8 @@ class AccountApproval
 
             // 1. IDs waiting for review: the officer checked them on the card.
             //    Only IDs still pending: rejected and set-aside IDs are never changed.
+            //    Two or more waiting: the newest is approved, older duplicates are set aside.
+            $this->setAsideOlderPendingIds($visitor, $staffId);
             foreach ($visitor->idDocuments()->where('verification_status', 'pending')->get() as $id) {
                 $updated = \App\Models\VisitorId::whereKey($id->visitor_id_doc_id)->where('verification_status', 'pending')
                     ->update(['verification_status' => 'verified', 'verified_by' => $staffId, 'verified_at' => now(), 'rejection_reason' => null]);
@@ -255,8 +257,9 @@ class AccountApproval
     /**
      * Refuses the final Approve while anything needs correcting: an item
      * staff rejected (photo, government ID, a file) that the visitor has not
-     * replaced yet, or two or more government IDs waiting (set aside the
-     * duplicate first). Read from the database, not cached relations.
+     * replaced yet. Two or more IDs waiting no longer block it: Approve keeps
+     * the newest and sets the older ones aside (setAsideOlderPendingIds).
+     * Read from the database, not cached relations.
      *
      * @throws ValidationException
      */
@@ -268,10 +271,31 @@ class AccountApproval
                 'items' => 'Waiting for the visitor to replace: ' . implode(', ', $needs) . '. Nothing was approved.',
             ]);
         }
-        if ($visitor->pendingIdCount() > 1) {
-            throw ValidationException::withMessages([
-                'id' => 'More than one government ID is waiting for review. Set aside the duplicate first.',
-            ]);
+    }
+
+    /**
+     * Two or more government IDs waiting: keeps the newest for approval and
+     * sets the older ones aside (kept with their files, never approved; the
+     * visitor is not notified), in place of the old "Set aside duplicate"
+     * button. Call inside the approval transaction, visitor row locked.
+     */
+    public function setAsideOlderPendingIds(VisitorProfile $visitor, int $staffId): void
+    {
+        $pending = \App\Models\VisitorId::where('visitor_id', $visitor->visitor_id)->where('verification_status', 'pending')
+            ->orderByDesc('uploaded_at')->orderByDesc('visitor_id_doc_id')->get();
+
+        foreach ($pending->slice(1) as $older) {
+            $updated = \App\Models\VisitorId::whereKey($older->visitor_id_doc_id)->where('verification_status', 'pending')
+                ->update([
+                    'verification_status' => \App\Models\VisitorId::STATUS_SUPERSEDED,
+                    'verified_by' => $staffId,
+                    'verified_at' => now(),
+                    'rejection_reason' => 'Older duplicate: set aside when the newer ID was approved',
+                ]);
+            if ($updated) {
+                AuditLog::record('update', 'visitor_ids', $older->visitor_id_doc_id,
+                    "Set aside older duplicate {$older->typeLabel()} of {$visitor->full_name} (newer ID approved)", Module::CODE_VISITOR_MANAGEMENT);
+            }
         }
     }
 

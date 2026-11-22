@@ -62,9 +62,9 @@
           @endif
         </div>
 
-        {{-- Reject only, one file at a time (the relationship's Return stays for exceptional cases). --}}
+        {{-- One file at a time, approved accounts only (before approval, Return's checklist sends files back). --}}
         @if ($item['kind'] === 'document' && $item['document'] && in_array($item['document']->status, ['pending', 'verified'], true)
-             && $relationship->verification_status !== 'rejected')
+             && $relationship->verification_status !== 'rejected' && $relationship->visitor?->isVerified())
           <div class="req-actions">
             @include('partials.item-reject', [
               'action' => route('relationship-documents.reject', $item['document']->document_id),

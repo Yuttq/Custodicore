@@ -52,7 +52,7 @@ class ReturnButtonRemovedTest extends TestCase
         return $visitor;
     }
 
-    public function test_review_card_is_approve_or_return_and_visitor_page_keeps_reject(): void
+    public function test_review_card_is_approve_or_return_with_no_per_item_reject_before_approval(): void
     {
         $visitor = $this->visitorWithStatus('pending');
         $id = $visitor->idDocuments()->sole();
@@ -61,16 +61,17 @@ class ReturnButtonRemovedTest extends TestCase
 
         $this->actingAs($this->recordOfficerAccount, 'web');
 
-        // Review Queue card: Approve or Return the whole account, and a Reject per item.
+        // Review Queue card: only Approve or Return; items to redo are ticked in Return's checklist.
         $this->get('/account-reviews')->assertOk()
             ->assertSee($returnUrl, false)
             ->assertSee(route('visitor.approve', $visitor->visitor_id), false)
-            ->assertSee($idRejectUrl, false);
+            ->assertSee('value="id:' . $id->visitor_id_doc_id . '"', false)
+            ->assertDontSee($idRejectUrl, false);
 
-        // Visitor page: no Return; the ID keeps its Reject.
+        // Visitor page: no Return and, before approval, no per-item Reject either.
         $this->get("/visitors/{$visitor->visitor_id}")->assertOk()
             ->assertDontSee($returnUrl, false)
-            ->assertSee($idRejectUrl, false)
+            ->assertDontSee($idRejectUrl, false)
             ->assertSee(route('visitor.approve', $visitor->visitor_id), false);
 
         // Returning from the card sends it back with what to fix.

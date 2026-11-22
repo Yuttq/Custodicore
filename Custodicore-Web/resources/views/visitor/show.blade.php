@@ -281,9 +281,6 @@
           $hasLink = $visitor->isWalkIn() || $visitor->relationships->contains(fn ($r) => $r->verification_status !== 'rejected');
           // Rejected items not replaced yet, and duplicate IDs: the final Approve is refused.
           $corrections = $visitor->itemReviewState()['needsReplacement'];
-          if ($visitor->pendingIdCount() > 1) {
-              $corrections[] = 'a duplicate government ID to set aside';
-          }
         @endphp
         @if (! $usableId)
           <button class="btn btn-blue" type="submit" disabled style="opacity:.45;cursor:not-allowed;" title="The visitor has to upload a government ID first">Approve Visitor</button>
@@ -314,8 +311,7 @@
   @endif
 
   @php
-    $pendingIdRows = $visitor->idDocuments->where('verification_status', 'pending')->sortByDesc('uploaded_at');
-    $newestPendingIdRow = $pendingIdRows->first()?->visitor_id_doc_id;
+    $pendingIdRows = $visitor->idDocuments->where('verification_status', 'pending');
     // Request replacement only on the current (newest) ID; older ones are history.
     $currentIdRow = $visitor->currentGovernmentId()?->visitor_id_doc_id;
   @endphp
@@ -323,7 +319,7 @@
     <p class="empty-note">No ID documents uploaded yet.</p>
   @else
     @if ($pendingIdRows->count() > 1)
-      <div class="elig-note is-warn" style="margin:0 0 10px;">{{ $pendingIdRows->count() }} government IDs are waiting. Set aside the duplicate before approving.</div>
+      <div class="elig-note is-warn" style="margin:0 0 10px;">{{ $pendingIdRows->count() }} government IDs are waiting. Approve uses the newest one; the older ones are set aside (kept, not approved).</div>
     @endif
     <div class="table-scroll">
     <table>
@@ -352,7 +348,7 @@
               <div style="display:flex;gap:8px;align-items:flex-start;">
                 <a class="row-action" href="{{ route('visitor.photo', $visitor->visitor_id) }}" target="_blank" rel="noopener">View</a>
                 {{-- A walk-in's photo is retaken at the Front Desk. --}}
-                @if (in_array($photoStatus, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
+                @if ($visitor->isVerified() && in_array($photoStatus, ['pending', 'verified'], true) && ! $visitor->isWalkIn())
                   @include('partials.item-reject', ['action' => route('visitor.photo.reject', $visitor->visitor_id), 'label' => 'photo', 'approved' => $photoStatus === 'verified', 'compact' => false])
                 @endif
               </div>
@@ -379,10 +375,8 @@
                 <a class="row-action" href="{{ route('visitor.ids.file', [$visitor->visitor_id, $doc->visitor_id_doc_id]) }}" target="_blank" rel="noopener">View ID</a>
               @endif
               {{-- Reject only: IDs are approved with the account (or Accept replacements). --}}
-              @if ($doc->verification_status === 'pending' && $pendingIdRows->count() > 1 && $doc->visitor_id_doc_id !== $newestPendingIdRow)
-                @include('partials.item-reject', ['action' => route('visitor.ids.set-aside', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'field' => 'reason', 'title' => 'Set aside duplicate', 'notify' => false, 'compact' => false])
-              @endif
-              @if ($doc->verification_status === 'pending' || ($doc->verification_status === 'verified' && $doc->visitor_id_doc_id === $currentIdRow))
+              {{-- Approved accounts only: before approval, items go back with Return's checklist. --}}
+              @if ($visitor->isVerified() && in_array($doc->verification_status, ['pending', 'verified'], true) && $doc->visitor_id_doc_id === $currentIdRow)
                 @include('partials.item-reject', ['action' => route('visitor.ids.reject', [$visitor->visitor_id, $doc->visitor_id_doc_id]), 'label' => $doc->typeLabel(), 'approved' => $doc->verification_status === 'verified', 'compact' => false])
               @endif
             </div>

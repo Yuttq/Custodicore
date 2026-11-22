@@ -12,7 +12,8 @@
 @php
   $registrationDocs = $visitor->registrationDocuments->unique('requirement_key');
   // Walk-ins keep their own document review (at the Front Desk, WalkInService::approveAtDesk).
-  $canRejectRegistrationDocs = ($allowReject ?? true) && ! $visitor->isWalkIn();
+  // Approved accounts only (Request replacement): before approval, Return's checklist sends files back.
+  $canRejectRegistrationDocs = ($allowReject ?? true) && ! $visitor->isWalkIn() && $visitor->isVerified();
 @endphp
 @if ($registrationDocs->isNotEmpty())
   <div class="req-panel" style="margin-top:12px;">
