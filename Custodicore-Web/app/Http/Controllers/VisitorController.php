@@ -219,6 +219,10 @@ class VisitorController extends Controller
         // Shown to the visitor in the app — keep it to what they can act on.
         $data = $request->validate([
             'rejection_reason' => ['required', 'string', 'min:5', 'max:500'],
+            // Items the visitor must redo (ReturnForCorrection::items keys). Ticking
+            // one rejects it, which is what lets the app accept a new copy.
+            'redo' => ['nullable', 'array'],
+            'redo.*' => ['string', 'max:30'],
         ], [
             'rejection_reason.required' => 'Tell the visitor what to fix before their account can be approved.',
             'rejection_reason.min' => 'Give a reason of at least 5 characters so the visitor knows what to fix.',
@@ -235,23 +239,33 @@ class VisitorController extends Controller
         }
 
         try {
-            $visitor->update([
-                'verification_status' => 'rejected',
-                'verified_by' => $staffId,
-                'verified_at' => now(),
-                'rejection_reason' => $reason,
-            ]);
+            $redone = DB::transaction(function () use ($visitor, $staffId, $reason, $data) {
+                // Same row lock as the final Approve and the per-item rejects.
+                VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
+
+                $redone = \App\Services\ReturnForCorrection::rejectForReturn($visitor, $data['redo'] ?? [], $reason, $staffId);
+                $visitor->update([
+                    'verification_status' => 'rejected',
+                    'verified_by' => $staffId,
+                    'verified_at' => now(),
+                    'rejection_reason' => $reason,
+                ]);
+
+                return $redone;
+            });
         } catch (\Throwable $e) {
             Log::error('Visitor rejection failed: ' . $e->getMessage());
             return back()->with('error', 'Could not return this account. ' . $e->getMessage());
         }
+
+        $redoText = $redone !== [] ? ' Upload a new ' . implode(', ', $redone) . ' in the app.' : '';
 
         Notification::notify(
             $visitor->account_id,
             'account_rejected',
             'Account Returned for Correction',
             \Illuminate\Support\Str::limit(
-                'Your account was returned so you can correct your information or documents.' . ($reason ? " What to fix: {$reason}" : ' Please contact facility staff for details.'),
+                'Your account was returned so you can correct your information or documents.' . ($reason ? " What to fix: {$reason}" : ' Please contact facility staff for details.') . $redoText,
                 500
             ),
             'visitor_profiles',
@@ -259,9 +273,11 @@ class VisitorController extends Controller
         );
 
         $this->logAudit('update', 'visitor_profiles', $visitor->visitor_id,
-            "Returned visitor account to {$visitor->full_name} for correction: {$reason}");
+            "Returned visitor account to {$visitor->full_name} for correction: {$reason}"
+                . ($redone !== [] ? ' (to redo: ' . implode(', ', $redone) . ')' : ''));
 
-        return back()->with('success', 'Account returned. The visitor has been notified of what to fix.');
+        return back()->with('success', 'Account returned. The visitor has been notified of what to fix.'
+            . ($redone !== [] ? ' They can now upload a new ' . implode(', ', $redone) . '.' : ''));
     }
 
     // -----------------------------------------------------------------

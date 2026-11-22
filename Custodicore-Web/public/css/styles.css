@@ -521,6 +521,12 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .acct-reject[open] > summary{display:none;}
 .acct-reject-form{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;}
 .acct-reject-form textarea{min-width:260px;min-height:44px;padding:9px 12px;border:1px solid var(--border);border-radius:12px;font-family:inherit;font-size:13px;}
+/* Return: which items the visitor must upload again (each ticked item is unlocked in the app). */
+.acct-redo{flex-basis:100%;border:1px solid var(--border);border-radius:12px;padding:8px 12px 10px;margin:0;display:flex;flex-wrap:wrap;gap:6px 16px;}
+.acct-redo legend{font-size:11.5px;font-weight:700;padding:0 4px;}
+.acct-redo label{display:flex;gap:6px;align-items:center;font-size:13px;}
+.acct-redo input{width:auto;margin:0;}
+.acct-redo .field-hint{flex-basis:100%;}
 .nav-count{margin-left:auto;background:var(--amber-bg);color:var(--amber-text);border-radius:9999px;padding:1px 8px;font-size:11px;font-weight:700;}
 
 /* ===================== ACTIVITY TIMELINE / LOG ===================== */

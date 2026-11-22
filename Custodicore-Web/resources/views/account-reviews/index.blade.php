@@ -381,6 +381,17 @@
                 @csrf
                 <textarea name="rejection_reason" required minlength="5" maxlength="500" data-label="What to fix (shown to the visitor)"
                           placeholder="e.g. The ID photo is unreadable. Please upload a clearer copy."></textarea>
+                {{-- The app only accepts a new copy of an item marked here (ReturnForCorrection). --}}
+                @php $redoItems = \App\Services\ReturnForCorrection::items($visitor); @endphp
+                @if ($redoItems->isNotEmpty())
+                  <fieldset class="acct-redo" data-redo-items>
+                    <legend>What must they upload again?</legend>
+                    @foreach ($redoItems as $item)
+                      <label><input type="checkbox" name="redo[]" value="{{ $item['key'] }}"> {{ $item['label'] }}</label>
+                    @endforeach
+                    <p class="field-hint" style="margin:4px 0 0;">Tick each item that needs a new copy, so the app lets them replace it. Leave all unticked if they only need to fix their details (name, birthday, contact).</p>
+                  </fieldset>
+                @endif
                 <button type="submit" class="btn btn-outline-neutral elig-reject">Send back</button>
               </form>
             </details>
