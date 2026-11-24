@@ -48,11 +48,11 @@
     <div class="stat-label">No Visit Record</div>
     <div class="stat-value">{{ $stats['no_visit_record'] }}</div>
   </a>
-  <a class="stat-card stat-link accent-teal" href="{{ route('eligibility.index') }}" style="text-decoration:none;color:inherit;">
-    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'clipboard'])</div>@if($stats['pending_visit_requests'] > 0)<span class="attention-badge">ATTENTION</span>@endif</div>
-    <div class="stat-label">Visit Requests Awaiting Review</div>
-    <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
-    <div class="muted-cell">open the Review Queue</div>
+  <a class="stat-card stat-link accent-teal" href="{{ route('upcoming-visits.index', ['range' => 'today']) }}" style="text-decoration:none;color:inherit;">
+    <div class="stat-top"><div class="icon-badge">@include('partials.icon', ['name' => 'clipboard'])</div></div>
+    <div class="stat-label">Confirmed Visits Today</div>
+    <div class="stat-value">{{ $stats['visits_today'] }}</div>
+    <div class="muted-cell">open Upcoming Visits</div>
   </a>
 </section>
 
@@ -90,7 +90,7 @@
                 <div class="pdl-cell">
                   @include('pdl.partials.avatar', ['pdl' => $pdl, 'class' => 'pdl-avatar'])
                   <div>
-                    <a class="pdl-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">{{ $pdl->full_name }}</a>
+                    <a class="pdl-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">{{ $pdl->listName() }}</a>
                     <div class="pdl-id">{{ $pdl->pdl_number }}</div>
                   </div>
                 </div>
@@ -118,7 +118,7 @@
       @foreach ($visitationAlerts as $pdl)
       <div class="alert-item">
         <div class="alert-title">
-          <span class="dot"></span> {{ $pdl->full_name }}
+          <span class="dot"></span> {{ $pdl->listName() }}
           <span class="pill no-visit">NO VISIT RECORD</span>
         </div>
         <div class="alert-desc">Admitted {{ $pdl->admission_date->format('M d, Y') }}. No visitation records established since intake.</div>

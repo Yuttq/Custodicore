@@ -77,10 +77,10 @@ class FlagDurationAndClickableStatsTest extends TestCase
     {
         $this->get('/visitors')->assertOk()
             ->assertSee('href="' . route('account-reviews.index') . '"', false)   // Pending Verification → Review Queue
-            ->assertSee('href="' . route('eligibility.index') . '"', false)
             ->assertSee('href="' . route('visitor.index', ['flagged' => 1]) . '"', false);
 
         $this->get('/dashboard')->assertOk()
+            ->assertSee('href="' . route('upcoming-visits.index', ['range' => 'today']) . '"', false)
             ->assertSee('href="' . route('pdl.index', ['status' => 'active']) . '"', false)
             ->assertSee('href="' . route('pdl.index', ['visits' => 'never']) . '"', false);
 

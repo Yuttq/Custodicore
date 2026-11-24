@@ -35,7 +35,6 @@ class LiveRefreshPagesTest extends TestCase
     {
         return [
             'accounts' => ['records', route('account-reviews.index')],
-            'visit requests' => ['records', route('eligibility.index')],
             'pdl links' => ['records', route('pdl-links.index')],
             'upcoming visits' => ['records', route('upcoming-visits.index')],
             'walk-ins' => ['frontdesk', route('frontdesk.walk-ins.index')],
@@ -68,7 +67,7 @@ class LiveRefreshPagesTest extends TestCase
         return trim(preg_replace('/\s+/', ' ', $dom->saveHTML($main)));
     }
 
-    /** A pending visitor (Accounts) and a visit request awaiting review (Visit Requests, Upcoming). */
+    /** A pending visitor (Accounts) and a booked visit (Upcoming). */
     private function seedWaitingWork(): void
     {
         app(VisitAssignmentService::class)->submitVisitorRequest(
@@ -99,9 +98,9 @@ class LiveRefreshPagesTest extends TestCase
         }
     }
 
-    public function test_a_new_visit_request_changes_the_visit_requests_page(): void
+    public function test_a_new_booking_changes_the_upcoming_visits_page(): void
     {
-        $url = route('eligibility.index');
+        $url = route('upcoming-visits.index');
         $before = $this->comparable($this->fetchPage('records', $url));
 
         $this->seedWaitingWork();

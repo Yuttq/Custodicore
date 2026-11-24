@@ -129,7 +129,7 @@ class DeactivatedAccountAccessTest extends TestCase
             'startTimes' => ['09:00'],
         ])->assertCreated()->json('id');
         $this->completeRequirements();
-        $visit = app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        $visit = (VisitRequest::findOrFail($id))->fresh();
 
         $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 09:30:00', 'Asia/Manila'));
         $qr = $this->api($apiToken, 'GET', "/api/schedules/{$visit->visit_request_id}/qr")->assertOk()->json('qrToken');

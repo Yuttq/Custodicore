@@ -110,8 +110,8 @@ class VisitorApiController extends Controller
      * verified PDL relationship: one day and one or more of its sessions —
      * `startTime` for a single session, or `startTimes` (e.g. ["09:00",
      * "13:00"]) for several, which form ONE visit (whole day). Created as
-     * `assigned` (awaiting Record Officer review); the visitor cannot
-     * confirm it themselves.
+     * `confirmed` at once (no review step); a visitor who does not meet
+     * every booking rule gets a 422 with the reason instead.
      */
     public function storeVisitRequest(Request $request, VisitAssignmentService $assignments, ScheduleAvailabilityService $availability): JsonResponse
     {
@@ -336,17 +336,27 @@ class VisitorApiController extends Controller
         // from a visitor request.
         $visitorRequested = $visitRequest->status === 'assigned' || $visitRequest->confirmation_deadline === null;
 
-        $schedulingSteps = $visitorRequested
-            ? [
+        // Bookings are confirmed at once (no review step); only requests made
+        // before that change were reviewed by staff, and keep that wording.
+        $confirmedAtBooking = $visitRequest->confirmed_at && $visitRequest->assigned_at
+            && abs($visitRequest->confirmed_at->diffInSeconds($visitRequest->assigned_at)) < 60;
+
+        $schedulingSteps = match (true) {
+            ! $visitorRequested => [
+                ['id' => 'schedule_assigned', 'title' => 'Schedule Assigned', 'description' => 'An officer assigned your visit date and time. No self-booking is required.', 'occurredAt' => $visitRequest->assigned_at],
+                ['id' => 'attendance_confirmed', 'title' => 'Attendance Confirmed', 'description' => 'You confirmed attendance for the assigned visit window.', 'occurredAt' => $visitRequest->confirmed_at],
+            ],
+            $confirmedAtBooking => [
+                ['id' => 'request_submitted', 'title' => 'Visit Booked', 'description' => 'You booked an available visiting slot.', 'occurredAt' => $visitRequest->assigned_at],
+                ['id' => 'request_approved', 'title' => 'Visit Confirmed', 'description' => 'Your visit was confirmed when you booked it.', 'occurredAt' => $visitRequest->confirmed_at],
+            ],
+            default => [
                 ['id' => 'request_submitted', 'title' => 'Request Submitted', 'description' => $visitRequest->status === 'assigned'
                     ? 'Your visit request was submitted and is awaiting review by facility staff.'
                     : 'Your visit request was submitted for review by facility staff.', 'occurredAt' => $visitRequest->assigned_at],
                 ['id' => 'request_approved', 'title' => 'Request Approved', 'description' => 'Your visit request was approved by facility staff.', 'occurredAt' => $visitRequest->confirmed_at],
-            ]
-            : [
-                ['id' => 'schedule_assigned', 'title' => 'Schedule Assigned', 'description' => 'An officer assigned your visit date and time. No self-booking is required.', 'occurredAt' => $visitRequest->assigned_at],
-                ['id' => 'attendance_confirmed', 'title' => 'Attendance Confirmed', 'description' => 'You confirmed attendance for the assigned visit window.', 'occurredAt' => $visitRequest->confirmed_at],
-            ];
+            ],
+        };
 
         $steps = [
             ['id' => 'account_created', 'title' => 'Account Created', 'description' => 'Visitor portal account was created and activated.', 'occurredAt' => $visitor?->created_at],

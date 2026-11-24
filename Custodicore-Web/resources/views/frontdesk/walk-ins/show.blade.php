@@ -126,7 +126,7 @@
             @endif
         </div>
         <dl class="mt-md grid grid-cols-1 gap-md text-body sm:grid-cols-2 lg:grid-cols-4">
-            <div><dt class="cc-label">PDL selected</dt><dd class="mt-xs font-semibold">{{ $assessment?->pdl?->full_name ?? '—' }}</dd>
+            <div><dt class="cc-label">PDL selected</dt><dd class="mt-xs font-semibold">{{ $assessment?->pdl?->listName() ?? '—' }}</dd>
                 @if ($assessment?->pdl)<dd class="text-metadata text-text-secondary">{{ $assessment->pdl->pdl_number }}</dd>@endif
             </div>
             <div><dt class="cc-label">PDL as given</dt><dd class="mt-xs font-semibold">{{ $visitor->intended_pdl_name ?: '—' }}</dd>
@@ -153,7 +153,7 @@
                             {{ $upcoming->schedule->schedule_date->format('D, M j, Y') }} ·
                             {{ $upcoming->sessionSchedules->map(fn ($s) => substr($s->time_slot_start, 0, 5).'–'.substr($s->time_slot_end, 0, 5))->implode(' · ') }}
                         </span>
-                        <span class="text-text-secondary">{{ $upcoming->pdl?->full_name }}</span>
+                        <span class="text-text-secondary">{{ $upcoming->pdl?->listName() }}</span>
                     </li>
                 @endforeach
             </ul>
@@ -195,7 +195,7 @@
                     <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
                         <div>
                             <p class="text-body font-semibold">
-                                {{ $checkedPdl?->full_name ?? 'No matching PDL' }}
+                                {{ $checkedPdl?->listName() ?? 'No matching PDL' }}
                                 @if ($checkedPdl)<span class="font-normal text-text-secondary">({{ $checkedPdl->pdl_number }})</span>@endif
                             </p>
                             <p class="text-metadata text-text-secondary">{{ $visitor->relationship_hint ?: '—' }}</p>
@@ -215,7 +215,7 @@
         <div class="cc-card">
             <p class="text-card-title">Choose Visit Date and Session</p>
             <p class="text-metadata text-text-secondary">
-                For {{ $slotPdl->full_name }} ({{ $slotPdl->pdl_number }}). Only the sessions Records opened are shown.
+                For {{ $slotPdl->listName() }} ({{ $slotPdl->pdl_number }}). Only the sessions Records opened are shown.
                 Approving the walk-in books the session you choose. It can't be changed once saved.
             </p>
             <form method="POST" action="{{ route('frontdesk.walk-ins.slot.update', $visitor) }}" class="mt-md">
@@ -273,7 +273,7 @@
                         <select id="arrival_pdl" name="pdl_id" required class="cc-input">
                             @foreach ($arrivalPdls as $arrivalPdl)
                                 <option value="{{ $arrivalPdl->pdl_id }}" @selected((int) old('pdl_id', $assessment?->pdl_id) === $arrivalPdl->pdl_id)>
-                                    {{ $arrivalPdl->full_name }} · {{ $arrivalPdl->pdl_number }}
+                                    {{ $arrivalPdl->listName() }} · {{ $arrivalPdl->pdl_number }}
                                 </option>
                             @endforeach
                         </select>
@@ -375,7 +375,7 @@
                     <dl class="grid grid-cols-1 gap-x-md gap-y-md text-body sm:grid-cols-2 lg:grid-cols-4">
                         <div><dt class="cc-label">Walk-in decision</dt><dd class="mt-xs font-semibold">{{ $assessment->label('decision') }}</dd></div>
                         <div><dt class="cc-label">Reason for walk-in</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at ? ($assessment->walk_in_reason ?: '—') : '—' }}</dd></div>
-                        <div><dt class="cc-label">Processed by</dt><dd class="mt-xs font-semibold">{{ $assessment->processedBy?->full_name ?? 'Not processed yet' }}</dd></div>
+                        <div><dt class="cc-label">Processed by</dt><dd class="mt-xs font-semibold">{{ $assessment->processedBy?->listName() ?? 'Not processed yet' }}</dd></div>
                         <div><dt class="cc-label">Date and time processed</dt><dd class="mt-xs font-semibold">{{ $assessment->processed_at?->format('M j, Y · H:i') ?? '—' }}</dd></div>
                         <div class="sm:col-span-2 lg:col-span-3"><dt class="cc-label">Officer remarks</dt><dd class="mt-xs font-semibold">{{ $assessment->remarks ?: '—' }}</dd></div>
                         <div><dt class="cc-label">Files reviewed</dt><dd class="mt-xs font-semibold">{{ $checks['pendingFiles'] ? $checks['pendingFiles'].' not checked yet' : 'All checked' }}</dd></div>

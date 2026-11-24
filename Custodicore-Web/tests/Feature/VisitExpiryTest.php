@@ -80,13 +80,13 @@ class VisitExpiryTest extends TestCase
             'contact_number' => '09285550199',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'legal_counsel',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         return [$visitor, $relationship];
     }
@@ -204,7 +204,7 @@ class VisitExpiryTest extends TestCase
     public function test_answered_or_closed_visits_are_not_expired(): void
     {
         $this->schedule->update(['slots_taken' => 1]);
-        $visits = collect(['declined', 'cancelled', 'confirmed', 'assigned', 'completed'])
+        $visits = collect(['declined', 'cancelled', 'confirmed', 'completed'])
             ->mapWithKeys(fn ($status) => [$status => $this->visitWithStatus($status)]);
         $this->at('2026-10-09 10:00:01');
 
@@ -277,7 +277,7 @@ class VisitExpiryTest extends TestCase
             $this->visitor, $this->relationship, CarbonImmutable::parse('2026-10-09', 'Asia/Manila'), '09:00'
         );
         $this->makeEligibleForApproval($submitted);
-        $visit = $service->approveVisitorRequest($submitted);
+        $visit = ($submitted)->fresh();
         $this->at('2026-10-12 08:00:00');
 
         $this->runExpiry(0, 1);

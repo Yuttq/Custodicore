@@ -132,7 +132,7 @@
           <dt>Linked PDLs</dt>
           <dd>
             @forelse ($visitor->relationships as $rel)
-              {{ $rel->pdl?->full_name ?? 'PDL' }} ({{ $rel->relationshipLabel() }})@if (! $loop->last), @endif
+              {{ $rel->pdl?->listName() ?? 'PDL' }} ({{ $rel->relationshipLabel() }})@if (! $loop->last), @endif
             @empty
               None yet
             @endforelse
@@ -206,7 +206,7 @@
                 </span>
                 <span class="badge {{ $badgeClass }}"><span class="dot"></span>{{ $badgeText }}</span>
                 @if ($doc->verification_status === 'verified' && $doc->verifiedBy)
-                  <span class="muted-cell">by {{ $doc->verifiedBy->full_name }}</span>
+                  <span class="muted-cell">by {{ $doc->verifiedBy->listName() }}</span>
                 @elseif ($doc->verification_status === 'pending')
                   <span class="muted-cell">approved together with the account</span>
                 @elseif (in_array($doc->verification_status, ['rejected', 'superseded'], true) && $doc->rejection_reason)
@@ -241,7 +241,7 @@
           // Items to correct first (rejected and not replaced yet; duplicate IDs): Approve stays off.
           'corrections' => $corrections,
           'photo' => $visitor->photo_path ? $visitor->photo_status : null,
-          'linked' => $linked ? ['pdl' => $linked->pdl?->full_name, 'type' => $linked->relationshipLabel()] : null,
+          'linked' => $linked ? ['pdl' => $linked->pdl?->listName(), 'type' => $linked->relationshipLabel()] : null,
           'typeLabels' => $typeLabels,
           'preview' => $needsLink ? app(\App\Services\AccountApproval::class)->preview($visitor) : null,
           // A pending link on file (not walk-ins): its real checklist.
@@ -260,7 +260,7 @@
             @if ($linked)
               <div class="acct-pdl-chip">
                 <span class="acct-pdl-avatar">{{ \Illuminate\Support\Str::of($linked->pdl?->full_name ?? 'P')->explode(' ')->map(fn ($w) => mb_substr($w, 0, 1))->take(2)->join('') }}</span>
-                <div><strong>{{ $linked->pdl?->full_name ?? 'PDL' }}</strong><div class="muted-cell">{{ $linked->relationshipLabel() }} · already linked</div></div>
+                <div><strong>{{ $linked->pdl?->listName() ?? 'PDL' }}</strong><div class="muted-cell">{{ $linked->relationshipLabel() }} · already linked</div></div>
               </div>
             @elseif ($visitor->isWalkIn())
               <p class="muted-cell" style="margin:0;">Walk-in: Approve also links the PDL the Front Desk chose, approves the walk-in and books their visit, so the Front Desk can check them in.</p>
@@ -353,7 +353,7 @@
           @if ($remindedOn) · reminder sent {{ $remindedOn->format('M j, Y') }} @endif
           @if ($closedOn)
             · closed {{ $closedOn->format('M j, Y') }}
-            {{ $visitor->return_closed_by ? 'by ' . (\App\Models\StaffProfile::find($visitor->return_closed_by)?->full_name ?? 'staff') : '(not corrected within ' . \App\Services\ReturnedAccounts::CLOSE_AFTER_DAYS . ' days)' }}.
+            {{ $visitor->return_closed_by ? 'by ' . (\App\Models\StaffProfile::find($visitor->return_closed_by)?->listName() ?? 'staff') : '(not corrected within ' . \App\Services\ReturnedAccounts::CLOSE_AFTER_DAYS . ' days)' }}.
             If the visitor corrects it in the app, it comes back for review.
           @elseif ($closesOn)
             · closes automatically on {{ $closesOn->format('M j, Y') }} if not corrected.

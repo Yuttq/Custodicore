@@ -135,13 +135,13 @@ class ManageVisitorSlotsTest extends TestCase
             'contact_number' => '09170000000',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         return [$account, $visitor, $relationship];
     }
@@ -442,7 +442,7 @@ class ManageVisitorSlotsTest extends TestCase
         $this->assertSame(3, (int) $schedule->max_capacity);
         $this->assertSame('full', $schedule->status);
 
-        $this->assertSame(3, VisitRequest::where('status', 'assigned')->count(), 'No booking is cancelled by a capacity change.');
+        $this->assertSame(3, VisitRequest::where('status', 'confirmed')->count(), 'No booking is cancelled by a capacity change.');
     }
 
     public function test_cancelled_and_declined_bookings_release_capacity(): void
@@ -462,7 +462,7 @@ class ManageVisitorSlotsTest extends TestCase
         ]);
         $this->assertSame(3, (int) $this->schedule->fresh()->slots_taken);
 
-        app(VisitAssignmentService::class)->rejectVisitorRequest($rejected, 'PDL unavailable.');
+        app(VisitAssignmentService::class)->cancelByVisitor($rejected, 'PDL unavailable.');
         app(VisitAssignmentService::class)->declineAssignedVisit($declined, 'Cannot attend.');
 
         $schedule = $this->schedule->fresh();
@@ -560,10 +560,7 @@ class ManageVisitorSlotsTest extends TestCase
         $this->assertSame('closed', $slot['reason']);
         $this->assertSame(0, $slot['slotsRemaining']);
 
-        // The existing booking is untouched and can still be approved.
-        $this->assertSame('assigned', $existing->fresh()->status);
-        $this->makeEligibleForApproval($existing);
-        app(VisitAssignmentService::class)->approveVisitorRequest($existing);
+        // The existing booking is untouched.
         $this->assertSame('confirmed', $existing->fresh()->status);
         $this->assertSame(1, VisitRequest::count());
     }
@@ -573,7 +570,7 @@ class ManageVisitorSlotsTest extends TestCase
         $visit = $this->bookViaService($this->visitor, $this->relationship);
         app(VisitSlotService::class)->setOpen($this->schedule, false);
 
-        app(VisitAssignmentService::class)->rejectVisitorRequest($visit, 'Reason.');
+        app(VisitAssignmentService::class)->cancelByVisitor($visit, 'Reason.');
 
         $schedule = $this->schedule->fresh();
         $this->assertSame('closed', $schedule->status);

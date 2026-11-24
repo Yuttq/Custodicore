@@ -113,8 +113,8 @@ class OffenseClassificationTest extends TestCase
         $this->register();
 
         $this->get('/pdls')->assertOk()->assertSee('Sale / trading of dangerous drugs (Sec. 5)')->assertSee('Drug-related');
-        $this->get('/pdls?offense=ra9165_sale')->assertSee('Juan Dela Cruz')->assertDontSee($this->pdl->full_name);
-        $this->get('/pdls?offense=theft')->assertDontSee('Juan Dela Cruz');
+        $this->get('/pdls?offense=ra9165_sale')->assertSee('Dela Cruz, Juan')->assertDontSee($this->pdl->full_name);
+        $this->get('/pdls?offense=theft')->assertDontSee('Dela Cruz, Juan');
     }
 
     public function test_older_free_text_drug_cases_still_count(): void

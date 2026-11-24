@@ -81,7 +81,7 @@ class VisitorCancelVisitTest extends TestCase
         $visit = $this->requestedVisit($startTimes);
         $this->completeRequirements();
 
-        return app(VisitAssignmentService::class)->approveVisitorRequest($visit);
+        return ($visit)->fresh();
     }
 
     /** A staff-assigned visit awaiting the visitor's answer. */

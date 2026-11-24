@@ -1142,11 +1142,10 @@ class WalkInService
         foreach ($extras as $extra) {
             $label = WalkInAssessment::visitLabel($extra['date'], $extra['start_times']);
             try {
-                // Approved in the same step: no "awaiting review" notice first.
+                // Confirmed at booking (no approval step).
                 $visit = $this->assignments->submitVisitorRequest(
-                    $visitor, $relationship, CarbonImmutable::parse($extra['date']), $extra['start_times'], notifySubmitted: false
+                    $visitor, $relationship, CarbonImmutable::parse($extra['date']), $extra['start_times']
                 );
-                $visit = $this->assignments->approveVisitorRequest($visit);
             } catch (ValidationException $e) {
                 throw ValidationException::withMessages([
                     'booking' => "The added schedule {$label} cannot be booked: ".collect($e->errors())->flatten()->first(),
@@ -1192,9 +1191,8 @@ class WalkInService
 
             $date ??= CarbonImmutable::parse($this->availability->now()->toDateString());
 
-            // Approved in the same step: no "awaiting review" notice first.
-            $visit = $this->assignments->submitVisitorRequest($visitor, $relationship, $date, $startTimes, notifySubmitted: false);
-            $visit = $this->assignments->approveVisitorRequest($visit);
+            // Confirmed at booking (no approval step).
+            $visit = $this->assignments->submitVisitorRequest($visitor, $relationship, $date, $startTimes);
             $visit->update(['is_walk_in' => true]);
             $assessment->update(['visit_request_id' => $visit->visit_request_id]);
 

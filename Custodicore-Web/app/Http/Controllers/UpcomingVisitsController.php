@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\VisitRequest;
-use App\Services\ReviewQueue;
 use App\Services\ScheduleAvailabilityService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -21,7 +20,6 @@ class UpcomingVisitsController extends Controller
     // waiting for the visitor to confirm are not listed here.
     public const STATUSES = [
         'confirmed' => 'Confirmed',
-        'assigned' => 'Waiting for review',
     ];
 
     public function index(Request $request, ScheduleAvailabilityService $availability): View
@@ -47,7 +45,6 @@ class UpcomingVisitsController extends Controller
         $stats = [
             'today' => $this->visitsBetween($todayKey, $todayKey)->whereIn('visit_requests.status', ['confirmed', 'completed'])->count(),
             'week' => $this->visitsBetween($todayKey, $today->addDays(7)->toDateString())->where('visit_requests.status', 'confirmed')->count(),
-            'awaiting_review' => ReviewQueue::counts()['visits'],
         ];
 
         return view('upcoming-visits.index', compact('byDate', 'range', 'status', 'stats', 'todayKey'));

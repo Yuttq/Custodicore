@@ -318,7 +318,7 @@ class VisitBookingConcurrencyTest extends TestCase
 
         $this->assertSame(['This visitor already has a visit with this PDL on the selected date.'], $errors['schedule_id']);
         $this->assertSame(1, VisitRequest::count());
-        $this->assertSame('assigned', VisitRequest::sole()->status);
+        $this->assertSame('confirmed', VisitRequest::sole()->status);
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
     }
 
@@ -356,13 +356,13 @@ class VisitBookingConcurrencyTest extends TestCase
             'contact_number' => '09170000000',
             'verification_status' => 'verified',
         ]);
-        $otherRelationship = VisitorPdlRelationship::create([
+        $otherRelationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $other->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         $this->raceBeforeVisitorRequestTransaction(fn () => $this->request(self::FRIDAY, '09:00', $other, $otherRelationship));
         $this->request(self::FRIDAY, '09:00');

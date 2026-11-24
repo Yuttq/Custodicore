@@ -27,7 +27,7 @@ class VisitorRequirementsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
         $this->withoutVite();
 
         $this->relationship->update(['relationship_type' => 'spouse', 'verification_status' => 'pending', 'verified_by' => null, 'verified_at' => null]);
@@ -246,41 +246,27 @@ class VisitorRequirementsTest extends TestCase
         $this->assertSame('requires_verification', $rel->priority_tier);
     }
 
-    public function test_eligibility_approval_is_blocked_until_requirements_are_met(): void
+    public function test_a_visit_cannot_be_booked_until_requirements_are_met(): void
     {
         $this->relationship->update(['verification_status' => 'verified']);
-        $visit = app(VisitAssignmentService::class)->assign([
+        $assign = fn () => app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_id' => $this->relationship->relationship_id,
             'schedule_id' => $this->schedule->schedule_id,
         ]);
-        $assessment = EligibilityAssessment::updateOrCreate(['visit_request_id' => $visit->visit_request_id], [
-            'identity_check_result' => 'flagged',
-            'relationship_check_result' => 'pass',
-            'history_check_result' => 'clean',
-            'pdl_restriction_check_result' => 'no_restriction',
-            'overall_result' => 'flagged_for_review',
-            'flagged_reason' => 'Identity not yet verified.',
-        ]);
 
-        $this->actingAs($this->recordOfficerAccount, 'web');
-        $this->get('/eligibility')->assertOk()->assertSee('0 of 2 met')->assertSee('Marriage Certificate')
-            ->assertSee('Waiting on: Valid Government ID, Marriage Certificate')
-            ->assertSee('ID not verified yet');
-
-        // Filter tabs: the request is missing requirements, not ready.
-        $this->get('/eligibility?show=ready')->assertOk()->assertSee('No requests are ready to approve yet.');
-        $this->get('/eligibility?show=waiting')->assertOk()->assertSee($this->visitor->full_name);
-
-        $this->post("/eligibility/{$assessment->assessment_id}/review", ['decision' => 'eligible'])
-            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Marriage Certificate'));
-        $this->assertSame('flagged_for_review', $assessment->fresh()->overall_result);
+        try {
+            $assign();
+            $this->fail('A visit was booked with incomplete requirements.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('Still waiting on: Valid Government ID, Marriage Certificate', $e->errors()['requirements'][0]);
+        }
+        $this->assertSame(0, \App\Models\VisitRequest::count());
 
         $this->verifiedId();
         $this->document('marriage_certificate', 'verified');
-        $this->post("/eligibility/{$assessment->assessment_id}/review", ['decision' => 'eligible'])->assertSessionHas('success');
-        $this->assertSame('eligible', $assessment->fresh()->overall_result);
+        $this->assertSame('pending_confirmation', $assign()->status);
     }
 
     public function test_other_roles_cannot_review_documents(): void

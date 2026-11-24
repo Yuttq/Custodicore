@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
  * Applies the time-based visit transitions (see VisitAssignmentService):
  *   pending_confirmation -> cancelled  (confirmation deadline passed)
  *   assigned             -> cancelled  (visit date passed before staff review)
+ *   assigned             -> confirmed or cancelled (upcoming request booked before the
+ *                           review step was removed: settled by today's booking rules)
  *   confirmed            -> no_show    (visit date passed, never checked in)
  *   confirmed            -> completed  (visit date passed, entered and exited, no final check-out)
  *
@@ -37,6 +39,12 @@ class ExpireVisits extends Command
             'expire unreviewed request'
         );
 
+        $settled = $this->process(
+            $visits->upcomingAssignedRequestIds(),
+            fn (int $id) => $visits->settleAssignedRequest($id),
+            'settle request awaiting review'
+        );
+
         $noShow = $this->process(
             $visits->missedConfirmedVisitIds(),
             fn (int $id) => $visits->markNoShow($id),
@@ -51,10 +59,11 @@ class ExpireVisits extends Command
 
         $this->info("Expired pending confirmations: {$expired['changed']}");
         $this->info("Expired unreviewed requests: {$unreviewed['changed']}");
+        $this->info("Settled requests awaiting review: {$settled['changed']}");
         $this->info("Marked no-show: {$noShow['changed']}");
         $this->info("Completed attended visits: {$completed['changed']}");
 
-        $failed = $expired['failed'] + $unreviewed['failed'] + $noShow['failed'] + $completed['failed'];
+        $failed = $expired['failed'] + $unreviewed['failed'] + $settled['failed'] + $noShow['failed'] + $completed['failed'];
         if ($failed > 0) {
             $this->error("Failed: {$failed} (see log)");
 

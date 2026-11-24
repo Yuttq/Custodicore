@@ -15,7 +15,7 @@
   <div class="photo-field">
     <div class="photo-preview {{ $currentUrl ? 'has-image' : '' }}" data-photo-preview>
       @if ($currentUrl)
-        <img src="{{ $currentUrl }}" alt="Current photo of {{ $pdl->full_name }}">
+        <img src="{{ $currentUrl }}" alt="Current photo of {{ $pdl->listName() }}">
       @else
         <span>No photo yet</span>
       @endif

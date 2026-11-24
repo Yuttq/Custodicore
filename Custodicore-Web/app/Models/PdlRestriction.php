@@ -95,4 +95,20 @@ class PdlRestriction extends Model
     {
         return $this->status === 'active';
     }
+
+    /**
+     * Not lifted, but its end date has passed: it stopped applying on its
+     * own (bookings and the gate only count the dates a restriction covers),
+     * so there is nothing left to lift.
+     */
+    public function hasEnded(): bool
+    {
+        return $this->isActive() && $this->end_date !== null && $this->end_date->lt(today());
+    }
+
+    /** Active and not yet past its end date (it may still start later). */
+    public function isCurrent(): bool
+    {
+        return $this->isActive() && ! $this->hasEnded();
+    }
 }

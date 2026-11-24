@@ -293,11 +293,9 @@ class WeeklyVisitLimitSettingTest extends TestCase
 
     public function test_lowering_the_limit_never_cancels_or_changes_existing_bookings(): void
     {
-        // Two visits this week under the default limit of 2: one approved, one awaiting review.
-        $friday = $this->request(self::FRIDAY)->assertCreated()->json('id');
-        $sunday = $this->request(self::SUNDAY)->assertCreated()->json('id');
-        $this->completeRequirements();
-        app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($friday));
+        // Two visits this week under the default limit of 2, both confirmed at booking.
+        $this->request(self::FRIDAY)->assertCreated();
+        $this->request(self::SUNDAY)->assertCreated();
 
         $snapshot = fn () => [
             'visits' => VisitRequest::orderBy('visit_request_id')
@@ -307,7 +305,7 @@ class WeeklyVisitLimitSettingTest extends TestCase
             'seats' => VisitSchedule::orderBy('schedule_id')->pluck('slots_taken', 'schedule_id')->all(),
         ];
         $before = $snapshot();
-        $this->assertSame(['confirmed', 'assigned'], array_column($before['visits'], 'status'));
+        $this->assertSame(['confirmed', 'confirmed'], array_column($before['visits'], 'status'));
 
         $this->save('1')->assertSessionHasNoErrors();
 
@@ -315,9 +313,5 @@ class WeeklyVisitLimitSettingTest extends TestCase
         $this->assertSame($before, $snapshot());
         Artisan::call('visits:expire');
         $this->assertSame($before, $snapshot());
-
-        // The Record Officer can still approve the visit that was already waiting.
-        $this->assertSame('confirmed', app(VisitAssignmentService::class)
-            ->approveVisitorRequest(VisitRequest::findOrFail($sunday))->status);
     }
 }

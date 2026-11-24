@@ -37,9 +37,9 @@ class UpcomingVisitsTest extends TestCase
         );
     }
 
-    public function test_a_request_shows_while_waiting_and_after_it_is_approved(): void
+    public function test_a_booking_shows_as_confirmed_at_once(): void
     {
-        $visit = $this->submit();
+        $this->submit();
         $this->actingAs($this->recordOfficerAccount, 'web');
 
         $this->get('/upcoming-visits')->assertOk()
@@ -47,10 +47,7 @@ class UpcomingVisitsTest extends TestCase
             ->assertSee($this->visitor->full_name)
             ->assertSee($this->pdl->full_name)
             ->assertSee('Morning')
-            ->assertSee('Waiting for review');
-
-        $this->post("/review-queue/visits/{$visit->visit_request_id}/approve")
-            ->assertSessionHas('success', fn ($m) => str_contains($m, 'Upcoming Visits'));
+            ->assertDontSee('Waiting for review');
 
         $this->get('/upcoming-visits?status=confirmed')->assertOk()
             ->assertSee($this->visitor->full_name)
@@ -64,7 +61,7 @@ class UpcomingVisitsTest extends TestCase
     public function test_cancelled_and_past_visits_are_not_listed(): void
     {
         $visit = $this->submit();
-        app(VisitAssignmentService::class)->rejectVisitorRequest($visit, 'Visiting hours are full that day.');
+        app(VisitAssignmentService::class)->cancelByVisitor($visit, 'Visiting hours are full that day.');
 
         $this->actingAs($this->recordOfficerAccount, 'web')
             ->get('/upcoming-visits?range=month')->assertOk()

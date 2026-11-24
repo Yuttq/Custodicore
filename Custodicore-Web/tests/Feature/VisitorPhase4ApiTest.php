@@ -33,7 +33,7 @@ class VisitorPhase4ApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
 
         $this->otherAccount = Account::create([
             'role_id' => $this->visitorRole->role_id,
@@ -60,6 +60,8 @@ class VisitorPhase4ApiTest extends TestCase
 
     private function assignVisit(): VisitRequest
     {
+        $this->completeRequirements(); // a visit needs a complete checklist
+
         return app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,

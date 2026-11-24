@@ -43,31 +43,25 @@ class ReviewQueueTest extends TestCase
         ]);
     }
 
-    public function test_both_steps_share_one_header_and_sidebar_entry(): void
+    public function test_queue_has_no_visit_request_step(): void
     {
-        $this->flaggedVisitRequest();
         $this->visitor->update(['verification_status' => 'pending']);
 
-        foreach (['/account-reviews', '/eligibility'] as $url) {
-            $this->get($url)->assertOk()
-                ->assertSee('Review Queue')
-                ->assertSee('Step 1')->assertSee('Step 2')
-                ->assertSee(route('account-reviews.index'), false)
-                ->assertSee(route('eligibility.index'), false)
-                // Sidebar: one link with the combined count (1 account + 1 visit request).
-                ->assertSee('title="2 waiting for review"', false)
-                ->assertDontSee('>Eligibility Review<', false);
-        }
+        $this->get('/account-reviews')->assertOk()
+            ->assertSee('Review Queue')
+            ->assertSee(route('account-reviews.index'), false)
+            ->assertSee(route('pdl-links.index'), false)
+            // Visit requests need no review: a booking is confirmed at once.
+            ->assertDontSee('Step 2')
+            ->assertDontSee('>Visit Requests<', false)
+            ->assertSee('title="1 waiting for review"', false);
+        $this->get('/eligibility')->assertNotFound();
     }
 
     public function test_review_queue_opens_the_step_that_has_work(): void
     {
         // Nothing waiting → accounts step.
         $this->get('/review-queue')->assertRedirect(route('account-reviews.index'));
-
-        // Only visit requests waiting → visit requests step.
-        $this->flaggedVisitRequest();
-        $this->get('/review-queue')->assertRedirect(route('eligibility.index'));
 
         // Accounts waiting → accounts step first.
         $this->visitor->update(['verification_status' => 'pending']);

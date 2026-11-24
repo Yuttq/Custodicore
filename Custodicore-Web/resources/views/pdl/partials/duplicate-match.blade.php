@@ -21,7 +21,7 @@
     @include('pdl.partials.avatar', ['pdl' => $match, 'class' => 'thumb'])
     <div class="dup-match-body">
       <div class="dup-match-name">
-        <a href="{{ route('pdl.show', $match->pdl_id) }}" target="_blank" rel="noopener">{{ $match->full_name }}</a>
+        <a href="{{ route('pdl.show', $match->pdl_id) }}" target="_blank" rel="noopener">{{ $match->listName() }}</a>
         <span class="badge {{ $match->custody_status }}"><span class="dot"></span>{{ $statusLabels[$match->custody_status] ?? ucfirst($match->custody_status) }}</span>
       </div>
       <div class="muted-cell">

@@ -13,9 +13,7 @@
   // The sign-up hints only help while a PDL still has to be linked or reviewed.
   $showSignUpHints = $visitor->relationships->isEmpty()
       || $visitor->relationships->contains(fn ($r) => $r->verification_status === 'pending');
-  // Pending visit requests are listed at the top; Recent Visits shows the rest.
-  $pendingVisitIds = $pendingVisitRequests->pluck('visit_request_id')->all();
-  $otherVisits = ($visitor->visitRequests ?? collect())->reject(fn ($vr) => in_array($vr->visit_request_id, $pendingVisitIds, true));
+  $otherVisits = $visitor->visitRequests ?? collect();
 @endphp
 <div class="topbar">
   <div class="pdl-header">
@@ -39,11 +37,6 @@
     <a class="btn btn-outline-neutral" href="{{ route('visitor.index') }}">Back to Visitor Management</a>
   </div>
 </div>
-
-{{-- ================= VISIT REQUESTS AWAITING REVIEW (first: they need the officer) ================= --}}
-@if ($pendingVisitRequests->isNotEmpty())
-  @include('visitor.partials.pending-visit-requests', ['showVisitor' => false])
-@endif
 
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-header"><h2>Profile</h2></div>
@@ -101,12 +94,12 @@
 
     <div class="row cols-3" style="margin-bottom:16px;">
       <div><div class="stat-label">Visitor Type</div><div>Walk-In</div></div>
-      <div><div class="stat-label">Registered at the Front Desk by</div><div>{{ $visitor->walkInRegisteredBy?->full_name ?? '—' }} · {{ $visitor->created_at?->format('M j, Y H:i') }}</div></div>
+      <div><div class="stat-label">Registered at the Front Desk by</div><div>{{ $visitor->walkInRegisteredBy?->listName() ?? '—' }} · {{ $visitor->created_at?->format('M j, Y H:i') }}</div></div>
       <div><div class="stat-label">Purpose of Visit</div><div>{{ $assessment->visit_purpose }}</div></div>
       <div><div class="stat-label">PDL Name Given</div><div>{{ $visitor->intended_pdl_name ?: '—' }}</div></div>
       <div><div class="stat-label">PDL ID Number Given</div><div>{{ $visitor->intended_pdl_number ?: '—' }}</div></div>
       <div><div class="stat-label">Relationship Given</div><div>{{ $visitor->relationship_hint ?: '—' }}</div></div>
-      <div><div class="stat-label">PDL Selected by the Front Desk</div><div>{{ $assessment->pdl ? $assessment->pdl->full_name.' ('.$assessment->pdl->pdl_number.')' : '—' }}</div></div>
+      <div><div class="stat-label">PDL Selected by the Front Desk</div><div>{{ $assessment->pdl ? $assessment->pdl->listName().' ('.$assessment->pdl->pdl_number.')' : '—' }}</div></div>
       <div><div class="stat-label">Requested Visit (Booked on Approval)</div><div>{{ $assessment->requestedVisitLabel() ?? 'Not chosen yet' }}</div>@foreach ($assessment->extraVisitLabels() as $label)<div>{{ $label }}</div>@endforeach</div>
     </div>
 
@@ -120,10 +113,10 @@
           <td><span class="badge {{ $tone($auto('pdl_verification')) }}"><span class="dot"></span>{{ $options['pdl_verification'][$auto('pdl_verification')] ?? '—' }}</span></td>
           <td class="muted-cell">
             @if ($checks['linkedPdls']->isNotEmpty())
-              Linked to {{ $checks['linkedPdls']->map(fn ($p) => "{$p->full_name} ({$p->pdl_number})")->join(', ') }}.
+              Linked to {{ $checks['linkedPdls']->map(fn ($p) => "{$p->listName()} ({$p->pdl_number})")->join(', ') }}.
             @elseif ($checks['matches']->count() === 1)
               @php $match = $checks['matches']->first(); @endphp
-              Matches {{ $match->full_name }} ({{ $match->pdl_number }}, {{ ucfirst($match->custody_status) }}).
+              Matches {{ $match->listName() }} ({{ $match->pdl_number }}, {{ ucfirst($match->custody_status) }}).
               Linked automatically as {{ \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? 'the given relationship' }} once every document is approved.
             @elseif ($checks['matches']->isNotEmpty())
               Several PDLs match the name or number given.
@@ -162,7 +155,7 @@
       $claimed = \App\Models\VisitorPdlRelationship::TYPE_LABELS[$assessment->relationship_type] ?? $visitor->relationship_hint;
       $relationshipTag = function ($doc) use ($claimed) {
           return $doc->relationship
-              ? $doc->relationship->relationshipLabel().' · '.($doc->relationship->pdl?->full_name ?? 'PDL')
+              ? $doc->relationship->relationshipLabel().' · '.($doc->relationship->pdl?->listName() ?? 'PDL')
               : $claimed.' · not linked yet';
       };
     @endphp
@@ -189,7 +182,7 @@
             <td><span class="badge {{ $statusBadge($doc->verification_status) }}"><span class="dot"></span>{{ $doc->verification_status === 'superseded' ? 'Set aside' : ucfirst($doc->verification_status) }}</span></td>
             <td class="muted-cell">
               @if ($doc->verification_status === 'rejected') {{ $doc->rejection_reason ?: 'Rejected.' }}
-              @elseif ($doc->verification_status === 'verified') Verified by {{ $doc->verifiedBy?->full_name ?? 'staff' }}
+              @elseif ($doc->verification_status === 'verified') Verified by {{ $doc->verifiedBy?->listName() ?? 'staff' }}
               @else Check it matches the visitor's photo and details.
               @endif
             </td>
@@ -209,7 +202,7 @@
             <td><span class="badge {{ $statusBadge($doc->status) }}"><span class="dot"></span>{{ ucfirst($doc->status) }}</span></td>
             <td class="muted-cell">
               @if ($doc->status === 'rejected') {{ $doc->rejection_reason ?: 'Rejected.' }}
-              @elseif ($doc->status === 'verified') Verified by {{ $doc->reviewedBy?->full_name ?? 'staff' }}
+              @elseif ($doc->status === 'verified') Verified by {{ $doc->reviewedBy?->listName() ?? 'staff' }}
               @else Check the names on it match the visitor and the PDL.
               @endif
             </td>
@@ -236,7 +229,7 @@
       <div><div class="stat-label">Walk-In Decision</div><div>{{ $assessment->label('decision') }}</div></div>
       <div><div class="stat-label">Reason for Walk-In</div><div>{{ $assessment->processed_at ? ($assessment->walk_in_reason ?: '—') : '—' }}</div></div>
       <div><div class="stat-label">Officer Remarks</div><div>{{ $assessment->remarks ?: '—' }}</div></div>
-      <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->full_name ?? 'Not yet processed' }}</div></div>
+      <div><div class="stat-label">Processed By</div><div>{{ $assessment->processedBy?->listName() ?? 'Not yet processed' }}</div></div>
       <div><div class="stat-label">Date and Time Processed</div><div>{{ $assessment->processed_at?->format('M j, Y H:i') ?? '—' }}</div></div>
     </div>
   </div>
@@ -343,7 +336,7 @@
                 <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'REJECTED', 'pending' => 'NOT CHECKED YET'][$photoStatus] ?? '—' }}
               </span>
             </td>
-            <td class="muted-cell">{{ $photoStatus !== 'pending' ? ($visitor->photoReviewedBy?->full_name ?? '—') : '—' }}</td>
+            <td class="muted-cell">{{ $photoStatus !== 'pending' ? ($visitor->photoReviewedBy?->listName() ?? '—') : '—' }}</td>
             <td>
               <div style="display:flex;gap:8px;align-items:flex-start;">
                 <a class="row-action" href="{{ route('visitor.photo', $visitor->visitor_id) }}" target="_blank" rel="noopener">View</a>
@@ -368,7 +361,7 @@
               <div class="muted-cell" style="margin-top:2px;">{{ $doc->rejection_reason }}</div>
             @endif
           </td>
-          <td class="muted-cell">{{ $doc->verifiedBy?->full_name ?? '—' }}</td>
+          <td class="muted-cell">{{ $doc->verifiedBy?->listName() ?? '—' }}</td>
           <td>
             <div style="display:flex;gap:8px;">
               @if ($doc->file_path)
@@ -414,7 +407,7 @@
           <td>
             @if ($rel->pdl)
               <a href="{{ route('pdl.show', $rel->pdl->pdl_id) }}" style="color:var(--text);text-decoration:none;font-weight:600;">
-                {{ $rel->pdl->full_name }}
+                {{ $rel->pdl->listName() }}
               </a>
             @else
               <span class="muted-cell">PDL not found</span>
@@ -540,7 +533,7 @@
     <tbody>
       @foreach ($otherVisits as $vr)
       <tr>
-        <td>{{ $vr->pdl?->full_name ?? '—' }}</td>
+        <td>{{ $vr->pdl?->listName() ?? '—' }}</td>
         <td class="muted-cell">
           @if ($vr->schedule)
             {{ $vr->schedule->schedule_date->format('M d, Y') }}
@@ -589,7 +582,7 @@
             </span>
           </td>
           <td class="muted-cell">{{ $flag->durationLabel() }}</td>
-          <td class="muted-cell">{{ $flag->flaggedBy?->full_name ?? '—' }}</td>
+          <td class="muted-cell">{{ $flag->flaggedBy?->listName() ?? '—' }}</td>
           <td class="muted-cell">{{ $flag->created_at->format('M d, Y') }}</td>
           <td>
             @if ($flag->status === 'active')

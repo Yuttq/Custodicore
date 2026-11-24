@@ -48,14 +48,14 @@
         <div>
           {{ $statusLabels[$pdlRequest->status] ?? $pdlRequest->status }}
           @if ($pdlRequest->reviewed_at) · {{ $pdlRequest->reviewed_at->format('M j, Y H:i') }} @endif
-          @if ($pdlRequest->reviewer) · by {{ $pdlRequest->reviewer->full_name ?? 'staff' }} @endif
+          @if ($pdlRequest->reviewer) · by {{ $pdlRequest->reviewer->listName() ?? 'staff' }} @endif
         </div>
         @if ($pdlRequest->status === 'rejected' && $pdlRequest->rejection_reason)
           <div class="muted-cell">Reason: {{ $pdlRequest->rejection_reason }}</div>
         @endif
         @if ($pdlRequest->status === 'linked' && $pdlRequest->relationship)
           <div class="muted-cell">
-            Linked to {{ $pdlRequest->relationship->pdl?->full_name ?? 'PDL' }} ({{ $pdlRequest->relationship->relationshipLabel() }}).
+            Linked to {{ $pdlRequest->relationship->pdl?->listName() ?? 'PDL' }} ({{ $pdlRequest->relationship->relationshipLabel() }}).
             <a href="{{ route('visitor.show', $pdlRequest->visitor_id) }}#relationships">Open the visitor page</a> to review it.
           </div>
         @endif

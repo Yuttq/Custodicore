@@ -62,7 +62,7 @@ class PurgeVisitorsCommandTest extends TestCase
             'date' => '2026-10-09',
             'startTimes' => ['09:00'],
         ])->assertCreated()->json('id');
-        app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        VisitRequest::findOrFail($id);
 
         // A QR pass that was scanned: visit_checkins.qr_code_id has no
         // cascade, which blocked the first purge attempt on MySQL.

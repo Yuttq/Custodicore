@@ -75,7 +75,7 @@ class VisitorAccountStatusTest extends TestCase
         ])->assertCreated()->json('id');
         $this->completeRequirements();
 
-        return app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        return (VisitRequest::findOrFail($id))->fresh();
     }
 
     public function test_deactivating_switches_off_the_account_only_and_signs_the_visitor_out(): void

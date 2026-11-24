@@ -25,16 +25,16 @@
     </div>
     <div class="row cols-3">
       <div class="field-m">
+        <label>Last Name</label>
+        <input type="text" name="last_name" value="{{ old('last_name') }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
+      </div>
+      <div class="field-m">
         <label>First Name</label>
         <input type="text" name="first_name" value="{{ old('first_name') }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
       </div>
       <div class="field-m">
         <label>Middle Name (optional)</label>
         <input type="text" name="middle_name" value="{{ old('middle_name') }}" maxlength="100" pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
-      </div>
-      <div class="field-m">
-        <label>Last Name</label>
-        <input type="text" name="last_name" value="{{ old('last_name') }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only">
       </div>
     </div>
 

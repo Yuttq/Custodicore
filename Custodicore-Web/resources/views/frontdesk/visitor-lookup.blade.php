@@ -51,7 +51,7 @@
                             <td class="py-sm pr-md">
                                 @forelse ($visitor->relationships as $rel)
                                     <span class="block">
-                                        {{ $rel->pdl?->full_name ?? '—' }}
+                                        {{ $rel->pdl?->listName() ?? '—' }}
                                         <span class="text-metadata text-text-secondary">· {{ $rel->relationshipLabel() }}</span>
                                     </span>
                                 @empty

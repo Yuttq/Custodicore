@@ -65,7 +65,7 @@
                     <li class="py-sm">
                         <p class="text-body font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</p>
                         <p class="text-metadata text-text-secondary">
-                            Visiting {{ $visit?->pdl?->full_name ?? '—' }}@if ($visit?->pdl?->pdl_number) ({{ $visit->pdl->pdl_number }})@endif
+                            Visiting {{ $visit?->pdl?->listName() ?? '—' }}@if ($visit?->pdl?->pdl_number) ({{ $visit->pdl->pdl_number }})@endif
                             · Checked in {{ $checkin->check_in_time?->format('M j, Y H:i') ?? '—' }}
                             · ID held: {{ $checkin->id_surrendered_type ? ucwords(str_replace('_', ' ', $checkin->id_surrendered_type)) : '—' }}
                         </p>
@@ -1088,7 +1088,7 @@
                                         @endif
                                     </td>
                                     <td class="py-sm pr-md">
-                                        {{ $visit?->pdl?->full_name ?? '—' }}
+                                        {{ $visit?->pdl?->listName() ?? '—' }}
                                         @if ($visit?->pdl?->pdl_number)
                                             <span class="block text-metadata text-text-secondary">{{ $visit->pdl->pdl_number }}</span>
                                         @endif
@@ -1102,7 +1102,7 @@
                                             <span class="cc-chip cc-chip-info">QR</span>
                                         @endif
                                     </td>
-                                    <td class="py-sm pr-md">{{ $checkin->checkInOfficer?->full_name ?? '—' }}</td>
+                                    <td class="py-sm pr-md">{{ $checkin->checkInOfficer?->listName() ?? '—' }}</td>
                                     <td class="py-sm pr-md">
                                         @if ($checkin->isCheckedIn())
                                             <span class="font-semibold text-success">Inside</span>
@@ -2154,7 +2154,7 @@
                                         @endif
                                     </td>
                                     <td class="py-sm pr-md">
-                                        {{ $visit?->pdl?->full_name ?? '—' }}
+                                        {{ $visit?->pdl?->listName() ?? '—' }}
                                         @if ($visit?->pdl?->pdl_number)
                                             <span class="block text-metadata text-text-secondary">{{ $visit->pdl->pdl_number }}</span>
                                         @endif
@@ -2176,7 +2176,7 @@
                                             —
                                         @endif
                                     </td>
-                                    <td class="py-sm pr-md">{{ $checkin->checkOutOfficer?->full_name ?? '—' }}</td>
+                                    <td class="py-sm pr-md">{{ $checkin->checkOutOfficer?->listName() ?? '—' }}</td>
                                 </tr>
                             @empty
                                 <tr>

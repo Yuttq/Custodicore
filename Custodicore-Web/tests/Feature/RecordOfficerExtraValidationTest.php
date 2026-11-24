@@ -70,19 +70,4 @@ class RecordOfficerExtraValidationTest extends TestCase
         $this->assertSame('2026-10-08 18:00', VisitRequest::sole()->confirmation_deadline->format('Y-m-d H:i'));
     }
 
-    public function test_rejection_reason_needs_at_least_five_characters(): void
-    {
-        $visit = app(VisitAssignmentService::class)->submitVisitorRequest(
-            $this->visitor, $this->relationship, CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila'), '09:00'
-        );
-        $reject = fn (string $reason) => $this->post(
-            route('visitor.visit-requests.reject', [$visit->visitor_id, $visit->visit_request_id]), ['cancellation_reason' => $reason]
-        );
-
-        $reject('No')->assertSessionHasErrors(['cancellation_reason' => 'The reason must be at least 5 characters, so the visitor understands why.']);
-        $this->assertSame('assigned', $visit->fresh()->status);
-
-        $reject('The facility is closed that day.')->assertSessionHasNoErrors();
-        $this->assertSame('cancelled', $visit->fresh()->status);
-    }
 }

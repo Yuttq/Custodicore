@@ -72,6 +72,22 @@ class Pdl extends Model
     }
 
     /**
+     * "Dela Cruz, Juan Santos Jr." — last name first, the form used on the
+     * staff screens. Older PDLs with only a full name on file show it as is.
+     */
+    public function listName(): string
+    {
+        if ($this->last_name === null && $this->first_name === null) {
+            return (string) $this->full_name;
+        }
+
+        $given = trim(implode(' ', array_filter([$this->first_name, $this->middle_name])));
+        $name = $this->last_name !== null && $this->last_name !== '' ? $this->last_name . ($given !== '' ? ', ' . $given : '') : $given;
+
+        return $this->suffix ? $name . ' ' . $this->suffix : $name;
+    }
+
+    /**
      * Another PDL who looks like the same person: same full name (ignoring
      * case) and same date of birth. $exceptId leaves out the PDL being edited.
      */

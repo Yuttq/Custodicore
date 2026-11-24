@@ -80,7 +80,7 @@ class ExitUnrecordedTest extends TestCase
             'startTimes' => $startTimes,
         ])->assertCreated()->json('id');
         $this->completeRequirements();
-        $visit = app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        $visit = (VisitRequest::findOrFail($id))->fresh();
 
         $this->at('09:30');
         $token = $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertOk()->json('qrToken');

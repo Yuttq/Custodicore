@@ -154,7 +154,6 @@ class ActivityLog
                 in_array($type, ['pdl_profiles', 'pdl_custody_status'], true) => route('pdl.show', $id),
                 isset($pdlBy[$type][$id]) => route('pdl.show', $pdlBy[$type][$id]),
                 $type === 'cell_blocks' => route('cell-blocks.index'),
-                $type === 'eligibility_assessments' => route('eligibility.index'),
                 default => null,
             };
 

@@ -96,13 +96,13 @@ class ScheduleAvailabilityApiTest extends TestCase
             'registered_by' => StaffProfile::first()->staff_id,
         ]);
 
-        return VisitorPdlRelationship::create([
+        return $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => $status,
-        ]);
+        ]));
     }
 
     private function makeOtherVisitorRelationship(): VisitorPdlRelationship
@@ -122,13 +122,13 @@ class ScheduleAvailabilityApiTest extends TestCase
             'verification_status' => 'verified',
         ]);
 
-        return VisitorPdlRelationship::create([
+        return $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $other->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'approved_relative',
             'priority_tier' => 'requires_verification',
             'verification_status' => 'verified',
-        ]);
+        ]));
     }
 
     // ------------------------------------------------------------ Access
@@ -607,13 +607,13 @@ class ScheduleAvailabilityApiTest extends TestCase
             'registered_by' => StaffProfile::first()->staff_id,
         ]);
 
-        return VisitorPdlRelationship::create([
+        return $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
     }
 
     public function test_weekly_summary_lists_each_monday_to_sunday_week_of_the_range(): void

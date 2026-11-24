@@ -43,7 +43,7 @@ class VisitorEmailVerificationFlowTest extends TestCase
     {
         parent::setUp();
         Storage::fake('local');
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
         Mail::fake();
     }
 

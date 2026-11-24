@@ -60,14 +60,22 @@ class VisitReviewExpiryTest extends TestCase
         $this->travelTo(CarbonImmutable::parse($time, 'Asia/Manila'));
     }
 
+    /**
+     * A request still awaiting review, as booked before the review step was
+     * removed (bookings are now confirmed at once): booked, then put back
+     * to `assigned`, the state such requests are left in.
+     */
     private function submittedRequest(array $startTimes = ['09:00'], ?VisitorProfile $visitor = null, ?VisitorPdlRelationship $relationship = null): VisitRequest
     {
-        return app(VisitAssignmentService::class)->submitVisitorRequest(
+        $visit = app(VisitAssignmentService::class)->submitVisitorRequest(
             $visitor ?? $this->visitor,
             $relationship ?? $this->relationship,
             CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila'),
             $startTimes
         );
+        $visit->update(['status' => 'assigned', 'confirmed_at' => null]);
+
+        return $visit->fresh();
     }
 
     private function afternoonSchedule(): VisitSchedule
@@ -93,13 +101,13 @@ class VisitReviewExpiryTest extends TestCase
             'contact_number' => '09285550199',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'legal_counsel',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         return [$visitor, $relationship];
     }
@@ -198,8 +206,7 @@ class VisitReviewExpiryTest extends TestCase
         [$otherVisitor, $otherRelationship] = $this->otherVisitor();
         $expiring = $this->submittedRequest();
         $kept = $this->submittedRequest(['09:00'], $otherVisitor, $otherRelationship);
-        $this->makeEligibleForApproval($kept);
-        app(VisitAssignmentService::class)->approveVisitorRequest($kept);
+        $kept->update(['status' => 'confirmed', 'confirmed_at' => now()]);
         $this->assertSame(2, (int) $this->schedule->fresh()->slots_taken);
         $this->at('2026-10-10 08:00:00');
 
@@ -216,43 +223,6 @@ class VisitReviewExpiryTest extends TestCase
         $this->assertSame(1, AuditLog::where('record_id', $expiring->visit_request_id)
             ->where('description', 'like', 'System cancelled visit request%')->count());
         $this->assertFalse(app(VisitAssignmentService::class)->expirePastDueAssignedRequest($expiring->visit_request_id));
-    }
-
-    public function test_request_reviewed_after_being_selected_for_expiry_is_left_alone(): void
-    {
-        $visit = $this->submittedRequest();
-        $service = app(VisitAssignmentService::class);
-        $this->at('2026-10-10 08:00:00');
-        $this->assertEquals([$visit->visit_request_id], $service->pastDueAssignedRequestIds()->all());
-
-        // A racing staff rejection commits between selection and the lock.
-        $service->rejectVisitorRequest($visit, 'Facility closed that day.');
-        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
-
-        $this->assertFalse($service->expirePastDueAssignedRequest($visit->visit_request_id));
-        $visit->refresh();
-        $this->assertSame('cancelled', $visit->status);
-        $this->assertSame('Facility closed that day.', $visit->cancellation_reason);
-        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken, 'No second release.');
-        $this->assertFalse(Notification::where('related_record_id', $visit->visit_request_id)
-            ->where('title', 'Visit Request Expired')->exists());
-    }
-
-    public function test_expired_request_can_no_longer_be_approved_or_rejected(): void
-    {
-        $visit = $this->submittedRequest();
-        $this->at('2026-10-10 08:00:00');
-        $this->runExpiry(1);
-
-        $this->actingAs($this->recordOfficerAccount);
-        $this->post(route('visitor.visit-requests.approve', [$visit->visitor_id, $visit->visit_request_id]))
-            ->assertSessionHasErrors('status');
-        $this->post(route('visitor.visit-requests.reject', [$visit->visitor_id, $visit->visit_request_id]), [
-            'cancellation_reason' => 'Too late.',
-        ])->assertSessionHasErrors('status');
-
-        $this->assertSame(VisitAssignmentService::REVIEW_EXPIRED_REASON, $visit->fresh()->cancellation_reason);
-        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
     }
 
     // ------------------------------------------------ Visitor timeline
@@ -302,36 +272,6 @@ class VisitReviewExpiryTest extends TestCase
             ->assertJsonPath('visits.0.cancellationReason', VisitAssignmentService::REVIEW_EXPIRED_REASON);
     }
 
-    public function test_staff_rejection_timeline_is_still_worded_as_a_rejection(): void
-    {
-        $visit = $this->submittedRequest();
-        $this->at('2026-10-10 00:05:00');
-        app(VisitAssignmentService::class)->rejectVisitorRequest($visit, 'The visit date has passed.');
-
-        $steps = $this->timelineSteps($visit);
-
-        $this->assertSame('request_rejected', $steps->keys()->last());
-        $this->assertSame(
-            'Your visit request was rejected by facility staff. Reason: The visit date has passed.',
-            $steps['request_rejected']['description']
-        );
-        $this->assertArrayNotHasKey('request_expired', $steps);
-    }
-
-    public function test_staff_cannot_reject_with_the_reserved_expiry_reason(): void
-    {
-        $visit = $this->submittedRequest();
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.reject', [$visit->visitor_id, $visit->visit_request_id]), [
-                'cancellation_reason' => VisitAssignmentService::REVIEW_EXPIRED_REASON,
-            ])
-            ->assertSessionHasErrors(['cancellation_reason' => 'Enter your own reason for rejecting this visit request.']);
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
-    }
-
     public function test_staff_assigned_visit_cancelled_at_its_deadline_keeps_its_timeline(): void
     {
         $assigned = app(VisitAssignmentService::class)->assign([
@@ -352,15 +292,20 @@ class VisitReviewExpiryTest extends TestCase
 
     // -------------------------------------------------- Not expired
 
-    public function test_future_dated_request_is_not_expired(): void
+    public function test_future_dated_request_is_not_expired_but_settled(): void
     {
         $visit = $this->submittedRequest();
         $this->at('2026-10-08 23:59:59');
 
-        $this->runExpiry(0);
+        $this->artisan('visits:expire')
+            ->expectsOutput('Expired unreviewed requests: 0')
+            ->expectsOutput('Settled requests awaiting review: 1')
+            ->assertSuccessful();
 
-        $this->assertSame('assigned', $visit->fresh()->status);
+        // No review step any more: it meets the booking rules, so it is confirmed.
+        $this->assertSame('confirmed', $visit->fresh()->status);
         $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertTrue(Notification::where('related_record_id', $visit->visit_request_id)->where('title', 'Visit Confirmed')->exists());
         $this->assertFalse(app(VisitAssignmentService::class)->expirePastDueAssignedRequest($visit->visit_request_id));
     }
 
@@ -371,8 +316,23 @@ class VisitReviewExpiryTest extends TestCase
 
         $this->runExpiry(0);
 
-        $this->assertSame('assigned', $visit->fresh()->status);
+        $this->assertNotSame('cancelled', $visit->fresh()->status);
         $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
+    }
+
+    public function test_waiting_request_that_no_longer_meets_the_rules_is_cancelled_with_the_reason(): void
+    {
+        $visit = $this->submittedRequest();
+        \App\Models\RelationshipDocument::where('relationship_id', $this->relationship->relationship_id)->update(['status' => 'rejected']);
+        $this->at('2026-10-08 08:00:00');
+
+        $this->artisan('visits:expire')->expectsOutput('Settled requests awaiting review: 1')->assertSuccessful();
+
+        $visit->refresh();
+        $this->assertSame('cancelled', $visit->status);
+        $this->assertStringStartsWith('Visits can be booked once the requirements for this PDL are complete.', $visit->cancellation_reason);
+        $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
+        $this->assertTrue(Notification::where('related_record_id', $visit->visit_request_id)->where('title', 'Visit Request Cancelled')->exists());
     }
 
     public function test_other_statuses_are_not_touched_by_the_new_rule(): void

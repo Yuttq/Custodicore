@@ -134,13 +134,13 @@ class VisitAssignmentTest extends TestCase
             'registered_by' => StaffProfile::first()->staff_id,
         ]);
 
-        $wrongRel = VisitorPdlRelationship::create([
+        $wrongRel = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $otherPdl->pdl_id,
             'relationship_type' => 'approved_relative',
             'priority_tier' => 'requires_verification',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         $response = $this->actingAs($this->recordOfficerAccount)
             ->from(route('visitor.show', $this->visitor->visitor_id))
@@ -233,13 +233,13 @@ class VisitAssignmentTest extends TestCase
             'contact_number' => '09285550199',
             'verification_status' => 'verified',
         ]);
-        $secondRel = VisitorPdlRelationship::create([
+        $secondRel = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $secondVisitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'legal_counsel',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         $service = app(VisitAssignmentService::class);
         $service->assign([

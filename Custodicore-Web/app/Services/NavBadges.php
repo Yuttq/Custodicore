@@ -32,7 +32,6 @@ class NavBadges
     /** @return array<string, ?array{kind: string, value: int, title: string}> keyed by sidebar item */
     public function all(): array
     {
-        $visits = VisitRequest::awaitingReview()->count();
         $review = array_sum(ReviewQueue::counts());
 
         return [
@@ -40,8 +39,6 @@ class NavBadges
                 route('pdl.index', ['hearing' => 'week'])),
             'cells' => $this->badge('warn', $this->dormsOver(), fn ($n) => "{$n} " . ($n === 1 ? 'dorm is' : 'dorms are') . ' over the recommended capacity',
                 route('cell-blocks.index', ['over' => 1])),
-            'visitors' => $this->badge('count', $visits, fn ($n) => "{$n} visit " . ($n === 1 ? 'request' : 'requests') . ' awaiting review',
-                route('visitor.index') . '#visit-requests'),
             'review' => $this->badge('count', $review, fn ($n) => "{$n} waiting for review", route('review-queue')),
             'upcoming' => $this->upcomingBadge(),
             'slots' => $this->badge('warn', $this->unpublishedSessions()->count(), fn ($n) => "{$n} visiting " . ($n === 1 ? 'session' : 'sessions') . ' in the next ' . self::DAYS_AHEAD . ' days ' . ($n === 1 ? 'is' : 'are') . ' not published yet, so visitors cannot book ' . ($n === 1 ? 'it' : 'them'),

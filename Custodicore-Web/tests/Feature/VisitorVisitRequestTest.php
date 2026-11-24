@@ -24,7 +24,9 @@ use Tests\TestCase;
 
 /**
  * Stage 1 of the visitor visit request workflow:
- *   POST /api/visit-requests            -> assigned (awaiting staff review)
+ *   POST /api/visit-requests            -> confirmed at once when the slot is
+ *                                          available and every check passes;
+ *                                          otherwise assigned (awaiting staff review)
  *   Record Officer approve / reject     -> confirmed / cancelled
  * and the rule that a visitor can never confirm an `assigned` request.
  *
@@ -105,18 +107,111 @@ class VisitorVisitRequestTest extends TestCase
             'contact_number' => '09285550199',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'legal_counsel',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         return [$account, $visitor, $relationship];
     }
 
     // ------------------------------------------------------- Submission
+
+    public function test_request_with_an_available_slot_and_every_check_passed_is_confirmed_at_once(): void
+    {
+        $this->completeRequirements();
+        Sanctum::actingAs($this->visitorAccount);
+
+        $visit = VisitRequest::findOrFail($this->submit()
+            ->assertCreated()
+            ->assertJsonPath('status', 'confirmed')
+            ->json('id'));
+
+        $this->assertSame('confirmed', $visit->status);
+        $this->assertNotNull($visit->confirmed_at);
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
+        $this->assertSame(1, \App\Models\Notification::where('account_id', $this->visitorAccount->account_id)
+            ->where('title', 'Visit Confirmed')->count());
+
+        // Nothing is left for the Record Officer to review.
+        $this->actingAs($this->recordOfficerAccount)
+            ->get(route('visitor.show', $this->visitor->visitor_id))
+            ->assertOk()
+            ->assertDontSee('Visit Requests Awaiting Review');
+    }
+
+    public function test_request_with_incomplete_requirements_is_refused_and_creates_nothing(): void
+    {
+        \App\Models\RelationshipDocument::where('relationship_id', $this->relationship->relationship_id)->update(['status' => 'pending']);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->submit()
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('requirements');
+
+        $this->assertSame(0, VisitRequest::count());
+        $this->assertSame(0, $this->schedule->fresh()->slots_taken);
+    }
+
+    public function test_flagged_visitor_cannot_book_a_date_the_flag_covers(): void
+    {
+        $flag = \App\Models\VisitorFlag::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'flag_type' => 'rule_violation',
+            'description' => 'Tried to bring in a prohibited item.',
+            'flagged_by' => $this->recordOfficerAccount->staffProfile->staff_id,
+            'status' => 'active',
+        ]);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->submit()
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.visitor_id.0', VisitAssignmentService::FLAGGED_VISITOR_MESSAGE);
+        $this->assertSame(0, VisitRequest::count());
+
+        // Once the flag is resolved the visitor can book again.
+        $flag->update(['status' => 'resolved', 'resolved_at' => now()]);
+        $this->submit()->assertCreated()->assertJsonPath('status', 'confirmed');
+    }
+
+    public function test_a_flag_that_ends_before_the_visit_date_does_not_block_it(): void
+    {
+        \App\Models\VisitorFlag::create([
+            'visitor_id' => $this->visitor->visitor_id,
+            'flag_type' => 'rule_violation',
+            'description' => 'Tried to bring in a prohibited item.',
+            'flagged_by' => $this->recordOfficerAccount->staffProfile->staff_id,
+            'status' => 'active',
+            'expires_at' => CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila')->subDay(),
+        ]);
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->submit()->assertCreated()->assertJsonPath('status', 'confirmed');
+    }
+
+    public function test_flagging_a_visitor_cancels_their_covered_upcoming_visits(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+        $visit = VisitRequest::findOrFail($this->submit()->assertCreated()->json('id'));
+        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
+
+        $this->actingAs($this->recordOfficerAccount)
+            ->post(route('visitor.flags.store', $this->visitor->visitor_id), [
+                'flag_type' => 'rule_violation',
+                'description' => 'Tried to bring in a prohibited item.',
+                'duration' => 'until_resolved',
+            ])
+            ->assertSessionHas('success', fn ($m) => str_contains($m, '1 upcoming visit was cancelled.'));
+
+        $visit->refresh();
+        $this->assertSame('cancelled', $visit->status);
+        $this->assertSame(VisitAssignmentService::FLAGGED_VISITOR_MESSAGE, $visit->cancellation_reason);
+        $this->assertSame(0, $this->schedule->fresh()->slots_taken);
+        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)->where('title', 'Visit Cancelled')->exists());
+    }
 
     public function test_visitor_can_submit_request_for_verified_relationship(): void
     {
@@ -124,18 +219,18 @@ class VisitorVisitRequestTest extends TestCase
 
         $response = $this->submit()
             ->assertCreated()
-            ->assertJsonPath('status', 'assigned')
+            ->assertJsonPath('status', 'confirmed')
             ->assertJsonPath('pdlName', $this->pdl->full_name)
             ->assertJsonPath('scheduledAt', self::FRIDAY.'T09:00:00+08:00');
 
         $visit = VisitRequest::findOrFail($response->json('id'));
-        $this->assertSame('assigned', $visit->status);
+        $this->assertSame('confirmed', $visit->status);
         $this->assertSame($this->visitor->visitor_id, $visit->visitor_id);
         $this->assertSame($this->pdl->pdl_id, $visit->pdl_id);
         $this->assertSame($this->relationship->relationship_id, $visit->relationship_id);
         $this->assertSame($this->schedule->schedule_id, $visit->schedule_id);
         $this->assertNull($visit->confirmation_deadline);
-        $this->assertNull($visit->confirmed_at);
+        $this->assertNotNull($visit->confirmed_at);
 
         $this->assertSame(1, $this->schedule->fresh()->slots_taken);
         $this->assertSame(1, VisitSchedule::count(), 'An existing schedule row is reused.');
@@ -148,7 +243,7 @@ class VisitorVisitRequestTest extends TestCase
 
         $notification = Notification::where('account_id', $this->visitorAccount->account_id)->latest('notification_id')->first();
         $this->assertNotNull($notification);
-        $this->assertSame('Visit Request Submitted', $notification->title);
+        $this->assertSame('Visit Confirmed', $notification->title);
         $this->assertSame($visit->visit_request_id, $notification->related_record_id);
     }
 
@@ -452,7 +547,9 @@ class VisitorVisitRequestTest extends TestCase
 
     public function test_visitor_cannot_confirm_or_decline_an_assigned_request(): void
     {
+        // Booked before the review step was removed and still waiting.
         $visit = $this->submittedRequest();
+        $visit->update(['status' => 'assigned', 'confirmed_at' => null]);
         Sanctum::actingAs($this->visitorAccount);
 
         $this->postJson("/api/schedules/{$visit->visit_request_id}/confirm")
@@ -723,222 +820,6 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame(1, $this->schedule->fresh()->slots_taken);
     }
 
-    // ------------------------------------------------------------ Staff
-
-    public function test_record_officer_sees_pending_visitor_requests(): void
-    {
-        $this->completeRequirements();
-        $visit = $this->submittedRequest();
-        $this->actingAs($this->recordOfficerAccount);
-
-        $approveUrl = route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]);
-
-        $this->get(route('visitor.index'))
-            ->assertOk()
-            ->assertSee('Visit Requests Awaiting Review')
-            ->assertSee($this->visitor->full_name)
-            ->assertSee($approveUrl, false);
-
-        $this->get(route('visitor.show', $this->visitor->visitor_id))
-            ->assertOk()
-            ->assertSee('Visit Requests Awaiting Review')
-            ->assertSee($approveUrl, false)
-            ->assertSee(route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]), false);
-    }
-
-    public function test_staff_assigned_visits_are_not_listed_for_review(): void
-    {
-        $visit = app(VisitAssignmentService::class)->assign([
-            'visitor_id' => $this->visitor->visitor_id,
-            'pdl_id' => $this->pdl->pdl_id,
-            'relationship_id' => $this->relationship->relationship_id,
-            'schedule_id' => $this->schedule->schedule_id,
-        ]);
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->get(route('visitor.index'))
-            ->assertOk()
-            ->assertSee('No visitor-submitted visit requests are awaiting review.')
-            ->assertDontSee(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]), false);
-    }
-
-    public function test_record_officer_can_approve_request(): void
-    {
-        $visit = $this->submittedRequest();
-        $this->makeEligibleForApproval($visit);
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
-            ->assertRedirect()
-            ->assertSessionHasNoErrors()
-            ->assertSessionHas('success');
-
-        $visit->refresh();
-        $this->assertSame('confirmed', $visit->status);
-        $this->assertNotNull($visit->confirmed_at);
-        $this->assertSame($this->schedule->schedule_id, $visit->schedule_id);
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken, 'The reserved seat stays reserved.');
-
-        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)
-            ->where('title', 'Visit Request Approved')
-            ->where('related_record_id', $visit->visit_request_id)
-            ->exists());
-        $this->assertTrue(AuditLog::where('record_type', 'visit_requests')
-            ->where('record_id', $visit->visit_request_id)
-            ->where('action_type', 'update')
-            ->exists());
-
-        // The approved visit now behaves like any confirmed visit.
-        $this->travelTo(CarbonImmutable::parse(self::FRIDAY.' 09:30:00', 'Asia/Manila'));
-        Sanctum::actingAs($this->visitorAccount);
-        $this->getJson("/api/schedules/{$visit->visit_request_id}/qr")->assertOk()->assertJsonPath('status', 'confirmed');
-    }
-
-    public function test_record_officer_can_reject_request_and_release_capacity(): void
-    {
-        $this->schedule->update(['max_capacity' => 1]);
-        $visit = $this->submittedRequest();
-        $this->assertSame('full', $this->schedule->fresh()->status);
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]), [
-                'cancellation_reason' => 'The PDL has a court hearing that day.',
-            ])
-            ->assertRedirect()
-            ->assertSessionHasNoErrors()
-            ->assertSessionHas('success');
-
-        $visit->refresh();
-        $this->assertSame('cancelled', $visit->status);
-        $this->assertNotNull($visit->cancelled_at);
-        $this->assertSame('The PDL has a court hearing that day.', $visit->cancellation_reason);
-
-        $schedule = $this->schedule->fresh();
-        $this->assertSame(0, (int) $schedule->slots_taken);
-        $this->assertSame('open', $schedule->status);
-
-        $this->assertTrue(Notification::where('account_id', $this->visitorAccount->account_id)
-            ->where('title', 'Visit Request Not Approved')
-            ->exists());
-        $this->assertTrue(AuditLog::where('record_type', 'visit_requests')
-            ->where('record_id', $visit->visit_request_id)
-            ->where('action_type', 'update')
-            ->where('description', 'like', '%The PDL has a court hearing that day.%')
-            ->exists());
-
-        // The released seat can be requested by someone else.
-        [$otherAccount, , $otherRelationship] = $this->makeOtherVisitor();
-        Sanctum::actingAs($otherAccount);
-        $this->submit(['relationshipId' => $otherRelationship->relationship_id])->assertCreated();
-        $this->assertSame(1, (int) $this->schedule->fresh()->slots_taken);
-
-        // The visitor sees the rejection in history with its reason.
-        Sanctum::actingAs($this->visitorAccount);
-        $this->getJson('/api/visits/history')
-            ->assertOk()
-            ->assertJsonPath('visits.0.status', 'cancelled')
-            ->assertJsonPath('visits.0.cancellationReason', 'The PDL has a court hearing that day.');
-    }
-
-    public function test_rejection_requires_a_reason(): void
-    {
-        $visit = $this->submittedRequest();
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]), [
-                'cancellation_reason' => '  ',
-            ])
-            ->assertSessionHasErrors('cancellation_reason');
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
-    }
-
-    public function test_only_assigned_requests_can_be_approved_or_rejected(): void
-    {
-        $visit = app(VisitAssignmentService::class)->assign([
-            'visitor_id' => $this->visitor->visitor_id,
-            'pdl_id' => $this->pdl->pdl_id,
-            'relationship_id' => $this->relationship->relationship_id,
-            'schedule_id' => $this->schedule->schedule_id,
-        ]);
-        $this->actingAs($this->recordOfficerAccount);
-
-        $this->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
-            ->assertSessionHasErrors('status');
-        $this->post(route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]), [
-            'cancellation_reason' => 'No longer needed.',
-        ])->assertSessionHasErrors('status');
-
-        $this->assertSame('pending_confirmation', $visit->fresh()->status);
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
-
-        // A request that was already rejected cannot be rejected again (no double release).
-        $visit->update(['status' => 'cancelled']);
-        $this->post(route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]), [
-            'cancellation_reason' => 'Again.',
-        ])->assertSessionHasErrors('status');
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
-    }
-
-    public function test_approval_is_refused_when_pdl_became_ineligible(): void
-    {
-        $visit = $this->submittedRequest();
-        $this->pdl->update(['custody_status' => 'released']);
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
-            ->assertSessionHasErrors('pdl_id');
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-    }
-
-    public function test_approval_is_refused_when_visitor_is_not_approved(): void
-    {
-        $visit = $this->submittedRequest();
-        $this->makeEligibleForApproval($visit);
-        $this->visitor->update(['verification_status' => 'pending']);
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]))
-            ->assertSessionHasErrors('visitor_id');
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-        $this->assertNull($visit->fresh()->confirmed_at);
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
-    }
-
-    public function test_request_must_belong_to_the_visitor_in_the_url(): void
-    {
-        $visit = $this->submittedRequest();
-        [, $otherVisitor] = $this->makeOtherVisitor();
-
-        $this->actingAs($this->recordOfficerAccount)
-            ->post(route('visitor.visit-requests.approve', [$otherVisitor->visitor_id, $visit->visit_request_id]))
-            ->assertNotFound();
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-    }
-
-    public function test_unauthorized_users_cannot_approve_or_reject(): void
-    {
-        $visit = $this->submittedRequest();
-        $approve = route('visitor.visit-requests.approve', [$this->visitor->visitor_id, $visit->visit_request_id]);
-        $reject = route('visitor.visit-requests.reject', [$this->visitor->visitor_id, $visit->visit_request_id]);
-        $body = ['cancellation_reason' => 'Nope.'];
-
-        $this->post($approve)->assertRedirect(route('login'));
-        $this->post($reject, $body)->assertRedirect(route('login'));
-
-        foreach ([$this->frontDeskAccount, $this->visitorAccount] as $account) {
-            $this->actingAs($account)->post($approve)->assertForbidden();
-            $this->actingAs($account)->post($reject, $body)->assertForbidden();
-        }
-
-        $this->assertSame('assigned', $visit->fresh()->status);
-        $this->assertSame(1, $this->schedule->fresh()->slots_taken);
-    }
-
     // --------------------------------------------------------------- Timeline
 
     /** GET /api/schedules/{id}/timeline as the visitor, keyed by step id. */
@@ -962,7 +843,10 @@ class VisitorVisitRequestTest extends TestCase
 
     public function test_assigned_request_timeline_shows_request_submitted(): void
     {
-        $steps = $this->timelineSteps($this->submittedRequest());
+        // Booked before the review step was removed and still waiting.
+        $visit = $this->submittedRequest();
+        $visit->update(['status' => 'assigned', 'confirmed_at' => null]);
+        $steps = $this->timelineSteps($visit);
 
         $this->assertSame('Request Submitted', $steps['request_submitted']['title']);
         $this->assertSame('Your visit request was submitted and is awaiting review by facility staff.', $steps['request_submitted']['description']);
@@ -974,45 +858,22 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertArrayNotHasKey('attendance_confirmed', $steps);
     }
 
-    public function test_approved_request_timeline_shows_request_approved(): void
+    public function test_booked_visit_timeline_shows_it_confirmed_at_booking(): void
     {
-        $visit = $this->submittedRequest();
-        $this->makeEligibleForApproval($visit);
-        app(VisitAssignmentService::class)->approveVisitorRequest($visit);
-
-        $steps = $this->timelineSteps($visit);
+        $steps = $this->timelineSteps($this->submittedRequest());
 
         $this->assertSame(
             ['account_created', 'documents_submitted', 'identity_verified', 'relationship_verified', 'visitor_eligible',
                 'request_submitted', 'request_approved', 'qr_generated', 'checked_in', 'checked_out', 'visit_completed'],
             $steps->keys()->all()
         );
-        $this->assertSame('Your visit request was submitted for review by facility staff.', $steps['request_submitted']['description']);
-        $this->assertSame('Request Approved', $steps['request_approved']['title']);
-        $this->assertSame('Your visit request was approved by facility staff.', $steps['request_approved']['description']);
+        $this->assertSame('Visit Booked', $steps['request_submitted']['title']);
+        $this->assertSame('You booked an available visiting slot.', $steps['request_submitted']['description']);
+        $this->assertSame('Visit Confirmed', $steps['request_approved']['title']);
+        $this->assertSame('Your visit was confirmed when you booked it.', $steps['request_approved']['description']);
         $this->assertSame('completed', $steps['request_approved']['stepState']);
         $this->assertNotNull($steps['request_approved']['occurredAt']);
         $this->assertSame('current', $steps['qr_generated']['stepState']);
-    }
-
-    public function test_rejected_request_timeline_shows_request_rejected(): void
-    {
-        $visit = $this->submittedRequest();
-        app(VisitAssignmentService::class)->rejectVisitorRequest($visit, 'The PDL has a court hearing that day.');
-
-        $steps = $this->timelineSteps($visit);
-
-        $this->assertSame('Request Rejected', $steps['request_rejected']['title']);
-        $this->assertSame(
-            'Your visit request was rejected by facility staff. Reason: The PDL has a court hearing that day.',
-            $steps['request_rejected']['description']
-        );
-        $this->assertSame('completed', $steps['request_rejected']['stepState']);
-        $this->assertNotNull($steps['request_rejected']['occurredAt']);
-        $this->assertSame('request_rejected', $steps->keys()->last());
-        $this->assertSame('pending', $steps['request_approved']['stepState']);
-        $this->assertArrayNotHasKey('visit_cancelled', $steps);
-        $this->assertArrayNotHasKey('schedule_assigned', $steps);
     }
 
     public function test_staff_assigned_pending_confirmation_timeline_is_unchanged(): void

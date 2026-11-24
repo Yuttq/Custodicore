@@ -26,7 +26,8 @@ use Illuminate\Validation\ValidationException;
  *   Staff assigns:    assign()               -> pending_confirmation -> visitor confirms (confirmed)
  *                                                                       or declines (declined)
  *                     (a walk-in without the app: confirmed at once, see usesNoApp())
- *   Visitor requests: submitVisitorRequest() -> assigned -> staff approves (confirmed) or rejects (cancelled)
+ *   Visitor books:    submitVisitorRequest() -> confirmed at once (no approval step); a visitor
+ *                     who does not meet every rule is refused instead
  *
  * `assigned` is staff review only — the visitor API never confirms or
  * declines it. Both paths reserve schedule capacity on creation.
@@ -103,6 +104,9 @@ class VisitAssignmentService
      */
     public const PDL_UNAVAILABLE_REASON = 'The PDL is not available for visitation on this date. Please contact the facility.';
 
+    /** Why a flagged visitor cannot book (and why their covered visits were cancelled). */
+    public const FLAGGED_VISITOR_MESSAGE = 'Your account has an active flag, so visits cannot be booked for this date. Please contact the facility.';
+
     /** Statuses the visitor may cancel themselves (cancelByVisitor); `pending_confirmation` is declined instead. */
     public const VISITOR_CANCELLABLE = ['assigned', 'confirmed'];
 
@@ -125,6 +129,7 @@ class VisitAssignmentService
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
         $this->assertScheduleAssignable($schedule, $pdl);
         $this->assertSessionNotEnded($schedule);
+        $this->assertClearedToBook($visitor, $relationship, $schedule->schedule_date);
 
         // A walk-in without the app cannot confirm it there: confirmed at once.
         $confirmNow = $visitor->usesNoApp();
@@ -169,17 +174,17 @@ class VisitAssignmentService
     }
 
     /**
-     * A visitor's own request for one visit: one day with one or more of its
+     * A visitor's own booking of one visit: one day with one or more of its
      * sessions ($startTimes, e.g. ['09:00', '13:00'] for the whole day). The
-     * sessions form ONE visit — one weekly-limit count, one review, one QR —
-     * and each reserves a seat on its own schedule. Every session must be
-     * available exactly as GET /api/schedules/availability reports it — a
-     * session the Record Officer created and left open with seats. Creates the request as
-     * `assigned` (awaiting Record Officer review).
+     * sessions form ONE visit — one weekly-limit count, one QR — and each
+     * reserves a seat on its own schedule. Every session must be available
+     * exactly as GET /api/schedules/availability reports it — a session the
+     * Record Officer created and left open with seats.
      *
-     * $notifySubmitted = false skips the "Visit Request Submitted" notice, for
-     * a walk-in booking that is approved in the same step (WalkInService): the
-     * visitor then only gets "Visit Request Approved", not "awaiting review" too.
+     * There is no approval step: the visit is `confirmed` at once. A visitor
+     * who does not meet every rule (account approved, relationship verified
+     * with its requirements complete, no flag covering the visit date, PDL
+     * visitable) is refused here instead (assertClearedToBook()).
      *
      * @param  string|array<int, string>  $startTimes
      */
@@ -187,31 +192,29 @@ class VisitAssignmentService
         VisitorProfile $visitor,
         VisitorPdlRelationship $relationship,
         CarbonImmutable $date,
-        string|array $startTimes,
-        bool $notifySubmitted = true
+        string|array $startTimes
     ): VisitRequest {
         return $this->bookSessions(
-            $visitor, $relationship, $date, $startTimes, 'assigned', null,
+            $visitor, $relationship, $date, $startTimes, 'confirmed', null,
             'You already have a visit with this PDL on this date.',
             self::ONE_PDL_PER_DAY_MESSAGE,
-            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor, $notifySubmitted) {
+            function (VisitRequest $visitRequest, Pdl $pdl) use ($visitor) {
                 $scheduleLabel = $this->visitLabel($visitRequest);
-                if ($notifySubmitted) {
-                    Notification::notify(
-                        $visitor->account_id,
-                        'visits',
-                        'Visit Request Submitted',
-                        "Your request to visit {$pdl->full_name} on {$scheduleLabel} was received and is awaiting review by the facility.",
-                        'visit_requests',
-                        $visitRequest->visit_request_id
-                    );
-                }
+
+                Notification::notify(
+                    $visitor->account_id,
+                    'visit_confirmed',
+                    'Visit Confirmed',
+                    "Your visit with {$pdl->full_name} on {$scheduleLabel} is confirmed. Arrive 15 minutes early with valid ID.",
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
 
                 AuditLog::record(
                     'create',
                     'visit_requests',
                     $visitRequest->visit_request_id,
-                    "Visitor submitted visit request for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
+                    "Visitor booked visit for {$visitor->full_name} → {$pdl->full_name} ({$scheduleLabel})",
                     Module::CODE_VISIT_SCHEDULING
                 );
             }
@@ -332,6 +335,7 @@ class VisitAssignmentService
         $this->assertNoReplacementPending($visitor);
         $this->assertPdlAssignable($pdl, $date);
         $this->assertRelationshipAssignable($relationship, $visitor, $pdl);
+        $this->assertClearedToBook($visitor, $relationship, $date);
 
         return DB::transaction(function () use ($visitor, $pdl, $relationship, $date, $slots, $status, $deadline, $duplicateMessage, $otherPdlMessage, $afterCreate) {
             // Lock order: visitor, then schedules (see lockVisitor()). The
@@ -372,7 +376,10 @@ class VisitAssignmentService
                 'relationship_id' => $relationship->relationship_id,
                 'schedule_id' => $first->schedule_id,
                 'status' => $status,
-                'confirmed_at' => $status === 'confirmed' ? now() : null,
+                // One clock for both, so a booking confirmed at once reads as
+                // such (the visitor timeline compares them).
+                'assigned_at' => $bookedAt = now(),
+                'confirmed_at' => $status === 'confirmed' ? $bookedAt : null,
                 'confirmation_deadline' => $deadline,
             ]);
 
@@ -394,108 +401,6 @@ class VisitAssignmentService
             $afterCreate($visitRequest, $pdl);
 
             return $visitRequest->fresh(['visitor', 'pdl', 'relationship', 'schedule', 'eligibilityAssessment']);
-        });
-    }
-
-    /**
-     * Record Officer approves a visitor-submitted request: assigned -> confirmed.
-     * The seat reserved at submission stays reserved. Requires an `eligible`
-     * eligibility assessment (see assertEligibilityAllowsApproval).
-     */
-    public function approveVisitorRequest(VisitRequest $visitRequest): VisitRequest
-    {
-        return DB::transaction(function () use ($visitRequest) {
-            $visitRequest = $this->lockReviewableRequest($visitRequest);
-            $visitRequest->load(['visitor.account', 'pdl.activeRestrictions', 'relationship', 'schedule']);
-
-            $this->assertVisitorAssignable($visitRequest->visitor);
-            $this->assertPdlAssignable($visitRequest->pdl, $visitRequest->schedule?->schedule_date);
-
-            if (! $visitRequest->relationship?->isVerified()) {
-                throw ValidationException::withMessages([
-                    'relationship_id' => 'The visitor\'s relationship to this PDL is no longer verified. Reject the request instead.',
-                ]);
-            }
-
-            $this->assertEligibilityAllowsApproval($visitRequest);
-
-            if ($visitRequest->schedule->schedule_date->lt(now()->startOfDay())) {
-                throw ValidationException::withMessages([
-                    'schedule_id' => 'This visit date has already passed. Reject the request instead.',
-                ]);
-            }
-
-            // The relationship's BJMP requirements checklist must be complete
-            // (a document can be rejected after the eligibility check passed).
-            $requirements = RelationshipRequirements::for($visitRequest->relationship);
-            if (! RelationshipRequirements::allMet($requirements)) {
-                throw ValidationException::withMessages([
-                    'requirements' => 'Requirements not complete. Waiting on: '
-                        .implode(', ', RelationshipRequirements::unmetLabels($requirements)).'.',
-                ]);
-            }
-
-            $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
-
-            $scheduleLabel = $this->visitLabel($visitRequest);
-            Notification::notify(
-                $visitRequest->visitor->account_id,
-                'visit_confirmed',
-                'Visit Request Approved',
-                "Your visit with {$visitRequest->pdl->full_name} on {$scheduleLabel} is confirmed. Arrive 15 minutes early with valid ID.",
-                'visit_requests',
-                $visitRequest->visit_request_id
-            );
-
-            AuditLog::record(
-                'update',
-                'visit_requests',
-                $visitRequest->visit_request_id,
-                "Record Officer approved visit request for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel})",
-                Module::CODE_VISIT_SCHEDULING
-            );
-
-            return $visitRequest->fresh(['visitor', 'pdl', 'schedule']);
-        });
-    }
-
-    /**
-     * Record Officer rejects a visitor-submitted request: assigned -> cancelled,
-     * releasing the seats reserved at submission (every session).
-     */
-    public function rejectVisitorRequest(VisitRequest $visitRequest, string $reason): VisitRequest
-    {
-        return DB::transaction(function () use ($visitRequest, $reason) {
-            $visitRequest = $this->lockReviewableRequest($visitRequest);
-
-            $visitRequest->update([
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancellation_reason' => $reason,
-            ]);
-
-            $this->releaseSessionSlots($visitRequest);
-
-            $visitRequest->load(['visitor', 'pdl']);
-            $scheduleLabel = $this->visitLabel($visitRequest);
-            Notification::notify(
-                $visitRequest->visitor->account_id,
-                'visits',
-                'Visit Request Not Approved',
-                "Your request to visit {$visitRequest->pdl->full_name} on {$scheduleLabel} was not approved. Reason: {$reason}",
-                'visit_requests',
-                $visitRequest->visit_request_id
-            );
-
-            AuditLog::record(
-                'update',
-                'visit_requests',
-                $visitRequest->visit_request_id,
-                "Record Officer rejected visit request for {$visitRequest->visitor->full_name} → {$visitRequest->pdl->full_name} ({$scheduleLabel}): {$reason}",
-                Module::CODE_VISIT_SCHEDULING
-            );
-
-            return $visitRequest->fresh(['visitor', 'pdl', 'schedule']);
         });
     }
 
@@ -573,7 +478,7 @@ class VisitAssignmentService
     }
 
     /**
-     * Visitor cancels their own visit: `assigned` (awaiting review) or
+     * Visitor cancels their own visit: `assigned` (booked before the review step was removed) or
      * `confirmed` -> `declined`, until the visit's first session starts and
      * never after a check-in. Releases the seat of every session and voids
      * the QR pass. `declined` means "the visitor backed out", the same status
@@ -891,6 +796,90 @@ class VisitAssignmentService
         });
     }
 
+    /**
+     * IDs of requests still `assigned` (booked before the review step was
+     * removed) whose visit date is today or later.
+     */
+    public function upcomingAssignedRequestIds(): Collection
+    {
+        return VisitRequest::where('status', 'assigned')
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '>=', today()->toDateString()))
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+    }
+
+    /**
+     * Settles a request booked before the review step was removed: confirmed
+     * when it meets today's booking rules, otherwise cancelled with the
+     * reason and its seats released. Returns false (no change) when it is no
+     * longer `assigned` or its date has passed (expirePastDueAssignedRequest).
+     */
+    public function settleAssignedRequest(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+            if (! $visitRequest || $visitRequest->status !== 'assigned') {
+                return false;
+            }
+
+            $visitRequest->load(['visitor.account', 'pdl.activeRestrictions', 'relationship', 'schedule']);
+            $date = $visitRequest->schedule?->schedule_date;
+            if (! $date || $date->lt(today())) {
+                return false;
+            }
+
+            $reason = null;
+            try {
+                $this->assertVisitorAssignable($visitRequest->visitor);
+                $this->assertPdlAssignable($visitRequest->pdl, $date);
+                $this->assertRelationshipAssignable($visitRequest->relationship, $visitRequest->visitor, $visitRequest->pdl);
+                if (! $visitRequest->relationship->isVerified()) {
+                    throw ValidationException::withMessages(['relationship_id' => 'Your relationship to this PDL is not verified.']);
+                }
+                $this->assertClearedToBook($visitRequest->visitor, $visitRequest->relationship, $date);
+            } catch (ValidationException $e) {
+                $reason = collect($e->errors())->flatten()->first();
+            }
+
+            $scheduleLabel = $this->visitLabel($visitRequest);
+            $pdlName = $visitRequest->pdl?->full_name;
+
+            if ($reason === null) {
+                $visitRequest->update(['status' => 'confirmed', 'confirmed_at' => now()]);
+                $title = 'Visit Confirmed';
+                $message = "Your visit with {$pdlName} on {$scheduleLabel} is confirmed. Arrive 15 minutes early with valid ID.";
+                $audit = 'confirmed (visit requests no longer need approval)';
+            } else {
+                $visitRequest->update([
+                    'status' => 'cancelled',
+                    'cancelled_at' => now(),
+                    'cancellation_reason' => $reason,
+                ]);
+                $this->releaseSessionSlots($visitRequest);
+                $title = 'Visit Request Cancelled';
+                $message = "Your request to visit {$pdlName} on {$scheduleLabel} was cancelled: {$reason}";
+                $audit = "cancelled: {$reason}";
+            }
+
+            if ($visitRequest->visitor?->account_id) {
+                Notification::notify(
+                    $visitRequest->visitor->account_id,
+                    $reason === null ? 'visit_confirmed' : 'visits',
+                    $title,
+                    $message,
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
+            }
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System settled visit request for {$visitRequest->visitor?->full_name} → {$pdlName} ({$scheduleLabel}): {$audit}",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
+    }
+
     /** IDs of visitor requests still awaiting review whose visit date is before today. */
     public function pastDueAssignedRequestIds(): Collection
     {
@@ -902,9 +891,8 @@ class VisitAssignmentService
 
     /**
      * assigned -> cancelled once the visit date has passed without a staff
-     * decision, releasing the seat of every session (same outcome as a
-     * rejection, which approveVisitorRequest already demands for a past
-     * date). Returns false (no change) when the request was already
+     * decision, releasing the seat of every session. Only requests booked
+     * before the review step was removed can still be `assigned`. Returns false (no change) when the request was already
      * reviewed, expired by another run, or its date is today or later.
      */
     public function expirePastDueAssignedRequest(int $visitRequestId): bool
@@ -1235,34 +1223,118 @@ class VisitAssignmentService
     }
 
     /**
-     * Approval needs an `eligible` assessment: either all checks passed, or a
-     * flagged assessment that staff marked eligible in Eligibility Review
-     * (EligibilityController::review). `rejected` and an unreviewed
-     * `flagged_for_review` block approval; there is no override. A request
-     * with no assessment is blocked too — every submission creates one, so a
-     * missing row means the check must be run before anyone approves.
-     * The row is locked so a concurrent review or re-run cannot change the
-     * result between this check and the approval.
+     * The rules a visit needs on top of the account, relationship and PDL
+     * checks, so that every booking is confirmed (or sent to the visitor to
+     * confirm) without a review step: the relationship's requirements
+     * checklist is complete (valid ID, or a minor's birth certificate, and
+     * the documents of the relationship type) and no visitor flag covers the
+     * visit date. A flag "until resolved" covers every date until it is
+     * resolved; a flag with a time limit only the dates before it ends.
      */
-    private function assertEligibilityAllowsApproval(VisitRequest $visitRequest): void
-    {
-        $assessment = EligibilityAssessment::where('visit_request_id', $visitRequest->visit_request_id)
-            ->lockForUpdate()
-            ->first();
-
-        $reason = $assessment?->flagged_reason ? " ({$assessment->flagged_reason})" : '';
-
-        $message = match ($assessment?->overall_result) {
-            'eligible' => null,
-            'rejected' => "The eligibility assessment rejected this request{$reason}. Reject the request instead.",
-            'flagged_for_review' => "The eligibility assessment flagged this request for review{$reason}. Complete the review in Eligibility Review before approving.",
-            null => 'This request has no eligibility assessment. Run the eligibility check before approving.',
-            default => 'The eligibility assessment does not allow this request to be approved.',
-        };
-
-        if ($message !== null) {
-            throw ValidationException::withMessages(['eligibility' => $message]);
+    private function assertClearedToBook(
+        VisitorProfile $visitor,
+        VisitorPdlRelationship $relationship,
+        \DateTimeInterface|string $date
+    ): void {
+        if (self::flagCovers($visitor, $date)) {
+            throw ValidationException::withMessages([
+                'visitor_id' => self::FLAGGED_VISITOR_MESSAGE,
+            ]);
         }
+
+        $requirements = RelationshipRequirements::for($relationship);
+        if (! RelationshipRequirements::allMet($requirements)) {
+            throw ValidationException::withMessages([
+                'requirements' => 'Visits can be booked once the requirements for this PDL are complete. Still waiting on: '
+                    .implode(', ', RelationshipRequirements::unmetLabels($requirements)).'.',
+            ]);
+        }
+    }
+
+    /** Whether one of the visitor's active flags covers $date. */
+    public static function flagCovers(VisitorProfile $visitor, \DateTimeInterface|string $date): bool
+    {
+        $day = Carbon::parse($date)->startOfDay();
+
+        return $visitor->activeFlags()
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', $day))
+            ->exists();
+    }
+
+    /**
+     * Cancels the visitor's upcoming visits on dates an active flag covers
+     * (confirmed, or waiting for the visitor to confirm), releasing their
+     * seats, after a flag was added. Visits already entered at the gate are
+     * left alone. Resolving the flag does not bring them back. Returns how
+     * many changed.
+     */
+    public function cancelVisitsForFlaggedVisitor(VisitorProfile $visitor): int
+    {
+        $ids = VisitRequest::where('visitor_id', $visitor->visitor_id)
+            ->whereIn('status', self::CANCELLABLE_WHEN_PDL_UNAVAILABLE)
+            ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', '>=', today()->toDateString()))
+            ->whereDoesntHave('checkins')
+            ->orderBy('visit_request_id')
+            ->pluck('visit_request_id');
+
+        $cancelled = 0;
+        foreach ($ids as $id) {
+            if ($this->cancelForFlaggedVisitor((int) $id)) {
+                $cancelled++;
+            }
+        }
+
+        return $cancelled;
+    }
+
+    private function cancelForFlaggedVisitor(int $visitRequestId): bool
+    {
+        return DB::transaction(function () use ($visitRequestId) {
+            $visitRequest = VisitRequest::whereKey($visitRequestId)->lockForUpdate()->first();
+
+            if (! $visitRequest || ! in_array($visitRequest->status, self::CANCELLABLE_WHEN_PDL_UNAVAILABLE, true)) {
+                return false;
+            }
+
+            $visitRequest->load(['schedule', 'visitor', 'pdl']);
+            $date = $visitRequest->schedule?->schedule_date;
+
+            if (
+                ! $date || $date->lt(today())
+                || $visitRequest->checkins()->exists()
+                || ! $visitRequest->visitor
+                || ! self::flagCovers($visitRequest->visitor, $date)
+            ) {
+                return false;
+            }
+
+            $visitRequest->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => self::FLAGGED_VISITOR_MESSAGE,
+            ]);
+
+            $this->releaseSessionSlots($visitRequest);
+
+            $scheduleLabel = $this->visitLabel($visitRequest);
+
+            if ($visitRequest->visitor->account_id) {
+                Notification::notify(
+                    $visitRequest->visitor->account_id,
+                    'visits',
+                    'Visit Cancelled',
+                    "Your visit with {$visitRequest->pdl?->full_name} on {$scheduleLabel} was cancelled because your account has an active flag. Please contact the facility.",
+                    'visit_requests',
+                    $visitRequest->visit_request_id
+                );
+            }
+
+            AuditLog::record('update', 'visit_requests', $visitRequest->visit_request_id,
+                "System cancelled visit for {$visitRequest->visitor->full_name} → {$visitRequest->pdl?->full_name} ({$scheduleLabel}): visitor flagged",
+                Module::CODE_VISIT_SCHEDULING);
+
+            return true;
+        });
     }
 
     private function assertScheduleAssignable(?VisitSchedule $schedule, Pdl $pdl): void
@@ -1426,20 +1498,6 @@ class VisitAssignmentService
     public function lockVisitor(VisitorProfile $visitor): void
     {
         VisitorProfile::whereKey($visitor->visitor_id)->lockForUpdate()->first();
-    }
-
-    /** Locks a visit request that is still awaiting staff review (`assigned`). */
-    private function lockReviewableRequest(VisitRequest $visitRequest): VisitRequest
-    {
-        $locked = VisitRequest::whereKey($visitRequest->visit_request_id)->lockForUpdate()->first();
-
-        if (! $locked || $locked->status !== 'assigned') {
-            throw ValidationException::withMessages([
-                'status' => 'Only visit requests awaiting review can be approved or rejected.',
-            ]);
-        }
-
-        return $locked;
     }
 
     /**

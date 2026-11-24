@@ -86,16 +86,13 @@ class NavBadgesTest extends TestCase
         $this->assertNull($this->badges()['pdls']);
     }
 
-    public function test_requests_count_until_decided_and_todays_visits_show_on_upcoming(): void
+    public function test_a_booking_needs_no_review_and_todays_visits_show_on_upcoming(): void
     {
-        $visit = app(VisitAssignmentService::class)->submitVisitorRequest(
+        app(VisitAssignmentService::class)->submitVisitorRequest(
             $this->visitor, $this->relationship, CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila'), '09:00'
         );
-        $this->assertSame(1, $this->badges()['visitors']['value']);
-        $this->assertSame(1, $this->badges()['review']['value']);
-
-        app(VisitAssignmentService::class)->approveVisitorRequest($visit);
-        $this->assertNull($this->badges()['visitors']);
+        // Confirmed at booking: nothing waits for review.
+        $this->assertArrayNotHasKey('visitors', $this->badges());
         $this->assertNull($this->badges()['review']);
         $this->assertNull($this->badges()['upcoming']);
 
@@ -105,9 +102,7 @@ class NavBadgesTest extends TestCase
 
     public function test_endpoint_returns_rendered_badges_for_record_officers_only(): void
     {
-        app(VisitAssignmentService::class)->submitVisitorRequest(
-            $this->visitor, $this->relationship, CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila'), '09:00'
-        );
+        $this->visitor->update(['verification_status' => 'pending']); // an account waiting for review
 
         $this->getJson('/nav-badges')->assertOk()
             ->assertJsonPath('review', '<span class="nav-count" title="1 waiting for review" data-href="' . route('review-queue') . '">1</span>')

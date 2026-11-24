@@ -27,7 +27,7 @@ class PdlLinkRequestApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
         Storage::fake('local');
         Sanctum::actingAs($this->visitorAccount);
     }

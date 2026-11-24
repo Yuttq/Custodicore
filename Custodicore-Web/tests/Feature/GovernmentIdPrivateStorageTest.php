@@ -31,7 +31,7 @@ class GovernmentIdPrivateStorageTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
         $this->withoutVite();
         Storage::fake('local');
         Storage::fake('public');
@@ -110,6 +110,7 @@ class GovernmentIdPrivateStorageTest extends TestCase
     public function test_replacement_id_photo_taken_at_the_gate_goes_to_the_private_disk(): void
     {
         $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
+        $this->completeRequirements(); // a visit needs a complete checklist
         $visit = app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
@@ -139,6 +140,7 @@ class GovernmentIdPrivateStorageTest extends TestCase
     public function test_a_refused_gate_check_in_leaves_no_replacement_id_photo_behind(): void
     {
         $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
+        $this->completeRequirements(); // a visit needs a complete checklist
         $visit = app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
@@ -168,6 +170,7 @@ class GovernmentIdPrivateStorageTest extends TestCase
     public function test_a_different_id_can_be_recorded_at_the_gate_without_an_id_number(): void
     {
         $this->travelTo($this->schedule->schedule_date->copy()->subDay()->setTime(10, 0));
+        $this->completeRequirements(); // a visit needs a complete checklist
         $visit = app(VisitAssignmentService::class)->assign([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,

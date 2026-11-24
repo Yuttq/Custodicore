@@ -35,7 +35,7 @@ trait SeedsVisitAssignmentFixtures
     protected VisitSchedule $schedule;
     protected FacilityVisitationRule $rule;
 
-    protected function seedPhase1Fixtures(): void
+    protected function seedPhase1Fixtures(bool $completeRequirements = true): void
     {
         foreach ([
             Module::CODE_USER_MANAGEMENT => 'User Management',
@@ -152,6 +152,13 @@ trait SeedsVisitAssignmentFixtures
             'setting_value' => '48',
             'updated_by' => StaffProfile::first()->staff_id,
         ]);
+
+        // A visit is only booked when every requirement is complete (there
+        // is no review step), so the fixture visitor starts with a complete
+        // checklist. Tests about incomplete requirements take items away.
+        if ($completeRequirements) {
+            $this->completeRequirements();
+        }
     }
 
     /**

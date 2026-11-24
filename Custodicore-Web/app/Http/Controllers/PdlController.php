@@ -875,6 +875,9 @@ class PdlController extends Controller
         if (! $restriction->isActive()) {
             return back()->with('error', 'This restriction has already been lifted.');
         }
+        if ($restriction->hasEnded()) {
+            return back()->with('error', 'This restriction already ended on ' . $restriction->end_date->format('M j, Y') . '. Visitation has resumed.');
+        }
 
         try {
             $restriction->update([

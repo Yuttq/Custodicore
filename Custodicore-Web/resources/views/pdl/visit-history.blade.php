@@ -10,7 +10,7 @@
 </div>
 
 <div class="panel" style="margin-bottom:20px;">
-  <div class="panel-header"><h2>Visitors Linked to {{ $pdl->full_name }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h2></div>
+  <div class="panel-header"><h2>Visitors Linked to {{ $pdl->listName() }} <span class="muted-cell">({{ $pdl->pdl_number }})</span></h2></div>
 
   {{--
     Identity/relationship verification status lives on the visitor's own
@@ -79,13 +79,6 @@
             @else
               <span class="muted-cell">Not checked</span>
             @endif
-            <form method="POST" action="{{ route('eligibility.run', $visit->visit_request_id) }}" style="margin-top:4px;"
-                    data-confirm="Run the eligibility check for this visit request now? It re-checks the visitor's ID, relationship, flags and the PDL's restrictions." data-confirm-title="Run eligibility check" data-confirm-ok="Run check">
-              @csrf
-              <button type="submit" class="row-action">
-                {{ $visit->eligibilityAssessment ? 'Re-run' : 'Run Check' }}
-              </button>
-            </form>
           </td>
         </tr>
         @endforeach

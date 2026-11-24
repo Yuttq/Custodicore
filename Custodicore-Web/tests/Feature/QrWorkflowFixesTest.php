@@ -95,7 +95,7 @@ class QrWorkflowFixesTest extends TestCase
         ])->assertCreated()->json('id');
         $this->completeRequirements();
 
-        return app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        return VisitRequest::findOrFail($id);
     }
 
     /** A staff-assigned visit awaiting the visitor's confirmation. */
@@ -194,7 +194,7 @@ class QrWorkflowFixesTest extends TestCase
             'date' => self::NEXT_FRIDAY,
             'startTimes' => ['09:00'],
         ])->assertCreated()->json('id');
-        $visit = app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        $visit = VisitRequest::findOrFail($id);
 
         $friday = VisitSchedule::whereDate('schedule_date', self::FRIDAY)->where('time_slot_start', '09:00:00')->sole();
         VisitRequest::whereKey($visit->visit_request_id)->update(['schedule_id' => $friday->schedule_id]);
@@ -419,13 +419,15 @@ class QrWorkflowFixesTest extends TestCase
 
     public function test_assigned_entered_and_past_visits_are_not_cancelled(): void
     {
-        // Awaiting review: left to the review process.
+        // Awaiting review (booked before the review step was removed): left
+        // to the nightly job that settles such requests.
         Sanctum::actingAs($this->visitorAccount);
         $assignedId = $this->postJson('/api/visit-requests', [
             'relationshipId' => $this->relationship->relationship_id,
             'date' => self::NEXT_FRIDAY,
             'startTimes' => ['09:00'],
         ])->assertCreated()->json('id');
+        VisitRequest::whereKey($assignedId)->update(['status' => 'assigned', 'confirmed_at' => null]);
 
         // Entered at the gate (morning of a whole-day visit, now on break).
         $entered = $this->confirmedVisit(['09:00', '13:00'], self::FRIDAY);

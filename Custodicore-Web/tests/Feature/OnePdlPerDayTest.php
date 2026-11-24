@@ -92,13 +92,13 @@ class OnePdlPerDayTest extends TestCase
             'registered_by' => StaffProfile::first()->staff_id,
         ]);
 
-        return VisitorPdlRelationship::create([
+        return $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $this->visitor->visitor_id,
             'pdl_id' => $pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
     }
 
     /** @param  string|array<int, string>  $starts */
@@ -306,7 +306,7 @@ class OnePdlPerDayTest extends TestCase
         $other = $this->otherRelationship();
         $this->request($this->relationship, self::FRIDAY, '09:00');
 
-        $this->assertSame('assigned', $this->request($other, self::SUNDAY, '09:00')->status);
+        $this->assertSame('confirmed', $this->request($other, self::SUNDAY, '09:00')->status);
         $this->assertSame(2, VisitRequest::count());
     }
 
@@ -314,9 +314,9 @@ class OnePdlPerDayTest extends TestCase
     {
         $other = $this->otherRelationship();
         $first = $this->request($this->relationship, self::FRIDAY, '09:00');
-        app(VisitAssignmentService::class)->rejectVisitorRequest($first, 'Not this day.');
+        app(VisitAssignmentService::class)->cancelByVisitor($first, 'Not this day.');
 
-        $this->assertSame('assigned', $this->request($other, self::FRIDAY, '13:00')->status);
+        $this->assertSame('confirmed', $this->request($other, self::FRIDAY, '13:00')->status);
     }
 
     public function test_a_declined_visit_does_not_block_another_pdl_that_day(): void

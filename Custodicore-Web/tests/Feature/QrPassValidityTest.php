@@ -76,7 +76,7 @@ class QrPassValidityTest extends TestCase
         ])->assertCreated()->json('id');
         $this->completeRequirements();
 
-        return app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        return VisitRequest::findOrFail($id);
     }
 
     private function at(string $time, string $date = self::FRIDAY): void

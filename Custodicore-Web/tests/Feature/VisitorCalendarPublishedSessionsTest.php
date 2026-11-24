@@ -117,13 +117,13 @@ class VisitorCalendarPublishedSessionsTest extends TestCase
             'contact_number' => '09170000000',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         return [$account, $relationship];
     }
@@ -236,14 +236,14 @@ class VisitorCalendarPublishedSessionsTest extends TestCase
         $this->assertSame(1, (int) $schedule->fresh()->slots_taken);
     }
 
-    public function test_valid_request_for_an_opened_session_is_accepted_and_awaits_review(): void
+    public function test_valid_request_for_an_opened_session_is_accepted_and_confirmed(): void
     {
         $schedule = $this->officerCreates(self::OPENED_FRIDAY, 'morning', 3);
 
         $id = $this->request(self::OPENED_FRIDAY)->assertCreated()->json('id');
 
         $visit = VisitRequest::findOrFail($id);
-        $this->assertSame('assigned', $visit->status, 'Still goes to Record Officer review.');
+        $this->assertSame('confirmed', $visit->status, 'Confirmed at once, no review step.');
         $this->assertSame($schedule->schedule_id, $visit->schedule_id);
         $this->assertSame(1, (int) $schedule->fresh()->slots_taken);
         $this->assertSame(2, $this->slot(self::OPENED_FRIDAY, '09:00')['slotsRemaining']);

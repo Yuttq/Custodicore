@@ -91,7 +91,7 @@
               <span class="muted-cell">—</span>
             @endif
           </td>
-          <td>{{ $visit->pdl?->full_name ?? '—' }}</td>
+          <td>{{ $visit->pdl?->listName() ?? '—' }}</td>
           <td class="muted-cell">{{ $sessionCount > 1 ? 'Whole day' : 'This session only' }}</td>
           <td>{{ $statusLabels[$visit->status] ?? ucfirst(str_replace('_', ' ', $visit->status)) }}</td>
           <td>

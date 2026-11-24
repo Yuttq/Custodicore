@@ -39,7 +39,7 @@ class PdlLinkRequestReviewTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seedPhase1Fixtures();
+        $this->seedPhase1Fixtures(completeRequirements: false);
         $this->withoutVite();
         Storage::fake('local');
         $this->actingAs($this->recordOfficerAccount, 'web');

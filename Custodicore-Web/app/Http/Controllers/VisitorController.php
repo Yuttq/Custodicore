@@ -61,18 +61,14 @@ class VisitorController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        // Visitor-submitted visit requests awaiting review, soonest visit first.
-        $pendingVisitRequests = $this->pendingVisitRequests()->get();
-
         $stats = [
             'approved_visitors' => VisitorProfile::where('verification_status', 'verified')->count(),
             // Same as the Review Queue's Accounts step: walk-ins are decided at the Front Desk.
             'pending_verification' => \App\Services\ReviewQueue::accountsQuery()->count(),
             'flagged' => VisitorProfile::whereHas('activeFlags')->count(),
-            'pending_visit_requests' => $pendingVisitRequests->count(),
         ];
 
-        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'pendingVisitRequests', 'flagged'));
+        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'flagged'));
     }
 
     // -----------------------------------------------------------------
@@ -97,26 +93,9 @@ class VisitorController extends Controller
             ->orderBy('full_name')
             ->get(['pdl_id', 'pdl_number', 'full_name', 'alias', 'custody_status', 'photo_path']);
 
-        $pendingVisitRequests = $this->pendingVisitRequests()
-            ->where('visit_requests.visitor_id', $visitor->visitor_id)
-            ->get();
-
         $activity = \App\Services\ActivityLog::forVisitor($visitor);
 
-        return view('visitor.show', compact('visitor', 'relatablePdls', 'pendingVisitRequests', 'activity'));
-    }
-
-    /** Visitor-submitted visit requests (`assigned`) awaiting Record Officer review. */
-    private function pendingVisitRequests()
-    {
-        return VisitRequest::query()
-            ->select('visit_requests.*')
-            ->awaitingReview()
-            ->join('visit_schedules', 'visit_schedules.schedule_id', '=', 'visit_requests.schedule_id')
-            ->with(['visitor', 'pdl', 'relationship', 'schedule', 'sessionSchedules', 'eligibilityAssessment'])
-            ->orderBy('visit_schedules.schedule_date')
-            ->orderBy('visit_schedules.time_slot_start')
-            ->orderBy('visit_requests.assigned_at');
+        return view('visitor.show', compact('visitor', 'relatablePdls', 'activity'));
     }
 
     // -----------------------------------------------------------------
@@ -898,7 +877,14 @@ class VisitorController extends Controller
         $this->logAudit('create', 'visitor_flags', $flag->flag_id,
             "Flagged {$visitor->full_name}: {$flag->typeLabel()} (" . VisitorFlag::DURATIONS[$duration] . ')');
 
-        return back()->with('success', 'Visitor flagged. ' . $flag->durationLabel() . '.');
+        // A flagged visitor cannot visit on the dates the flag covers: their
+        // upcoming visits on those dates are cancelled and the seats freed.
+        $cancelled = app(\App\Services\VisitAssignmentService::class)->cancelVisitsForFlaggedVisitor($visitor);
+        $cancelledNote = $cancelled > 0
+            ? " {$cancelled} upcoming " . ($cancelled === 1 ? 'visit was' : 'visits were') . ' cancelled.'
+            : '';
+
+        return back()->with('success', 'Visitor flagged. ' . $flag->durationLabel() . '.' . $cancelledNote);
     }
 
     public function resolveFlag(VisitorProfile $visitor, VisitorFlag $flag)

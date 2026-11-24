@@ -113,7 +113,7 @@
                                     @endif
                                 </td>
                                 <td class="py-sm pr-md">
-                                    {{ $pdl?->full_name ?? '—' }}
+                                    {{ $pdl?->listName() ?? '—' }}
                                     @if ($pdl?->pdl_number)
                                         <span class="block text-metadata text-text-secondary">{{ $pdl->pdl_number }}</span>
                                     @endif

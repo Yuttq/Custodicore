@@ -32,7 +32,7 @@
                     @include('admin.partials.avatar', ['name' => $visit->visitor?->full_name ?? '—', 'size' => 'h-9 w-9'])
                     <div class="flex-1">
                         <p class="text-body font-semibold">{{ $visit->visitor?->full_name ?? '—' }}</p>
-                        <p class="text-metadata text-text-secondary">Visiting {{ $visit->pdl?->full_name ?? '—' }} ({{ $visit->pdl?->pdl_number }})</p>
+                        <p class="text-metadata text-text-secondary">Visiting {{ $visit->pdl?->listName() ?? '—' }} ({{ $visit->pdl?->pdl_number }})</p>
                     </div>
                     @if ($visit->sessionSchedules->isNotEmpty())
                         {{-- A whole-day visit lists both sessions. --}}

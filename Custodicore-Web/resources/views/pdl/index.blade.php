@@ -104,7 +104,7 @@
             @include('pdl.partials.avatar', ['pdl' => $pdl])
             <div>
               <a class="full-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">
-                {{ $pdl->full_name }}
+                {{ $pdl->listName() }}
                 @if ($pdl->alias) <span class="muted-cell">"{{ $pdl->alias }}"</span> @endif
               </a>
               @if ($next = $nextHearings[$pdl->pdl_id] ?? null)

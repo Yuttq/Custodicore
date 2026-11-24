@@ -106,7 +106,7 @@
                     <div class="flex flex-col gap-xs py-sm sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p class="text-body font-semibold">
-                                Visiting {{ $today['visit']->pdl?->full_name ?? '—' }}
+                                Visiting {{ $today['visit']->pdl?->listName() ?? '—' }}
                                 <span class="font-normal text-text-secondary">({{ $today['visit']->pdl?->pdl_number ?? '—' }})</span>
                             </p>
                             <p class="text-metadata text-text-secondary">{{ $today['sessions'] }}</p>
@@ -161,7 +161,7 @@
                     <li class="flex flex-wrap items-center justify-between gap-sm py-sm">
                         <div>
                             <p class="text-body font-semibold">
-                                {{ $rel->pdl?->full_name ?? '—' }}
+                                {{ $rel->pdl?->listName() ?? '—' }}
                                 <span class="font-normal text-text-secondary">({{ $rel->pdl?->pdl_number ?? '—' }})</span>
                             </p>
                             <p class="text-metadata text-text-secondary">
@@ -187,7 +187,7 @@
                     <div>
                         <p class="text-body font-semibold">{{ $upcoming['visit']->schedule?->schedule_date?->format('D, M d, Y') ?? '—' }}</p>
                         <p class="text-metadata text-text-secondary">
-                            {{ $upcoming['sessions'] }} · Visiting {{ $upcoming['visit']->pdl?->full_name ?? '—' }}
+                            {{ $upcoming['sessions'] }} · Visiting {{ $upcoming['visit']->pdl?->listName() ?? '—' }}
                         </p>
                     </div>
                     @include('admin.partials.status-chip', ['status' => $upcoming['visit']->status])
@@ -227,11 +227,11 @@
                             @endphp
                             <tr class="text-body align-top">
                                 <td class="whitespace-nowrap py-sm pr-md font-semibold">{{ $in?->format('M d, Y') ?? '—' }}</td>
-                                <td class="py-sm pr-md">{{ $entry->visitRequest?->pdl?->full_name ?? '—' }}</td>
+                                <td class="py-sm pr-md">{{ $entry->visitRequest?->pdl?->listName() ?? '—' }}</td>
                                 <td class="py-sm pr-md">
                                     {{ $in?->format('H:i') ?? '—' }}
                                     @if ($entry->checkInOfficer)
-                                        <span class="block text-metadata text-text-secondary">by {{ $entry->checkInOfficer->full_name }}</span>
+                                        <span class="block text-metadata text-text-secondary">by {{ $entry->checkInOfficer->listName() }}</span>
                                     @endif
                                 </td>
                                 <td class="py-sm pr-md">

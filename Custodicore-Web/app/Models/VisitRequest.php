@@ -23,6 +23,7 @@ class VisitRequest extends Model
         'relationship_id',
         'schedule_id',
         'status',
+        'assigned_at',
         'confirmation_deadline',
         'confirmed_at',
         'cancelled_at',

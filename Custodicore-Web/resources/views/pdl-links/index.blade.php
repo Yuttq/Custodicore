@@ -65,7 +65,7 @@
           @foreach ($links as $link)
             <tr>
               <td style="font-weight:600;">{{ $link->visitor?->full_name ?? '—' }}</td>
-              <td>{{ $link->pdl?->full_name ?? 'PDL not found' }}</td>
+              <td>{{ $link->pdl?->listName() ?? 'PDL not found' }}</td>
               <td>{{ $link->relationshipLabel() }}</td>
               <td><span class="badge transferred"><span class="dot"></span>Pending</span></td>
               {{-- created_at is not cast to a date on this model. --}}

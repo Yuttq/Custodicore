@@ -8,7 +8,6 @@
   $statusBadge = [
     'confirmed' => ['active', 'Confirmed'],
     'pending_confirmation' => ['transferred', 'Visitor to confirm'],
-    'assigned' => ['transferred', 'Waiting for review'],
     'completed' => ['detained', 'Completed'],
     'no_show' => ['released', 'No-show'],
   ];
@@ -33,7 +32,7 @@
   Who is coming to visit. Approved requests show here as <strong>Confirmed</strong>; on the day, the front desk checks the visitor in with their QR pass.
 </p>
 
-<section class="stats" style="margin-bottom:18px;grid-template-columns:repeat(3,1fr);">
+<section class="stats" style="margin-bottom:18px;grid-template-columns:repeat(2,1fr);">
   <a class="stat-card stat-link accent-teal" href="{{ $link(['range' => 'today', 'status' => '']) }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Visits Today</div>
     <div class="stat-value">{{ $stats['today'] }}</div>
@@ -41,11 +40,6 @@
   <a class="stat-card stat-link accent-blue" href="{{ $link(['range' => 'week', 'status' => 'confirmed']) }}" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Confirmed, Next 7 Days</div>
     <div class="stat-value">{{ $stats['week'] }}</div>
-  </a>
-  <a class="stat-card stat-link" href="{{ route('eligibility.index') }}" style="border-left:3px solid var(--amber);text-decoration:none;color:inherit;" title="Open the Review Queue">
-    <div class="stat-label">Waiting for Review</div>
-    <div class="stat-value">{{ $stats['awaiting_review'] }}</div>
-    <div class="muted-cell">review requests →</div>
   </a>
 </section>
 
@@ -99,7 +93,7 @@
             </td>
             <td>
               @if ($visit->pdl)
-                <a class="full-name" href="{{ route('pdl.show', $visit->pdl_id) }}">{{ $visit->pdl->full_name }}</a>
+                <a class="full-name" href="{{ route('pdl.show', $visit->pdl_id) }}">{{ $visit->pdl->listName() }}</a>
                 <div class="muted-cell" style="font-size:12px;">{{ $visit->pdl->pdl_number }}</div>
               @else
                 —
@@ -112,9 +106,7 @@
               @elseif ($wasIn && $visit->status === 'confirmed')
                 <div class="muted-cell" style="font-size:12px;margin-top:4px;">Out for the midday break</div>
               @endif
-              @if ($visit->status === 'assigned')
-                <div style="font-size:12px;margin-top:4px;"><a href="{{ route('eligibility.index') }}" style="color:var(--teal);font-weight:600;">Review →</a></div>
-              @elseif ($visit->status === 'pending_confirmation' && $visit->confirmation_deadline)
+              @if ($visit->status === 'pending_confirmation' && $visit->confirmation_deadline)
                 <div class="muted-cell" style="font-size:12px;margin-top:4px;">Confirm by {{ $visit->confirmation_deadline->format('M j, H:i') }}</div>
               @endif
             </td>

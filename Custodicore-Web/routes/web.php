@@ -17,7 +17,6 @@ use App\Http\Controllers\Auth\StaffSetupController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\MyProfileController;
 use App\Http\Controllers\VisitationTrackingController;
-use App\Http\Controllers\EligibilityController;
 
 use App\Http\Controllers\FrontDesk\DashboardController as FrontDeskDashboardController;
 use App\Http\Controllers\FrontDesk\CheckinCheckoutController;
@@ -563,28 +562,16 @@ Route::middleware([
         [\App\Http\Controllers\ActivityLogController::class, 'index']
     )->name('activity-log.index');
 
-    // Review Queue: one sidebar entry for every review list. Opens Step 1
-    // (accounts) when accounts are waiting, else Step 2 (visit requests),
-    // else PDL Links when only those are waiting.
+    // Review Queue: one sidebar entry for every review list. Opens Accounts
+    // when accounts are waiting, else PDL Links when only those are waiting.
+    // (Visit requests need no review: a booking is confirmed at once.)
     Route::get('/review-queue', function () {
         $accountsWaiting = \App\Services\ReviewQueue::accountsQuery()->exists();
-        $visitsWaiting = \App\Services\ReviewQueue::visitsQuery()->exists();
-        $pdlLinksWaiting = ! $accountsWaiting && ! $visitsWaiting
+        $pdlLinksWaiting = ! $accountsWaiting
             && (\App\Services\ReviewQueue::pdlLinksQuery()->exists() || \App\Services\ReviewQueue::pdlRequestsQuery()->exists());
 
-        return redirect()->route(match (true) {
-            $accountsWaiting => 'account-reviews.index',
-            $visitsWaiting => 'eligibility.index',
-            $pdlLinksWaiting => 'pdl-links.index',
-            default => 'account-reviews.index',
-        });
+        return redirect()->route($pdlLinksWaiting ? 'pdl-links.index' : 'account-reviews.index');
     })->name('review-queue');
-
-    // One-step decisions on a visit request in Review Queue → Visit Requests.
-    Route::post('/review-queue/visits/{visitRequest}/approve', [\App\Http\Controllers\ReviewQueueController::class, 'approveVisit'])
-        ->name('review-queue.visits.approve');
-    Route::post('/review-queue/visits/{visitRequest}/reject', [\App\Http\Controllers\ReviewQueueController::class, 'rejectVisit'])
-        ->name('review-queue.visits.reject');
 
     // Queue of visitor accounts waiting for approval (identity check).
     Route::get(
@@ -738,39 +725,6 @@ Route::middleware([
         '/visitors/{visitor}/visits/assign',
         [\App\Http\Controllers\VisitAssignmentController::class, 'store']
     )->name('visitor.visits.assign');
-
-    // Visitor-submitted visit requests (`assigned`) awaiting staff review.
-    Route::post(
-        '/visitors/{visitor}/visit-requests/{visitRequest}/approve',
-        [\App\Http\Controllers\VisitRequestReviewController::class, 'approve']
-    )->name('visitor.visit-requests.approve');
-
-    Route::post(
-        '/visitors/{visitor}/visit-requests/{visitRequest}/reject',
-        [\App\Http\Controllers\VisitRequestReviewController::class, 'reject']
-    )->name('visitor.visit-requests.reject');
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Eligibility Assessment
-    |--------------------------------------------------------------------------
-    */
-
-    Route::get(
-        '/eligibility',
-        [EligibilityController::class, 'index']
-    )->name('eligibility.index');
-
-    Route::post(
-        '/eligibility/run/{visitRequest}',
-        [EligibilityController::class, 'store']
-    )->name('eligibility.run');
-
-    Route::post(
-        '/eligibility/{assessment}/review',
-        [EligibilityController::class, 'review']
-    )->name('eligibility.review');
 });
 
 

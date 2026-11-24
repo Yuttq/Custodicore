@@ -19,8 +19,10 @@ class DashboardController extends Controller
             'no_visit_record' => Pdl::where('custody_status', 'active')
                 ->whereDoesntHave('visitRequests')
                 ->count(),
-            // Visitor-submitted requests (`assigned`) awaiting staff review.
-            'pending_visit_requests' => VisitRequest::awaitingReview()->count(),
+            // Who is coming today (bookings are confirmed at once, no review).
+            'visits_today' => VisitRequest::where('status', 'confirmed')
+                ->whereHas('schedule', fn ($q) => $q->whereDate('schedule_date', now()->toDateString()))
+                ->count(),
         ];
 
         // "Recent Records Activity" — there is no confirmed custody-history

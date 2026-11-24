@@ -21,14 +21,7 @@
     <div class="stat-label">Flagged</div>
     <div class="stat-value">{{ $stats['flagged'] }}</div>
   </a>
-  <a class="stat-card stat-link accent-teal" href="{{ route('eligibility.index') }}" style="text-decoration:none;color:inherit;" title="Open the Review Queue">
-    <div class="stat-label">Visit Requests to Review</div>
-    <div class="stat-value">{{ $stats['pending_visit_requests'] }}</div>
-    <div class="muted-cell">review requests →</div>
-  </a>
 </section>
-
-@include('visitor.partials.pending-visit-requests', ['showVisitor' => true])
 
 @if ($flagged)
   <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">

@@ -5,7 +5,8 @@
   $statusLabels = ['active' => 'Active', 'released' => 'Released', 'transferred' => 'Transferred', 'deceased' => 'Deceased'];
   $classificationLabels = ['drug_related' => 'Drug-related', 'non_drug_related' => 'Non-drug-related'];
   $restrictionLabel = fn ($type) => \Illuminate\Support\Str::of($type)->replace('_', ' ')->title();
-  $activeRestrictions = $pdl->restrictions->filter->isActive();
+  // Past their end date they no longer apply, even if never lifted.
+  $activeRestrictions = $pdl->restrictions->filter->isCurrent();
   $nameParts = $pdl->nameParts();
 
   // Open the edit form again after a failed save (wrong password, invalid
@@ -34,7 +35,7 @@
   <div class="pdl-hero-main">
     @include('pdl.partials.avatar', ['pdl' => $pdl, 'class' => 'pdl-photo-lg'])
     <div class="pdl-hero-text">
-      <h1 class="pdl-hero-name">{{ $pdl->full_name }}</h1>
+      <h1 class="pdl-hero-name">{{ $pdl->listName() }}</h1>
       <div class="pdl-hero-sub">
         {{ $pdl->pdl_number }}
         @if ($pdl->alias) · alias "{{ $pdl->alias }}" @endif
@@ -79,7 +80,7 @@
         @endif
       </dd>
     </div>
-    <div><dt>Registered By</dt><dd>{{ $pdl->registeredBy?->full_name ?? '—' }}</dd></div>
+    <div><dt>Registered By</dt><dd>{{ $pdl->registeredBy?->listName() ?? '—' }}</dd></div>
     <div class="is-wide"><dt>Offense</dt><dd>{{ $pdl->primaryOffense() ?? 'No case on file' }}@if ($pdl->legalRecords->count() > 1) <span class="muted-cell">+{{ $pdl->legalRecords->count() - 1 }} more</span>@endif</dd></div>
     <div class="is-wide">
       <dt>Visiting Hours</dt>
@@ -128,9 +129,9 @@
       <p class="field-hint" style="margin:0 0 12px 0;">This record only has a full name on file. The name fields below are a best guess. Please check them before saving.</p>
     @endif
     <div class="row cols-3">
+      <div class="field-m"><label>Last Name</label><input type="text" name="last_name" value="{{ old('last_name', $nameParts['last']) }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only"></div>
       <div class="field-m"><label>First Name</label><input type="text" name="first_name" value="{{ old('first_name', $nameParts['first']) }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only"></div>
       <div class="field-m"><label>Middle Name (optional)</label><input type="text" name="middle_name" value="{{ old('middle_name', $nameParts['middle']) }}" maxlength="100" pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only"></div>
-      <div class="field-m"><label>Last Name</label><input type="text" name="last_name" value="{{ old('last_name', $nameParts['last']) }}" maxlength="100" required pattern="[A-Za-zÀ-ÿÑñ][A-Za-zÀ-ÿÑñ .'\-]*" title="Letters, spaces, dots, apostrophes and dashes only"></div>
     </div>
     <div class="row cols-3">
       @include('pdl.partials.suffix-select', ['selected' => old('suffix', $nameParts['suffix'])])
@@ -339,12 +340,12 @@
     <p class="empty-note">No restrictions on file.</p>
   @else
     <div class="rec-list">
-      @foreach ($pdl->restrictions->sortByDesc(fn ($r) => $r->isActive()) as $restriction)
+      @foreach ($pdl->restrictions->sortByDesc(fn ($r) => $r->isCurrent()) as $restriction)
         <div class="rec">
           <div class="rec-head">
             <span class="rec-title">{{ $restrictionLabel($restriction->restriction_type) }}</span>
-            <span class="badge {{ $restriction->isActive() ? 'restricted' : 'released' }}">
-              <span class="dot"></span>{{ $restriction->isActive() ? 'Active' : 'Lifted' }}
+            <span class="badge {{ $restriction->isCurrent() ? 'restricted' : 'released' }}">
+              <span class="dot"></span>{{ $restriction->isCurrent() ? 'Active' : ($restriction->hasEnded() ? 'Ended' : 'Lifted') }}
             </span>
           </div>
           <div class="rec-meta">
@@ -354,7 +355,7 @@
           @if ($restriction->disciplinaryRecord)
             <div class="rec-meta">From incident: <a href="#disciplinary-records" class="row-action">{{ $restriction->disciplinaryRecord->shortLabel() }}</a></div>
           @endif
-          @if ($restriction->isActive())
+          @if ($restriction->isCurrent())
             <form class="rec-actions" method="POST" action="{{ route('pdl.restrictions.lift', [$pdl->pdl_id, $restriction->restriction_id]) }}"
                   data-confirm="Lift this {{ str_replace('_', ' ', $restriction->restriction_type) }} restriction? It ends today and visitation may resume."
                   data-confirm-title="Lift restriction" data-confirm-ok="Lift">
@@ -613,8 +614,8 @@
       openBtn.hidden = on;
       if (on) {
         document.getElementById('profile').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        var first = form.querySelector('input[name="first_name"]');
-        if (first) first.focus({ preventScroll: true });
+        var last = form.querySelector('input[name="last_name"]');
+        if (last) last.focus({ preventScroll: true });
       }
     }
 

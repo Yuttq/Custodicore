@@ -105,7 +105,7 @@ class WholeDayVisitTest extends TestCase
         $id = $this->request($startTimes, $date)->assertCreated()->json('id');
         $this->completeRequirements();
 
-        return app(VisitAssignmentService::class)->approveVisitorRequest(VisitRequest::findOrFail($id));
+        return (VisitRequest::findOrFail($id))->fresh();
     }
 
     private function at(string $time, string $date = self::FRIDAY): void
@@ -176,7 +176,7 @@ class WholeDayVisitTest extends TestCase
     {
         $this->request(['09:00', '13:00'])
             ->assertCreated()
-            ->assertJsonPath('status', 'assigned')
+            ->assertJsonPath('status', 'confirmed')
             ->assertJsonPath('isWholeDay', true)
             ->assertJsonPath('scheduledAt', '2026-10-09T09:00:00+08:00')
             ->assertJsonPath('endAt', '2026-10-09T16:30:00+08:00')
@@ -270,13 +270,13 @@ class WholeDayVisitTest extends TestCase
             'contact_number' => '09181234567',
             'verification_status' => 'verified',
         ]);
-        $relationship = VisitorPdlRelationship::create([
+        $relationship = $this->completeRequirements(VisitorPdlRelationship::create([
             'visitor_id' => $visitor->visitor_id,
             'pdl_id' => $this->pdl->pdl_id,
             'relationship_type' => 'immediate_family',
             'priority_tier' => 'high_priority',
             'verification_status' => 'verified',
-        ]);
+        ]));
 
         Sanctum::actingAs($account);
 
@@ -338,7 +338,7 @@ class WholeDayVisitTest extends TestCase
     {
         $id = $this->request(['09:00', '13:00'])->assertCreated()->json('id');
 
-        app(VisitAssignmentService::class)->rejectVisitorRequest(VisitRequest::findOrFail($id), 'No slots for this family.');
+        app(VisitAssignmentService::class)->cancelByVisitor(VisitRequest::findOrFail($id), 'No slots for this family.');
 
         $this->assertSame(0, (int) $this->schedule->fresh()->slots_taken);
         $this->assertSame(0, (int) $this->afternoonSchedule()->slots_taken);
@@ -346,18 +346,6 @@ class WholeDayVisitTest extends TestCase
 
         // The day can be requested again.
         $this->request(['09:00', '13:00'])->assertCreated();
-    }
-
-    public function test_record_officer_review_shows_both_sessions_as_one_visit(): void
-    {
-        $this->request(['09:00', '13:00'])->assertCreated();
-
-        $this->actingAs($this->recordOfficerAccount, 'web');
-        $this->get("/visitors/{$this->visitor->visitor_id}")
-            ->assertOk()
-            ->assertSee('Whole day (one visit)')
-            ->assertSee('09:00–11:30')
-            ->assertSee('13:00–16:30');
     }
 
     public function test_single_session_request_still_accepts_start_time(): void

@@ -171,7 +171,7 @@ class VisitWeeklyLimitTest extends TestCase
         $this->assertNull(SystemSetting::value('visit.max_per_week'), 'No setting row: the default applies.');
 
         $this->existingVisit('2026-10-05');
-        $this->assertSame('assigned', $this->submit()->status, 'Second visit of the week is allowed.');
+        $this->assertSame('confirmed', $this->submit()->status, 'Second visit of the week is allowed.');
 
         // Third visit, on another day of the same week. (A second Friday
         // session would belong to the Friday visit, not be a new visit.)
@@ -196,7 +196,7 @@ class VisitWeeklyLimitTest extends TestCase
         $this->existingVisit('2026-10-06', 'cancelled');
         $this->existingVisit('2026-10-11', 'cancelled');
 
-        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertSame('confirmed', $this->submit()->status);
     }
 
     public function test_declined_visits_do_not_count(): void
@@ -266,7 +266,7 @@ class VisitWeeklyLimitTest extends TestCase
         $this->existingVisit('2026-10-12'); // Monday of the following week
         $this->existingVisit('2026-10-16');
 
-        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertSame('confirmed', $this->submit()->status);
     }
 
     public function test_week_is_decided_by_schedule_date_not_assigned_at(): void
@@ -275,7 +275,7 @@ class VisitWeeklyLimitTest extends TestCase
         $this->existingVisit('2026-10-13')->forceFill(['assigned_at' => now()])->save();
         $this->existingVisit('2026-10-14')->forceFill(['assigned_at' => now()])->save();
 
-        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertSame('confirmed', $this->submit()->status);
     }
 
     public function test_visit_assigned_weeks_ago_counts_in_the_week_it_is_scheduled(): void
@@ -292,7 +292,7 @@ class VisitWeeklyLimitTest extends TestCase
     {
         $this->setLimit('0');
         $this->existingVisit('2026-10-05');
-        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertSame('confirmed', $this->submit()->status);
         $this->assertBlocked(fn () => $this->assign($this->scheduleOn('2026-10-11')));
 
         SystemSetting::where('setting_key', 'visit.max_per_week')->update(['setting_value' => '-1']);
@@ -333,6 +333,6 @@ class VisitWeeklyLimitTest extends TestCase
         $this->existingVisit('2026-10-05');
         $this->existingVisit('2026-10-11');
 
-        $this->assertSame('assigned', $this->submit()->status);
+        $this->assertSame('confirmed', $this->submit()->status);
     }
 }
