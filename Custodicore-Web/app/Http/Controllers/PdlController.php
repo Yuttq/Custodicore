@@ -93,7 +93,12 @@ class PdlController extends Controller
                 ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->when($hearing, fn ($q) => $q->whereIn('pdl_id', $hearingPdlIds->keys()))
             ->with(['legalRecords', 'restrictions'])
-            ->orderBy('admission_date', 'desc')
+            // Alphabetical: last name, first name, middle name. Older PDLs
+            // with only a full name on file sort by that full name.
+            ->orderByRaw("COALESCE(NULLIF(last_name, ''), full_name)")
+            ->orderBy('first_name')
+            ->orderBy('middle_name')
+            ->orderBy('pdl_id')
             ->paginate(10)
             ->withQueryString();
 

@@ -87,7 +87,7 @@
   <table>
     <thead>
       <tr>
-        <th>PDL Number</th><th>Full Name</th><th>Gender</th><th>Offense / Classification</th>
+        <th>PDL Number</th><th>Last Name</th><th>First Name</th><th>Middle Name</th><th>Gender</th><th>Offense / Classification</th>
         <th>Custody Status</th><th>Cell/Block</th><th>Admission Date</th><th>Last Visit</th><th>Visiting</th>
       </tr>
     </thead>
@@ -99,14 +99,22 @@
             {{ $pdl->pdl_number }}
           </a>
         </td>
-        <td>
+        @php
+          // Older PDLs have only a full name on file (never split, so a
+          // name is not guessed wrong): it spans the three name columns.
+          $nameSplit = $pdl->last_name !== null || $pdl->first_name !== null;
+        @endphp
+        <td @unless ($nameSplit) colspan="3" @endunless>
           <div class="name-cell">
             @include('pdl.partials.avatar', ['pdl' => $pdl])
             <div>
               <a class="full-name" href="{{ route('pdl.show', $pdl->pdl_id) }}">
-                {{ $pdl->listName() }}
+                {{ $nameSplit ? trim($pdl->last_name . ' ' . $pdl->suffix) : $pdl->full_name }}
                 @if ($pdl->alias) <span class="muted-cell">"{{ $pdl->alias }}"</span> @endif
               </a>
+              @unless ($nameSplit)
+                <div class="muted-cell" style="font-size:12px;">Name not split yet. Use Edit Profile to enter last, first and middle name.</div>
+              @endunless
               @if ($next = $nextHearings[$pdl->pdl_id] ?? null)
                 <a class="hearing-tag" href="{{ route('pdl.show', $pdl->pdl_id) }}#legal-records" title="Court hearing{{ $next->notes ? ': ' . $next->notes : '' }}">
                   ⚖ Hearing {{ $next->hearing_at->format('D, M j') }} · {{ $next->hearing_at->format('H:i') }}
@@ -115,6 +123,10 @@
             </div>
           </div>
         </td>
+        @if ($nameSplit)
+          <td>{{ $pdl->first_name ?: '—' }}</td>
+          <td class="muted-cell">{{ $pdl->middle_name ?: '—' }}</td>
+        @endif
         <td class="muted-cell">{{ $pdl->gender }}</td>
         <td>
           <div>{{ $pdl->primaryOffense() ?? '—' }}</div>
