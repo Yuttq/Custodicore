@@ -9,18 +9,32 @@
   </div>
 </div>
 
-<div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px;">
+<div class="stat-strip" style="margin-bottom:18px;">
   <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'users'])</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
-  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'active', 'classification' => 'drug_related']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Drug-related</div><div class="stat-value">{{ $stats['drug_related'] }}</div><div class="muted-cell">in custody now</div></div></a>
-  <a class="stat-card stat-link accent-teal" href="{{ route('pdl.index', ['status' => 'active', 'classification' => 'non_drug_related']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Non-drug-related</div><div class="stat-value">{{ $stats['non_drug_related'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'active', 'cases' => 'drug_only']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Drug Cases Only</div><div class="stat-value">{{ $stats['drug_only'] }}</div><div class="muted-cell">PDLs in custody</div></div></a>
+  <a class="stat-card stat-link accent-teal" href="{{ route('pdl.index', ['status' => 'active', 'cases' => 'non_drug_only']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Non-drug Cases Only</div><div class="stat-value">{{ $stats['non_drug_only'] }}</div><div class="muted-cell">PDLs in custody</div></div></a>
+  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'active', 'cases' => 'both']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Both Drug &amp; Non-drug</div><div class="stat-value">{{ $stats['both'] }}</div><div class="muted-cell">PDLs in custody</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'active', 'restricted' => 1]) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'calendar-x'])</div><div><div class="stat-label">With Restrictions</div><div class="stat-value">{{ $stats['restricted'] }}</div><div class="muted-cell">visits blocked today</div></div></a>
   <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'transfer'])</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
   <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'user-minus'])</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
   <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'unlock'])</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div><div class="muted-cell">since {{ now()->startOfYear()->format('M j, Y') }}</div></div></a>
 </div>
+<p class="muted-cell" style="margin:-6px 0 18px;">
+  Cases on file for PDLs in custody: <strong>{{ $stats['drug_cases'] }}</strong> drug-related ·
+  <strong>{{ $stats['all_cases'] - $stats['drug_cases'] }}</strong> non-drug.
+  A PDL with both kinds of cases is counted once, under "Both"; for housing and visiting days they are classified drug-related.
+</p>
 
-@if ($classification)
+@if ($restricted)
+  <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span>Showing only PDLs with a restriction in effect today. Visits with them are blocked until it ends or is lifted.</span>
+    <a href="{{ route('pdl.index') }}" style="color:inherit;font-weight:700;">Show all PDLs</a>
+  </div>
+@endif
+
+@if ($cases)
   <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--blue-bg);color:var(--blue);">
-    <span>Showing only {{ $classification === 'drug_related' ? 'drug-related' : 'non-drug-related' }} PDLs.</span>
+    <span>Showing only PDLs in custody with {{ lcfirst(\App\Models\Pdl::CASE_GROUPS[$cases]) }}.</span>
     <a href="{{ route('pdl.index') }}" style="color:inherit;font-weight:700;">Show all PDLs</a>
   </div>
 @endif
@@ -34,7 +48,8 @@
 
 <form class="filters" method="GET" action="{{ route('pdl.index') }}">
   @if ($hearing)<input type="hidden" name="hearing" value="week">@endif
-  @if ($classification)<input type="hidden" name="classification" value="{{ $classification }}">@endif
+  @if ($cases)<input type="hidden" name="cases" value="{{ $cases }}">@endif
+  @if ($restricted)<input type="hidden" name="restricted" value="1">@endif
   <div class="field">
     <label for="q">Search Records</label>
     <div class="input">
@@ -92,7 +107,7 @@
     <button class="btn btn-blue" type="submit" style="width:100%;justify-content:center;">Apply Filters</button>
   </div>
 
-  @if ($query || $status || $cellBlock || $offense || $visits || $hearing || $classification)
+  @if ($query || $status || $cellBlock || $offense || $visits || $hearing || $cases || $restricted)
     <div class="field">
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}" style="width:100%;justify-content:center;">Clear</a>
     </div>
@@ -172,6 +187,12 @@
         <td>
           @php $avail = \App\Services\PdlVisitingAvailability::for($pdl, $visitingRules); @endphp
           <span class="badge {{ \App\Services\PdlVisitingAvailability::badgeClass($avail['state']) }}" title="{{ $avail['weekly'] ?: 'No schedule set' }} ({{ $avail['source'] }})"><span class="dot"></span>{{ $avail['label'] }}</span>
+          @if ($avail['state'] === 'restricted' && ($activeRestriction = $pdl->restrictions->first(fn ($r) => $r->coversDate(today()))))
+            <div class="muted-cell" style="font-size:12px;margin-top:4px;" title="{{ $activeRestriction->reason }}">
+              {{ $activeRestriction->end_date ? 'Until ' . $activeRestriction->end_date->format('M j, Y') : 'Until lifted' }}
+              · <a href="{{ route('pdl.show', $pdl->pdl_id) }}#restrictions" style="color:inherit;">{{ \Illuminate\Support\Str::limit($activeRestriction->reason, 40) }}</a>
+            </div>
+          @endif
         </td>
       </tr>
       @endforeach

@@ -210,6 +210,51 @@ class Pdl extends Model
         return true;
     }
 
+    /** Case groups for analytics, in display order. */
+    public const CASE_GROUPS = [
+        'drug_only' => 'Drug cases only',
+        'non_drug_only' => 'Non-drug cases only',
+        'both' => 'Both drug and non-drug cases',
+    ];
+
+    /**
+     * Which analytics group the PDL's cases put them in: drug cases only,
+     * non-drug cases only, or both. Every case on file counts (the same
+     * cases the classification uses), so drug_only + both = drug-related.
+     * A PDL with no case on file falls back on their classification, so
+     * every PDL is in exactly one group.
+     */
+    public function caseGroup(): string
+    {
+        $records = $this->relationLoaded('legalRecords') ? $this->legalRecords : $this->legalRecords()->get();
+
+        if ($records->isEmpty()) {
+            return $this->classification === 'drug_related' ? 'drug_only' : 'non_drug_only';
+        }
+
+        $drug = $records->contains(fn (PdlLegalRecord $r) => $r->isDrugRelated());
+        $nonDrug = $records->contains(fn (PdlLegalRecord $r) => ! $r->isDrugRelated());
+
+        return match (true) {
+            $drug && $nonDrug => 'both',
+            $drug => 'drug_only',
+            default => 'non_drug_only',
+        };
+    }
+
+    /**
+     * Case group of every PDL in custody, keyed by pdl_id.
+     *
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    public static function caseGroupsInCustody(): \Illuminate\Support\Collection
+    {
+        return self::where('custody_status', 'active')
+            ->with('legalRecords:legal_record_id,pdl_id,offense_code,offense')
+            ->get(['pdl_id', 'classification'])
+            ->mapWithKeys(fn (Pdl $pdl) => [$pdl->pdl_id => $pdl->caseGroup()]);
+    }
+
     /** Offense of the first case on file (the one recorded at registration), for lists and headers. */
     public function primaryOffense(): ?string
     {

@@ -58,9 +58,12 @@ class PdlController extends Controller
         $visits = in_array($request->input('visits'), ['stale', 'never'], true) ? $request->input('visits') : '';
         // From the PDL Records badge: PDLs with a court hearing in the next week.
         $hearing = $request->input('hearing') === 'week' ? 'week' : '';
-        // From the Drug-related / Non-drug-related cards.
-        $classification = in_array($request->input('classification'), ['drug_related', 'non_drug_related'], true)
-            ? $request->input('classification') : '';
+        // Case groups of the PDLs in custody (drug only / non-drug only / both),
+        // for the analytics cards and their filter.
+        $caseGroups = Pdl::caseGroupsInCustody();
+        $cases = array_key_exists((string) $request->input('cases'), Pdl::CASE_GROUPS) ? $request->input('cases') : '';
+        // From the With Restrictions card: a restriction in effect today.
+        $restricted = $request->boolean('restricted');
         $hearingPdlIds = \App\Services\NavBadges::hearingsAheadQuery()
             ->with('legalRecord:legal_record_id,pdl_id')
             ->orderBy('hearing_at')
@@ -95,7 +98,8 @@ class PdlController extends Controller
             ->when($visits === 'stale', fn ($q) => $q->where('custody_status', 'active')
                 ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->when($hearing, fn ($q) => $q->whereIn('pdl_id', $hearingPdlIds->keys()))
-            ->when($classification !== '', fn ($q) => $q->where('classification', $classification))
+            ->when($cases !== '', fn ($q) => $q->whereIn('pdl_id', $caseGroups->filter(fn ($g) => $g === $cases)->keys()))
+            ->when($restricted, fn ($q) => $q->whereHas('restrictions', fn ($r) => $r->inEffectOn(today())))
             ->with(['legalRecords', 'restrictions'])
             // Alphabetical: last name, first name, middle name. Older PDLs
             // with only a full name on file sort by that full name.
@@ -119,9 +123,18 @@ class PdlController extends Controller
             'released_ytd' => Pdl::where('custody_status', 'released')
                 ->where('released_at', '>=', now()->startOfYear())
                 ->count(),
-            // The population split by classification (adds up to total_population).
-            'drug_related' => Pdl::where('custody_status', 'active')->where('classification', 'drug_related')->count(),
-            'non_drug_related' => Pdl::where('custody_status', 'active')->where('classification', 'non_drug_related')->count(),
+            // The population by case group; each PDL is in exactly one, so
+            // the three add up to total_population.
+            'drug_only' => $caseGroups->filter(fn ($g) => $g === 'drug_only')->count(),
+            'non_drug_only' => $caseGroups->filter(fn ($g) => $g === 'non_drug_only')->count(),
+            'both' => $caseGroups->filter(fn ($g) => $g === 'both')->count(),
+            // Cases on file for the PDLs in custody, by kind (cases, not people).
+            'drug_cases' => \App\Models\PdlLegalRecord::whereIn('pdl_id', $caseGroups->keys())->get(['offense_code', 'offense'])->filter->isDrugRelated()->count(),
+            'all_cases' => \App\Models\PdlLegalRecord::whereIn('pdl_id', $caseGroups->keys())->count(),
+            // In custody with a restriction in effect today (ended or lifted ones drop out).
+            'restricted' => Pdl::where('custody_status', 'active')
+                ->whereHas('restrictions', fn ($r) => $r->inEffectOn(today()))
+                ->count(),
         ];
 
         // Every weekly visiting rule, loaded once for the "Visiting" column.
@@ -130,7 +143,7 @@ class PdlController extends Controller
         // Each PDL's next hearing this week, for the tag under their name.
         $nextHearings = $hearingPdlIds->map->first();
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules', 'hearing', 'nextHearings', 'classification'));
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules', 'hearing', 'nextHearings', 'cases', 'restricted'));
     }
 
     // -----------------------------------------------------------------
