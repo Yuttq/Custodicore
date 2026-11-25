@@ -58,6 +58,9 @@ class PdlController extends Controller
         $visits = in_array($request->input('visits'), ['stale', 'never'], true) ? $request->input('visits') : '';
         // From the PDL Records badge: PDLs with a court hearing in the next week.
         $hearing = $request->input('hearing') === 'week' ? 'week' : '';
+        // From the Drug-related / Non-drug-related cards.
+        $classification = in_array($request->input('classification'), ['drug_related', 'non_drug_related'], true)
+            ? $request->input('classification') : '';
         $hearingPdlIds = \App\Services\NavBadges::hearingsAheadQuery()
             ->with('legalRecord:legal_record_id,pdl_id')
             ->orderBy('hearing_at')
@@ -92,6 +95,7 @@ class PdlController extends Controller
             ->when($visits === 'stale', fn ($q) => $q->where('custody_status', 'active')
                 ->whereNotExists($checkins()->where('vc.check_in_time', '>=', now()->subDays(30))->select(\Illuminate\Support\Facades\DB::raw(1))))
             ->when($hearing, fn ($q) => $q->whereIn('pdl_id', $hearingPdlIds->keys()))
+            ->when($classification !== '', fn ($q) => $q->where('classification', $classification))
             ->with(['legalRecords', 'restrictions'])
             // Alphabetical: last name, first name, middle name. Older PDLs
             // with only a full name on file sort by that full name.
@@ -110,9 +114,14 @@ class PdlController extends Controller
             'total_population' => Pdl::where('custody_status', 'active')->count(),
             'transferred' => Pdl::where('custody_status', 'transferred')->count(),
             'deceased' => Pdl::where('custody_status', 'deceased')->count(),
+            // Released since January 1 of this year (released_at, set when the
+            // status became released; a later edit does not move it).
             'released_ytd' => Pdl::where('custody_status', 'released')
-                ->whereYear('updated_at', now()->year)
+                ->where('released_at', '>=', now()->startOfYear())
                 ->count(),
+            // The population split by classification (adds up to total_population).
+            'drug_related' => Pdl::where('custody_status', 'active')->where('classification', 'drug_related')->count(),
+            'non_drug_related' => Pdl::where('custody_status', 'active')->where('classification', 'non_drug_related')->count(),
         ];
 
         // Every weekly visiting rule, loaded once for the "Visiting" column.
@@ -121,7 +130,7 @@ class PdlController extends Controller
         // Each PDL's next hearing this week, for the tag under their name.
         $nextHearings = $hearingPdlIds->map->first();
 
-        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules', 'hearing', 'nextHearings'));
+        return view('pdl.index', compact('pdls', 'query', 'status', 'cellBlock', 'cellBlocks', 'stats', 'offense', 'visits', 'visitingRules', 'hearing', 'nextHearings', 'classification'));
     }
 
     // -----------------------------------------------------------------

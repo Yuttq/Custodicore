@@ -9,6 +9,22 @@
   </div>
 </div>
 
+<div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px;">
+  <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'users'])</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'active', 'classification' => 'drug_related']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Drug-related</div><div class="stat-value">{{ $stats['drug_related'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-teal" href="{{ route('pdl.index', ['status' => 'active', 'classification' => 'non_drug_related']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'scale'])</div><div><div class="stat-label">Non-drug-related</div><div class="stat-value">{{ $stats['non_drug_related'] }}</div><div class="muted-cell">in custody now</div></div></a>
+  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'transfer'])</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
+  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'user-minus'])</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
+  <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'unlock'])</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div><div class="muted-cell">since {{ now()->startOfYear()->format('M j, Y') }}</div></div></a>
+</div>
+
+@if ($classification)
+  <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--blue-bg);color:var(--blue);">
+    <span>Showing only {{ $classification === 'drug_related' ? 'drug-related' : 'non-drug-related' }} PDLs.</span>
+    <a href="{{ route('pdl.index') }}" style="color:inherit;font-weight:700;">Show all PDLs</a>
+  </div>
+@endif
+
 @if ($hearing)
   <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--blue-bg);color:var(--blue);">
     <span>Showing only PDLs with a court hearing in the next 7 days.</span>
@@ -18,6 +34,7 @@
 
 <form class="filters" method="GET" action="{{ route('pdl.index') }}">
   @if ($hearing)<input type="hidden" name="hearing" value="week">@endif
+  @if ($classification)<input type="hidden" name="classification" value="{{ $classification }}">@endif
   <div class="field">
     <label for="q">Search Records</label>
     <div class="input">
@@ -75,7 +92,7 @@
     <button class="btn btn-blue" type="submit" style="width:100%;justify-content:center;">Apply Filters</button>
   </div>
 
-  @if ($query || $status || $cellBlock || $offense || $visits || $hearing)
+  @if ($query || $status || $cellBlock || $offense || $visits || $hearing || $classification)
     <div class="field">
       <a class="btn btn-outline-neutral" href="{{ route('pdl.index') }}" style="width:100%;justify-content:center;">Clear</a>
     </div>
@@ -174,12 +191,5 @@
       @endif
     </p>
   @endif
-</div>
-
-<div class="stat-strip">
-  <a class="stat-card stat-link accent-blue" href="{{ route('pdl.index', ['status' => 'active']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'users'])</div><div><div class="stat-label">Total Population</div><div class="stat-value">{{ $stats['total_population'] }}</div><div class="muted-cell">in custody now</div></div></a>
-  <a class="stat-card stat-link accent-navy" href="{{ route('pdl.index', ['status' => 'transferred']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'transfer'])</div><div><div class="stat-label">Transferred</div><div class="stat-value">{{ $stats['transferred'] }}</div></div></a>
-  <a class="stat-card stat-link accent-amber" href="{{ route('pdl.index', ['status' => 'deceased']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'user-minus'])</div><div><div class="stat-label">Deceased</div><div class="stat-value">{{ $stats['deceased'] }}</div></div></a>
-  <a class="stat-card stat-link accent-gray" href="{{ route('pdl.index', ['status' => 'released']) }}" style="text-decoration:none;color:inherit;"><div class="stat-icon">@include('partials.icon', ['name' => 'unlock'])</div><div><div class="stat-label">Released YTD</div><div class="stat-value">{{ $stats['released_ytd'] }}</div></div></a>
 </div>
 @endsection

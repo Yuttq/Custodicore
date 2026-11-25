@@ -42,6 +42,7 @@ class Pdl extends Model
     protected $casts = [
         'date_of_birth' => 'date',
         'admission_date' => 'date',
+        'released_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -51,6 +52,12 @@ class Pdl extends Model
         static::saving(function (Pdl $pdl) {
             if ($pdl->first_name !== null || $pdl->last_name !== null) {
                 $pdl->full_name = self::composeFullName($pdl->first_name, $pdl->middle_name, $pdl->last_name, $pdl->suffix);
+            }
+
+            // When the PDL was released ("Released YTD" counts from it);
+            // cleared when they are re-admitted or their status changes again.
+            if ($pdl->isDirty('custody_status')) {
+                $pdl->released_at = $pdl->custody_status === 'released' ? now() : null;
             }
         });
 
