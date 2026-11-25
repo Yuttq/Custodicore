@@ -837,15 +837,3 @@ table .flag{background:none;border:none;padding:0;text-align:left;font-size:12.5
 .id-expiry-edit summary{cursor:pointer;list-style:none;display:inline-block;}
 .id-expiry-form{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px;min-width:220px;background:#fff;}
 .id-expiry-none{display:flex;align-items:center;gap:6px;font-size:13px;}
-/* "Scan ID" (OCR of the ID expiry date) */
-.id-scan-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 4px;}
-.id-scan-status{font-size:12.5px;color:var(--muted);}
-.id-scan-status.is-ok{color:var(--green);font-weight:600;}
-.id-scan-status.is-warn{color:var(--amber-text);font-weight:600;}
-/* Account Review: PSA documents read with OCR (relationship-docs-scan.js) */
-.doc-check{margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#f8fafc;}
-.doc-check-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
-.doc-check-result{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px;}
-.doc-check-result:empty{display:none;}
-.doc-check-line.is-ok{color:var(--green);}
-.doc-check-line.is-warn{color:var(--amber-text);}
