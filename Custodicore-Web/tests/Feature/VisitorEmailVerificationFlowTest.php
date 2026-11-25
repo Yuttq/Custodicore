@@ -280,6 +280,23 @@ class VisitorEmailVerificationFlowTest extends TestCase
         $this->assertSame('2030-03-09', now()->utc()->toDateString());
     }
 
+    public function test_registration_stores_the_pdls_birthday_when_given(): void
+    {
+        $this->register(['intendedPdlBirthDate' => '1988-03-04'])->assertCreated();
+        $this->assertSame('1988-03-04', VisitorProfile::where('full_name', 'Juan Miguel Dela Cruz')->sole()->intended_pdl_birth_date->toDateString());
+    }
+
+    public function test_the_pdls_birthday_is_optional_and_must_be_a_real_past_date(): void
+    {
+        $this->register(['intendedPdlBirthDate' => now()->addDay()->toDateString()])
+            ->assertUnprocessable()->assertJsonValidationErrors('intendedPdlBirthDate');
+        $this->register(['intendedPdlBirthDate' => '04/03/1988'])
+            ->assertUnprocessable()->assertJsonValidationErrors('intendedPdlBirthDate');
+
+        $this->register()->assertCreated();
+        $this->assertNull(VisitorProfile::where('full_name', 'Juan Miguel Dela Cruz')->sole()->intended_pdl_birth_date);
+    }
+
     public function test_registration_rejects_a_date_of_birth_of_today_or_later(): void
     {
         $this->freezeJustAfterManilaMidnight();

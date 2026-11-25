@@ -19,6 +19,7 @@ class VisitorProfile extends Model
         'address',
         'relationship_hint',
         'intended_pdl_name',
+        'intended_pdl_birth_date',
         'intended_relationship_type',
         'intended_pdl_number',
         'guardian_full_name',
@@ -43,6 +44,7 @@ class VisitorProfile extends Model
 
     protected $casts = [
         'date_of_birth' => 'date',
+        'intended_pdl_birth_date' => 'date',
         'verified_at' => 'datetime',
         'photo_uploaded_at' => 'datetime',
         'photo_reviewed_at' => 'datetime',

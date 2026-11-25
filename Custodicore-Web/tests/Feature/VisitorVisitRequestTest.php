@@ -384,6 +384,37 @@ class VisitorVisitRequestTest extends TestCase
         $this->assertSame(0, VisitRequest::count());
     }
 
+    public function test_booking_a_pdl_who_left_custody_says_why(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        $expected = [
+            'released' => 'This PDL has been released from custody, so visits can no longer be booked.',
+            'transferred' => 'This PDL has been transferred to another facility, so visits can no longer be booked.',
+            'deceased' => 'This PDL is recorded as deceased. Visits are no longer possible.',
+        ];
+        foreach ($expected as $status => $message) {
+            \App\Models\Pdl::whereKey($this->pdl->pdl_id)->update(['custody_status' => $status]);
+
+            $this->submit()->assertUnprocessable()->assertJsonPath('errors.relationshipId.0', $message);
+        }
+
+        // A Record Officer assigning a visit gets the same reason.
+        try {
+            app(VisitAssignmentService::class)->assign([
+                'visitor_id' => $this->visitor->visitor_id,
+                'pdl_id' => $this->pdl->pdl_id,
+                'relationship_id' => $this->relationship->relationship_id,
+                'schedule_id' => $this->schedule->schedule_id,
+            ]);
+            $this->fail('A visit was assigned to a PDL who left custody.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertSame($expected['deceased'], $e->errors()['pdl_id'][0]);
+        }
+
+        $this->assertSame(0, VisitRequest::count());
+    }
+
     public function test_full_schedule_is_rejected(): void
     {
         [, $otherVisitor, $otherRelationship] = $this->makeOtherVisitor();

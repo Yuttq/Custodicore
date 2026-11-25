@@ -834,7 +834,8 @@ class PdlController extends Controller
         ]);
 
         if ($pdl->custody_status !== 'active') {
-            return back()->withInput()->with('error', 'Restrictions can only be added to PDLs in active custody.');
+            return back()->withInput()->with('error', 'This PDL ' . $pdl->leftCustodyPhrase()
+                . ', so restrictions can no longer be added. Restrictions are only for PDLs in active custody.');
         }
 
         $staffId = $this->actingStaffId();

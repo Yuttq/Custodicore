@@ -252,14 +252,19 @@ class QrWorkflowFixesTest extends TestCase
         $this->at('09:30');
         $token = $this->qrToken($visit);
 
-        foreach (['released', 'transferred', 'deceased'] as $status) {
+        $expected = [
+            'released' => 'This PDL has been released from custody. Do not admit the visitor; refer them to the Warden.',
+            'transferred' => 'This PDL has been transferred to another facility. Do not admit the visitor; refer them to the Warden.',
+            'deceased' => 'This PDL is recorded as deceased. Do not admit the visitor; refer them to the Warden.',
+        ];
+        foreach ($expected as $status => $message) {
             // Written without model events: the gate must refuse on its own,
             // even before (or without) the automatic cancellation.
             Pdl::whereKey($this->pdl->pdl_id)->update(['custody_status' => $status]);
 
-            $this->scan($token)->assertStatus(422)->assertJsonPath('message', VisitGateService::PDL_UNAVAILABLE_MESSAGE);
-            $this->checkIn($token)->assertStatus(422)->assertJsonPath('message', VisitGateService::PDL_UNAVAILABLE_MESSAGE);
-            $this->manualCheckIn($visit)->assertSessionHas('error', VisitGateService::PDL_UNAVAILABLE_MESSAGE);
+            $this->scan($token)->assertStatus(422)->assertJsonPath('message', $message);
+            $this->checkIn($token)->assertStatus(422)->assertJsonPath('message', $message);
+            $this->manualCheckIn($visit)->assertSessionHas('error', $message);
         }
 
         $this->assertSame(0, VisitCheckin::count());
@@ -359,7 +364,7 @@ class QrWorkflowFixesTest extends TestCase
 
     // --------------------------------------------- Automatic cancellation
 
-    public function test_leaving_custody_cancels_upcoming_visits_with_a_generic_notice(): void
+    public function test_leaving_custody_cancels_upcoming_visits_and_says_why(): void
     {
         $confirmed = $this->confirmedVisit(['09:00', '13:00'], self::FRIDAY);
         $pending = $this->pendingConfirmationVisit(self::NEXT_FRIDAY);
@@ -372,7 +377,7 @@ class QrWorkflowFixesTest extends TestCase
         foreach ([$confirmed, $pending] as $visit) {
             $visit->refresh();
             $this->assertSame('cancelled', $visit->status);
-            $this->assertSame(VisitAssignmentService::PDL_UNAVAILABLE_REASON, $visit->cancellation_reason);
+            $this->assertSame('This PDL has been released from custody, so visits can no longer be booked.', $visit->cancellation_reason);
             $this->assertNotNull($visit->cancelled_at);
         }
         $this->assertSame(0, (int) $morning->fresh()->slots_taken, 'The seat is released.');
@@ -381,11 +386,10 @@ class QrWorkflowFixesTest extends TestCase
             ->where('title', 'Visit Cancelled')->get();
         $this->assertCount(2, $notices);
         foreach ($notices as $notice) {
-            $this->assertStringContainsString('not available for visitation', $notice->message);
-            $this->assertStringNotContainsStringIgnoringCase('released', $notice->message);
+            $this->assertStringContainsString('was cancelled. This PDL has been released from custody, so visits can no longer be booked.', $notice->message);
         }
 
-        // The specific reason is staff-only, in the audit log.
+        // The audit log keeps the staff detail.
         $this->assertDatabaseHas('audit_logs', [
             'record_id' => $confirmed->visit_request_id,
         ]);

@@ -562,6 +562,17 @@ img.pdl-photo-img{object-fit:cover;background:var(--gray-bg);display:block;}
 .pdl-search-results li.is-active{background:var(--teal-bg);}
 .pdl-search-name{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pdl-search-empty{padding:10px;font-size:12.5px;color:var(--muted);}
+/* Account Review: PDLs who share the name the visitor gave */
+.same-name{margin:6px 0 14px;padding:12px 14px;border:1px solid var(--amber-bg);background:#fffbeb;border-radius:12px;}
+.same-name-title{margin:0 0 8px;font-weight:700;font-size:13px;color:var(--amber-text);}
+.same-name-table{width:100%;border-collapse:collapse;font-size:13px;}
+.same-name-table th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:600;padding:4px 8px;}
+.same-name-table td{padding:8px;border-top:1px solid var(--border);vertical-align:middle;}
+.same-name-table tr.is-match td{background:var(--green-bg, #ecfdf5);}
+.same-name-table tr.is-chosen td{background:var(--teal-bg);}
+.same-name-table .badge{margin-left:6px;}
+.same-name-pdl{display:flex;align-items:center;gap:10px;}
+.same-name-pdl .thumb{width:34px;height:34px;}
 
 /* ===================== OFFENSE / CLASSIFICATION ===================== */
 .classification-preview{margin:-4px 0 16px;padding:10px 14px;border-radius:10px;background:var(--blue-bg);color:var(--text);font-size:13px;}

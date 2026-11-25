@@ -100,6 +100,47 @@ class Pdl extends Model
             ->first();
     }
 
+    /**
+     * Why a PDL who left custody cannot be visited, in plain words, or null
+     * while in active custody. Shown wherever a visit is refused, cancelled
+     * or stopped at the gate for that reason.
+     */
+    public function custodyMessage(): ?string
+    {
+        $phrase = $this->leftCustodyPhrase();
+        if ($phrase === null) {
+            return null;
+        }
+
+        return $this->custody_status === 'deceased'
+            ? "This PDL {$phrase}. Visits are no longer possible."
+            : "This PDL {$phrase}, so visits can no longer be booked.";
+    }
+
+    /** "has been released from custody", ...; null while in active custody. */
+    public function leftCustodyPhrase(): ?string
+    {
+        return match ($this->custody_status) {
+            'active' => null,
+            'released' => 'has been released from custody',
+            'transferred' => 'has been transferred to another facility',
+            'deceased' => 'is recorded as deceased',
+            default => 'is no longer in custody',
+        };
+    }
+
+    /** "Released from custody", "Transferred to another facility", "Deceased" — for badges. */
+    public function custodyLabel(): string
+    {
+        return match ($this->custody_status) {
+            'active' => 'In custody',
+            'released' => 'Released from custody',
+            'transferred' => 'Transferred to another facility',
+            'deceased' => 'Deceased',
+            default => ucfirst((string) $this->custody_status),
+        };
+    }
+
     /** Released or transferred: the PDL can be taken back into custody on the same record. */
     public function canBeReadmitted(): bool
     {

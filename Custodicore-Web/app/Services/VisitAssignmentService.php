@@ -312,6 +312,13 @@ class VisitAssignmentService
             ]);
         }
 
+        // Released, transferred or deceased: say so plainly, before the
+        // slot check reports it only as "not available".
+        $custodyMessage = Pdl::whereKey($relationship->pdl_id)->first()?->custodyMessage();
+        if ($custodyMessage !== null) {
+            throw ValidationException::withMessages(['relationshipId' => $custodyMessage]);
+        }
+
         $startTimes = collect((array) $startTimes)->map(fn ($t) => substr((string) $t, 0, 5))->unique()->sort()->values();
 
         $slots = [];
@@ -767,10 +774,14 @@ class VisitAssignmentService
                 return false;
             }
 
+            // Left custody: say so (released / transferred / deceased).
+            // A restriction keeps the general wording.
+            $custodyMessage = $visitRequest->pdl?->custodyMessage();
+
             $visitRequest->update([
                 'status' => 'cancelled',
                 'cancelled_at' => now(),
-                'cancellation_reason' => self::PDL_UNAVAILABLE_REASON,
+                'cancellation_reason' => $custodyMessage ?? self::PDL_UNAVAILABLE_REASON,
             ]);
 
             $this->releaseSessionSlots($visitRequest);
@@ -782,7 +793,9 @@ class VisitAssignmentService
                     $visitRequest->visitor->account_id,
                     'visits',
                     'Visit Cancelled',
-                    "Your visit on {$scheduleLabel} was cancelled because the PDL is not available for visitation on that date. Please contact the facility.",
+                    $custodyMessage !== null
+                        ? "Your visit with {$visitRequest->pdl->full_name} on {$scheduleLabel} was cancelled. {$custodyMessage}"
+                        : "Your visit on {$scheduleLabel} was cancelled because the PDL is not available for visitation on that date. Please contact the facility.",
                     'visit_requests',
                     $visitRequest->visit_request_id
                 );
@@ -1176,10 +1189,8 @@ class VisitAssignmentService
             throw ValidationException::withMessages(['pdl_id' => 'PDL not found.']);
         }
 
-        if ($pdl->custody_status !== 'active') {
-            throw ValidationException::withMessages([
-                'pdl_id' => 'Only PDLs with active custody status can receive visit assignments.',
-            ]);
+        if ($pdl->custodyMessage() !== null) {
+            throw ValidationException::withMessages(['pdl_id' => $pdl->custodyMessage()]);
         }
 
         if ($pdl->restrictionsOn($date ?? today())->exists()) {

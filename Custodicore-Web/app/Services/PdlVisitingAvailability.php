@@ -38,7 +38,7 @@ class PdlVisitingAvailability
         $base = ['source' => $source, 'weekly' => self::weekly($rules)];
 
         if ($pdl->custody_status !== 'active') {
-            return $base + ['state' => 'not_in_custody', 'label' => 'Not in custody (' . ucfirst($pdl->custody_status) . ')'];
+            return $base + ['state' => 'not_in_custody', 'label' => $pdl->custodyLabel()];
         }
 
         $restriction = $pdl->relationLoaded('restrictions')

@@ -48,7 +48,15 @@
       $linked = $visitor->relationships->firstWhere(fn ($r) => $r->verification_status !== 'rejected');
       $needsLink = ! $linked && ! $visitor->isWalkIn();
       $matches = $needsLink ? app(\App\Services\WalkInService::class)->matchingPdls($visitor) : collect();
-      $suggested = old('pdl_id') ? \App\Models\Pdl::find(old('pdl_id')) : ($matches->count() === 1 ? $matches->first() : null);
+      // The PDL's birthday the visitor gave (optional) tells apart PDLs who share a name.
+      $givenPdlBirth = $visitor->intended_pdl_birth_date;
+      $birthdayMatches = fn ($pdl) => $givenPdlBirth && $pdl->date_of_birth && $pdl->date_of_birth->isSameDay($givenPdlBirth);
+      // Pre-filled only when exactly one PDL has that name and the birthday
+      // (if given) agrees; otherwise the officer must choose.
+      $onlyMatch = $matches->count() === 1 ? $matches->first() : null;
+      $suggested = old('pdl_id') ? \App\Models\Pdl::find(old('pdl_id'))
+        : ($onlyMatch && (! $givenPdlBirth || $birthdayMatches($onlyMatch)) ? $onlyMatch : null);
+      $showCandidates = $needsLink && ($matches->count() > 1 || ($onlyMatch && ! $suggested));
       // The relationship picked in the app, else a guess from what they typed.
       $typeGuess = old('relationship_type', $visitor->intended_relationship_type
         ?: collect($typeLabels)->search(fn ($label) => strcasecmp($label, trim((string) $visitor->relationship_hint)) === 0) ?: null);
@@ -124,6 +132,7 @@
         <div><dt>Email Confirmed</dt><dd>{{ $visitor->account?->email ? ($visitor->account->email_verified_at ? 'Yes' : 'Not yet') : 'No email (walk-in)' }}</dd></div>
         <div><dt>Says They're The PDL's</dt><dd>{{ $visitor->relationship_hint ?: '—' }}</dd></div>
         <div><dt>PDL Name Given (unverified)</dt><dd>{{ $visitor->intended_pdl_name ?: '—' }}</dd></div>
+        <div><dt>PDL's Birthday Given (unverified)</dt><dd>{{ $visitor->intended_pdl_birth_date?->format('M j, Y') ?? 'Not given' }}</dd></div>
         @if ($visitor->isWalkIn())
           <div><dt>PDL ID Number Given (unverified)</dt><dd>{{ $visitor->intended_pdl_number ?: '—' }}</dd></div>
           <div><dt>Purpose of Visit</dt><dd>{{ $visitor->walkInAssessments->first()?->visit_purpose ?: '—' }}</dd></div>
@@ -277,14 +286,67 @@
                 </div>
                 <p class="field-hint" data-pdl-hint>
                   @if ($suggested)
-                    ✓ Matches the name they gave ("{{ $visitor->intended_pdl_name }}"). Change it if it's the wrong person.
+                    ✓ Matches the name they gave ("{{ $visitor->intended_pdl_name }}"){{ $givenPdlBirth ? ' and the birthday' : '' }}. Change it if it's the wrong person.
                   @elseif ($matches->count() > 1)
-                    {{ $matches->count() }} PDLs match "{{ $visitor->intended_pdl_name }}". Search and pick the right one.
+                    {{ $matches->count() }} PDLs share the name "{{ $visitor->intended_pdl_name }}". Choose the right one below.
+                  @elseif ($onlyMatch)
+                    A PDL has the name "{{ $visitor->intended_pdl_name }}", but not the birthday they gave. Check before choosing.
                   @else
                     No PDL matches "{{ $visitor->intended_pdl_name ?: 'the name given' }}". Search for the PDL.
                   @endif
                 </p>
               </div>
+              @if ($showCandidates)
+                <div class="same-name" data-same-name>
+                  <p class="same-name-title">
+                    @if ($matches->count() > 1)
+                      Same name: compare before choosing
+                    @else
+                      Name matches, birthday does not
+                    @endif
+                  </p>
+                  <table class="same-name-table">
+                    <thead><tr><th>PDL</th><th>Birthday</th><th>Dorm</th><th>Admitted</th><th>Visitors linked</th><th></th></tr></thead>
+                    <tbody>
+                      @foreach ($matches as $candidate)
+                        @php $linkedCount = $candidate->visitorRelationships()->where('verification_status', 'verified')->count(); @endphp
+                        <tr class="{{ $birthdayMatches($candidate) ? 'is-match' : '' }}">
+                          <td>
+                            <div class="same-name-pdl">
+                              @include('pdl.partials.avatar', ['pdl' => $candidate, 'class' => 'thumb'])
+                              <div>
+                                <a href="{{ route('pdl.show', $candidate->pdl_id) }}" target="_blank" rel="noopener"><strong>{{ $candidate->listName() }}</strong></a>
+                                <div class="muted-cell">{{ $candidate->pdl_number }}{{ $candidate->custody_status !== 'active' ? ' · ' . $candidate->custodyLabel() : '' }}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            {{ $candidate->date_of_birth?->format('M j, Y') ?? '—' }}
+                            @if ($birthdayMatches($candidate))
+                              <span class="badge active"><span class="dot"></span>Birthday matches</span>
+                            @elseif ($givenPdlBirth && $candidate->date_of_birth)
+                              <span class="badge rejected"><span class="dot"></span>Different birthday</span>
+                            @endif
+                          </td>
+                          <td>{{ $candidate->cell_block ?: '—' }}</td>
+                          <td>{{ $candidate->admission_date?->format('M j, Y') ?? '—' }}</td>
+                          <td>{{ $linkedCount }}</td>
+                          <td>
+                            <button type="button" class="row-action" data-pdl-choose
+                                    data-pdl-id="{{ $candidate->pdl_id }}"
+                                    data-pdl-label="{{ $candidate->full_name }} ({{ $candidate->pdl_number }})"
+                                    data-pdl-hint="Selected: {{ $candidate->full_name }} · {{ $candidate->pdl_number }}">Choose</button>
+                          </td>
+                        </tr>
+                      @endforeach
+                    </tbody>
+                  </table>
+                  <p class="field-hint" style="margin:8px 0 0;">
+                    Check the relationship documents (e.g. the PDL's birth certificate) against the PDL number and birthday before approving.
+                    @if (! $givenPdlBirth) The visitor did not give the PDL's birthday; ask them if you are unsure. @endif
+                  </p>
+                </div>
+              @endif
               <div class="row cols-2" style="margin:0;">
                 <div class="field-m">
                   <label for="rel-type-{{ $visitor->visitor_id }}">Relationship</label>
@@ -458,6 +520,27 @@
   @endif
 @endif
 @include('partials.pdl-search-script')
+<script>
+  // Same-name list: "Choose" fills the card's PDL box, as picking it from the search would.
+  document.querySelectorAll('[data-pdl-choose]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var panel = btn.closest('[data-approve-panel]');
+      var box = panel && panel.querySelector('[data-pdl-search]');
+      if (!box) return;
+      var hidden = box.querySelector('[data-pdl-id]');
+      var input = box.querySelector('input[type="text"]');
+      hidden.value = btn.dataset.pdlId;
+      input.value = btn.dataset.pdlLabel;
+      input.setCustomValidity('');
+      box.querySelector('[data-pdl-hint]').textContent = btn.dataset.pdlHint;
+      panel.querySelectorAll('[data-pdl-choose]').forEach(function (b) {
+        b.closest('tr').classList.toggle('is-chosen', b === btn);
+        b.textContent = b === btn ? 'Chosen' : 'Choose';
+      });
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+</script>
 <script>
   // "Approve will…" checklist on each card: what one Approve does, given the
   // PDL and relationship picked. A preview; the server decides on submit.

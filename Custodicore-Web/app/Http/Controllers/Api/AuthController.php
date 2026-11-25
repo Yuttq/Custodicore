@@ -553,6 +553,8 @@ class AuthController extends Controller
             // If the app says which version it showed, it must be the current one.
             'consentVersion' => ['nullable', 'string', Rule::in([(string) config('legal.version')])],
             'intendedPdlName' => ['required', 'string', 'min:2', 'max:150', 'regex:' . Sanitizer::NAME_REGEX],
+            // Optional (older clients never send it): tells apart PDLs who share a name.
+            'intendedPdlBirthDate' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after:1900-01-01'],
         ];
     }
 
@@ -570,6 +572,9 @@ class AuthController extends Controller
             'intendedPdlName.min' => 'Enter the full name of the PDL you want to visit.',
             'intendedPdlName.max' => 'The PDL name is too long (150 characters at most).',
             'intendedPdlName.regex' => 'The PDL name can only contain letters, spaces, periods, apostrophes and hyphens.',
+            'intendedPdlBirthDate.date_format' => "Enter the PDL's date of birth as YYYY-MM-DD, or leave it empty if you don't know it.",
+            'intendedPdlBirthDate.before_or_equal' => "The PDL's date of birth cannot be in the future.",
+            'intendedPdlBirthDate.after' => "Enter the PDL's real date of birth, or leave it empty if you don't know it.",
             'relationshipType.in' => 'Select your relationship to the PDL.',
             'relationshipType.required_with' => 'Select your relationship to the PDL.',
             'relationshipDocuments.*.mimes' => 'Upload a JPG, PNG, WEBP, or PDF file.',
@@ -616,6 +621,7 @@ class AuthController extends Controller
             'relationship_hint' => $request->input('relationshipHint'),
             // Unverified search hint for staff; never matched automatically.
             'intended_pdl_name' => $request->input('intendedPdlName') ?: null,
+            'intended_pdl_birth_date' => $request->input('intendedPdlBirthDate') ?: null,
             // The relationship picked in the app; Account Review pre-fills it.
             'intended_relationship_type' => in_array($request->input('relationshipType'), RelationshipRequirements::registrationTypes(), true)
                 ? $request->input('relationshipType') : null,

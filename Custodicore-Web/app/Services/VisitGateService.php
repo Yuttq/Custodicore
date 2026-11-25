@@ -173,8 +173,15 @@ class VisitGateService
     {
         $pdl = \App\Models\Pdl::find($visit->pdl_id);
 
-        return $pdl && $pdl->isVisitableOn(($now ?? now())->toDateString())
-            ? null
+        if ($pdl && $pdl->isVisitableOn(($now ?? now())->toDateString())) {
+            return null;
+        }
+
+        // Left custody: say so (released / transferred / deceased).
+        $phrase = $pdl?->leftCustodyPhrase();
+
+        return $phrase !== null
+            ? "This PDL {$phrase}. Do not admit the visitor; refer them to the Warden."
             : self::PDL_UNAVAILABLE_MESSAGE;
     }
 
