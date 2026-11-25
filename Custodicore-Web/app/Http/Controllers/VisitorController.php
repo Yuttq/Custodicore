@@ -126,7 +126,7 @@ class VisitorController extends Controller
             'confirmations' => ['nullable', 'array'],
             'confirmations.*' => ['string', Rule::in(array_keys(\App\Services\RelationshipRequirements::CONFIRMATIONS))],
             'accompanying_adult' => ['nullable', 'string', 'max:150'],
-        ]);
+        ] + self::idExpiryRules(required: false), self::idExpiryMessages());
 
         $staffId = $this->actingStaffId();
         if ($staffId === null) {
@@ -153,6 +153,17 @@ class VisitorController extends Controller
             return back()->with('error', 'Could not approve this visitor. ' . $e->getMessage());
         }
         $approvalNotes = implode(' ', $result['notes']);
+
+        // The ID's expiry, read off the ID on the card (optional).
+        if ($request->filled('id_expiry_date') || $request->boolean('id_no_expiry')) {
+            [$expiry, $noExpiry] = self::idExpiryValues($validated);
+            $approvedId = $visitor->fresh()->currentGovernmentId();
+            if ($approvedId && $approvedId->verification_status === 'verified') {
+                $approvedId->update(['expiry_date' => $expiry, 'no_expiry' => $noExpiry]);
+                $this->logAudit('update', 'visitor_ids', $approvedId->visitor_id_doc_id,
+                    "Recorded {$approvedId->typeLabel()} expiry for {$visitor->full_name}: " . $approvedId->fresh()->expiryLabel());
+            }
+        }
 
         Notification::notify(
             $visitor->account_id,
@@ -322,6 +333,60 @@ class VisitorController extends Controller
         $note = app(\App\Services\WalkInService::class)->autoLink($visitor, $staffId);
 
         return back()->with('success', trim('ID approved. '.($note ?? '')));
+    }
+
+    /**
+     * Records when the ID expires, as printed on it, or that it has no
+     * expiry date (e.g. the PhilSys National ID). An ID that has expired by
+     * the visit date blocks booking (VisitAssignmentService).
+     */
+    public function setIdExpiry(Request $request, VisitorProfile $visitor, VisitorId $idDocument)
+    {
+        abort_unless($idDocument->visitor_id === $visitor->visitor_id, 404);
+
+        if (in_array($idDocument->verification_status, ['rejected', VisitorId::STATUS_SUPERSEDED], true)) {
+            return back()->with('error', 'This ID is no longer in use, so its expiry is not recorded.');
+        }
+
+        $data = $request->validate(self::idExpiryRules(), self::idExpiryMessages());
+        [$expiry, $noExpiry] = self::idExpiryValues($data);
+
+        $idDocument->update(['expiry_date' => $expiry, 'no_expiry' => $noExpiry]);
+
+        $this->logAudit('update', 'visitor_ids', $idDocument->visitor_id_doc_id,
+            "Recorded {$idDocument->typeLabel()} expiry for {$visitor->full_name}: " . $idDocument->fresh()->expiryLabel());
+
+        return back()->with('success', 'ID expiry saved: ' . $idDocument->fresh()->expiryLabel() . '.');
+    }
+
+    /** id_expiry_date (Y-m-d) or id_no_expiry; both optional here, required_without each other when $required. */
+    private static function idExpiryRules(bool $required = true): array
+    {
+        return [
+            'id_no_expiry' => ['nullable', 'boolean'],
+            'id_expiry_date' => array_merge(
+                $required ? ['required_unless:id_no_expiry,1'] : ['nullable'],
+                ['nullable', 'date_format:Y-m-d', 'after:2000-01-01', 'before:2100-01-01']
+            ),
+        ];
+    }
+
+    private static function idExpiryMessages(): array
+    {
+        return [
+            'id_expiry_date.required_unless' => 'Enter the expiry date printed on the ID, or tick "No expiry date".',
+            'id_expiry_date.date_format' => 'Enter the expiry date printed on the ID as a date.',
+            'id_expiry_date.after' => 'Enter the expiry date printed on the ID.',
+            'id_expiry_date.before' => 'Enter the expiry date printed on the ID.',
+        ];
+    }
+
+    /** @return array{0: ?string, 1: bool} [expiry_date, no_expiry] */
+    private static function idExpiryValues(array $data): array
+    {
+        $noExpiry = (bool) ($data['id_no_expiry'] ?? false);
+
+        return [$noExpiry ? null : ($data['id_expiry_date'] ?? null), $noExpiry];
     }
 
     /** The visitor's own photo (from the mobile app), for staff. */

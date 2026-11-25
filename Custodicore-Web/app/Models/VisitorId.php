@@ -56,12 +56,57 @@ class VisitorId extends Model
         'rejection_reason',
         'verified_by',
         'verified_at',
+        'expiry_date',
+        'no_expiry',
     ];
+
+    /** How many days before its expiry date an ID is flagged "expires soon". */
+    public const EXPIRES_SOON_DAYS = 30;
 
     protected $casts = [
         'verified_at' => 'datetime',
         'uploaded_at' => 'datetime',
+        'expiry_date' => 'date',
+        'no_expiry' => 'boolean',
     ];
+
+    /**
+     * The ID's expiry on $date (default today):
+     *   unknown  — not recorded yet
+     *   none     — the ID has no expiry date
+     *   valid    — expires later
+     *   soon     — expires within EXPIRES_SOON_DAYS
+     *   expired  — its expiry date is before $date
+     */
+    public function expiryState(\DateTimeInterface|string|null $date = null): string
+    {
+        if ($this->no_expiry) {
+            return 'none';
+        }
+        if (! $this->expiry_date) {
+            return 'unknown';
+        }
+
+        $day = \Illuminate\Support\Carbon::parse($date ?? today())->startOfDay();
+
+        return match (true) {
+            $this->expiry_date->lt($day) => 'expired',
+            $this->expiry_date->lte($day->copy()->addDays(self::EXPIRES_SOON_DAYS)) => 'soon',
+            default => 'valid',
+        };
+    }
+
+    /** "Expired Mar 4, 2026", "Expires Mar 4, 2028", "No expiry date", "Expiry not recorded". */
+    public function expiryLabel(): string
+    {
+        return match ($this->expiryState()) {
+            'none' => 'No expiry date',
+            'unknown' => 'Expiry not recorded',
+            'expired' => 'Expired ' . $this->expiry_date->format('M j, Y'),
+            'soon' => 'Expires ' . $this->expiry_date->format('M j, Y') . ' (' . today()->diffInDays($this->expiry_date) . ' days left)',
+            default => 'Expires ' . $this->expiry_date->format('M j, Y'),
+        };
+    }
 
     /**
      * A duplicate ID staff set aside (VisitorController::setAsideId). Kept

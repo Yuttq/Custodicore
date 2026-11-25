@@ -316,7 +316,7 @@
     @endif
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Reviewed By</th><th></th></tr></thead>
+      <thead><tr><th>Type</th><th>ID Number</th><th>Status</th><th>Expiry</th><th>Reviewed By</th><th></th></tr></thead>
       <tbody>
         @if ($visitor->photo_path)
           {{-- The visitor's own photo: reject only (approved with the account). --}}
@@ -336,6 +336,7 @@
                 <span class="dot"></span>{{ ['verified' => 'APPROVED', 'rejected' => 'REJECTED', 'pending' => 'NOT CHECKED YET'][$photoStatus] ?? '—' }}
               </span>
             </td>
+            <td class="muted-cell">—</td>
             <td class="muted-cell">{{ $photoStatus !== 'pending' ? ($visitor->photoReviewedBy?->listName() ?? '—') : '—' }}</td>
             <td>
               <div style="display:flex;gap:8px;align-items:flex-start;">
@@ -359,6 +360,13 @@
             </span>
             @if (in_array($doc->verification_status, ['rejected', 'superseded'], true) && $doc->rejection_reason)
               <div class="muted-cell" style="margin-top:2px;">{{ $doc->rejection_reason }}</div>
+            @endif
+          </td>
+          <td>
+            @if (in_array($doc->verification_status, ['pending', 'verified'], true))
+              @include('partials.id-expiry', ['doc' => $doc, 'visitor' => $visitor, 'editable' => $doc->visitor_id_doc_id === $currentIdRow])
+            @else
+              <span class="muted-cell">—</span>
             @endif
           </td>
           <td class="muted-cell">{{ $doc->verifiedBy?->listName() ?? '—' }}</td>

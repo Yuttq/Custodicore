@@ -80,7 +80,16 @@
               </span>
             @endif
           </td>
-          <td class="muted-cell">{{ $visitor->id_documents_count }}</td>
+          <td class="muted-cell">
+            {{ $visitor->id_documents_count }}
+            {{-- The ID in use: expired, or expiring within VisitorId::EXPIRES_SOON_DAYS. --}}
+            @php $currentId = $visitor->id_documents_count ? $visitor->currentGovernmentId() : null; @endphp
+            @if ($currentId && in_array($currentId->expiryState(), ['expired', 'soon'], true))
+              <span class="badge {{ $currentId->expiryState() === 'expired' ? 'rejected' : 'transferred' }}" style="margin-left:6px;" title="{{ $currentId->typeLabel() }}: {{ $currentId->expiryLabel() }}">
+                <span class="dot"></span>{{ $currentId->expiryState() === 'expired' ? 'ID expired' : 'ID expires soon' }}
+              </span>
+            @endif
+          </td>
           <td class="muted-cell">
             @if ($visitor->active_flags_count > 0)
               <span class="flag">{{ $visitor->active_flags_count }} Active</span>

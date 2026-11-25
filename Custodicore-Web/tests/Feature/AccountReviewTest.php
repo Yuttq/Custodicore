@@ -103,6 +103,35 @@ class AccountReviewTest extends TestCase
         $this->assertSame('verified', $visitor->relationships()->sole()->verification_status);
     }
 
+    public function test_approve_saves_the_id_expiry_read_off_the_card(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $id = $this->id($visitor, 'pending');
+        $this->registrationDocument($visitor, 'pdl_birth_certificate');
+
+        $this->get('/account-reviews')->assertOk()->assertSee(': valid until', false)->assertSee('No expiry date on this ID');
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", [
+            'pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent', 'id_expiry_date' => '2029-01-31',
+        ])->assertSessionHas('success');
+
+        $this->assertSame('verified', $id->fresh()->verification_status);
+        $this->assertSame('2029-01-31', $id->fresh()->expiry_date->toDateString());
+    }
+
+    public function test_approve_without_the_expiry_still_works_and_shows_it_as_not_recorded(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $id = $this->id($visitor, 'pending');
+        $this->registrationDocument($visitor, 'pdl_birth_certificate');
+
+        $this->post("/visitors/{$visitor->visitor_id}/approve", ['pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent'])
+            ->assertSessionHas('success');
+
+        $this->assertSame('unknown', $id->fresh()->expiryState());
+        $this->get("/visitors/{$visitor->visitor_id}")->assertSee('Expiry not recorded')->assertSee('Record expiry');
+    }
+
     public function test_an_unticked_confirmation_refuses_and_rolls_back_the_whole_approval(): void
     {
         $visitor = $this->pendingVisitor();

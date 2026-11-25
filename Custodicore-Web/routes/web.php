@@ -628,6 +628,12 @@ Route::middleware([
         [\App\Http\Controllers\VisitorController::class, 'rejectId']
     )->name('visitor.ids.reject');
 
+    // The ID's expiry date as printed on it, or "no expiry date".
+    Route::post(
+        '/visitors/{visitor}/ids/{idDocument}/expiry',
+        [\App\Http\Controllers\VisitorController::class, 'setIdExpiry']
+    )->name('visitor.ids.expiry');
+
     // A duplicate ID waiting for review, set aside (kept, never approved).
     Route::post(
         '/visitors/{visitor}/ids/{idDocument}/set-aside',

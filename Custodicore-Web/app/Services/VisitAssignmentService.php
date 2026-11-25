@@ -1238,9 +1238,10 @@ class VisitAssignmentService
      * checks, so that every booking is confirmed (or sent to the visitor to
      * confirm) without a review step: the relationship's requirements
      * checklist is complete (valid ID, or a minor's birth certificate, and
-     * the documents of the relationship type) and no visitor flag covers the
-     * visit date. A flag "until resolved" covers every date until it is
-     * resolved; a flag with a time limit only the dates before it ends.
+     * the documents of the relationship type), no visitor flag covers the
+     * visit date, and the visitor's ID has not expired by the visit date.
+     * A flag "until resolved" covers every date until it is resolved; a flag
+     * with a time limit only the dates before it ends.
      */
     private function assertClearedToBook(
         VisitorProfile $visitor,
@@ -1250,6 +1251,15 @@ class VisitAssignmentService
         if (self::flagCovers($visitor, $date)) {
             throw ValidationException::withMessages([
                 'visitor_id' => self::FLAGGED_VISITOR_MESSAGE,
+            ]);
+        }
+
+        // The ID must still be valid on the visit day (expiry recorded by
+        // the Record Officer; an ID without a recorded expiry is not blocked).
+        $id = $visitor->currentGovernmentId();
+        if ($id && $id->expiryState($date) === 'expired') {
+            throw ValidationException::withMessages([
+                'id' => "Your {$id->typeLabel()} expired on {$id->expiry_date->format('M j, Y')}. Upload a new ID before booking.",
             ]);
         }
 

@@ -392,6 +392,21 @@
                 @endforeach
               </div>
             @endunless
+
+            {{-- The ID's expiry, read off the ID (saved with Approve). --}}
+            @if ($idDoc)
+              <div class="field-m" data-id-expiry-fields style="margin-top:10px;">
+                <label for="id-expiry-card-{{ $visitor->visitor_id }}">{{ $idDoc->typeLabel() }}: valid until</label>
+                <input type="date" id="id-expiry-card-{{ $visitor->visitor_id }}" name="id_expiry_date" form="{{ $approveForm }}" data-id-expiry-date
+                       value="{{ $isOldCard ? old('id_expiry_date') : $idDoc->expiry_date?->toDateString() }}"
+                       @disabled($isOldCard ? old('id_no_expiry') : $idDoc->no_expiry)>
+                <label class="id-expiry-none">
+                  <input type="checkbox" name="id_no_expiry" value="1" form="{{ $approveForm }}" data-id-no-expiry
+                         @checked($isOldCard ? old('id_no_expiry') : $idDoc->no_expiry)> No expiry date on this ID
+                </label>
+                <p class="field-hint">As printed on the ID. An expired ID cannot be used to book visits.</p>
+              </div>
+            @endif
           </div>
 
           {{-- Filled in by the script below; updates as the PDL and relationship change. --}}
@@ -520,6 +535,7 @@
   @endif
 @endif
 @include('partials.pdl-search-script')
+@include('partials.id-expiry-script')
 <script>
   // Same-name list: "Choose" fills the card's PDL box, as picking it from the search would.
   document.querySelectorAll('[data-pdl-choose]').forEach(function (btn) {
