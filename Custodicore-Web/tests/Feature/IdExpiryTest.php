@@ -140,6 +140,18 @@ class IdExpiryTest extends TestCase
             ->assertSee('Change expiry');
     }
 
+    public function test_scan_id_button_reads_the_ids_own_picture(): void
+    {
+        $id = $this->currentId();
+        $src = route('visitor.ids.file', [$this->visitor->visitor_id, $id->visitor_id_doc_id]);
+
+        $this->actingAs($this->recordOfficerAccount, 'web')
+            ->get(route('visitor.show', $this->visitor->visitor_id))->assertOk()
+            ->assertSee('data-id-scan data-src="' . $src . '"', false)
+            ->assertSee('>Scan ID</button>', false)
+            ->assertSee('js/id-expiry-scan.js', false);
+    }
+
     // ------------------------------------------------------------ Booking
 
     public function test_an_id_expired_before_the_visit_date_blocks_booking(): void

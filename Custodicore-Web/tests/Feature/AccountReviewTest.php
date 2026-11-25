@@ -109,7 +109,9 @@ class AccountReviewTest extends TestCase
         $id = $this->id($visitor, 'pending');
         $this->registrationDocument($visitor, 'pdl_birth_certificate');
 
-        $this->get('/account-reviews')->assertOk()->assertSee(': valid until', false)->assertSee('No expiry date on this ID');
+        $this->get('/account-reviews')->assertOk()->assertSee(': valid until', false)->assertSee('No expiry date on this ID')
+            ->assertSee('data-id-scan data-src="' . route('visitor.ids.file', [$visitor->visitor_id, $id->visitor_id_doc_id]) . '"', false)
+            ->assertSee('js/id-expiry-scan.js', false);
 
         $this->post("/visitors/{$visitor->visitor_id}/approve", [
             'pdl_id' => $this->pdl->pdl_id, 'relationship_type' => 'parent', 'id_expiry_date' => '2029-01-31',
@@ -117,6 +119,23 @@ class AccountReviewTest extends TestCase
 
         $this->assertSame('verified', $id->fresh()->verification_status);
         $this->assertSame('2029-01-31', $id->fresh()->expiry_date->toDateString());
+    }
+
+    public function test_card_offers_to_read_the_psa_documents(): void
+    {
+        $visitor = $this->pendingVisitor();
+        $this->id($visitor, 'pending');
+
+        // No PSA certificate yet: nothing to read.
+        $this->get('/account-reviews')->assertOk()->assertDontSee('Read PSA documents');
+
+        $doc = $this->registrationDocument($visitor, 'pdl_birth_certificate');
+        $this->get('/account-reviews')->assertOk()
+            ->assertSee('Check documents')
+            ->assertSee('Read PSA documents')
+            ->assertSee(str_replace('/', '\/', route('relationship-documents.file', $doc->document_id)), false)
+            ->assertSee('"key":"pdl_birth_certificate"', false)
+            ->assertSee('js/relationship-docs-scan.js', false);
     }
 
     public function test_approve_without_the_expiry_still_works_and_shows_it_as_not_recorded(): void

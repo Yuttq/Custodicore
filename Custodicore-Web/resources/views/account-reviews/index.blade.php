@@ -373,6 +373,34 @@
             @endif
 
             @unless ($visitor->isWalkIn())
+              {{-- PSA certificates read with OCR: names checked, relationship suggested (relationship-docs-scan.js). --}}
+              @php
+                $psaDocs = \App\Models\RelationshipDocument::where('visitor_id', $visitor->visitor_id)
+                  ->whereIn('requirement_key', ['marriage_certificate', 'pdl_birth_certificate', 'visitor_birth_certificate', 'child_birth_certificate'])
+                  ->where('status', '!=', 'rejected')
+                  ->orderByDesc('uploaded_at')->orderByDesc('document_id')
+                  ->get()->unique('requirement_key')->values();
+                $linkedPdl = $linked?->pdl;
+                $docCheckData = [
+                  'visitor' => ['full' => $visitor->full_name, 'first' => $visitor->first_name, 'last' => $visitor->last_name],
+                  'pdl' => $linkedPdl ? ['full' => $linkedPdl->full_name, 'first' => $linkedPdl->first_name, 'last' => $linkedPdl->last_name] : null,
+                  'documents' => $psaDocs->map(fn ($d) => ['key' => $d->requirement_key, 'label' => $d->label(), 'url' => route('relationship-documents.file', $d->document_id)])->all(),
+                ];
+              @endphp
+              @if ($psaDocs->isNotEmpty())
+                <div class="doc-check" data-doc-check>
+                  <script type="application/json" data-doc-check-data>@json($docCheckData)</script>
+                  <div class="doc-check-head">
+                    <div>
+                      <strong>Check documents</strong>
+                      <div class="field-hint" style="margin:2px 0 0;">Reads the PSA certificates ({{ $psaDocs->map->label()->join(', ') }}), checks the names and suggests the relationship.</div>
+                    </div>
+                    <button type="button" class="btn btn-outline-neutral" data-doc-check-run>Read PSA documents</button>
+                  </div>
+                  <ul class="doc-check-result" data-doc-check-result aria-live="polite"></ul>
+                </div>
+              @endif
+
               {{-- Officer confirmations; the script shows the ones this relationship needs. --}}
               <div class="field-m" data-confirmations hidden style="margin-top:10px;">
                 <label>Officer confirmations</label>
@@ -395,8 +423,15 @@
 
             {{-- The ID's expiry, read off the ID (saved with Approve). --}}
             @if ($idDoc)
-              <div class="field-m" data-id-expiry-fields style="margin-top:10px;">
+              <div class="field-m" data-id-expiry-fields data-id-scan-box style="margin-top:10px;">
                 <label for="id-expiry-card-{{ $visitor->visitor_id }}">{{ $idDoc->typeLabel() }}: valid until</label>
+                @if ($idDoc->file_path)
+                <div class="id-scan-row">
+                  <button type="button" class="btn btn-outline-neutral" data-id-scan data-src="{{ route('visitor.ids.file', [$visitor->visitor_id, $idDoc->visitor_id_doc_id]) }}">Scan ID</button>
+                  <span class="id-scan-status" data-id-scan-status aria-live="polite">Reads the expiry date off the ID picture.</span>
+                </div>
+                @endif
+
                 <input type="date" id="id-expiry-card-{{ $visitor->visitor_id }}" name="id_expiry_date" form="{{ $approveForm }}" data-id-expiry-date
                        value="{{ $isOldCard ? old('id_expiry_date') : $idDoc->expiry_date?->toDateString() }}"
                        @disabled($isOldCard ? old('id_no_expiry') : $idDoc->no_expiry)>
@@ -536,6 +571,7 @@
 @endif
 @include('partials.pdl-search-script')
 @include('partials.id-expiry-script')
+<script src="{{ asset('js/relationship-docs-scan.js') }}?v={{ @filemtime(public_path('js/relationship-docs-scan.js')) ?: '1' }}" defer></script>
 <script>
   // Same-name list: "Choose" fills the card's PDL box, as picking it from the search would.
   document.querySelectorAll('[data-pdl-choose]').forEach(function (btn) {
