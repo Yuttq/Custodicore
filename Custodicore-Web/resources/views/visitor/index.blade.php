@@ -23,6 +23,13 @@
   </a>
 </section>
 
+@if ($idExpiry)
+  <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span>Showing only visitors whose ID has expired or expires within {{ \App\Models\VisitorId::EXPIRES_SOON_DAYS }} days. They have been notified in the app to upload a new one.</span>
+    <a href="{{ route('visitor.index') }}" style="color:inherit;font-weight:700;">Show all visitors</a>
+  </div>
+@endif
+
 @if ($flagged)
   <div class="elig-note is-warn" style="margin:0 0 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <span>Showing only visitors with an active flag.</span>
@@ -32,6 +39,7 @@
 
 <form class="filters filters-3" method="GET" action="{{ route('visitor.index') }}">
   @if ($flagged)<input type="hidden" name="flagged" value="1">@endif
+  @if ($idExpiry)<input type="hidden" name="id_expiry" value="1">@endif
   <div class="field">
     <label for="q">Search</label>
     <div class="input"><input id="q" type="text" name="q" value="{{ $query }}" placeholder="Search by name or contact number"></div>

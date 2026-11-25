@@ -39,6 +39,10 @@ class NavBadges
                 route('pdl.index', ['hearing' => 'week'])),
             'cells' => $this->badge('warn', $this->dormsOver(), fn ($n) => "{$n} " . ($n === 1 ? 'dorm is' : 'dorms are') . ' over the recommended capacity',
                 route('cell-blocks.index', ['over' => 1])),
+            // IDs in use that expired or expire soon (VisitorId::needingRenewal).
+            'visitors' => $this->badge('warn', \App\Models\VisitorId::needingRenewal()->count(),
+                fn ($n) => "{$n} visitor " . ($n === 1 ? 'ID has expired or expires' : 'IDs have expired or expire') . ' within ' . \App\Models\VisitorId::EXPIRES_SOON_DAYS . ' days',
+                route('visitor.index', ['id_expiry' => 1])),
             'review' => $this->badge('count', $review, fn ($n) => "{$n} waiting for review", route('review-queue')),
             'upcoming' => $this->upcomingBadge(),
             'slots' => $this->badge('warn', $this->unpublishedSessions()->count(), fn ($n) => "{$n} visiting " . ($n === 1 ? 'session' : 'sessions') . ' in the next ' . self::DAYS_AHEAD . ' days ' . ($n === 1 ? 'is' : 'are') . ' not published yet, so visitors cannot book ' . ($n === 1 ? 'it' : 'them'),

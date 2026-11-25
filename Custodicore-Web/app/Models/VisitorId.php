@@ -96,6 +96,26 @@ class VisitorId extends Model
         };
     }
 
+    /**
+     * Visitors' IDs in use (approved, the visitor's current ID) that have
+     * expired or expire within EXPIRES_SOON_DAYS: the ones to renew. With
+     * their visitor loaded.
+     *
+     * @return \Illuminate\Support\Collection<int, self>
+     */
+    public static function needingRenewal(): \Illuminate\Support\Collection
+    {
+        return self::where('verification_status', 'verified')
+            ->where('no_expiry', false)
+            ->whereNotNull('expiry_date')
+            ->whereDate('expiry_date', '<=', today()->addDays(self::EXPIRES_SOON_DAYS)->toDateString())
+            ->with('visitor.account')
+            ->get()
+            ->filter(fn (self $id) => $id->visitor
+                && $id->visitor->currentGovernmentId()?->visitor_id_doc_id === $id->visitor_id_doc_id)
+            ->values();
+    }
+
     /** "Expired Mar 4, 2026", "Expires Mar 4, 2028", "No expiry date", "Expiry not recorded". */
     public function expiryLabel(): string
     {

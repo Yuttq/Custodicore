@@ -38,6 +38,7 @@
       </a>
       <a href="{{ route('visitor.index') }}" data-nav="visitors" class="{{ request()->routeIs('visitor.*') ? 'active' : '' }}">
         Visitor Records
+        @include('partials.nav-badge', ['badge' => $navBadges['visitors'] ?? null])
       </a>
       <a href="{{ route('review-queue') }}" data-nav="review" class="{{ request()->routeIs('review-queue', 'account-reviews.*') ? 'active' : '' }}">
         Review Queue

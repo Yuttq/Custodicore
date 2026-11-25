@@ -92,7 +92,7 @@ class NavBadgesTest extends TestCase
             $this->visitor, $this->relationship, CarbonImmutable::parse(self::FRIDAY, 'Asia/Manila'), '09:00'
         );
         // Confirmed at booking: nothing waits for review.
-        $this->assertArrayNotHasKey('visitors', $this->badges());
+        $this->assertNull($this->badges()['visitors'], 'Only IDs to renew are counted there.');
         $this->assertNull($this->badges()['review']);
         $this->assertNull($this->badges()['upcoming']);
 

@@ -168,6 +168,71 @@ class IdExpiryTest extends TestCase
         $this->book()->assertCreated();
     }
 
+    // ------------------------------------------------- Notices and badge
+
+    private function notices(string $title): int
+    {
+        return \App\Models\Notification::where('account_id', $this->visitorAccount->account_id)
+            ->where('related_record_type', 'visitor_ids')->where('title', $title)->count();
+    }
+
+    public function test_visitor_is_told_once_before_and_once_after_the_id_expires(): void
+    {
+        $this->currentId()->update(['expiry_date' => '2026-12-01']); // 55 days away: nothing yet
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 0')->assertSuccessful();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-05 08:00:00', 'Asia/Manila')); // 26 days left
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 1')->assertSuccessful();
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 0')->assertSuccessful();
+        $this->assertSame(1, $this->notices(\App\Console\Commands\IdExpiryReminders::TITLE_SOON));
+        $this->assertTrue(\App\Models\Notification::where('title', \App\Console\Commands\IdExpiryReminders::TITLE_SOON)
+            ->where('message', 'Your National ID expires on Dec 1, 2026. Upload a new valid ID in the app before then, so you can keep booking visits.')
+            ->exists());
+
+        $this->travelTo(CarbonImmutable::parse('2026-12-02 08:00:00', 'Asia/Manila')); // expired yesterday
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 1')->assertSuccessful();
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 0')->assertSuccessful();
+        $this->assertSame(1, $this->notices(\App\Console\Commands\IdExpiryReminders::TITLE_EXPIRED));
+    }
+
+    public function test_ids_without_an_expiry_or_far_from_it_get_no_notice(): void
+    {
+        $this->currentId()->update(['no_expiry' => true]);
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 0');
+
+        $this->currentId()->update(['no_expiry' => false, 'expiry_date' => '2028-03-04']);
+        $this->artisan('ids:expiry-reminders')->expectsOutput('ID expiry notices sent: 0');
+    }
+
+    public function test_reminders_run_every_morning(): void
+    {
+        $event = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->first(fn ($e) => str_contains($e->command, 'ids:expiry-reminders'));
+
+        $this->assertNotNull($event);
+        $this->assertSame('0 8 * * *', $event->expression);
+    }
+
+    public function test_record_officer_sees_a_badge_and_the_filtered_list(): void
+    {
+        $this->actingAs($this->recordOfficerAccount, 'web');
+        $this->assertNull(app(\App\Services\NavBadges::class)->all()['visitors']);
+
+        $this->currentId()->update(['expiry_date' => '2026-10-20']);
+        $badge = app(\App\Services\NavBadges::class)->all()['visitors'];
+        $this->assertSame(1, $badge['value']);
+        $this->assertSame('1 visitor ID has expired or expires within 30 days', $badge['title']);
+        $this->assertSame(route('visitor.index', ['id_expiry' => 1]), $badge['url']);
+
+        $this->get(route('visitor.index', ['id_expiry' => 1]))->assertOk()
+            ->assertSee('Showing only visitors whose ID has expired or expires within 30 days.')
+            ->assertSee($this->visitor->full_name);
+
+        $this->currentId()->update(['expiry_date' => '2028-03-04']);
+        $this->get(route('visitor.index', ['id_expiry' => 1]))->assertOk()
+            ->assertDontSee($this->visitor->full_name);
+    }
+
     // ------------------------------------------------------ Visitor Records
 
     public function test_visitor_records_flags_expired_and_expiring_ids(): void

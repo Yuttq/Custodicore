@@ -52,6 +52,7 @@ class Notification extends Model
         'visit_confirmed',
         'visit_reminder_confirm',
         'visit_reminder_today',
+        'id_expiry',
     ];
 
     public static function notify(int $accountId, string $type, string $title, string $message, ?string $relatedType = null, ?int $relatedId = null): self

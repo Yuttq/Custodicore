@@ -42,6 +42,7 @@ class VisitorController extends Controller
         $status = trim((string) $request->input('status', ''));
         // From the "Flagged" card: only visitors with a flag still in force.
         $flagged = $request->boolean('flagged');
+        $idExpiry = $request->boolean('id_expiry');
 
         $visitors = VisitorProfile::query()
             ->when($query !== '', function ($q) use ($query) {
@@ -56,6 +57,8 @@ class VisitorController extends Controller
             ->when($status === 'walk_in_pending', fn ($q) => $q->where('verification_status', 'pending')->where('registered_via', 'walk_in'))
             ->when(in_array($status, ['verified', 'rejected'], true), fn ($q) => $q->where('verification_status', $status))
             ->when($flagged, fn ($q) => $q->whereHas('activeFlags'))
+            // From the sidebar badge: the ID in use expired or expires soon.
+            ->when($idExpiry, fn ($q) => $q->whereIn('visitor_id', VisitorId::needingRenewal()->pluck('visitor_id')))
             ->withCount(['idDocuments', 'activeFlags'])
             ->orderBy('created_at', 'desc')
             ->paginate(10)
@@ -68,7 +71,7 @@ class VisitorController extends Controller
             'flagged' => VisitorProfile::whereHas('activeFlags')->count(),
         ];
 
-        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'flagged'));
+        return view('visitor.index', compact('visitors', 'query', 'status', 'stats', 'flagged', 'idExpiry'));
     }
 
     // -----------------------------------------------------------------
