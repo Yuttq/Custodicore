@@ -1168,11 +1168,6 @@ export default function RegisterScreen({ navigation, route }) {
       {pdlBirthDateUnknown && errors.pdlBirthDate ? (
         <Text style={styles.stepError}>{errors.pdlBirthDate}</Text>
       ) : null}
-
-      <Text style={fieldStyles.hint}>
-        Facility staff use these details to find the PDL in their records and link them to your account.
-        The date of birth helps when more than one PDL has the same name. This does not give visit access by itself.
-      </Text>
     </Card>
   );
 

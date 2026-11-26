@@ -5,14 +5,12 @@ import { colors, formStyles, spacing, typography } from '../designSystem';
 import {
   PDL_NAME_PART_LIMITS,
   PDL_NAME_SUFFIXES,
-  composeIntendedPdlName,
   filterPdlNamePart,
 } from '../utils/intendedPdlName';
 
 /**
  * The PDL's name in parts: First, Middle (or "No middle name / Not sure"),
- * Last and an optional Suffix, with the joined full name shown underneath —
- * the one string the app sends. Used by registration step 2 and Add PDL.
+ * Last and an optional Suffix. Used by registration step 2 and Add PDL.
  *
  * Controlled: `value` is a PdlNameParts object; `onChange(patch, errorKey)`
  * gives the changed part(s) and the error key to clear. Errors are keyed
@@ -29,16 +27,12 @@ import {
  */
 export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle, labelStyle, inputStyle }) {
   const [suffixOpen, setSuffixOpen] = useState(false);
-  const fullName = composeIntendedPdlName(value);
-
-  const renderInput = (label, key, errorKey, maxLength, placeholder) => (
+  const renderInput = (label, key, errorKey, maxLength) => (
     <View style={[formStyles.field, fieldStyle]}>
       <Text style={[formStyles.label, labelStyle]}>{label}</Text>
       <TextInput
         value={value[key]}
         onChangeText={(v) => onChange({ [key]: filterPdlNamePart(v) }, errorKey)}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textSecondary}
         style={[formStyles.input, inputStyle, errors[errorKey] ? formStyles.inputError : null]}
         autoCapitalize="words"
         autoCorrect={false}
@@ -51,11 +45,11 @@ export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle
 
   return (
     <View>
-      {renderInput("PDL's First Name", 'first', 'pdlFirstName', PDL_NAME_PART_LIMITS.first, 'e.g. Juan')}
+      {renderInput("PDL's First Name", 'first', 'pdlFirstName', PDL_NAME_PART_LIMITS.first)}
 
       {value.noMiddleName
         ? null
-        : renderInput("PDL's Middle Name", 'middle', 'pdlMiddleName', PDL_NAME_PART_LIMITS.middle, 'e.g. Santos')}
+        : renderInput("PDL's Middle Name", 'middle', 'pdlMiddleName', PDL_NAME_PART_LIMITS.middle)}
       <Pressable
         onPress={() =>
           // Ticking clears the middle name: nothing is sent in its place.
@@ -72,8 +66,7 @@ export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle
         <Text style={styles.checkText}>No middle name / Not sure</Text>
       </Pressable>
 
-      {renderInput("PDL's Last Name", 'last', 'pdlLastName', PDL_NAME_PART_LIMITS.last, 'e.g. Dela Cruz')}
-      <Text style={styles.hint}>Include every part of the last name, e.g. Dela Cruz, De los Santos.</Text>
+      {renderInput("PDL's Last Name", 'last', 'pdlLastName', PDL_NAME_PART_LIMITS.last)}
 
       <View style={[formStyles.field, fieldStyle]}>
         <Text style={[formStyles.label, labelStyle]}>Suffix (optional)</Text>
@@ -87,13 +80,6 @@ export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle
           <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
         </Pressable>
         {errors.pdlSuffix ? <Text style={formStyles.error}>{errors.pdlSuffix}</Text> : null}
-      </View>
-
-      <View style={styles.preview} accessibilityRole="text">
-        <Text style={styles.previewLabel}>Full name staff will see</Text>
-        <Text style={[styles.previewValue, !fullName && styles.previewEmpty]}>
-          {fullName || 'Enter the name above'}
-        </Text>
       </View>
 
       <Modal visible={suffixOpen} transparent animationType="fade" onRequestClose={() => setSuffixOpen(false)}>
@@ -150,12 +136,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
   },
-  hint: {
-    ...typography.metadata,
-    color: colors.textSecondary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
-  },
   select: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -164,25 +144,6 @@ const styles = StyleSheet.create({
   selectText: {
     ...typography.body,
     color: colors.textPrimary,
-  },
-  preview: {
-    borderRadius: 8,
-    backgroundColor: colors.background,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  previewLabel: {
-    ...typography.metadata,
-    color: colors.textSecondary,
-  },
-  previewValue: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  previewEmpty: {
-    fontWeight: '400',
-    color: colors.textSecondary,
   },
   modalOverlay: {
     flex: 1,

@@ -286,10 +286,6 @@ export default function AddPdlRequestScreen({ navigation, route }) {
         }}
         errors={errors}
       />
-      <Text style={styles.hint}>
-        Facility staff use this name to find the PDL in their records and link them to your account.
-        This does not give visit access by itself.
-      </Text>
     </Card>
   );
 
