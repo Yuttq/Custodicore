@@ -84,8 +84,9 @@ function VisitListEmpty({ tab, hasAnyVisits, onReturnHome }) {
       actionTitle: 'Return to Home',
     },
     pending: {
-      title: 'No Pending Visits',
-      message: 'Visit requests awaiting staff review and visits awaiting your confirmation will appear here.',
+      title: 'No visits to confirm',
+      message:
+        'When a Record Officer assigns a visit to you, it will appear here. You can confirm or decline the assigned schedule.',
       icon: 'time-outline',
       actionTitle: null,
     },
@@ -406,6 +407,20 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
     navigation.navigate('MainTabs', { screen: 'Dashboard' });
   }, [navigation]);
 
+  // After a booking: the QR tab for that visit (same params as Visit
+  // Details → Show QR pass), or this screen's Upcoming tab.
+  const onViewQrPass = useCallback(
+    (visitId) => {
+      if (!visitId) return;
+      navigation.navigate('MainTabs', {
+        screen: 'QR',
+        params: { scheduleId: visitId, visitId },
+      });
+    },
+    [navigation],
+  );
+  const onViewUpcoming = useCallback(() => setActiveTab('upcoming'), []);
+
   const renderItem = useCallback(
     ({ item }) => (
       <VisitCard
@@ -476,7 +491,8 @@ export default function MyAssignedVisitsScreen({ navigation, route }) {
           <VisitationScheduleSection
             schedule={scheduleForSection}
             onSubmitRequest={submitVisitRequest}
-            onViewPending={() => setActiveTab('pending')}
+            onViewQrPass={onViewQrPass}
+            onViewUpcoming={onViewUpcoming}
           />
         </ScrollView>
       ) : loading && !refreshing ? (

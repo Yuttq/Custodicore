@@ -275,7 +275,7 @@ function HomePdlChips({ relationships, selectedId, onSelect, canAdd, onAdd }) {
  * relationship (GET /api/schedules/availability) and the calendar shows only
  * that PDL's dates, with the visitor's own pending / confirmed visits with
  * that PDL marked. Tapping an available date opens My Visits → Schedule with
- * that PDL and date already selected; slots are chosen and requested there.
+ * that PDL and date already selected; slots are chosen and scheduled there.
  * @param {object} props
  * @param {ReturnType<typeof useScheduleAvailability>} props.schedule
  * @param {Record<string, 'pending' | 'confirmed'>} props.markedDates — the selected PDL's visits

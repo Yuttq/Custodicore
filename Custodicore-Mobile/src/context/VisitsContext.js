@@ -104,9 +104,10 @@ export function VisitsProvider({ children }) {
   );
 
   /**
-   * Submits a visit request, then reloads the list so it shows up (status
-   * `assigned`, awaiting staff review). Throws the API error unchanged;
-   * nothing is added locally unless the backend accepted the request.
+   * Schedules a visit (the backend books it as `confirmed` at once), then
+   * reloads the list so it shows up under Upcoming. Throws the API error
+   * unchanged; nothing is added locally unless the backend accepted it.
+   * Resolves to the created visit (normalized), or null.
    */
   const submitVisitRequest = useCallback(
     async (params) => {

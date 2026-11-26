@@ -163,7 +163,7 @@ function isNoActiveQrPassError(message) {
     normalized.includes('only available once your visit is confirmed') ||
     normalized.includes('already checked in') ||
     normalized.includes('already been used') ||
-    // 409 for an `assigned` visit request still awaiting staff review
+    // 409 for a legacy `assigned` request (booked before the review step was removed)
     normalized.includes('awaiting review')
   );
 }

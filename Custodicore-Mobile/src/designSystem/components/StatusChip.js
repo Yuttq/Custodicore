@@ -12,7 +12,7 @@ const VARIANTS = {
     bg: colors.warning,
     fg: colors.textPrimary,
   },
-  // Visitor-submitted request awaiting staff review.
+  // Legacy: a request booked before the review step was removed (new bookings are `confirmed`).
   assigned: {
     label: 'Awaiting Review',
     bg: colors.warning,

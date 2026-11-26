@@ -31,7 +31,7 @@ const FAQS = [
   {
     question: 'How do I schedule a visit?',
     answer:
-      'Once your account and PDL relationship are approved, tap Request a Visit on Home, pick an available date and submit. You will be notified when staff approve it. Visits staff assign to you are confirmed in My Visits.',
+      'Once your account and PDL relationship are approved, tap an available date on the Home calendar, choose a session and tap Schedule Visit. Your visit is confirmed right away if the slot is still available and you meet the visiting requirements, and your QR pass is ready in the QR tab. Visits a Record Officer assigns to you appear under Pending in My Visits for you to confirm or decline.',
   },
   {
     question: 'How do I use the QR pass?',

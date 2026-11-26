@@ -20,7 +20,7 @@ import { isUpcomingVisit, scheduledDateIso } from './activeVisits.js';
 
 /** @typedef {'pending' | 'confirmed'} VisitMarker */
 
-/** Statuses still waiting on staff review or the visitor's confirmation. */
+/** Statuses still waiting on the visitor's confirmation (or a legacy `assigned` request). */
 const PENDING_STATUSES = ['assigned', 'pending_confirmation'];
 
 /**
@@ -56,8 +56,9 @@ export function visitsForRelationship(visits, relationship, relationships) {
 }
 
 /**
- * Calendar markers for upcoming visits: `pending` for requests awaiting staff
- * review or the visitor's confirmation, `confirmed` only when every visit on
+ * Calendar markers for upcoming visits: `pending` for staff-assigned visits
+ * awaiting the visitor's confirmation (or a legacy `assigned` request),
+ * `confirmed` only when every visit on
  * that date is confirmed. Past and closed visits are left out.
  * @param {{ status?: string; scheduledAt?: unknown }[] | null | undefined} visits
  * @param {string} today Manila "YYYY-MM-DD"

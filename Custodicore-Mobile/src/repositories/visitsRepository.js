@@ -59,10 +59,10 @@ export async function confirmAssignedVisit(visitId) {
 }
 
 /**
- * Submits a visit request (POST /api/visit-requests). Nothing is created
+ * Schedules a visit (POST /api/visit-requests). Nothing is created
  * unless the backend accepts it.
  * @param {{ relationshipId: string; date: string; startTime: string; startTimes?: string[] }} params
- * @returns {Promise<object | null>} the created visit (status `assigned`)
+ * @returns {Promise<object | null>} the created visit (status `confirmed`)
  */
 export async function submitVisitRequest(params) {
   return normalizeVisit(await api.createVisitRequest(params));

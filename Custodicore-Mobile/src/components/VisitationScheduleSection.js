@@ -52,15 +52,22 @@ function TextLink({ label, onPress, accessibilityLabel }) {
 /**
  * Visiting days/hours for the visitor's verified PDL relationship(s), the
  * date calendar and the time slots for the chosen date. Choosing a slot
- * reserves nothing; the submit button sends `schedule.requestParams` to
- * `onSubmitRequest` (POST /api/visit-requests). The resulting request awaits
- * staff review (`assigned`) — it is never confirmed here.
+ * reserves nothing; Schedule Visit sends `schedule.requestParams` to
+ * `onSubmitRequest` (POST /api/visit-requests). The backend books the visit
+ * as `confirmed` at once, or refuses it (422) with the reason.
  * @param {object} props
  * @param {ReturnType<typeof import('../hooks/useScheduleAvailability').default>} props.schedule
- * @param {(params: { relationshipId: string; date: string; startTime: string; startTimes?: string[] }) => Promise<unknown>} props.onSubmitRequest
- * @param {() => void} [props.onViewPending] — shows the Pending tab
+ * @param {(params: { relationshipId: string; date: string; startTime: string; startTimes?: string[] }) => Promise<{ id?: string; status?: string } | null>} props.onSubmitRequest
+ *   resolves to the created visit (normalized), or null when the response could not be read
+ * @param {(visitId: string) => void} [props.onViewQrPass] — opens the QR pass of that visit
+ * @param {() => void} [props.onViewUpcoming] — shows the Upcoming tab
  */
-export default function VisitationScheduleSection({ schedule, onSubmitRequest, onViewPending }) {
+export default function VisitationScheduleSection({
+  schedule,
+  onSubmitRequest,
+  onViewQrPass,
+  onViewUpcoming,
+}) {
   const {
     loading,
     error,
@@ -90,17 +97,18 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
     ? `${selection.relationshipId}|${selection.date}|${selection.slotKey}`
     : null;
 
-  // Visit request submission. The ref blocks a second POST from a fast
-  // double tap before `submitting` re-renders the button as disabled.
+  // Booking. The ref blocks a second POST from a fast double tap before
+  // `submitting` re-renders the button as disabled.
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   // An API error belongs to the slot it was raised for; another choice hides it.
   const [submitError, setSubmitError] = useState(
     /** @type {{ key: string; title: string | null; message: string } | null} */ (null),
   );
-  // The last successfully submitted slot, shown until a new slot is chosen.
+  // The last successfully booked slot, shown until a new slot is chosen.
+  // `visitId` / `confirmed` come from the backend's response only.
   const [submitted, setSubmitted] = useState(
-    /** @type {{ pdlName: string | null; date: string; period: string; startTime: string; endTime: string } | null} */ (null),
+    /** @type {{ pdlName: string | null; date: string; period: string; startTime: string; endTime: string; visitId: string | null; confirmed: boolean } | null} */ (null),
   );
   useEffect(() => {
     if (selectionKey) setSubmitted(null);
@@ -122,7 +130,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
       endTime: selection.endTime,
     };
     try {
-      await onSubmitRequest({
+      const created = await onSubmitRequest({
         relationshipId: requestParams.relationshipId,
         date: requestParams.date,
         startTime: requestParams.startTime,
@@ -130,7 +138,12 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
         ...(requestParams.startTimes ? { startTimes: requestParams.startTimes } : {}),
       });
       clearSelection();
-      setSubmitted(chosen);
+      setSubmitted({
+        ...chosen,
+        visitId: created?.id ? String(created.id) : null,
+        // Said only when the backend's own answer is `confirmed`.
+        confirmed: created?.status === 'confirmed',
+      });
       // The slot's remaining capacity changed; show the backend's view of it.
       reload();
     } catch (e) {
@@ -148,7 +161,7 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
               message:
                 e instanceof Error && e.message.trim()
                   ? e.message
-                  : 'Could not submit your visit request. Please try again.',
+                  : 'Could not schedule your visit. Please try again.',
             },
       );
       // A rejection (e.g. the weekly limit was reached meanwhile) means the
@@ -299,10 +312,10 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
               ) : null}
               <View style={styles.selectionAction}>
                 <Button
-                  title="Submit Visit Request"
+                  title="Schedule Visit"
                   onPress={handleSubmit}
                   loading={submitting}
-                  accessibilityLabel={`Submit visit request: ${formatDateLong(selection.date)}, ${periodLabel(selection.period, selection.startTime)}`}
+                  accessibilityLabel={`Schedule visit: ${formatDateLong(selection.date)}, ${periodLabel(selection.period, selection.startTime)}`}
                 />
               </View>
               {errorMessage ? (
@@ -321,13 +334,13 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
                 </View>
               ) : null}
               <Text style={[styles.noVisit, styles.selectionNote]}>
-                Your request will be sent to the facility for review. The visit is not
-                confirmed until staff approve it.
+                Your visit will be confirmed as soon as you schedule it, provided the selected
+                slot is still available and you meet the visiting requirements.
               </Text>
             </Card>
-          ) : submitted ? (
+          ) : submitted?.confirmed ? (
             <Card style={[styles.visitCard, styles.selectionCardConfirmed]}>
-              <Text style={styles.sectionLabel}>Visit Request Submitted</Text>
+              <Text style={styles.sectionLabel}>Visit Confirmed!</Text>
               <Text style={styles.visitDate}>{formatDateLong(submitted.date)}</Text>
               <Text style={styles.visitTime}>
                 {periodLabel(submitted.period, submitted.startTime)} ·{' '}
@@ -336,25 +349,39 @@ export default function VisitationScheduleSection({ schedule, onSubmitRequest, o
               <View
                 style={styles.selectionConfirmed}
                 accessibilityLiveRegion="polite"
-                accessibilityLabel="Visit request submitted. Awaiting staff review."
+                accessibilityLabel="Visit confirmed. Your visit has been scheduled."
               >
                 <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={styles.selectionConfirmedText}>
-                  Request submitted — awaiting staff review
-                </Text>
+                <Text style={styles.selectionConfirmedText}>Visit Confirmed!</Text>
               </View>
               <Text style={[styles.noVisit, styles.selectionNote]}>
-                {submitted.pdlName ? `Your request to visit ${submitted.pdlName}` : 'Your request'}{' '}
-                is now under review by facility staff. You will be notified once it is approved
-                or rejected. You can follow it in the Pending tab.
+                {submitted.pdlName ? `Your visit with ${submitted.pdlName}` : 'Your visit'} has been
+                successfully scheduled. Arrive 15 minutes early with a valid ID and your QR pass.
               </Text>
-              {onViewPending ? (
+              {onViewQrPass && submitted.visitId ? (
                 <TextLink
-                  label="View Pending Requests"
-                  onPress={onViewPending}
-                  accessibilityLabel="View pending visit requests"
+                  label="View QR Pass"
+                  onPress={() => onViewQrPass(submitted.visitId)}
+                  accessibilityLabel="View the QR pass for this visit"
                 />
               ) : null}
+              {onViewUpcoming ? (
+                <TextLink
+                  label="View in Upcoming"
+                  onPress={onViewUpcoming}
+                  accessibilityLabel="View this visit in Upcoming"
+                />
+              ) : null}
+            </Card>
+          ) : submitted ? (
+            // Accepted, but the response did not say `confirmed` (unexpected):
+            // no success claim, just where to check.
+            <Card style={styles.visitCard}>
+              <Text style={styles.sectionLabel}>Booking Received</Text>
+              <Text style={styles.visitDate}>{formatDateLong(submitted.date)}</Text>
+              <Text style={[styles.noVisit, styles.selectionNote]}>
+                Check My Visits for the status of this visit.
+              </Text>
             </Card>
           ) : null}
         </>

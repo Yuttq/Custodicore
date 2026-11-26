@@ -4,10 +4,11 @@
  * screens say the same thing. Pure — no React Native imports — so it runs
  * under `node --test`.
  *
- * A visit can only be requested for a relationship facility staff have
+ * A visit can only be scheduled for a relationship facility staff have
  * verified (GET /api/schedules/availability lists only those, and
- * POST /api/visits rejects the rest), so the request action is offered only
- * when availability returned a verified relationship.
+ * POST /api/visit-requests rejects the rest), so the scheduling action is
+ * offered only when availability returned a verified relationship. A visit
+ * the visitor schedules is confirmed at once; there is no staff review.
  */
 
 export const NO_UPCOMING_VISIT_TITLE = "You don't have an upcoming visit yet.";
@@ -16,7 +17,7 @@ export const NO_UPCOMING_VISIT_UNVERIFIED =
   'Once your relationship is verified and a visit is scheduled, your visit will appear here.';
 
 export const NO_UPCOMING_VISIT_CAN_REQUEST =
-  'Choose an available date to request a visit. Staff will review your request.';
+  'Choose an available date to schedule a visit. Your visit is confirmed as soon as you schedule it.';
 
 /** Visitation Calendar / Schedule when no relationship is verified yet. */
 export const RELATIONSHIP_NOT_VERIFIED_SCHEDULE =

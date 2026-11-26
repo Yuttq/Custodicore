@@ -67,8 +67,9 @@ export function getMyVisitsTab(status) {
 }
 
 /**
- * Whether the visitor can confirm/decline. `assigned` is a visitor-submitted
- * request awaiting staff review — only staff can approve or reject it.
+ * Whether the visitor can confirm/decline (staff-assigned visits only).
+ * `assigned` is a legacy request booked before the review step was removed;
+ * the backend settles it, so the visitor cannot confirm or decline it.
  * @param {string} status
  */
 export function canRespondToVisit(status) {
@@ -76,8 +77,8 @@ export function canRespondToVisit(status) {
 }
 
 /**
- * Whether the visitor can cancel the visit themselves: their own request
- * awaiting review (`assigned`) or a `confirmed` visit, until its first
+ * Whether the visitor can cancel the visit themselves: a `confirmed` visit
+ * (or a legacy `assigned` request), until its first
  * session starts. A visit awaiting their answer (`pending_confirmation`)
  * is declined instead (canRespondToVisit). The server checks the same
  * rules, plus that the visitor has not checked in.

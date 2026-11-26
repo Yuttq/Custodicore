@@ -569,10 +569,10 @@ export async function getScheduleAvailability(params = {}) {
 }
 
 /**
- * Submits a visit request for one of the visitor's verified PDL relationships —
+ * Schedules a visit for one of the visitor's verified PDL relationships —
  * POST /api/visit-requests. The backend re-checks eligibility, availability,
  * capacity and duplicates; on success it returns the new visit (201) with
- * status `assigned` (awaiting staff review).
+ * status `confirmed` (no staff review), otherwise a 422 with the reason.
  * @param {{ relationshipId: string | number; date: string; startTime: string; startTimes?: string[] }} params
  *   date is YYYY-MM-DD, startTime is HH:MM (the slot's start). startTimes
  *   (whole day) lists every session start; the backend books them as ONE visit.

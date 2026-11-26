@@ -20,12 +20,13 @@ test('without a verified relationship, Home does not offer to request a visit', 
   assert.doesNotMatch(state.message, /request|available slot/i);
 });
 
-test('with a verified relationship, Home offers the request action', () => {
+test('with a verified relationship, Home offers to schedule a visit, confirmed at once', () => {
   const state = getNoUpcomingVisitState({ canRequestVisit: true });
   assert.equal(state.title, NO_UPCOMING_VISIT_TITLE);
   assert.equal(state.showRequestAction, true);
-  assert.match(state.message, /request a visit/i);
-  assert.match(state.message, /Staff will review/);
+  assert.match(state.message, /schedule a visit/i);
+  assert.match(state.message, /confirmed as soon as you schedule it/);
+  assert.doesNotMatch(state.message, /review|approv/i);
   assert.notEqual(state.message, NO_UPCOMING_VISIT_UNVERIFIED);
 });
 
