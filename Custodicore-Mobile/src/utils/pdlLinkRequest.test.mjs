@@ -57,11 +57,19 @@ test('a minor also sends their own birth certificate, once', () => {
   assert.deepEqual(keys(getPdlRequestDocuments('child', { isMinor: true })), ['visitor_birth_certificate']);
 });
 
+const nameParts = (p) => ({ first: 'Juan', middle: '', last: 'Dela Cruz', suffix: '', noMiddleName: true, ...p });
+
 test('step validation', () => {
-  assert.ok(getPdlRequestStepErrors(1, { pdlName: '' }).pdlName);
-  assert.ok(getPdlRequestStepErrors(1, { pdlName: 'J' }).pdlName);
-  assert.ok(getPdlRequestStepErrors(1, { pdlName: 'Juan 123' }).pdlName);
-  assert.deepEqual(getPdlRequestStepErrors(1, { pdlName: 'Juan Dela Cruz' }), {});
+  const empty = getPdlRequestStepErrors(1, { pdlNameParts: { first: '', middle: '', last: '', suffix: '', noMiddleName: false } });
+  assert.ok(empty.pdlFirstName);
+  assert.ok(empty.pdlMiddleName);
+  assert.ok(empty.pdlLastName);
+  assert.ok(getPdlRequestStepErrors(1, {}).pdlFirstName);
+  assert.ok(getPdlRequestStepErrors(1, { pdlNameParts: nameParts({ first: 'Juan 123' }) }).pdlFirstName);
+  assert.ok(getPdlRequestStepErrors(1, { pdlNameParts: nameParts({ noMiddleName: false }) }).pdlMiddleName);
+  assert.ok(getPdlRequestStepErrors(1, { pdlNameParts: nameParts({ suffix: 'Esq.' }) }).pdlSuffix);
+  assert.deepEqual(getPdlRequestStepErrors(1, { pdlNameParts: nameParts() }), {});
+  assert.deepEqual(getPdlRequestStepErrors(1, { pdlNameParts: nameParts({ middle: 'Santos', noMiddleName: false, suffix: 'Jr.' }) }), {});
 
   assert.ok(getPdlRequestStepErrors(2, { relationship: null }).relationship);
   assert.ok(getPdlRequestStepErrors(2, { relationship: 'friend' }).relationship);
@@ -75,9 +83,9 @@ test('step validation', () => {
 });
 
 test('firstInvalidPdlRequestStep finds the earliest problem', () => {
-  const complete = { pdlName: 'Juan Dela Cruz', relationship: 'spouse', files: { marriage_certificate: { uri: 'file://m.jpg' } } };
+  const complete = { pdlNameParts: nameParts(), relationship: 'spouse', files: { marriage_certificate: { uri: 'file://m.jpg' } } };
   assert.equal(firstInvalidPdlRequestStep(complete), null);
-  assert.equal(firstInvalidPdlRequestStep({ ...complete, pdlName: '' }), 1);
+  assert.equal(firstInvalidPdlRequestStep({ ...complete, pdlNameParts: nameParts({ last: '' }) }), 1);
   assert.equal(firstInvalidPdlRequestStep({ ...complete, relationship: 'live_in_partner' }), 2);
   assert.equal(firstInvalidPdlRequestStep({ ...complete, files: {} }), 3);
 });

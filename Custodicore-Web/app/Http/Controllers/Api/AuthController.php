@@ -796,7 +796,7 @@ class AuthController extends Controller
     /** A typed person's name, cleaned like other names (Sanitizer::name); null if not a string. */
     private function cleanedName(mixed $value): ?string
     {
-        return is_string($value) ? Sanitizer::name($value) : null;
+        return is_string($value) ? Sanitizer::fullName($value) : null;
     }
 
     /** Optional free-text field: trimmed, or null when empty. */

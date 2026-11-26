@@ -11,7 +11,11 @@
  * birth certificate, exactly as the backend asks (PdlLinkRequestService).
  */
 
-import { getIntendedPdlNameError } from './intendedPdlName.js';
+import {
+  composeIntendedPdlName,
+  getIntendedPdlNameError,
+  getPdlNamePartsErrors,
+} from './intendedPdlName.js';
 import {
   asksChildrenTogether,
   getRelationshipLabel,
@@ -39,16 +43,21 @@ export function getPdlRequestDocuments(relationshipId, { isMinor = false, hasChi
 
 /**
  * Errors for one step (1–3), keyed like the screen shows them; {} when valid.
+ * Step 1 checks the name parts (pdlFirstName / pdlMiddleName / pdlLastName /
+ * pdlSuffix), then the joined name against the backend rule (pdlName).
  * @param {number} step
- * @param {{ pdlName?: string, relationship?: string | null, hasChildrenTogether?: boolean | null, isMinor?: boolean, files?: Record<string, { uri?: string } | undefined> }} state
+ * @param {{ pdlNameParts?: Partial<import('./intendedPdlName.js').PdlNameParts>, relationship?: string | null, hasChildrenTogether?: boolean | null, isMinor?: boolean, files?: Record<string, { uri?: string } | undefined> }} state
  * @returns {Record<string, string>}
  */
 export function getPdlRequestStepErrors(step, state) {
   /** @type {Record<string, string>} */
-  const errors = {};
+  let errors = {};
   if (step === 1) {
-    const nameError = getIntendedPdlNameError(state.pdlName);
-    if (nameError) errors.pdlName = nameError;
+    errors = getPdlNamePartsErrors(state.pdlNameParts);
+    if (Object.keys(errors).length === 0) {
+      const nameError = getIntendedPdlNameError(composeIntendedPdlName(state.pdlNameParts));
+      if (nameError) errors.pdlName = nameError;
+    }
   }
   if (step === 2) {
     if (!isRegistrationRelationship(state.relationship)) {

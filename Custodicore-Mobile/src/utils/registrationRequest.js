@@ -4,7 +4,7 @@
  * AuthController::register() can be unit tested.
  */
 
-import { toIntendedPdlNameField } from './intendedPdlName.js';
+import { toIntendedPdlBirthDateField, toIntendedPdlNameField } from './intendedPdlName.js';
 
 /**
  * Map registration gender UI labels (Male / Female) onto the Laravel
@@ -46,6 +46,8 @@ export function buildRegisterBody(payload) {
       payload.relationship ||
       undefined,
     ...toIntendedPdlNameField(payload.intendedPdlName),
+    // The PDL's date of birth, only when the visitor knows it (YYYY-MM-DD).
+    ...toIntendedPdlBirthDateField(payload.intendedPdlBirthDate),
     // The claimed relationship (spouse, live_in_partner, ...). The backend
     // accepts only the relationshipDocuments this relationship asks for.
     relationshipType: payload.relationship || undefined,

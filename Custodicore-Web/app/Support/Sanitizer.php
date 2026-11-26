@@ -84,6 +84,25 @@ final class Sanitizer
         return implode(' ', $words);
     }
 
+    /**
+     * A whole name in one string ("Juan Dela Cruz III"): name(), then a
+     * trailing suffix in its usual form, so "III" is not turned into "Iii".
+     * Only the last word of a name of two or more words, and only a known
+     * suffix (SUFFIXES); everything else is exactly as name() leaves it.
+     */
+    public static function fullName(?string $value): ?string
+    {
+        $value = self::name($value);
+        if ($value === null || ! str_contains($value, ' ')) {
+            return $value;
+        }
+
+        $cut = strrpos($value, ' ');
+        $suffix = self::suffix(substr($value, $cut + 1));
+
+        return in_array($suffix, self::SUFFIXES, true) ? substr($value, 0, $cut + 1) . $suffix : $value;
+    }
+
     /** "jr", "JR." -> "Jr."; "iii" -> "III". Unknown values are returned trimmed so validation can reject them. */
     public static function suffix(?string $value): ?string
     {

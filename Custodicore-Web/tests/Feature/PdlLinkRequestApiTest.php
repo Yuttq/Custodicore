@@ -104,6 +104,13 @@ class PdlLinkRequestApiTest extends TestCase
         $this->assertStringNotContainsString($document->file_path, $response->getContent());
     }
 
+    public function test_a_roman_numeral_suffix_keeps_its_capitals(): void
+    {
+        $this->submit($this->parentRequest(['pdlName' => 'pedro reyes IV']))->assertCreated();
+
+        $this->assertSame('Pedro Reyes IV', PdlLinkRequest::sole()->pdl_name);
+    }
+
     public function test_live_in_partner_needs_the_children_answer_and_its_matching_document(): void
     {
         $base = [

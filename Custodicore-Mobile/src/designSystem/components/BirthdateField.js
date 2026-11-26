@@ -53,6 +53,8 @@ function defaultPickerDate(today) {
  * @param {(iso: string) => void} props.onChange
  * @param {string} [props.error]
  * @param {string} [props.placeholder]
+ * @param {string} [props.whose] whose birthdate, in the untouched-date hint
+ *   ("your own" by default; e.g. "the PDL's")
  */
 export function BirthdateField({
   label,
@@ -60,6 +62,7 @@ export function BirthdateField({
   onChange,
   error,
   placeholder = 'Select birthdate',
+  whose = 'your own',
 }) {
   const [iosVisible, setIosVisible] = useState(false);
   // iOS: "today" as of when the picker opened (start date + maximum date).
@@ -122,7 +125,7 @@ export function BirthdateField({
   }, [confirmDate, iosCanConfirm, iosDefaultIso, iosDraft]);
 
   const untouchedHint = untouchedDefaultIso
-    ? `Please choose your own birthdate. Tap the year to change it, or select ${formatBirthdateDisplay(untouchedDefaultIso)} again if it is correct.`
+    ? `Please choose ${whose} birthdate. Tap the year to change it, or select ${formatBirthdateDisplay(untouchedDefaultIso)} again if it is correct.`
     : null;
 
   const cancelIos = useCallback(() => {

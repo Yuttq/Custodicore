@@ -53,11 +53,13 @@ import {
   isEmailTakenError,
   isUnconfirmedRegistrationError,
 } from '../utils/registrationErrors';
+import PdlNameFields from '../components/PdlNameFields';
 import {
-  INTENDED_PDL_NAME_LIMITS,
-  INTENDED_PDL_NAME_PLACEHOLDER,
-  filterIntendedPdlName,
+  composeIntendedPdlName,
+  emptyPdlNameParts,
   getIntendedPdlNameError,
+  getPdlBirthDateError,
+  getPdlNamePartsErrors,
 } from '../utils/intendedPdlName';
 import { validateRequired } from '../utils';
 import {
@@ -237,14 +239,17 @@ const SERVER_FIELD_ERRORS = {
   // The relationship chosen in step 3 (decides the step-3 documents).
   relationshipType: 'relationship',
   relationshipDocuments: 'relationship_documents',
-  // The required name of the PDL to visit (step 2).
+  // The required name of the PDL to visit (step 2): the joined name, so
+  // its error is shown above the name parts.
   intendedPdlName: 'intendedPdlName',
+  // The PDL's date of birth (step 2), when it was sent.
+  intendedPdlBirthDate: 'pdlBirthDate',
   // The visitor's own photo (step 4).
   photo: 'photo',
 };
 
 /** Step-2 (PDL to visit) form fields among SERVER_FIELD_ERRORS targets. */
-const PDL_STEP_FIELDS = new Set(['intendedPdlName']);
+const PDL_STEP_FIELDS = new Set(['intendedPdlName', 'pdlBirthDate']);
 
 /**
  * Step-3 (relationship & documents) form fields among SERVER_FIELD_ERRORS
@@ -336,9 +341,12 @@ export default function RegisterScreen({ navigation, route }) {
   const [showPassword, setShowPassword] = useState(false);
 
   const [relationship, setRelationship] = useState(null);
-  // Optional: the name of the PDL the visitor wants to visit. Saved as a
-  // hint for facility staff, who link the PDL themselves — no lookup here.
-  const [intendedPdlName, setIntendedPdlName] = useState('');
+  // Step 2: the PDL the visitor wants to visit — the name in parts (joined
+  // into one intendedPdlName when sent) and the PDL's date of birth. Saved as
+  // hints for facility staff, who link the PDL themselves — no lookup here.
+  const [pdlNameParts, setPdlNameParts] = useState(emptyPdlNameParts);
+  const [pdlBirthDate, setPdlBirthDate] = useState('');
+  const [pdlBirthDateUnknown, setPdlBirthDateUnknown] = useState(false);
   const [documents, setDocuments] = useState({});
   // The visitor's own photo: set only by "Use Photo" in RegistrationPhotoCamera.
   const [photo, setPhoto] = useState(null);
@@ -517,11 +525,18 @@ export default function RegisterScreen({ navigation, route }) {
   }, [getStep1Errors]);
 
   const getIntendedPdlFieldErrors = useCallback(() => {
-    const nameError = getIntendedPdlNameError(intendedPdlName);
-    return nameError ? { intendedPdlName: nameError } : {};
-  }, [intendedPdlName]);
+    const next = getPdlNamePartsErrors(pdlNameParts);
+    // The joined name against the backend rule (always fits when the parts do).
+    if (Object.keys(next).length === 0) {
+      const nameError = getIntendedPdlNameError(composeIntendedPdlName(pdlNameParts));
+      if (nameError) next.intendedPdlName = nameError;
+    }
+    const birthError = getPdlBirthDateError(pdlBirthDate, pdlBirthDateUnknown);
+    if (birthError) next.pdlBirthDate = birthError;
+    return next;
+  }, [pdlNameParts, pdlBirthDate, pdlBirthDateUnknown]);
 
-  /** Step 2: the name of the PDL to visit. */
+  /** Step 2: the name of the PDL to visit and their date of birth. */
   const validatePdlStep = useCallback(() => {
     const nameErrors = getIntendedPdlFieldErrors();
     setErrors(nameErrors);
@@ -776,7 +791,9 @@ export default function RegisterScreen({ navigation, route }) {
         password_confirmation: passwordConfirmation,
         relationship,
         relationshipLabel: getRelationshipLabel(relationship),
-        intendedPdlName: normalizeName(intendedPdlName),
+        intendedPdlName: composeIntendedPdlName(pdlNameParts),
+        // null when "I don't know the exact date" is ticked: not sent.
+        intendedPdlBirthDate: pdlBirthDateUnknown ? null : pdlBirthDate || null,
         documents,
         photo,
         // Sent as relationshipDocuments[key]; only this relationship's documents.
@@ -853,7 +870,9 @@ export default function RegisterScreen({ navigation, route }) {
     password,
     passwordConfirmation,
     relationship,
-    intendedPdlName,
+    pdlNameParts,
+    pdlBirthDate,
+    pdlBirthDateUnknown,
     validatePdlStep,
     validateRelationshipStep,
     validatePhotoStep,
@@ -1098,26 +1117,61 @@ export default function RegisterScreen({ navigation, route }) {
     </Card>
   );
 
-  /** Step 2: the required name of the PDL to visit. */
+  /** Step 2: the PDL to visit — name in parts and date of birth. */
   const renderPdlStep = () => (
     <Card style={styles.card}>
       <Text style={styles.reviewSectionTitle}>PDL You Want To Visit (required)</Text>
-      <WizardField
-        label="PDL Name"
-        value={intendedPdlName}
-        onChangeText={(v) => {
-          setIntendedPdlName(filterIntendedPdlName(v));
+      {errors.intendedPdlName ? <Text style={styles.stepError}>{errors.intendedPdlName}</Text> : null}
+      <PdlNameFields
+        value={pdlNameParts}
+        onChange={(patch, errorKey) => {
+          setPdlNameParts((prev) => ({ ...prev, ...patch }));
+          clearError(errorKey);
           clearError('intendedPdlName');
         }}
-        placeholder={INTENDED_PDL_NAME_PLACEHOLDER}
-        error={errors.intendedPdlName}
-        autoCapitalize="words"
-        autoCorrect={false}
-        maxLength={INTENDED_PDL_NAME_LIMITS.max}
+        errors={errors}
+        fieldStyle={fieldStyles.wrap}
+        labelStyle={fieldStyles.label}
+        inputStyle={fieldStyles.input}
       />
+
+      {pdlBirthDateUnknown ? null : (
+        <BirthdateField
+          label="PDL's Date of Birth"
+          value={pdlBirthDate}
+          onChange={(iso) => {
+            setPdlBirthDate(iso);
+            clearError('pdlBirthDate');
+          }}
+          error={errors.pdlBirthDate}
+          placeholder="Select the PDL's date of birth"
+          whose="the PDL's"
+        />
+      )}
+      <Pressable
+        onPress={() => {
+          // Ticking clears any date picked before: an unknown date is never sent.
+          setPdlBirthDateUnknown((v) => !v);
+          setPdlBirthDate('');
+          clearError('pdlBirthDate');
+        }}
+        style={styles.pdlCheckRow}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: pdlBirthDateUnknown }}
+        accessibilityLabel="I don't know the exact date"
+      >
+        <View style={[styles.checkbox, pdlBirthDateUnknown && styles.checkboxChecked]}>
+          {pdlBirthDateUnknown ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+        </View>
+        <Text style={styles.certifyText}>{"I don't know the exact date"}</Text>
+      </Pressable>
+      {pdlBirthDateUnknown && errors.pdlBirthDate ? (
+        <Text style={styles.stepError}>{errors.pdlBirthDate}</Text>
+      ) : null}
+
       <Text style={fieldStyles.hint}>
-        Facility staff use this name to find the PDL in their records and link them to your account.
-        This does not give visit access by itself.
+        Facility staff use these details to find the PDL in their records and link them to your account.
+        The date of birth helps when more than one PDL has the same name. This does not give visit access by itself.
       </Text>
     </Card>
   );
@@ -1347,7 +1401,16 @@ export default function RegisterScreen({ navigation, route }) {
 
       <Card style={[styles.card, styles.cardSpaced]}>
         <Text style={styles.reviewSectionTitle}>PDL To Visit</Text>
-        {renderReviewRow('PDL You Want To Visit', normalizeName(intendedPdlName))}
+        {renderReviewRow('PDL Full Name', composeIntendedPdlName(pdlNameParts))}
+        {renderReviewRow(
+          'Middle Name',
+          pdlNameParts.noMiddleName ? 'None / not sure' : normalizeName(pdlNameParts.middle),
+        )}
+        {renderReviewRow('Suffix', pdlNameParts.suffix || 'None')}
+        {renderReviewRow(
+          "PDL's Date of Birth",
+          pdlBirthDateUnknown ? 'Not known' : formatBirthdateDisplay(pdlBirthDate) || '—',
+        )}
       </Card>
 
       <Card style={[styles.card, styles.cardSpaced]}>
@@ -2197,6 +2260,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: spacing.md,
     gap: spacing.sm,
+  },
+  // Step 2: "I don't know the exact date" under the PDL's date of birth.
+  pdlCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.sm,
   },
   checkbox: {
     width: 22,

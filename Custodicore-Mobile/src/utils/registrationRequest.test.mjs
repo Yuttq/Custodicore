@@ -78,12 +78,32 @@ test('only fields AuthController::register() knows are sent', () => {
   const known = new Set([
     'fullName', 'firstName', 'lastName', 'email', 'password', 'password_confirmation',
     'dateOfBirth', 'gender', 'address', 'contactNumber', 'relationshipHint',
-    'intendedPdlName',
+    'intendedPdlName', 'intendedPdlBirthDate',
     'relationshipType',
     'acceptedTerms', 'acceptedPrivacy', 'consentVersion',
   ]);
-  const body = buildRegisterBody(payload({ intendedPdlName: 'Pedro Santos Reyes' }));
+  const body = buildRegisterBody(payload({ intendedPdlName: 'Pedro Santos Reyes', intendedPdlBirthDate: '1985-06-01' }));
   for (const key of Object.keys(body)) assert.ok(known.has(key), key);
+});
+
+test("the PDL's date of birth is sent only when known, as YYYY-MM-DD", () => {
+  const known = buildRegisterBody(payload({ intendedPdlName: 'Juan Dela Cruz', intendedPdlBirthDate: '1991-11-23' }));
+  assert.equal(known.intendedPdlBirthDate, '1991-11-23');
+  // "I don't know the exact date": the screen passes null — no field at all.
+  for (const unknown of [null, undefined, '', '  ']) {
+    const body = buildRegisterBody(payload({ intendedPdlName: 'Juan Dela Cruz', intendedPdlBirthDate: unknown }));
+    assert.equal('intendedPdlBirthDate' in body, false, String(unknown));
+  }
+  // Never a reformatted or invalid date.
+  assert.equal('intendedPdlBirthDate' in buildRegisterBody(payload({ intendedPdlBirthDate: '11/23/1991' })), false);
+});
+
+test('the joined PDL name parts are sent as the one intendedPdlName', () => {
+  const body = buildRegisterBody(payload({ intendedPdlName: 'Juan Santos Dela Cruz Jr.' }));
+  assert.equal(body.intendedPdlName, 'Juan Santos Dela Cruz Jr.');
+  for (const key of ['pdlFirstName', 'pdlMiddleName', 'pdlLastName', 'pdlSuffix', 'pdlNameParts']) {
+    assert.equal(key in body, false, key);
+  }
 });
 
 test('the PDL name is sent as intendedPdlName only', () => {

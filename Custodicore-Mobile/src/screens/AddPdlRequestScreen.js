@@ -10,7 +10,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,10 +28,11 @@ import { useAuth } from '../hooks/useAuth';
 import { submitPdlRequest } from '../repositories/verificationRepository';
 import { pickPhotoFromCamera, pickPhotoFromGallery } from '../services/imagePickerService';
 import { toDocumentImageUpload, validateDocumentImage } from '../utils/documentImageRules';
+import PdlNameFields from '../components/PdlNameFields';
 import {
-  INTENDED_PDL_NAME_LIMITS,
-  INTENDED_PDL_NAME_PLACEHOLDER,
-  filterIntendedPdlName,
+  composeIntendedPdlName,
+  emptyPdlNameParts,
+  splitPdlNameForPrefill,
 } from '../utils/intendedPdlName';
 import {
   PDL_REQUEST_STEPS,
@@ -61,15 +61,17 @@ const CHILDREN_OPTIONS = [
 /**
  * "Request Again" details (route param `prefill`, from pdlRequestPrefill()),
  * checked again here since route params are untyped. Null for a new request.
+ * The previous name is split into editable parts (splitPdlNameForPrefill):
+ * left unedited, they join back into the same name.
  * @param {unknown} raw
- * @returns {{ pdlName: string; relationship: string | null; hasChildrenTogether: boolean | null; rejectionReason: string | null } | null}
+ * @returns {{ pdlNameParts: import('../utils/intendedPdlName').PdlNameParts; relationship: string | null; hasChildrenTogether: boolean | null; rejectionReason: string | null } | null}
  */
 function readPrefill(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const p = /** @type {Record<string, unknown>} */ (raw);
   const relationship = isRegistrationRelationship(p.relationship) ? String(p.relationship) : null;
   return {
-    pdlName: typeof p.pdlName === 'string' ? filterIntendedPdlName(p.pdlName) : '',
+    pdlNameParts: splitPdlNameForPrefill(typeof p.pdlName === 'string' ? p.pdlName : ''),
     relationship,
     hasChildrenTogether:
       relationship && asksChildrenTogether(relationship) && typeof p.hasChildrenTogether === 'boolean'
@@ -100,7 +102,7 @@ export default function AddPdlRequestScreen({ navigation, route }) {
   const [prefill] = useState(() => readPrefill(route?.params?.prefill));
 
   const [step, setStep] = useState(1);
-  const [pdlName, setPdlName] = useState(prefill?.pdlName ?? '');
+  const [pdlNameParts, setPdlNameParts] = useState(() => prefill?.pdlNameParts ?? emptyPdlNameParts());
   const [relationship, setRelationship] = useState(
     /** @type {string | null} */ (prefill?.relationship ?? null),
   );
@@ -117,7 +119,7 @@ export default function AddPdlRequestScreen({ navigation, route }) {
     () => getPdlRequestDocuments(relationship, { isMinor, hasChildrenTogether }),
     [relationship, isMinor, hasChildrenTogether],
   );
-  const formState = { pdlName, relationship, hasChildrenTogether, isMinor, files };
+  const formState = { pdlNameParts, relationship, hasChildrenTogether, isMinor, files };
 
   const clearError = useCallback((key) => {
     setErrors((e) => {
@@ -159,7 +161,7 @@ export default function AddPdlRequestScreen({ navigation, route }) {
     if (Object.keys(stepErrors).length === 0) goToStep(step + 1);
     // formState is rebuilt every render from the values below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, pdlName, relationship, hasChildrenTogether, isMinor, files, goToStep]);
+  }, [step, pdlNameParts, relationship, hasChildrenTogether, isMinor, files, goToStep]);
 
   /** Camera or gallery pick; cancelling or an invalid image keeps the current file. */
   const pickDocument = useCallback(async (docKey, useCamera) => {
@@ -212,7 +214,7 @@ export default function AddPdlRequestScreen({ navigation, route }) {
     setErrors({});
     try {
       await submitPdlRequest({
-        pdlName: normalizeName(pdlName),
+        pdlName: composeIntendedPdlName(pdlNameParts),
         relationship: /** @type {string} */ (relationship),
         hasChildrenTogether,
         files: requiredDocs.map((doc) => [doc.requirementKey, files[doc.key]]),
@@ -249,7 +251,7 @@ export default function AddPdlRequestScreen({ navigation, route }) {
     }
     // formState is rebuilt every render from the values below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitting, pdlName, relationship, hasChildrenTogether, isMinor, files, requiredDocs, goToStep, navigation]);
+  }, [submitting, pdlNameParts, relationship, hasChildrenTogether, isMinor, files, requiredDocs, goToStep, navigation]);
 
   // ----------------------------------------------------------------- steps
 
@@ -269,24 +271,21 @@ export default function AddPdlRequestScreen({ navigation, route }) {
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>PDL You Want To Visit</Text>
       {renderReasonNotice()}
-      <View style={formStyles.field}>
-        <Text style={formStyles.label}>PDL Name</Text>
-        <TextInput
-          value={pdlName}
-          onChangeText={(v) => {
-            setPdlName(filterIntendedPdlName(v));
-            clearError('pdlName');
-          }}
-          placeholder={INTENDED_PDL_NAME_PLACEHOLDER}
-          placeholderTextColor={colors.textSecondary}
-          style={[formStyles.input, errors.pdlName && formStyles.inputError]}
-          autoCapitalize="words"
-          autoCorrect={false}
-          maxLength={INTENDED_PDL_NAME_LIMITS.max}
-          accessibilityLabel="PDL Name"
-        />
-        {errors.pdlName ? <Text style={formStyles.error}>{errors.pdlName}</Text> : null}
-      </View>
+      {prefill ? (
+        <Text style={styles.hint}>
+          The name from your previous request is filled in below. Check each part and correct it if needed.
+        </Text>
+      ) : null}
+      {errors.pdlName ? <Text style={formStyles.error}>{errors.pdlName}</Text> : null}
+      <PdlNameFields
+        value={pdlNameParts}
+        onChange={(patch, errorKey) => {
+          setPdlNameParts((prev) => ({ ...prev, ...patch }));
+          clearError(errorKey);
+          clearError('pdlName');
+        }}
+        errors={errors}
+      />
       <Text style={styles.hint}>
         Facility staff use this name to find the PDL in their records and link them to your account.
         This does not give visit access by itself.
@@ -438,7 +437,12 @@ export default function AddPdlRequestScreen({ navigation, route }) {
   const renderReviewStep = () => (
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>Review Your Request</Text>
-      {renderReviewRow('PDL Name', normalizeName(pdlName))}
+      {renderReviewRow('PDL Full Name', composeIntendedPdlName(pdlNameParts))}
+      {renderReviewRow(
+        'Middle Name',
+        pdlNameParts.noMiddleName ? 'None / not sure' : normalizeName(pdlNameParts.middle),
+      )}
+      {renderReviewRow('Suffix', pdlNameParts.suffix || 'None')}
       {renderReviewRow('Relationship', getRelationshipLabel(relationship))}
       {asksChildrenTogether(relationship)
         ? renderReviewRow('Children Together', hasChildrenTogether ? 'Yes' : 'No')

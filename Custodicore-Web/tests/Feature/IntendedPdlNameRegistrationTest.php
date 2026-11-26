@@ -90,6 +90,15 @@ class IntendedPdlNameRegistrationTest extends TestCase
         $this->assertSame('Pedro Santos Reyes', $this->profile()->intended_pdl_name);
     }
 
+    public function test_a_roman_numeral_suffix_keeps_its_capitals(): void
+    {
+        // The app sends the joined name parts: First Middle Last Suffix.
+        $this->postJson('/api/auth/register', $this->form(['intendedPdlName' => 'Juan Santos Dela Cruz III']))
+            ->assertCreated();
+
+        $this->assertSame('Juan Santos Dela Cruz III', $this->profile()->intended_pdl_name);
+    }
+
     public static function missingNames(): array
     {
         return [

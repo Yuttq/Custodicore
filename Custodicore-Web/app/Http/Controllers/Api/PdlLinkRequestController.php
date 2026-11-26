@@ -40,7 +40,7 @@ class PdlLinkRequestController extends Controller
         $visitor = $this->currentVisitor($request);
 
         $request->merge([
-            'pdlName' => is_string($name = $request->input('pdlName', $request->input('pdl_name'))) ? Sanitizer::name($name) : $name,
+            'pdlName' => is_string($name = $request->input('pdlName', $request->input('pdl_name'))) ? Sanitizer::fullName($name) : $name,
             'relationshipType' => $request->input('relationshipType', $request->input('relationship_type')),
             'hasChildrenTogether' => self::booleanInput($request->input('hasChildrenTogether', $request->input('has_children_together'))),
         ]);
