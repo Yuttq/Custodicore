@@ -352,6 +352,61 @@ class ScheduleAvailabilityApiTest extends TestCase
 
         $this->assertSame([], $this->availableDays($relationship));
         $this->assertSame('pdl_unavailable', $this->slot($relationship, '2026-10-09', '13:00')['reason']);
+        // The restriction itself is staff-only: the visitor gets the general wording.
+        $this->assertSame(
+            'Visits with this PDL are not available at this time. Please contact the facility for details.',
+            $relationship['message']
+        );
+        $this->assertStringNotContainsStringIgnoringCase('quarantine', $relationship['message']);
+    }
+
+    public function test_active_eligible_pdl_has_no_message(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        $this->availability()
+            ->assertOk()
+            ->assertJsonPath('relationships.0.pdlAvailable', true)
+            ->assertJsonPath('relationships.0.message', null);
+    }
+
+    public function test_pdl_who_left_custody_says_why(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        foreach (['released', 'transferred', 'deceased'] as $status) {
+            // Query update: the status is what is tested here, not the cancellation hook.
+            Pdl::whereKey($this->pdl->pdl_id)->update(['custody_status' => $status]);
+
+            $relationship = $this->availability()
+                ->assertOk()
+                ->assertJsonPath('relationships.0.pdlAvailable', false)
+                ->json('relationships.0');
+
+            $this->assertSame(Pdl::find($this->pdl->pdl_id)->custodyMessage(), $relationship['message'], $status);
+            $this->assertNotNull($relationship['message'], $status);
+            $this->assertSame([], $this->availableDays($relationship), $status);
+            $this->assertSame('pdl_unavailable', $this->slot($relationship, '2026-10-09', '13:00')['reason'], $status);
+        }
+    }
+
+    public function test_readmitted_pdl_message_clears(): void
+    {
+        Sanctum::actingAs($this->visitorAccount);
+
+        Pdl::whereKey($this->pdl->pdl_id)->update(['custody_status' => 'released']);
+        $this->availability()->assertOk()->assertJsonPath(
+            'relationships.0.message',
+            'This PDL has been released from custody, so visits can no longer be booked.'
+        );
+
+        Pdl::whereKey($this->pdl->pdl_id)->update(['custody_status' => 'active']);
+        $relationship = $this->availability()
+            ->assertOk()
+            ->assertJsonPath('relationships.0.pdlAvailable', true)
+            ->assertJsonPath('relationships.0.message', null)
+            ->json('relationships.0');
+        $this->assertNotSame([], $this->availableDays($relationship));
     }
 
     public function test_effective_dates_are_respected(): void

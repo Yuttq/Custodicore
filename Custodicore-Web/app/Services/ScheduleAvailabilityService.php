@@ -267,9 +267,12 @@ class ScheduleAvailabilityService
             'classificationLabel' => $classification === 'drug_related' ? 'Drug-related' : 'Non-drug-related',
             'visitingDays' => $visitingDays,
             'pdlAvailable' => $pdlAvailable,
+            // Left custody: say why (released / transferred / deceased).
+            // A restriction keeps the general wording.
             'message' => $pdlAvailable
                 ? null
-                : 'Visits with this PDL are not available at this time. Please contact the facility for details.',
+                : ($pdl->custodyMessage()
+                    ?? 'Visits with this PDL are not available at this time. Please contact the facility for details.'),
             'days' => $days,
         ];
     }
