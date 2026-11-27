@@ -279,7 +279,7 @@
           <div class="rec-body">
             <div class="rec-head">
               @if ($visitor)
-                <a class="rec-title full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">{{ $visitor->full_name }}</a>
+                <a class="rec-title full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}#relationships">{{ $visitor->listName() }}</a>
               @else
                 <span class="rec-title muted-cell">Visitor not found</span>
               @endif

@@ -65,7 +65,7 @@
             </div>
 
             <div class="min-w-0 flex-1">
-                <p class="break-words text-card-title text-white">{{ $visitor->full_name }}</p>
+                <p class="break-words text-card-title text-white">{{ $visitor->listName() }}</p>
                 <p class="break-all text-metadata text-white/70">{{ $visitor->account?->email ?? 'No email on file' }}</p>
 
                 <div class="mt-sm flex flex-wrap items-center gap-xs">
@@ -149,7 +149,7 @@
                                 <div class="flex flex-wrap items-center justify-between gap-sm px-md py-sm">
                                     <div class="text-metadata">
                                         @if ($rel->pdl)
-                                            <a href="{{ route('admin.pdls.show', $rel->pdl->pdl_id) }}" class="font-semibold text-text-primary hover:underline">{{ $rel->pdl->full_name }}</a>
+                                            <a href="{{ route('admin.pdls.show', $rel->pdl->pdl_id) }}" class="font-semibold text-text-primary hover:underline">{{ $rel->pdl->listName() }}</a>
                                             <span class="text-text-secondary">· {{ $rel->pdl->pdl_number }} · {{ $rel->relationshipLabel() }}</span>
                                         @else
                                             <span class="text-text-secondary">PDL not found · {{ $rel->relationshipLabel() }}</span>
@@ -197,7 +197,7 @@
                                             <td class="px-md py-xs text-text-secondary">
                                                 {{ $slots->isEmpty() ? '—' : $slots->map(fn ($s) => substr($s->time_slot_start, 0, 5) . '–' . substr($s->time_slot_end, 0, 5))->implode(', ') }}
                                             </td>
-                                            <td class="px-md py-xs">{{ $visit->pdl?->full_name ?? '—' }}</td>
+                                            <td class="px-md py-xs">{{ $visit->pdl?->listName() ?? '—' }}</td>
                                             <td class="px-md py-xs">@include('admin.partials.status-chip', ['status' => $visit->status])</td>
                                         </tr>
                                     @endforeach
@@ -229,9 +229,9 @@
                                         <p class="mt-xs">{{ $flag->description }}</p>
                                     @endif
                                     <p class="mt-xs text-text-secondary">
-                                        Flagged by {{ $flag->flaggedBy?->full_name ?? '—' }} on {{ $flag->created_at?->format('M j, Y') ?? '—' }}
+                                        Flagged by {{ $flag->flaggedBy?->listName() ?? '—' }} on {{ $flag->created_at?->format('M j, Y') ?? '—' }}
                                         @if ($flag->resolved_at)
-                                            · Resolved {{ $flag->resolved_at->format('M j, Y') }}@if ($flag->resolvedBy) by {{ $flag->resolvedBy->full_name }}@endif
+                                            · Resolved {{ $flag->resolved_at->format('M j, Y') }}@if ($flag->resolvedBy) by {{ $flag->resolvedBy->listName() }}@endif
                                         @endif
                                     </p>
                                 </div>

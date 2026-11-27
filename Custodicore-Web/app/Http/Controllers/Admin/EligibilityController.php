@@ -18,8 +18,8 @@ class EligibilityController extends Controller
             ->orderByDesc('assessed_at')
             ->get()
             ->map(fn ($a) => [
-                'visitor' => $a->visitRequest?->visitor?->full_name ?? '—',
-                'pdl' => $a->visitRequest?->pdl?->full_name ?? '—',
+                'visitor' => $a->visitRequest?->visitor?->listName() ?? '—',
+                'pdl' => $a->visitRequest?->pdl?->listName() ?? '—',
                 'identity_check' => $a->identity_check_result,
                 'relationship_check' => $a->relationship_check_result,
                 'history_check' => $a->history_check_result,
@@ -33,7 +33,7 @@ class EligibilityController extends Controller
             ->orderByDesc('created_at')
             ->get()
             ->map(fn ($f) => [
-                'visitor' => $f->visitor?->full_name ?? '—',
+                'visitor' => $f->visitor?->listName() ?? '—',
                 'flag_type' => $f->flag_type,
                 'description' => $f->description,
                 'status' => $f->status,

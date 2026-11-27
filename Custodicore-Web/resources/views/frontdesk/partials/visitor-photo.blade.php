@@ -13,7 +13,7 @@
 
     <dialog id="visitorPhotoDialog" class="cc-modal max-w-xl" aria-label="Photo of {{ $visitor->full_name }}">
         <div class="flex items-center justify-between gap-sm">
-            <p class="text-card-title">{{ $visitor->full_name }}</p>
+            <p class="text-card-title">{{ $visitor->listName() }}</p>
             <button type="button" class="cc-modal-close" data-photo-close>Close</button>
         </div>
         <img src="{{ $photoUrl }}" alt="Photo of {{ $visitor->full_name }}" class="mt-md max-h-[70vh] w-full rounded-lg border border-border bg-background object-contain">

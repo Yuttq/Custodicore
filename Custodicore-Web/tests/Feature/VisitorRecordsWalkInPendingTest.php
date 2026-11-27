@@ -64,12 +64,12 @@ class VisitorRecordsWalkInPendingTest extends TestCase
     public function test_status_filter_separates_review_queue_and_front_desk(): void
     {
         $this->get(route('visitor.index', ['status' => 'pending']))
-            ->assertSee('App Pending')->assertDontSee('Walkin One')->assertDontSee('Walkin Two');
+            ->assertSee('App Pending')->assertDontSee('Walkin One')->assertDontSee('One, Walkin')->assertDontSee('Walkin Two')->assertDontSee('Two, Walkin');
 
         $this->get(route('visitor.index', ['status' => 'walk_in_pending']))
-            ->assertSee('Walkin One')->assertSee('Walkin Two')->assertDontSee('App Pending');
+            ->assertSee('Walkin One')->assertSee('Walkin Two')->assertDontSee('App Pending')->assertDontSee('Pending, App');
 
         $this->get(route('visitor.index', ['status' => 'verified']))
-            ->assertSee('Maria D. Santos')->assertDontSee('App Pending');
+            ->assertSee('Maria D. Santos')->assertDontSee('App Pending')->assertDontSee('Pending, App');
     }
 }

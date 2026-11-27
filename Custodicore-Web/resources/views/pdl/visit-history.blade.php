@@ -25,7 +25,7 @@
       @foreach ($relationships as $rel)
       <div style="display:flex;align-items:center;justify-content:between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
         <div>
-          <strong>{{ $rel->visitor->full_name ?? 'Unknown visitor' }}</strong>
+          <strong>{{ $rel->visitor?->listName() ?? 'Unknown visitor' }}</strong>
           <span class="muted-cell">— {{ $rel->relationshipLabel() }}</span>
         </div>
         @if ($rel->visitor)
@@ -55,7 +55,7 @@
       <tbody>
         @foreach ($visitRequests as $visit)
         <tr>
-          <td>{{ $visit->visitor->full_name ?? 'Unknown' }}</td>
+          <td>{{ $visit->visitor?->listName() ?? 'Unknown' }}</td>
           <td>
             <span class="badge {{ $visit->status === 'confirmed' ? 'detained' : 'transferred' }}">
               <span class="dot"></span>{{ strtoupper($visit->status) }}

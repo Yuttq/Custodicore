@@ -206,14 +206,40 @@ class WalkInVisitorTest extends TestCase
     public function test_walk_ins_are_not_in_the_records_review_queue(): void
     {
         VisitorProfile::where('visitor_id', $this->visitor->visitor_id)->update(['verification_status' => 'pending', 'created_at' => now()->subDay()]);
-        $this->register();
+        // A number of its own: the fixture visitor's number would (rightly)
+        // name the walk-in in the "possibly already a walk-in" warning.
+        $this->register(['contact_number' => '09179990000']);
+        $walkIn = VisitorProfile::where('registered_via', 'walk_in')->firstOrFail();
 
         // The Front Desk approves walk-ins; Records only reviews app registrations.
         $this->actingAs($this->recordOfficerAccount)
             ->get(route('account-reviews.index'))
             ->assertOk()
             ->assertSee('Maria D. Santos')
-            ->assertDontSee('Lourdes Reyes');
+            ->assertDontSee('Lourdes Reyes')
+            ->assertDontSee('Reyes, Lourdes')
+            ->assertDontSee(route('visitor.show', $walkIn->visitor_id).'"', false);
+        $this->assertFalse(\App\Services\ReviewQueue::accountsQuery()->whereKey($walkIn->visitor_id)->exists());
+    }
+
+    public function test_a_walk_in_sharing_the_number_is_only_named_in_the_match_warning(): void
+    {
+        VisitorProfile::where('visitor_id', $this->visitor->visitor_id)->update(['verification_status' => 'pending', 'created_at' => now()->subDay()]);
+        // Same mobile number as the fixture app visitor (09171234567).
+        $this->register();
+        $walkIn = VisitorProfile::where('registered_via', 'walk_in')->firstOrFail();
+
+        $html = $this->actingAs($this->recordOfficerAccount)
+            ->get(route('account-reviews.index'))
+            ->assertOk()
+            ->assertSee('Possibly already registered as a walk-in.')
+            ->assertSee('same mobile number')
+            ->getContent();
+
+        // One review card (the app visitor); the walk-in is never a card of its own.
+        $this->assertSame(1, substr_count($html, 'class="elig-name"'));
+        $this->assertSame(1, substr_count($html, 'Reyes, Lourdes'), 'Named once, inside the warning.');
+        $this->assertFalse(\App\Services\ReviewQueue::accountsQuery()->whereKey($walkIn->visitor_id)->exists());
     }
 
     public function test_relationship_documents_are_required(): void
@@ -400,7 +426,7 @@ class WalkInVisitorTest extends TestCase
             ->assertSee('Approved')
             ->assertSee('booked for')
             ->assertDontSee('Check In Now');
-        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes');
+        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes')->assertDontSee('Reyes, Lourdes');
     }
 
     public function test_the_decision_is_final(): void
@@ -812,16 +838,16 @@ class WalkInVisitorTest extends TestCase
 
         $this->get(route('frontdesk.walk-ins.index', ['status' => 'approved']))
             ->assertOk()
-            ->assertSee('Lourdes Reyes')
-            ->assertDontSee('Pedro Cruz');
+            ->assertSee('Reyes, Lourdes')
+            ->assertDontSee('Cruz, Pedro');
 
         // An empty tab still has the footer.
         $this->get(route('frontdesk.walk-ins.index', ['status' => 'rejected']))
             ->assertSee('Showing 0 of 0 visitors');
 
         $this->get(route('frontdesk.walk-ins.index', ['status' => 'pending']))
-            ->assertSee('Pedro Cruz')
-            ->assertDontSee('Lourdes Reyes');
+            ->assertSee('Cruz, Pedro')
+            ->assertDontSee('Lourdes Reyes')->assertDontSee('Reyes, Lourdes');
     }
 
     public function test_pending_or_rejected_walk_ins_cannot_be_checked_in(): void
@@ -833,7 +859,7 @@ class WalkInVisitorTest extends TestCase
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Pending Approval')
             ->assertDontSee('Check In Now');
-        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes');
+        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes')->assertDontSee('Reyes, Lourdes');
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
 
         // Rejected: the request ends.
@@ -841,7 +867,7 @@ class WalkInVisitorTest extends TestCase
         $this->get(route('frontdesk.walk-ins.show', $walkIn))
             ->assertSee('Rejected')
             ->assertDontSee('Check In Now');
-        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes');
+        $this->get(route('frontdesk.checkin-checkout'))->assertDontSee('Lourdes Reyes')->assertDontSee('Reyes, Lourdes');
         $this->assertSame(0, VisitRequest::where('visitor_id', $walkIn->visitor_id)->count());
     }
 
@@ -875,13 +901,13 @@ class WalkInVisitorTest extends TestCase
             ->assertSessionHasNoErrors();
 
         // Search: visitor, or the PDL's name / number.
-        $this->get(route('frontdesk.walk-ins.index', ['q' => 'pedro']))->assertSee('Pedro Cruz')->assertDontSee('Lourdes Reyes');
-        $this->get(route('frontdesk.walk-ins.index', ['q' => 'PDL-TEST-001']))->assertSee('Lourdes Reyes')->assertDontSee('Pedro Cruz');
+        $this->get(route('frontdesk.walk-ins.index', ['q' => 'pedro']))->assertSee('Cruz, Pedro')->assertDontSee('Reyes, Lourdes');
+        $this->get(route('frontdesk.walk-ins.index', ['q' => 'PDL-TEST-001']))->assertSee('Reyes, Lourdes')->assertDontSee('Cruz, Pedro');
 
         // Calendar: the day they registered.
         $this->get(route('frontdesk.walk-ins.index', ['date' => '2026-10-09']))
-            ->assertSee('Lourdes Reyes')
-            ->assertDontSee('Pedro Cruz')
+            ->assertSee('Reyes, Lourdes')
+            ->assertDontSee('Pedro Cruz')->assertDontSee('Cruz, Pedro')
             ->assertSee('Clear')
             ->assertSee('name="date" value="2026-10-09"', false);
 
@@ -1018,7 +1044,7 @@ class WalkInVisitorTest extends TestCase
 
         $this->get(route('frontdesk.walk-ins.index'))
             ->assertOk()
-            ->assertSeeInOrder(['Pedro Cruz', 'Lourdes Reyes'])
+            ->assertSeeInOrder(['Cruz, Pedro', 'Reyes, Lourdes'])
             ->assertDontSee('No walk-in visitors')
             ->assertSee('Showing 1–2 of 2 visitors');
     }

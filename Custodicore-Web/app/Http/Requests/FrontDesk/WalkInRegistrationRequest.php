@@ -43,12 +43,17 @@ class WalkInRegistrationRequest extends FrontDeskRequest
     protected function prepareForValidation(): void
     {
         $first = Sanitizer::name($this->input('first_name'));
+        $middle = Sanitizer::name($this->input('middle_name'));
         $last = Sanitizer::name($this->input('last_name'));
+        $suffix = Sanitizer::suffix($this->input('suffix'));
 
         $this->merge([
             'first_name' => $first,
+            'middle_name' => $middle,
             'last_name' => $last,
-            'full_name' => trim("{$first} {$last}") ?: null,
+            'suffix' => $suffix,
+            // Natural order, like every other full_name (duplicate check, matching).
+            'full_name' => VisitorProfile::composeFullName($first, $middle, $last, $suffix) ?: null,
             'address' => Sanitizer::text($this->input('address')),
             'contact_number' => self::mobile($this->input('contact_number')),
             'email' => Sanitizer::text($this->input('email')),
@@ -95,8 +100,10 @@ class WalkInRegistrationRequest extends FrontDeskRequest
         $name = ['string', 'regex:'.self::NAME_CHARACTERS];
 
         return [
-            'first_name' => ['required', ...$name, 'between:2,50'],
             'last_name' => ['required', ...$name, 'between:2,50'],
+            'first_name' => ['required', ...$name, 'between:2,50'],
+            'middle_name' => ['nullable', ...$name, 'max:50'],
+            'suffix' => ['nullable', Rule::in(Sanitizer::SUFFIXES)],
             'full_name' => ['required', 'string', 'max:150'],
             'gender' => ['required', Rule::in(['male', 'female'])],
             'date_of_birth' => ['required', 'date', 'before_or_equal:today'],
@@ -280,6 +287,9 @@ class WalkInRegistrationRequest extends FrontDeskRequest
             'last_name.required' => 'Please enter the visitor’s last name.',
             'last_name.regex' => 'Last name can only contain letters, spaces, periods, hyphens, and apostrophes.',
             'last_name.between' => 'Last name must be 2 to 50 characters.',
+            'middle_name.regex' => 'Middle name can only contain letters, spaces, periods, hyphens, and apostrophes.',
+            'middle_name.max' => 'Middle name must be 50 characters or fewer.',
+            'suffix.in' => 'Choose a suffix from the list (Jr., Sr., II, III, IV, V) or leave it blank.',
             'gender.*' => 'Please select the visitor’s sex.',
             'date_of_birth.required' => 'Please enter the visitor’s date of birth.',
             'date_of_birth.date' => 'Please enter the visitor’s date of birth.',

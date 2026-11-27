@@ -106,7 +106,7 @@
                             <tr class="text-body align-top">
                                 <td class="py-sm pr-md">
                                     @if ($visitor)
-                                        <a href="{{ route('frontdesk.visitor-lookup.show', $visitor->visitor_id) }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->full_name }}</a>
+                                        <a href="{{ route('frontdesk.visitor-lookup.show', $visitor->visitor_id) }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->listName() }}</a>
                                         <span class="block text-metadata text-text-secondary">Visitor ID: {{ $visitor->visitor_id }}</span>
                                     @else
                                         <span class="font-semibold">Unknown visitor</span>

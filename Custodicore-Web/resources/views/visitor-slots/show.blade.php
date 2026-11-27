@@ -86,7 +86,7 @@
           <td>#{{ $visit->visit_request_id }}</td>
           <td>
             @if ($visit->visitor)
-              <a class="row-action" href="{{ route('visitor.show', $visit->visitor->visitor_id) }}">{{ $visit->visitor->full_name }}</a>
+              <a class="row-action" href="{{ route('visitor.show', $visit->visitor->visitor_id) }}">{{ $visit->visitor->listName() }}</a>
             @else
               <span class="muted-cell">—</span>
             @endif

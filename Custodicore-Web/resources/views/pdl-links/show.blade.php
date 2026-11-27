@@ -68,7 +68,7 @@
   <div class="panel-header"><h2>Visitor</h2></div>
   @if ($visitor)
     <div class="row cols-3" style="margin-bottom:0;">
-      <div><div class="stat-label">Name</div><div><a href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a></div></div>
+      <div><div class="stat-label">Name</div><div><a href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->listName() }}</a></div></div>
       <div><div class="stat-label">Date of Birth</div><div>{{ $visitor->date_of_birth?->format('M d, Y') ?? '—' }}</div></div>
       <div><div class="stat-label">Contact Number</div><div>{{ $visitor->contact_number ?? '—' }}</div></div>
     </div>

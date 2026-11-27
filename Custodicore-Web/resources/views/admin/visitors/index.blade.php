@@ -60,7 +60,7 @@
                             <td class="py-sm pr-md">
                                 <div class="flex items-center gap-sm">
                                     @include('admin.partials.avatar', ['name' => $visitor['full_name'], 'photo' => $visitor['photo'] ?? null, 'size' => 'h-8 w-8'])
-                                    <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="font-semibold hover:underline">{{ $visitor['full_name'] }}</a>
+                                    <a href="{{ route('admin.visitors.show', $visitor['id']) }}" class="font-semibold hover:underline">{{ $visitor['list_name'] }}</a>
                                 </div>
                             </td>
                             <td class="py-sm pr-md text-text-secondary">{{ $visitor['contact_number'] }}</td>

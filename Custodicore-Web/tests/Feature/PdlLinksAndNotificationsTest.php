@@ -121,7 +121,7 @@ class PdlLinksAndNotificationsTest extends TestCase
             ->assertSee('Spouse')
             ->assertSee('Pending')
             ->assertSee(route('visitor.show', $link->visitor_id) . '#relationships', false)
-            ->assertDontSee('Paula Pending')
+            ->assertDontSee('Paula Pending')->assertDontSee('Pending, Paula')
             // The fixture's verified relationship is not waiting.
             ->assertDontSee('Example PDL');
 

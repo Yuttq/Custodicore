@@ -433,9 +433,10 @@ export default function AddPdlRequestScreen({ navigation, route }) {
   const renderReviewStep = () => (
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>Review Your Request</Text>
-      {renderReviewRow('PDL Full Name', composeIntendedPdlName(pdlNameParts))}
+      {renderReviewRow("PDL's Last Name", normalizeName(pdlNameParts.last))}
+      {renderReviewRow("PDL's First Name", normalizeName(pdlNameParts.first))}
       {renderReviewRow(
-        'Middle Name',
+        "PDL's Middle Name",
         pdlNameParts.noMiddleName ? 'None / not sure' : normalizeName(pdlNameParts.middle),
       )}
       {renderReviewRow('Suffix', pdlNameParts.suffix || 'None')}

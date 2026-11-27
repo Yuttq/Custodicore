@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPersonName;
 use Illuminate\Database\Eloquent\Model;
 
 class StaffProfile extends Model
 {
+    use HasPersonName;
+
     protected $table = 'staff_profiles';
     protected $primaryKey = 'staff_id';
 
@@ -40,27 +43,7 @@ class StaffProfile extends Model
         });
     }
 
-    /** "Juan D. Dela Cruz Jr." */
-    public static function composeFullName(?string $first, ?string $middle, ?string $last, ?string $suffix = null): string
-    {
-        return implode(' ', array_filter(
-            array_map(fn ($part) => trim((string) $part), [$first, $middle, $last, $suffix]),
-            fn ($part) => $part !== ''
-        ));
-    }
-
-    /** "Dela Cruz, Juan D. Jr." — the form used in sorted lists. */
-    public function listName(): string
-    {
-        if ($this->last_name === null && $this->first_name === null) {
-            return (string) $this->full_name;
-        }
-
-        $given = trim(implode(' ', array_filter([$this->first_name, $this->middle_name])));
-        $name = $this->last_name !== null && $this->last_name !== '' ? $this->last_name . ($given !== '' ? ', ' . $given : '') : $given;
-
-        return $this->suffix ? $name . ' ' . $this->suffix : $name;
-    }
+    // composeFullName() / listName() / orderByName / whereNameMatches: HasPersonName.
 
     /** URL of the officer's profile picture, or null when none (show initials). */
     public function photoUrl(): ?string

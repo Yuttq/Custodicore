@@ -22,7 +22,7 @@
         <tbody>
           @foreach ($pdlRequests as $pdlRequest)
             <tr>
-              <td style="font-weight:600;">{{ $pdlRequest->visitor?->full_name ?? '—' }}</td>
+              <td style="font-weight:600;">{{ $pdlRequest->visitor?->listName() ?? '—' }}</td>
               <td>{{ $pdlRequest->pdl_name }}</td>
               <td>{{ $pdlRequest->relationshipLabel() }}</td>
               <td class="muted-cell">{{ $pdlRequest->created_at?->format('M j, Y') ?? '—' }}</td>
@@ -64,7 +64,7 @@
         <tbody>
           @foreach ($links as $link)
             <tr>
-              <td style="font-weight:600;">{{ $link->visitor?->full_name ?? '—' }}</td>
+              <td style="font-weight:600;">{{ $link->visitor?->listName() ?? '—' }}</td>
               <td>{{ $link->pdl?->listName() ?? 'PDL not found' }}</td>
               <td>{{ $link->relationshipLabel() }}</td>
               <td><span class="badge transferred"><span class="dot"></span>Pending</span></td>

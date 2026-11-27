@@ -74,7 +74,7 @@
             <div class="name-cell">
               {{-- The photo taken in the app, or their initial when there is none yet. --}}
               @include('partials.visitor-avatar', ['visitor' => $visitor])
-              <a class="full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a>
+              <a class="full-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->listName() }}</a>
             </div>
           </td>
           <td class="muted-cell">{{ $visitor->contact_number }}</td>

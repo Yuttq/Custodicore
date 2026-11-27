@@ -190,9 +190,11 @@ class VisitorController extends Controller
         return VisitorProfile::query()
             ->with(['account:account_id,status', 'relationships' => fn ($q) => $q->orderByDesc('priority_tier')->with('pdl')])
             ->when($filter, fn ($query) => $query->where('verification_status', $filter))
-            ->when($like, function ($query) use ($like, $likeDigits) {
-                $query->where(function ($q) use ($like, $likeDigits) {
+            ->when($like, function ($query) use ($like, $likeDigits, $search) {
+                $query->where(function ($q) use ($like, $likeDigits, $search) {
                     $q->where('full_name', 'like', $like)
+                        // "Dela Cruz, Juan" (the list form) as well as "Juan Dela Cruz".
+                        ->orWhere(fn ($n) => $n->whereNameMatches((string) $search))
                         ->orWhere('first_name', 'like', $like)
                         ->orWhere('last_name', 'like', $like)
                         ->orWhere('contact_number', 'like', $like)
@@ -212,7 +214,7 @@ class VisitorController extends Controller
                     }
                 });
             })
-            ->orderBy('full_name')
+            ->orderByName()
             ->get()
             ->map(function ($visitor) {
                 $relationship = $visitor->relationships->first();
@@ -220,9 +222,10 @@ class VisitorController extends Controller
                 return [
                     'id' => $visitor->visitor_id,
                     'full_name' => $visitor->full_name,
+                    'list_name' => $visitor->listName(),
                     'photo' => $visitor->photoUrl(),
                     'contact_number' => $visitor->contact_number,
-                    'related_pdl_name' => $relationship?->pdl?->full_name ?? '—',
+                    'related_pdl_name' => $relationship?->pdl?->listName() ?? '—',
                     'related_pdl_number' => $relationship?->pdl?->pdl_number ?? '—',
                     'more_pdls' => max(0, $visitor->relationships->count() - 1),
                     'relationship_type' => $relationship?->relationship_type ?? 'unknown_or_other',

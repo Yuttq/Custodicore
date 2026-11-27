@@ -318,12 +318,13 @@ class UserController extends Controller
         return Account::query()
             ->with(['role', 'staffProfile'])
             ->whereHas('role', fn ($q) => $q->whereIn('role_name', self::ROLE_NAMES))
-            ->when($like, function ($query) use ($like) {
-                $query->where(function ($q) use ($like) {
+            ->when($like, function ($query) use ($like, $search) {
+                $query->where(function ($q) use ($like, $search) {
                     $q->where('accounts.email', 'like', $like)
                         ->orWhere('accounts.username', 'like', $like)
-                        ->orWhereHas('staffProfile', function ($p) use ($like) {
+                        ->orWhereHas('staffProfile', function ($p) use ($like, $search) {
                             $p->where('last_name', 'like', $like)
+                                ->orWhere(fn ($n) => $n->whereNameMatches((string) $search))
                                 ->orWhere('first_name', 'like', $like)
                                 ->orWhere('middle_name', 'like', $like)
                                 ->orWhere('full_name', 'like', $like)

@@ -3,7 +3,7 @@
  *
  * Limits mirror the backend schema / AuthController::register() rules so the
  * app never sends something the server would reject on length:
- *   visitor_profiles.full_name      varchar(150)  → first + " " + last ≤ 150
+ *   visitor_profiles.full_name      varchar(150)  → first middle last suffix ≤ 150 (visitorName.js)
  *   accounts.email                  varchar(100)
  *   visitor_profiles.contact_number varchar(20)
  *   visitor_profiles.address        max:255
@@ -124,7 +124,7 @@ export function ageFromBirthdate(iso, today = new Date()) {
 }
 
 /** @returns {string|null} error message */
-function validateName(value, label, max = REGISTRATION_LIMITS.nameMax) {
+export function validateName(value, label, max = REGISTRATION_LIMITS.nameMax) {
   const name = normalizeName(value);
   if (!name) return `${label} is required.`;
   if (name.length > max) {

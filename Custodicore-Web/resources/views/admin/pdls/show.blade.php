@@ -49,7 +49,7 @@
             </div>
 
             <div class="min-w-0 flex-1">
-                <p class="break-words text-card-title text-white sm:text-page-title">{{ $pdl->full_name }}</p>
+                <p class="break-words text-card-title text-white sm:text-page-title">{{ $pdl->listName() }}</p>
                 <p class="text-metadata text-white/70">
                     {{ $pdl->pdl_number }}@if ($pdl->alias) · alias "{{ $pdl->alias }}"@endif
                 </p>
@@ -146,7 +146,7 @@
                                     @include('admin.partials.avatar', ['name' => $rel->visitor->full_name, 'photo' => $rel->visitor->photoUrl(), 'size' => 'h-9 w-9'])
                                     <div class="min-w-0">
                                         <a href="{{ route('admin.visitors.show', $rel->visitor_id) }}"
-                                           class="block truncate text-body font-semibold text-primary-navy hover:underline">{{ $rel->visitor->full_name }}</a>
+                                           class="block truncate text-body font-semibold text-primary-navy hover:underline">{{ $rel->visitor->listName() }}</a>
                                         <p class="text-metadata text-text-secondary">
                                             Verified {{ $rel->verified_at ? \Illuminate\Support\Carbon::parse($rel->verified_at)->format('M j, Y') : '—' }}
                                         </p>

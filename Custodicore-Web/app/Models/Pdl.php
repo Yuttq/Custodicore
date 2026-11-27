@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPersonName;
 use Illuminate\Database\Eloquent\Model;
 
 // CONFIRMED against the actual migration (2024_01_02_000080_create_pdl_profiles_table.php):
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Pdl extends Model
 {
+    use HasPersonName;
+
     protected $table = 'pdl_profiles';
     protected $primaryKey = 'pdl_id';
 
@@ -72,27 +75,7 @@ class Pdl extends Model
         });
     }
 
-    /** "Juan Santos Dela Cruz Jr." — the suffix (optional) goes last. */
-    public static function composeFullName(?string $first, ?string $middle, ?string $last, ?string $suffix = null): string
-    {
-        return implode(' ', array_filter(array_map(fn ($part) => trim((string) $part), [$first, $middle, $last, $suffix]), fn ($part) => $part !== ''));
-    }
-
-    /**
-     * "Dela Cruz, Juan Santos Jr." — last name first, the form used on the
-     * staff screens. Older PDLs with only a full name on file show it as is.
-     */
-    public function listName(): string
-    {
-        if ($this->last_name === null && $this->first_name === null) {
-            return (string) $this->full_name;
-        }
-
-        $given = trim(implode(' ', array_filter([$this->first_name, $this->middle_name])));
-        $name = $this->last_name !== null && $this->last_name !== '' ? $this->last_name . ($given !== '' ? ', ' . $given : '') : $given;
-
-        return $this->suffix ? $name . ' ' . $this->suffix : $name;
-    }
+    // composeFullName() / listName() / orderByName / whereNameMatches: HasPersonName.
 
     /**
      * Another PDL who looks like the same person: same full name (ignoring

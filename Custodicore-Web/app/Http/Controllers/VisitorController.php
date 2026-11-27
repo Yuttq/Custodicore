@@ -48,6 +48,7 @@ class VisitorController extends Controller
             ->when($query !== '', function ($q) use ($query) {
                 $q->where(function ($w) use ($query) {
                     $w->where('full_name', 'like', "%{$query}%")
+                        ->orWhere(fn ($n) => $n->whereNameMatches($query))
                         ->orWhere('contact_number', 'like', "%{$query}%");
                 });
             })
@@ -93,8 +94,8 @@ class VisitorController extends Controller
 
         // PDLs this visitor isn't related to yet, for the "Add Relationship" form.
         $relatablePdls = Pdl::whereNotIn('pdl_id', $visitor->relationships->pluck('pdl_id'))
-            ->orderBy('full_name')
-            ->get(['pdl_id', 'pdl_number', 'full_name', 'alias', 'custody_status', 'photo_path']);
+            ->orderByName()
+            ->get(['pdl_id', 'pdl_number', 'full_name', 'first_name', 'middle_name', 'last_name', 'suffix', 'alias', 'custody_status', 'photo_path']);
 
         $activity = \App\Services\ActivityLog::forVisitor($visitor);
 
@@ -696,6 +697,7 @@ class VisitorController extends Controller
             ->when(! $includeRelated, fn ($w) => $w->whereNotIn('pdl_id', $related->keys()))
             ->where(function ($w) use ($q, $like) {
                 $w->where('full_name', 'like', $like)
+                    ->orWhere(fn ($n) => $n->whereNameMatches($q))
                     ->orWhere('alias', 'like', $like)
                     ->orWhere('pdl_number', 'like', $like);
                 if (ctype_digit($q)) {
@@ -705,15 +707,15 @@ class VisitorController extends Controller
             // Exact number/ID matches first, then PDLs in custody, then by name.
             ->orderByRaw('CASE WHEN pdl_number = ? OR pdl_id = ? THEN 0 ELSE 1 END', [$q, ctype_digit($q) ? (int) $q : 0])
             ->orderByRaw("CASE WHEN custody_status = 'active' THEN 0 ELSE 1 END")
-            ->orderBy('full_name')
+            ->orderByName()
             ->limit(8)
-            ->get(['pdl_id', 'pdl_number', 'full_name', 'alias', 'custody_status', 'photo_path']);
+            ->get(['pdl_id', 'pdl_number', 'full_name', 'first_name', 'middle_name', 'last_name', 'suffix', 'alias', 'custody_status', 'photo_path']);
 
         return response()->json([
             'results' => $pdls->map(fn (Pdl $p) => [
                 'id' => $p->pdl_id,
                 'number' => $p->pdl_number,
-                'name' => $p->full_name,
+                'name' => $p->listName(),
                 'alias' => $p->alias,
                 'status' => $p->custody_status,
                 'photo' => $p->photoUrl(),

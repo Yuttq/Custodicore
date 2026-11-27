@@ -63,7 +63,7 @@
                 @foreach ($previousDayInside as $checkin)
                     @php $visit = $checkin->visitRequest; @endphp
                     <li class="py-sm">
-                        <p class="text-body font-semibold">{{ $visit?->visitor?->full_name ?? '—' }}</p>
+                        <p class="text-body font-semibold">{{ $visit?->visitor?->listName() ?? '—' }}</p>
                         <p class="text-metadata text-text-secondary">
                             Visiting {{ $visit?->pdl?->listName() ?? '—' }}@if ($visit?->pdl?->pdl_number) ({{ $visit->pdl->pdl_number }})@endif
                             · Checked in {{ $checkin->check_in_time?->format('M j, Y H:i') ?? '—' }}
@@ -1079,7 +1079,7 @@
                                 <tr @if ($profileUrl) data-row-href="{{ $profileUrl }}" class="cursor-pointer transition-colors hover:bg-background" title="Open in Visitor Lookup" @endif>
                                     <td class="py-sm pr-md">
                                         @if ($profileUrl)
-                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->full_name }}</a>
+                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->listName() }}</a>
                                         @else
                                             <span class="font-semibold">—</span>
                                         @endif
@@ -2145,7 +2145,7 @@
                                 <tr @if ($profileUrl) data-row-href="{{ $profileUrl }}" class="cursor-pointer transition-colors hover:bg-background" title="Open in Visitor Lookup" @endif>
                                     <td class="py-sm pr-md">
                                         @if ($profileUrl)
-                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->full_name }}</a>
+                                            <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visit->visitor->listName() }}</a>
                                         @else
                                             <span class="font-semibold">—</span>
                                         @endif

@@ -19,7 +19,7 @@
   <div class="pdl-header">
     @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'pdl-photo-lg visitor-photo-lg'])
     <div>
-      <h1 style="margin:0;">{{ $visitor->full_name }}</h1>
+      <h1 style="margin:0;">{{ $visitor->listName() }}</h1>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
         <span class="badge {{ $reviewBadge }}"><span class="dot"></span>{{ $reviewLabel }}</span>
         @if ($visitor->isWalkIn())
@@ -495,7 +495,7 @@
               <input type="text" id="pdlSearchInput" name="pdl_search" autocomplete="off" data-label="PDL"
                      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pdlSearchResults"
                      placeholder="Search name, alias, PDL number or ID"
-                     value="{{ $preselected ? $preselected->full_name . ' (' . $preselected->pdl_number . ')' : '' }}">
+                     value="{{ $preselected ? $preselected->listName() . ' (' . $preselected->pdl_number . ')' : '' }}">
               <ul class="pdl-search-results" id="pdlSearchResults" role="listbox" hidden></ul>
             </div>
             <p class="field-hint" data-pdl-hint>Type at least 1 character, then pick the PDL from the list.</p>

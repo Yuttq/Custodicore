@@ -147,7 +147,10 @@ function normalizeUser(raw) {
     verifiedAt: raw.verifiedAt ?? null,
     rejectionReason: raw.rejectionReason ?? null,
     firstName: raw.firstName ?? null,
+    // Optional name parts (newer servers only; null otherwise).
+    middleName: raw.middleName ?? null,
     lastName: raw.lastName ?? null,
+    suffix: raw.suffix ?? null,
     dateOfBirth: raw.dateOfBirth ?? null,
     gender: raw.gender ?? null,
     address: raw.address ?? null,

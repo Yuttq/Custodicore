@@ -37,6 +37,7 @@ class VisitorLookupController extends Controller
         $visitors = VisitorProfile::query()
             ->when($query !== '', fn ($q) => $q->where(function ($q) use ($query, $phoneTail) {
                 $q->where('full_name', 'like', Sanitizer::like($query))
+                    ->orWhere(fn ($n) => $n->whereNameMatches($query))
                     ->orWhere('contact_number', 'like', Sanitizer::like($query));
 
                 if ($phoneTail) {
@@ -47,7 +48,7 @@ class VisitorLookupController extends Controller
                 }
             }))
             ->with(['relationships.pdl', 'activeFlags'])
-            ->orderBy('full_name')
+            ->orderByName()
             ->orderBy('visitor_id')
             ->paginate(self::PER_PAGE)
             ->withQueryString();

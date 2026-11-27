@@ -5,6 +5,12 @@
 --}}
 @php
     $name = trim((string) ($name ?? ''));
+    // A list-form name ("Dela Cruz, Juan") gets the same initials and color
+    // as the natural form ("Juan Dela Cruz").
+    if (str_contains($name, ',')) {
+        [$lastPart, $givenPart] = explode(',', $name, 2);
+        $name = trim(trim($givenPart) . ' ' . trim($lastPart));
+    }
     $size = $size ?? 'h-9 w-9';
     $photo = $photo ?? null;
 

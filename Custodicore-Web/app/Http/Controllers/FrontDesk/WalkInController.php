@@ -63,6 +63,7 @@ class WalkInController extends Controller
             ->when($query !== '', function ($q) use ($query) {
                 $like = Sanitizer::like($query);
                 $q->where(fn ($match) => $match->where('full_name', 'like', $like)
+                    ->orWhere(fn ($n) => $n->whereNameMatches($query))
                     ->orWhere('intended_pdl_name', 'like', $like)
                     ->orWhere('intended_pdl_number', 'like', $like));
             })
@@ -124,7 +125,7 @@ class WalkInController extends Controller
      */
     public function pdlSearch(Request $request): JsonResponse
     {
-        $words = collect(preg_split('/\s+/u', mb_strtolower(mb_substr(Sanitizer::text((string) $request->query('q', '')) ?? '', 0, 100))))
+        $words = collect(preg_split('/[\s,]+/u', mb_strtolower(mb_substr(Sanitizer::text((string) $request->query('q', '')) ?? '', 0, 100))))
             ->filter(fn ($word) => mb_strlen($word) >= 2)
             ->take(5)
             ->values();
@@ -142,13 +143,13 @@ class WalkInController extends Controller
                         ->orWhereRaw('LOWER(pdl_number) LIKE ?', [$like]);
                 }));
             })
-            ->orderBy('full_name')
+            ->orderByName()
             ->limit(10)
             ->get();
 
         return response()->json(['results' => $pdls->map(fn (Pdl $pdl) => [
             'id' => $pdl->pdl_id,
-            'name' => $pdl->full_name,
+            'name' => $pdl->listName(),
             'alias' => $pdl->alias,
             'number' => $pdl->pdl_number,
             'status' => $pdl->custody_status,
@@ -184,11 +185,11 @@ class WalkInController extends Controller
     public function create(Request $request): View
     {
         $query = mb_substr(Sanitizer::text((string) $request->query('q', '')) ?? '', 0, 100);
-        $words = collect(preg_split('/\s+/u', $query))->filter(fn ($word) => mb_strlen($word) >= 2)->take(5);
+        $words = collect(preg_split('/[\s,]+/u', $query))->filter(fn ($word) => mb_strlen($word) >= 2)->take(5);
         $existing = $words->isNotEmpty()
             ? VisitorProfile::query()
                 ->where(fn ($q) => $words->each(fn ($word) => $q->where('full_name', 'like', Sanitizer::like($word))))
-                ->orderBy('full_name')
+                ->orderByName()
                 ->limit(10)
                 ->get()
                 ->map(fn (VisitorProfile $visitor) => [

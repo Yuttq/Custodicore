@@ -81,8 +81,9 @@ class PdlController extends Controller
             ->addSelect(['last_visit_at' => $checkins()->selectRaw('MAX(vc.check_in_time)')])
             ->when($query !== '', function ($q) use ($query) {
                 $like = Sanitizer::like($query);
-                $q->where(function ($q2) use ($like) {
+                $q->where(function ($q2) use ($like, $query) {
                     $q2->where('full_name', 'like', $like)
+                        ->orWhere(fn ($n) => $n->whereNameMatches($query))
                         ->orWhere('last_name', 'like', $like)
                         ->orWhere('first_name', 'like', $like)
                         ->orWhere('middle_name', 'like', $like)
@@ -103,9 +104,7 @@ class PdlController extends Controller
             ->with(['legalRecords', 'restrictions'])
             // Alphabetical: last name, first name, middle name. Older PDLs
             // with only a full name on file sort by that full name.
-            ->orderByRaw("COALESCE(NULLIF(last_name, ''), full_name)")
-            ->orderBy('first_name')
-            ->orderBy('middle_name')
+            ->orderByName()
             ->orderBy('pdl_id')
             ->paginate(10)
             ->withQueryString();

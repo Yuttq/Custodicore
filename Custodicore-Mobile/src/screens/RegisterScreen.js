@@ -73,14 +73,14 @@ import {
   passwordRequirementChecks,
   validateAddress,
   validateBirthdateAge,
-  validateFirstName,
   validateGender,
-  validateLastName,
   validateMobileNumber,
   validatePasswordConfirmation,
   validateRegistrationEmail,
   validateRegistrationPassword,
 } from '../utils/registrationValidation';
+import SuffixSelect from '../components/SuffixSelect';
+import { getVisitorNameErrors, toVisitorNameFields } from '../utils/visitorName';
 
 const TOTAL_STEPS = 5;
 
@@ -218,12 +218,13 @@ const GOOGLE_RESTART_MESSAGES = {
 };
 
 /**
- * Backend validation field → step-1 form field. The backend only knows a
- * single `fullName` (built from First + Last Name), so its errors are shown
- * under First Name.
+ * Backend validation field → step-1 form field. Errors on the combined
+ * `fullName` (e.g. "already registered at the Front Desk") are shown under
+ * the first name field on screen, Last Name.
  */
 const SERVER_FIELD_ERRORS = {
-  fullName: 'firstName',
+  // The first name field shown is Last Name (the standard order).
+  fullName: 'lastName',
   dateOfBirth: 'birthdate',
   gender: 'gender',
   address: 'address',
@@ -233,6 +234,8 @@ const SERVER_FIELD_ERRORS = {
   email: 'email',
   firstName: 'firstName',
   lastName: 'lastName',
+  middleName: 'middleName',
+  suffix: 'suffix',
   // The government ID is sent with the registration (step 3 fields).
   governmentId: 'government_id',
   governmentIdType: 'government_id_type',
@@ -283,8 +286,16 @@ function getAccountInfoErrors(form, { isGoogle }) {
   const put = (key, message) => {
     if (message) next[key] = message;
   };
-  put('firstName', validateFirstName(form.firstName));
-  put('lastName', validateLastName(form.lastName));
+  // Last, First, Middle, Suffix: the order the fields are shown.
+  Object.assign(
+    next,
+    getVisitorNameErrors({
+      last: form.lastName,
+      first: form.firstName,
+      middle: form.middleName,
+      suffix: form.suffix,
+    }),
+  );
   if (!validateRequired(form.birthdate)) next.birthdate = 'Birthdate is required.';
   else put('birthdate', validateBirthdateAge(form.birthdate));
   put('gender', validateGender(form.gender));
@@ -331,6 +342,9 @@ export default function RegisterScreen({ navigation, route }) {
   const [lastName, setLastName] = useState(
     () => splitGoogleName(googleProfile?.fullName).last,
   );
+  // Optional; Google never provides them.
+  const [middleName, setMiddleName] = useState('');
+  const [suffix, setSuffix] = useState('');
   const [birthdate, setBirthdate] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
@@ -494,6 +508,8 @@ export default function RegisterScreen({ navigation, route }) {
         {
           firstName,
           lastName,
+          middleName,
+          suffix,
           birthdate,
           gender,
           address,
@@ -507,6 +523,8 @@ export default function RegisterScreen({ navigation, route }) {
     [
       firstName,
       lastName,
+      middleName,
+      suffix,
       birthdate,
       gender,
       address,
@@ -777,12 +795,11 @@ export default function RegisterScreen({ navigation, route }) {
         return { label: doc.label, detail, submitted: true };
       });
 
-      // The backend stores one full name; age is checked against the
+      // fullName is joined First Middle Last Suffix (natural order, what the
+      // backend stores) and sent with the parts. Age is checked against the
       // birthdate here and not sent (the backend derives it from dateOfBirth).
       const fields = {
-        fullName: `${normalizeName(firstName)} ${normalizeName(lastName)}`,
-        firstName: normalizeName(firstName),
-        lastName: normalizeName(lastName),
+        ...toVisitorNameFields({ last: lastName, first: firstName, middle: middleName, suffix }),
         birthdate: birthdate.trim(),
         gender,
         address: normalizeAddress(address),
@@ -862,6 +879,8 @@ export default function RegisterScreen({ navigation, route }) {
     showServerFieldErrors,
     firstName,
     lastName,
+    middleName,
+    suffix,
     birthdate,
     gender,
     address,
@@ -889,6 +908,17 @@ export default function RegisterScreen({ navigation, route }) {
   const renderStep1 = () => (
     <Card style={styles.card}>
       <WizardField
+        label="Last Name"
+        value={lastName}
+        onChangeText={editField(setLastName, inputFilters.name, 'lastName')}
+        placeholder="Enter last name"
+        error={errors.lastName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={REGISTRATION_LIMITS.nameMax}
+        textContentType="familyName"
+      />
+      <WizardField
         label="First Name"
         value={firstName}
         onChangeText={editField(setFirstName, inputFilters.name, 'firstName')}
@@ -900,15 +930,26 @@ export default function RegisterScreen({ navigation, route }) {
         textContentType="givenName"
       />
       <WizardField
-        label="Last Name"
-        value={lastName}
-        onChangeText={editField(setLastName, inputFilters.name, 'lastName')}
-        placeholder="Enter last name"
-        error={errors.lastName}
+        label="Middle Name (optional)"
+        value={middleName}
+        onChangeText={editField(setMiddleName, inputFilters.name, 'middleName')}
+        placeholder="Enter middle name"
+        error={errors.middleName}
         autoCapitalize="words"
         autoCorrect={false}
         maxLength={REGISTRATION_LIMITS.nameMax}
-        textContentType="familyName"
+        textContentType="middleName"
+      />
+      <SuffixSelect
+        value={suffix}
+        onChange={(s) => {
+          setSuffix(s);
+          clearError('suffix');
+        }}
+        error={errors.suffix}
+        fieldStyle={fieldStyles.wrap}
+        labelStyle={fieldStyles.label}
+        inputStyle={fieldStyles.input}
       />
       <BirthdateField
         label="Birthdate"
@@ -1381,8 +1422,10 @@ export default function RegisterScreen({ navigation, route }) {
     <>
       <Card style={styles.card}>
         <Text style={styles.reviewSectionTitle}>Personal Information</Text>
-        {renderReviewRow('First Name', normalizeName(firstName))}
         {renderReviewRow('Last Name', normalizeName(lastName))}
+        {renderReviewRow('First Name', normalizeName(firstName))}
+        {renderReviewRow('Middle Name', normalizeName(middleName) || 'None')}
+        {renderReviewRow('Suffix', suffix || 'None')}
         {renderReviewRow('Birthdate', formatBirthdateDisplay(birthdate) || '—')}
         {renderReviewRow('Age', visitorAge === null ? '—' : String(visitorAge))}
         {renderReviewRow('Gender', gender)}
@@ -1396,9 +1439,10 @@ export default function RegisterScreen({ navigation, route }) {
 
       <Card style={[styles.card, styles.cardSpaced]}>
         <Text style={styles.reviewSectionTitle}>PDL To Visit</Text>
-        {renderReviewRow('PDL Full Name', composeIntendedPdlName(pdlNameParts))}
+        {renderReviewRow("PDL's Last Name", normalizeName(pdlNameParts.last))}
+        {renderReviewRow("PDL's First Name", normalizeName(pdlNameParts.first))}
         {renderReviewRow(
-          'Middle Name',
+          "PDL's Middle Name",
           pdlNameParts.noMiddleName ? 'None / not sure' : normalizeName(pdlNameParts.middle),
         )}
         {renderReviewRow('Suffix', pdlNameParts.suffix || 'None')}

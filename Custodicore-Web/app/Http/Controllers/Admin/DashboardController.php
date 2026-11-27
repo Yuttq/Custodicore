@@ -75,8 +75,8 @@ class DashboardController extends Controller
             ->sortBy(fn ($v) => $v->schedule?->time_slot_start)
             ->map(fn ($v) => [
                 'visitor_id' => $v->visitor_id,
-                'visitor' => $v->visitor?->full_name ?? 'Unknown',
-                'pdl' => $v->pdl?->full_name ?? '—',
+                'visitor' => $v->visitor?->listName() ?? 'Unknown',
+                'pdl' => $v->pdl?->listName() ?? '—',
                 'pdl_number' => $v->pdl?->pdl_number,
                 'time' => $v->schedule
                     ? substr($v->schedule->time_slot_start, 0, 5) . '–' . substr($v->schedule->time_slot_end, 0, 5)
@@ -131,6 +131,7 @@ class DashboardController extends Controller
                 'id' => $row->pdl->pdl_id,
                 'pdl_number' => $row->pdl->pdl_number,
                 'full_name' => $row->pdl->full_name,
+                'list_name' => $row->pdl->listName(),
                 'photo' => PdlController::photoUrl($row->pdl),
                 'visits_this_month' => $row->visits_this_month,
             ])
@@ -153,6 +154,7 @@ class DashboardController extends Controller
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
+                'list_name' => $pdl->listName(),
                 'photo' => PdlController::photoUrl($pdl),
                 'last_visit' => $pdl->last_visit_at ? \Illuminate\Support\Carbon::parse($pdl->last_visit_at)->format('M j, Y') : null,
             ])

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPersonName;
 use Illuminate\Database\Eloquent\Model;
 
 class VisitorProfile extends Model
 {
+    use HasPersonName;
+
     protected $table = 'visitor_profiles';
     protected $primaryKey = 'visitor_id';
 
@@ -13,7 +16,9 @@ class VisitorProfile extends Model
         'account_id',
         'full_name',
         'first_name',
+        'middle_name',
         'last_name',
+        'suffix',
         'date_of_birth',
         'gender',
         'address',
@@ -49,6 +54,25 @@ class VisitorProfile extends Model
         'photo_uploaded_at' => 'datetime',
         'photo_reviewed_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // full_name (natural order) is what the mobile app, walk-in matching
+        // and the duplicate checks read: rebuild it when a name part changes.
+        // Only then — older clients still set full_name on its own, and
+        // older profiles have no parts at all.
+        static::saving(function (VisitorProfile $visitor) {
+            $partsChanged = $visitor->isDirty(['first_name', 'middle_name', 'last_name', 'suffix']);
+            if ($partsChanged && ($visitor->first_name !== null || $visitor->last_name !== null)) {
+                $visitor->full_name = self::composeFullName(
+                    $visitor->first_name,
+                    $visitor->middle_name,
+                    $visitor->last_name,
+                    $visitor->suffix
+                );
+            }
+        });
+    }
 
     /** The photo's own review (photo_status), like a government ID's. */
     public const PHOTO_PENDING = 'pending';

@@ -69,7 +69,7 @@
         <div class="elig-person">
           @include('partials.visitor-avatar', ['visitor' => $visitor, 'class' => 'thumb elig-visitor-avatar'])
           <div>
-            <a class="elig-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->full_name }}</a>
+            <a class="elig-name" href="{{ route('visitor.show', $visitor->visitor_id) }}">{{ $visitor->listName() }}</a>
             @if ($visitor->isWalkIn())
               <span class="badge transferred" title="Registered at the Front Desk without the app"><span class="dot"></span>Walk-in{{ $visitor->created_at?->isToday() && $tab === 'pending' ? ' · waiting at gate' : '' }}</span>
             @endif
@@ -111,7 +111,7 @@
           <strong>Possibly already registered as a walk-in.</strong>
           @foreach ($walkInMatches as $match)
             <div style="margin-top:4px;">
-              <a href="{{ route('visitor.show', $match['visitor']->visitor_id) }}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;">{{ $match['visitor']->full_name }}</a>
+              <a href="{{ route('visitor.show', $match['visitor']->visitor_id) }}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;">{{ $match['visitor']->listName() }}</a>
               · born {{ $match['visitor']->date_of_birth?->format('M j, Y') ?? '—' }}
               · {{ $match['visitor']->contact_number ?: 'no number' }}
               · registered at the Front Desk {{ $match['visitor']->created_at?->format('M j, Y') }}
@@ -281,7 +281,7 @@
                   <input type="text" id="pdl-search-{{ $visitor->visitor_id }}" autocomplete="off" form="{{ $approveForm }}"
                          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pdl-results-{{ $visitor->visitor_id }}"
                          placeholder="Search name, alias, PDL number or ID"
-                         value="{{ $suggested ? $suggested->full_name . ' (' . $suggested->pdl_number . ')' : '' }}">
+                         value="{{ $suggested ? $suggested->listName() . ' (' . $suggested->pdl_number . ')' : '' }}">
                   <ul class="pdl-search-results" id="pdl-results-{{ $visitor->visitor_id }}" role="listbox" hidden></ul>
                 </div>
                 <p class="field-hint" data-pdl-hint>
@@ -334,8 +334,8 @@
                           <td>
                             <button type="button" class="row-action" data-pdl-choose
                                     data-pdl-id="{{ $candidate->pdl_id }}"
-                                    data-pdl-label="{{ $candidate->full_name }} ({{ $candidate->pdl_number }})"
-                                    data-pdl-hint="Selected: {{ $candidate->full_name }} · {{ $candidate->pdl_number }}">Choose</button>
+                                    data-pdl-label="{{ $candidate->listName() }} ({{ $candidate->pdl_number }})"
+                                    data-pdl-hint="Selected: {{ $candidate->listName() }} · {{ $candidate->pdl_number }}">Choose</button>
                           </td>
                         </tr>
                       @endforeach

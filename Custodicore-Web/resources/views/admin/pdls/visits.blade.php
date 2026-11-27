@@ -59,7 +59,7 @@
                                 <div class="flex items-center gap-sm">
                                     @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'], 'size' => 'h-9 w-9'])
                                     <div>
-                                        <a href="{{ route('admin.pdls.show', $pdl['id']) }}" class="font-semibold hover:underline">{{ $pdl['full_name'] }}</a>
+                                        <a href="{{ route('admin.pdls.show', $pdl['id']) }}" class="font-semibold hover:underline">{{ $pdl['list_name'] }}</a>
                                         <p class="text-metadata text-text-secondary">{{ $pdl['pdl_number'] }}</p>
                                     </div>
                                 </div>

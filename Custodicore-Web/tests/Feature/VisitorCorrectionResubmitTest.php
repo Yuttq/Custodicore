@@ -118,7 +118,7 @@ class VisitorCorrectionResubmitTest extends TestCase
         $this->get('/account-reviews')->assertOk()
             ->assertSee('Lea Bautista')
             ->assertSee('Resubmitted after being returned');
-        $this->get('/account-reviews?tab=rejected')->assertOk()->assertDontSee('Lea Bautista');
+        $this->get('/account-reviews?tab=rejected')->assertOk()->assertDontSee('Lea Bautista')->assertDontSee('Bautista, Lea');
     }
 
     public function test_invalid_or_empty_corrections_keep_the_account_returned(): void

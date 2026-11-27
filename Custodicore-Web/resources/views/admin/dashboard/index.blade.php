@@ -125,7 +125,7 @@
                             <div class="flex items-center gap-sm">
                                 @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'] ?? null, 'size' => 'h-9 w-9'])
                                 <div>
-                                    <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
+                                    <p class="text-body font-semibold leading-tight">{{ $pdl['list_name'] }}</p>
                                     <p class="text-metadata text-text-secondary">{{ $pdl['pdl_number'] }}</p>
                                 </div>
                             </div>
@@ -163,7 +163,7 @@
                             <div class="flex items-center gap-sm">
                                 @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'] ?? null, 'size' => 'h-9 w-9'])
                                 <div>
-                                    <p class="text-body font-semibold leading-tight">{{ $pdl['full_name'] }}</p>
+                                    <p class="text-body font-semibold leading-tight">{{ $pdl['list_name'] }}</p>
                                     <p class="text-metadata text-text-secondary">
                                         {{ $pdl['pdl_number'] }} ·
                                         {{ $pdl['last_visit'] ? 'Last visit ' . $pdl['last_visit'] : 'No visit on record' }}

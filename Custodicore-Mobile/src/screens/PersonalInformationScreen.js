@@ -16,6 +16,16 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { formatDate } from '../utils';
 import { validateProfileFields } from '../utils/profileValidation';
+import SuffixSelect from '../components/SuffixSelect';
+import { inputFilters } from '../utils/registrationValidation';
+import {
+  composeVisitorFullName,
+  emptyVisitorNameParts,
+  getVisitorNameErrors,
+  toVisitorNameFields,
+  visitorNameChanged,
+  visitorNamePartsFromUser,
+} from '../utils/visitorName';
 
 const inputLabelStyle = { color: colors.textSecondary };
 
@@ -23,7 +33,11 @@ const GENDER_LABELS = { male: 'Male', female: 'Female', other: 'Other' };
 
 /** Backend (camelCase) field → form field, for 422 validation messages. */
 const SERVER_FIELD_TO_FORM = {
-  fullName: 'fullName',
+  fullName: 'lastName',
+  lastName: 'lastName',
+  firstName: 'firstName',
+  middleName: 'middleName',
+  suffix: 'suffix',
   contactNumber: 'phone',
   address: 'address',
 };
@@ -74,7 +88,7 @@ export default function PersonalInformationScreen({ navigation }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(/** @type {string | null} */ (null));
-  const [draft, setDraft] = useState({ fullName: '', phone: '', address: '' });
+  const [draft, setDraft] = useState({ name: emptyVisitorNameParts(), phone: '', address: '' });
   const [fieldErrors, setFieldErrors] = useState(/** @type {Record<string, string>} */ ({}));
 
   const isVerified = user?.verificationStatus === 'verified';
@@ -100,7 +114,8 @@ export default function PersonalInformationScreen({ navigation }) {
 
   const startEditing = useCallback(() => {
     setDraft({
-      fullName: user?.fullName ?? '',
+      // Last / First / Middle / Suffix; an older profile is split as a guess.
+      name: visitorNamePartsFromUser(user),
       phone: user?.contactNumber ?? '',
       address: user?.address ?? '',
     });
@@ -117,13 +132,16 @@ export default function PersonalInformationScreen({ navigation }) {
 
   const saveProfile = useCallback(async () => {
     if (saving) return;
-    const { valid, errors } = validateProfileFields({
-      fullName: draft.fullName,
+    const { errors: contactErrors } = validateProfileFields({
+      fullName: composeVisitorFullName(draft.name),
       phone: draft.phone,
       address: draft.address,
     });
-    if (!valid) {
-      setFieldErrors(errors);
+    // The name is checked part by part (and only while it can be edited).
+    const { fullName: _unused, ...otherErrors } = contactErrors;
+    const allErrors = { ...otherErrors, ...(isVerified ? {} : getVisitorNameErrors(draft.name)) };
+    if (Object.keys(allErrors).length > 0) {
+      setFieldErrors(allErrors);
       return;
     }
     setFieldErrors({});
@@ -134,9 +152,10 @@ export default function PersonalInformationScreen({ navigation }) {
       contactNumber: draft.phone.trim(),
       address: draft.address.trim(),
     };
-    // Name is locked after verification — only send it when it actually changed.
-    if (!isVerified && draft.fullName.trim() !== (user?.fullName ?? '')) {
-      fields.fullName = draft.fullName.trim();
+    // Name is locked after verification — only send it when it actually
+    // changed: the parts plus fullName (natural order, for older servers).
+    if (!isVerified && visitorNameChanged(draft.name, user)) {
+      Object.assign(fields, toVisitorNameFields(draft.name));
     }
 
     setSaving(true);
@@ -201,20 +220,38 @@ export default function PersonalInformationScreen({ navigation }) {
                 }
               />
               {editingName ? (
-                <CustomInput
-                  label="Full Name"
-                  value={draft.fullName}
-                  onChangeText={(t) => {
-                    setDraft((d) => ({ ...d, fullName: t }));
-                    setFieldErrors((e) => ({ ...e, fullName: '' }));
-                  }}
-                  placeholder="Full name"
-                  autoCapitalize="words"
-                  error={fieldErrors.fullName}
-                  labelStyle={inputLabelStyle}
-                  style={styles.inputSpacing}
-                  accessibilityLabel="Full name"
-                />
+                <>
+                  {[
+                    ['last', 'lastName', 'Last Name'],
+                    ['first', 'firstName', 'First Name'],
+                    ['middle', 'middleName', 'Middle Name (optional)'],
+                  ].map(([part, errorKey, label]) => (
+                    <CustomInput
+                      key={part}
+                      label={label}
+                      value={draft.name[part]}
+                      onChangeText={(t) => {
+                        setDraft((d) => ({ ...d, name: { ...d.name, [part]: inputFilters.name(t) } }));
+                        setFieldErrors((e) => ({ ...e, [errorKey]: '' }));
+                      }}
+                      placeholder={label.replace(' (optional)', '')}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      error={fieldErrors[errorKey]}
+                      labelStyle={inputLabelStyle}
+                      style={styles.inputSpacing}
+                    />
+                  ))}
+                  <SuffixSelect
+                    value={draft.name.suffix}
+                    onChange={(s) => {
+                      setDraft((d) => ({ ...d, name: { ...d.name, suffix: s } }));
+                      setFieldErrors((e) => ({ ...e, suffix: '' }));
+                    }}
+                    error={fieldErrors.suffix}
+                    labelStyle={inputLabelStyle}
+                  />
+                </>
               ) : (
                 <InfoRow label="Full Name" value={user.fullName || '—'} />
               )}

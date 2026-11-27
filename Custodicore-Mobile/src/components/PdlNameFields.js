@@ -1,16 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, formStyles, spacing, typography } from '../designSystem';
-import {
-  PDL_NAME_PART_LIMITS,
-  PDL_NAME_SUFFIXES,
-  filterPdlNamePart,
-} from '../utils/intendedPdlName';
+import { PDL_NAME_PART_LIMITS, filterPdlNamePart } from '../utils/intendedPdlName';
+import SuffixSelect from './SuffixSelect';
 
 /**
- * The PDL's name in parts: First, Middle (or "No middle name / Not sure"),
- * Last and an optional Suffix. Used by registration step 2 and Add PDL.
+ * The PDL's name in parts, in the system's standard order: Last, First,
+ * Middle (or "No middle name / Not sure") and an optional Suffix. Used by
+ * registration step 2 and Add PDL. Only the input order follows the
+ * standard; the name sent is still joined First Middle Last Suffix
+ * (composeIntendedPdlName), the natural order the backend stores.
  *
  * Controlled: `value` is a PdlNameParts object; `onChange(patch, errorKey)`
  * gives the changed part(s) and the error key to clear. Errors are keyed
@@ -26,7 +26,6 @@ import {
  * @param {any} [props.inputStyle]
  */
 export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle, labelStyle, inputStyle }) {
-  const [suffixOpen, setSuffixOpen] = useState(false);
   const renderInput = (label, key, errorKey, maxLength) => (
     <View style={[formStyles.field, fieldStyle]}>
       <Text style={[formStyles.label, labelStyle]}>{label}</Text>
@@ -45,6 +44,8 @@ export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle
 
   return (
     <View>
+      {renderInput("PDL's Last Name", 'last', 'pdlLastName', PDL_NAME_PART_LIMITS.last)}
+
       {renderInput("PDL's First Name", 'first', 'pdlFirstName', PDL_NAME_PART_LIMITS.first)}
 
       {value.noMiddleName
@@ -66,45 +67,14 @@ export default function PdlNameFields({ value, onChange, errors = {}, fieldStyle
         <Text style={styles.checkText}>No middle name / Not sure</Text>
       </Pressable>
 
-      {renderInput("PDL's Last Name", 'last', 'pdlLastName', PDL_NAME_PART_LIMITS.last)}
-
-      <View style={[formStyles.field, fieldStyle]}>
-        <Text style={[formStyles.label, labelStyle]}>Suffix (optional)</Text>
-        <Pressable
-          onPress={() => setSuffixOpen(true)}
-          style={[formStyles.input, inputStyle, styles.select, errors.pdlSuffix ? formStyles.inputError : null]}
-          accessibilityRole="button"
-          accessibilityLabel={`Suffix: ${value.suffix || 'None'}. Tap to change.`}
-        >
-          <Text style={styles.selectText}>{value.suffix || 'None'}</Text>
-          <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
-        </Pressable>
-        {errors.pdlSuffix ? <Text style={formStyles.error}>{errors.pdlSuffix}</Text> : null}
-      </View>
-
-      <Modal visible={suffixOpen} transparent animationType="fade" onRequestClose={() => setSuffixOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setSuffixOpen(false)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Select suffix</Text>
-            {['', ...PDL_NAME_SUFFIXES].map((s) => (
-              <Pressable
-                key={s || 'none'}
-                style={styles.modalOption}
-                onPress={() => {
-                  onChange({ suffix: s }, 'pdlSuffix');
-                  setSuffixOpen(false);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: value.suffix === s }}
-              >
-                <Text style={[styles.modalOptionText, value.suffix === s && styles.modalOptionSelected]}>
-                  {s || 'None'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+      <SuffixSelect
+        value={value.suffix}
+        onChange={(s) => onChange({ suffix: s }, 'pdlSuffix')}
+        error={errors.pdlSuffix}
+        fieldStyle={fieldStyle}
+        labelStyle={labelStyle}
+        inputStyle={inputStyle}
+      />
     </View>
   );
 }
@@ -135,44 +105,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
-  },
-  select: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectText: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 61, 122, 0.45)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  modalTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  modalOption: {
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  modalOptionText: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  modalOptionSelected: {
-    fontWeight: '700',
-    color: colors.primaryTeal,
   },
 });

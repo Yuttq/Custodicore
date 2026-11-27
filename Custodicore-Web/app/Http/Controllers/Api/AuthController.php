@@ -455,6 +455,9 @@ class AuthController extends Controller
             // still the combined name everything else uses).
             'firstName' => $request->input('firstName', $request->input('first_name')),
             'lastName' => $request->input('lastName', $request->input('last_name')),
+            // Optional (newer app versions only); older clients never send them.
+            'middleName' => $request->input('middleName', $request->input('middle_name')),
+            'suffix' => is_string($suffix = $request->input('suffix')) ? Sanitizer::suffix($suffix) : $suffix,
             'dateOfBirth' => $request->input('dateOfBirth')
                 ?? $request->input('date_of_birth')
                 ?? $request->input('birthdate'),
@@ -533,7 +536,9 @@ class AuthController extends Controller
                 }
             }],
             'firstName' => ['nullable', 'string', 'max:100'],
-            'lastName' => ['nullable', 'string', 'max:100'],
+            'lastName' => ['nullable', 'string', 'max:100', $this->composedNameFits()],
+            'middleName' => ['nullable', 'string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX],
+            'suffix' => ['nullable', Rule::in(Sanitizer::SUFFIXES)],
             'dateOfBirth' => ['required', 'date', 'before:today'],
             // The visitor's own photo, taken with the app's camera. The server
             // can only check that it is a valid picture, not how it was taken.
@@ -612,9 +617,13 @@ class AuthController extends Controller
         // says; a Record Officer links the PDL later, by hand.
         $profile = VisitorProfile::create([
             'account_id' => $account->account_id,
+            // With first/last name given, the model rebuilds full_name from
+            // the parts (natural order, the same as the app's fullName).
             'full_name' => $request->input('fullName'),
             'first_name' => $request->filled('firstName') ? trim($request->input('firstName')) : null,
+            'middle_name' => $this->trimmedOrNull($request->input('middleName')),
             'last_name' => $request->filled('lastName') ? trim($request->input('lastName')) : null,
+            'suffix' => $request->input('suffix') ?: null,
             'date_of_birth' => $request->input('dateOfBirth'),
             'gender' => $this->normalizeGender($request->input('gender')),
             'address' => $request->input('address'),
@@ -674,6 +683,9 @@ class AuthController extends Controller
         // Accept camelCase and snake_case, as register() does.
         $aliases = [
             'fullName' => 'full_name',
+            'firstName' => 'first_name',
+            'middleName' => 'middle_name',
+            'lastName' => 'last_name',
             'dateOfBirth' => 'date_of_birth',
             'contactNumber' => 'contact_number',
             'emergencyContactName' => 'emergency_contact_name',
@@ -691,8 +703,19 @@ class AuthController extends Controller
             'verifiedAt', 'verified_at', 'relationshipHint', 'relationship_hint',
         ];
 
+        if (is_string($request->input('suffix'))) {
+            $request->merge(['suffix' => Sanitizer::suffix($request->input('suffix'))]);
+        }
+
+        // Newer app versions send the name in parts (Last / First / Middle /
+        // Suffix); older ones send only fullName. Either is accepted.
+        $nameParts = ['firstName', 'middleName', 'lastName', 'suffix'];
         $rules = [
             'fullName' => ['sometimes', 'required', 'string', 'max:150'],
+            'firstName' => ['required_with:lastName,middleName,suffix', 'string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX],
+            'lastName' => ['required_with:firstName,middleName,suffix', 'string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX, $this->composedNameFits()],
+            'middleName' => ['sometimes', 'nullable', 'string', 'max:100', 'regex:' . Sanitizer::NAME_REGEX],
+            'suffix' => ['sometimes', 'nullable', Rule::in(Sanitizer::SUFFIXES)],
             'dateOfBirth' => ['sometimes', 'required', 'date_format:Y-m-d', 'before:today'],
             'gender' => ['sometimes', 'required', 'string', Rule::in(self::GENDERS)],
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -709,7 +732,22 @@ class AuthController extends Controller
         ]);
 
         $updates = [];
-        if (array_key_exists('fullName', $data)) $updates['full_name'] = trim($data['fullName']);
+        if (array_intersect($nameParts, array_keys($data))) {
+            // Parts given: store them; the model rebuilds full_name from them.
+            $updates['first_name'] = trim($data['firstName']);
+            $updates['middle_name'] = $this->trimmedOrNull($data['middleName'] ?? null);
+            $updates['last_name'] = trim($data['lastName']);
+            $updates['suffix'] = ($data['suffix'] ?? null) ?: null;
+            $updates['full_name'] = VisitorProfile::composeFullName(
+                $updates['first_name'], $updates['middle_name'], $updates['last_name'], $updates['suffix']
+            );
+        } elseif (array_key_exists('fullName', $data) && trim($data['fullName']) !== $profile->full_name) {
+            // An older app changed the one-line name: the stored parts no
+            // longer match it, so clear them (lists then show full_name as
+            // typed) instead of keeping a stale first/last name.
+            $updates['full_name'] = trim($data['fullName']);
+            $updates['first_name'] = $updates['middle_name'] = $updates['last_name'] = $updates['suffix'] = null;
+        }
         if (array_key_exists('dateOfBirth', $data)) $updates['date_of_birth'] = $data['dateOfBirth'];
         if (array_key_exists('gender', $data)) $updates['gender'] = $this->normalizeGender($data['gender']);
         if (array_key_exists('address', $data)) $updates['address'] = $data['address'] !== null ? trim($data['address']) : null;
@@ -718,8 +756,11 @@ class AuthController extends Controller
         if (array_key_exists('emergencyContactNumber', $data)) $updates['emergency_contact_number'] = $data['emergencyContactNumber'];
 
         if ($profile->verification_status === 'verified') {
-            $identityChanged =
-                (isset($updates['full_name']) && $updates['full_name'] !== $profile->full_name)
+            $nameChanged = false;
+            foreach (['full_name', 'first_name', 'middle_name', 'last_name', 'suffix'] as $column) {
+                $nameChanged = $nameChanged || (array_key_exists($column, $updates) && $updates[$column] !== $profile->{$column});
+            }
+            $identityChanged = $nameChanged
                 || (isset($updates['date_of_birth']) && $updates['date_of_birth'] !== $profile->date_of_birth?->format('Y-m-d'));
 
             if ($identityChanged) {
@@ -774,7 +815,9 @@ class AuthController extends Controller
             // Only the visitor-facing reason staff entered, only when rejected.
             'rejectionReason' => $profile?->verification_status === 'rejected' ? $profile->rejection_reason : null,
             'firstName' => $profile?->first_name,
+            'middleName' => $profile?->middle_name,
             'lastName' => $profile?->last_name,
+            'suffix' => $profile?->suffix,
             'dateOfBirth' => $profile?->date_of_birth?->format('Y-m-d'),
             'gender' => $profile?->gender,
             'address' => $profile?->address,
@@ -797,6 +840,23 @@ class AuthController extends Controller
     private function cleanedName(mixed $value): ?string
     {
         return is_string($value) ? Sanitizer::fullName($value) : null;
+    }
+
+    /**
+     * Rule for lastName: the name built from the parts (First Middle Last
+     * Suffix) must fit visitor_profiles.full_name (150 characters).
+     */
+    private function composedNameFits(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) {
+            $request = request();
+            $parts = array_map(fn ($v) => is_string($v) ? $v : null, [
+                $request->input('firstName'), $request->input('middleName'), $value, $request->input('suffix'),
+            ]);
+            if (mb_strlen(VisitorProfile::composeFullName(...$parts)) > 150) {
+                $fail('The full name is too long (150 characters at most in total).');
+            }
+        };
     }
 
     /** Optional free-text field: trimmed, or null when empty. */

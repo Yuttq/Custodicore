@@ -26,7 +26,7 @@
                         $statusDot = ['success' => 'bg-success', 'warning' => 'bg-warning', 'danger' => 'bg-danger', 'info' => 'bg-info'][$status['tone']] ?? 'bg-text-secondary';
                     @endphp
                     <p class="flex flex-wrap items-center gap-x-md gap-y-xs">
-                        <span class="text-[22px] font-bold leading-tight text-primary-navy">{{ $visitor->full_name }}</span>
+                        <span class="text-[22px] font-bold leading-tight text-primary-navy">{{ $visitor->listName() }}</span>
                         <span class="inline-flex items-center gap-xs text-body font-semibold {{ $statusTone }}">
                             <span class="h-2.5 w-2.5 rounded-full {{ $statusDot }}" aria-hidden="true"></span>
                             {{ $status['label'] }}

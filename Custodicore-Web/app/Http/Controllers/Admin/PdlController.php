@@ -34,9 +34,10 @@ class PdlController extends Controller
             ->withCount(['restrictions as active_restrictions' => fn ($q) => $q->where('status', 'active')])
             ->when($filter === 'active', fn ($query) => $query->where('custody_status', 'active'))
             ->when($filter === 'restricted', fn ($query) => $query->whereHas('restrictions', fn ($q) => $q->where('status', 'active')))
-            ->when($like, function ($query) use ($like) {
-                $query->where(function ($q) use ($like) {
+            ->when($like, function ($query) use ($like, $search) {
+                $query->where(function ($q) use ($like, $search) {
                     $q->where('full_name', 'like', $like)
+                        ->orWhere(fn ($n) => $n->whereNameMatches((string) $search))
                         ->orWhere('first_name', 'like', $like)
                         ->orWhere('middle_name', 'like', $like)
                         ->orWhere('last_name', 'like', $like)
@@ -51,6 +52,7 @@ class PdlController extends Controller
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
+                'list_name' => $pdl->listName(),
                 'photo' => self::photoUrl($pdl),
                 'classification' => $pdl->classification,
                 'cell_block' => $pdl->cell_block,
@@ -113,6 +115,7 @@ class PdlController extends Controller
             ->withMax(['visitRequests as last_visit_at' => fn ($q) => $q->whereNotNull('assigned_at')], 'assigned_at')
             ->when($like, fn ($query) => $query->where(fn ($q) => $q
                 ->where('full_name', 'like', $like)
+                ->orWhere(fn ($n) => $n->whereNameMatches((string) $search))
                 ->orWhere('pdl_number', 'like', $like)
                 ->orWhere('cell_block', 'like', $like)))
             ->orderBy('visit_count', 'desc')
@@ -124,6 +127,7 @@ class PdlController extends Controller
                 'id' => $pdl->pdl_id,
                 'pdl_number' => $pdl->pdl_number,
                 'full_name' => $pdl->full_name,
+                'list_name' => $pdl->listName(),
                 'photo' => self::photoUrl($pdl),
                 'cell_block' => $pdl->cell_block,
                 'visit_count' => (int) $pdl->visit_count,
@@ -160,7 +164,7 @@ class PdlController extends Controller
             ->filter(fn ($rel) => $rel->isVerified()
                 && $rel->visitor
                 && $rel->visitor->verification_status === 'verified')
-            ->sortBy(fn ($rel) => mb_strtolower((string) $rel->visitor->full_name))
+            ->sortBy(fn ($rel) => mb_strtolower($rel->visitor->listName()))
             ->values();
 
         // Linked to this PDL but not (yet) cleared to visit.

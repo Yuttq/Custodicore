@@ -30,7 +30,7 @@
                         @endphp
                         <li class="flex flex-wrap items-center justify-between gap-sm p-sm">
                             <div>
-                                <p class="text-body font-semibold">{{ $found->full_name }}</p>
+                                <p class="text-body font-semibold">{{ $found->listName() }}</p>
                                 <p class="text-metadata text-text-secondary">
                                     Born {{ $found->date_of_birth?->format('M j, Y') ?? '—' }} ·
                                     {{ $found->isWalkIn() ? 'Walk-in' : 'App user' }}
@@ -85,14 +85,29 @@
             </div>
             <div class="mt-md grid grid-cols-1 gap-md md:grid-cols-3">
                 <div>
+                    <label for="last_name" class="cc-label">Last name *</label>
+                    <input id="last_name" name="last_name" value="{{ old('last_name') }}" maxlength="50" autocomplete="off" @class(['cc-input', 'border-danger' => $errors->has('last_name')]) />
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'last_name'])
+                </div>
+                <div>
                     <label for="first_name" class="cc-label">First name *</label>
                     <input id="first_name" name="first_name" value="{{ old('first_name') }}" maxlength="50" autocomplete="off" @class(['cc-input', 'border-danger' => $errors->has('first_name')]) />
                     @include('frontdesk.walk-ins.partials.field-error', ['name' => 'first_name'])
                 </div>
                 <div>
-                    <label for="last_name" class="cc-label">Last name *</label>
-                    <input id="last_name" name="last_name" value="{{ old('last_name') }}" maxlength="50" autocomplete="off" @class(['cc-input', 'border-danger' => $errors->has('last_name')]) />
-                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'last_name'])
+                    <label for="middle_name" class="cc-label">Middle name (optional)</label>
+                    <input id="middle_name" name="middle_name" value="{{ old('middle_name') }}" maxlength="50" autocomplete="off" @class(['cc-input', 'border-danger' => $errors->has('middle_name')]) />
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'middle_name'])
+                </div>
+                <div>
+                    <label for="suffix" class="cc-label">Suffix (optional)</label>
+                    <select id="suffix" name="suffix" @class(['cc-input', 'border-danger' => $errors->has('suffix')])>
+                        <option value="">None</option>
+                        @foreach (\App\Support\Sanitizer::SUFFIXES as $suffixOption)
+                            <option value="{{ $suffixOption }}" @selected(old('suffix') === $suffixOption)>{{ $suffixOption }}</option>
+                        @endforeach
+                    </select>
+                    @include('frontdesk.walk-ins.partials.field-error', ['name' => 'suffix'])
                 </div>
                 <div>
                     <label for="gender" class="cc-label">Sex *</label>
@@ -198,14 +213,14 @@
                 <div class="relative md:col-span-2">
                     <label for="pdl_search" class="cc-label">PDL to visit *</label>
                     <input id="pdl_search" type="text" autocomplete="off" maxlength="100" role="combobox" aria-expanded="false" aria-controls="pdlResults"
-                           value="{{ $selectedPdl ? $selectedPdl->full_name.' ('.$selectedPdl->pdl_number.')' : '' }}"
+                           value="{{ $selectedPdl ? $selectedPdl->listName().' ('.$selectedPdl->pdl_number.')' : '' }}"
                            placeholder="Type part of the name, alias or PDL number" data-url="{{ route('frontdesk.walk-ins.pdl-search') }}"
                            @class(['cc-input', 'border-danger' => $errors->has('pdl_id')]) />
                     <input type="hidden" id="pdl_id" name="pdl_id" value="{{ $selectedPdl?->pdl_id }}" data-status="{{ $selectedPdl?->custody_status }}" />
                     <ul id="pdlResults" role="listbox" hidden
                         class="absolute z-10 mt-xs max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg"></ul>
                     <p id="pdlChosen" class="mt-xs text-metadata {{ $selectedPdl ? 'font-semibold text-success' : 'text-text-secondary' }}" aria-live="polite">
-                        {{ $selectedPdl ? "Selected: {$selectedPdl->full_name} · {$selectedPdl->pdl_number}" : 'Search, then select the correct PDL from the list.' }}
+                        {{ $selectedPdl ? "Selected: {$selectedPdl->listName()} · {$selectedPdl->pdl_number}" : 'Search, then select the correct PDL from the list.' }}
                     </p>
                     @include('frontdesk.walk-ins.partials.field-error', ['name' => 'pdl_id'])
                 </div>
@@ -580,8 +595,14 @@
         const checks = () => {
             const minor = isMinor();
             const list = [
-                ['first_name', () => nameProblem('first_name', 'First name')],
                 ['last_name', () => nameProblem('last_name', 'Last name')],
+                ['first_name', () => nameProblem('first_name', 'First name')],
+                ['middle_name', () => {
+                    const value = clean('middle_name');
+                    if (!value) return null;
+                    if (!NAME.test(value)) return 'Middle name can only contain letters, spaces, periods, hyphens, and apostrophes.';
+                    return value.length > 50 ? 'Middle name must be 50 characters or fewer.' : null;
+                }],
                 ['gender', () => $('gender').value ? null : 'Please select the visitor’s sex.'],
                 ['date_of_birth', () => {
                     const dob = parseDate(birth.value);

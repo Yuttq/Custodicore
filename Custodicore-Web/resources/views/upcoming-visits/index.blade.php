@@ -83,7 +83,7 @@
             </td>
             <td>
               @if ($visit->visitor)
-                <a class="full-name" href="{{ route('visitor.show', $visit->visitor_id) }}">{{ $visit->visitor->full_name }}</a>
+                <a class="full-name" href="{{ route('visitor.show', $visit->visitor_id) }}">{{ $visit->visitor->listName() }}</a>
               @else
                 —
               @endif

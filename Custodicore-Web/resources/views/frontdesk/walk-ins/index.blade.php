@@ -61,7 +61,7 @@
                         @php $visitor = $row['visitor']; @endphp
                         <tr class="text-body align-top">
                             <td class="py-sm pr-md">
-                                <a href="{{ route('frontdesk.walk-ins.show', $visitor) }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->full_name }}</a>
+                                <a href="{{ route('frontdesk.walk-ins.show', $visitor) }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->listName() }}</a>
                             </td>
                             <td class="py-sm pr-md">
                                 {{ $visitor->intended_pdl_name ?: '—' }}

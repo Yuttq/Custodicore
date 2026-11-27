@@ -254,12 +254,12 @@ class FrontDeskAttendanceLogTest extends TestCase
             ->assertSee('All Activity')
             ->assertSeeInOrder(['System closed the walk-in of Ana Cruz', 'Booked walk-in visit for Lourdes Reyes', 'Front Desk registered walk-in visitor Lourdes Reyes'])
             ->assertSee('09:15')
-            ->assertDontSee('Pedro Santos')
+            ->assertDontSee('Pedro Santos')->assertDontSee('Santos, Pedro')
             ->assertDontSee('Updated PDL record');
 
         $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'date' => '2026-10-18']))->assertOk()
             ->assertSee('Front Desk registered walk-in visitor Pedro Santos')
-            ->assertDontSee('Lourdes Reyes');
+            ->assertDontSee('Lourdes Reyes')->assertDontSee('Reyes, Lourdes');
 
         $this->actingAs($this->frontDeskAccount)->get(route('frontdesk.attendance-log', ['tab' => 'activity', 'q' => 'Booked']))->assertOk()
             ->assertSee('Booked walk-in visit for Lourdes Reyes')

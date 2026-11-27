@@ -29,6 +29,9 @@ export function buildRegisterBody(payload) {
     // Phase 1 First/Last Name, stored separately as well as in fullName.
     firstName: payload.firstName ? String(payload.firstName).trim() : undefined,
     lastName: payload.lastName ? String(payload.lastName).trim() : undefined,
+    // Optional; left out when empty so older servers see the same body.
+    middleName: payload.middleName ? String(payload.middleName).trim() : undefined,
+    suffix: payload.suffix ? String(payload.suffix).trim() : undefined,
     email: String(payload.email || '').trim(),
     password: payload.password,
     // Sent exactly as typed — never filled in from `password`, so the

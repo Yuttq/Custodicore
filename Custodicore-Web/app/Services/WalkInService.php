@@ -106,7 +106,9 @@ class WalkInService
                     'account_id' => $account->account_id,
                     'full_name' => $data['full_name'],
                     'first_name' => $data['first_name'],
+                    'middle_name' => $data['middle_name'] ?? null,
                     'last_name' => $data['last_name'],
+                    'suffix' => $data['suffix'] ?? null,
                     'date_of_birth' => $data['date_of_birth'],
                     'gender' => $data['gender'],
                     'address' => $data['address'] ?? null,
@@ -1029,7 +1031,7 @@ class WalkInService
                         ->orWhere(fn ($alias) => $words->each(fn ($word) => $alias->whereRaw('LOWER(alias) LIKE ?', ['%'.addcslashes($word, '%_\\').'%'])));
                 }
             })
-            ->orderBy('full_name')
+            ->orderByName()
             ->limit(5)
             ->get();
     }

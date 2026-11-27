@@ -92,10 +92,11 @@ class AttendanceLogController extends Controller
                 $like = Sanitizer::like($query);
                 $q->where(fn ($match) => $match
                     ->whereHas('visitRequest', fn ($visit) => $visit->where(fn ($people) => $people
-                        ->whereHas('visitor', fn ($v) => $v->where('full_name', 'like', $like))
-                        ->orWhereHas('pdl', fn ($p) => $p->where('full_name', 'like', $like)->orWhere('pdl_number', 'like', $like))))
-                    ->orWhereHas('checkInOfficer', fn ($o) => $o->where('full_name', 'like', $like))
-                    ->orWhereHas('checkOutOfficer', fn ($o) => $o->where('full_name', 'like', $like)));
+                        // Names show last name first; any word order matches.
+                        ->whereHas('visitor', fn ($v) => $v->whereNameMatches($query))
+                        ->orWhereHas('pdl', fn ($p) => $p->whereNameMatches($query)->orWhere('pdl_number', 'like', $like))))
+                    ->orWhereHas('checkInOfficer', fn ($o) => $o->whereNameMatches($query))
+                    ->orWhereHas('checkOutOfficer', fn ($o) => $o->whereNameMatches($query)));
             });
     }
 

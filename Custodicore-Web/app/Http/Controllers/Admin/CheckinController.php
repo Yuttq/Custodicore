@@ -133,10 +133,10 @@ class CheckinController extends Controller
             ->map(fn ($c) => [
                 'date' => $c->check_in_time?->format('Y-m-d'),
                 'reference' => 'VIS-' . ($c->visitRequest?->created_at?->format('Y-md') ?? now()->format('Y-md')) . '-' . str_pad((string) $c->visit_request_id, 3, '0', STR_PAD_LEFT),
-                'visitor' => $c->visitRequest?->visitor?->full_name ?? 'Unknown',
+                'visitor' => $c->visitRequest?->visitor?->listName() ?? 'Unknown',
                 // Staff-only photo for the avatar; null falls back to initials.
                 'photo' => $c->visitRequest?->visitor?->photoUrl(),
-                'pdl' => $c->visitRequest?->pdl?->full_name ?? '—',
+                'pdl' => $c->visitRequest?->pdl?->listName() ?? '—',
                 // There is no separate "purpose" field on a visit request, so it is
                 // worked out from the visitor's relationship to the PDL.
                 'purpose' => $c->visitRequest?->relationship?->relationship_type === 'legal_counsel'
@@ -146,11 +146,18 @@ class CheckinController extends Controller
                 'check_out_time' => $c->check_out_time?->format('H:i'),
                 'status' => $c->status,
             ])
-            ->when($needle, fn ($rows) => $rows->filter(
-                fn ($r) => str_contains(mb_strtolower($r['reference']), $needle)
-                    || str_contains(mb_strtolower($r['visitor']), $needle)
-                    || str_contains(mb_strtolower($r['pdl']), $needle)
-            ))
+            ->when($needle, function ($rows) use ($needle) {
+                // Names show last name first; every typed word must appear, in
+                // any order, so "Juan Dela Cruz" and "Dela Cruz, Juan" both match.
+                $words = preg_split('/[\s,]+/u', $needle, -1, PREG_SPLIT_NO_EMPTY) ?: [$needle];
+                $hasAll = fn (string $name) => collect($words)->every(fn ($w) => str_contains(mb_strtolower($name), $w));
+
+                return $rows->filter(
+                    fn ($r) => str_contains(mb_strtolower($r['reference']), $needle)
+                        || $hasAll($r['visitor'])
+                        || $hasAll($r['pdl'])
+                );
+            })
             ->values()
             ->all();
     }

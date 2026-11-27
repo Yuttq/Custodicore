@@ -189,8 +189,8 @@ class CheckinCheckoutController extends Controller
                 'registeredIdType' => $registered['type_label'] ?? 'No verified ID on file',
                 'registeredIdStatus' => isset($registered['status']) ? ucfirst($registered['status']) : '—',
                 'visitorId' => $visit->visitor?->visitor_id,
-                'visitorName' => $visit->visitor?->full_name ?? '—',
-                'pdlName' => $visit->pdl?->full_name ?? '—',
+                'visitorName' => $visit->visitor?->listName() ?? '—',
+                'pdlName' => $visit->pdl?->listName() ?? '—',
                 'pdlNumber' => $visit->pdl?->pdl_number ?? '—',
                 'scheduleDate' => $session ? Carbon::parse($session->schedule_date)->format('M d, Y') : null,
                 'scheduleStart' => $session ? Carbon::parse($session->time_slot_start)->format('H:i') : null,
@@ -218,8 +218,8 @@ class CheckinCheckoutController extends Controller
                 return [
                     'checkinId' => $checkin->checkin_id,
                     'visitorId' => $visit->visitor?->visitor_id,
-                    'visitorName' => $visit->visitor?->full_name ?? '—',
-                    'pdlName' => $visit->pdl?->full_name ?? '—',
+                    'visitorName' => $visit->visitor?->listName() ?? '—',
+                    'pdlName' => $visit->pdl?->listName() ?? '—',
                     'pdlNumber' => $visit->pdl?->pdl_number ?? '—',
                     'relationship' => $details['relationship'],
                     'pdlStatus' => $details['pdl_status'],
@@ -519,8 +519,8 @@ class CheckinCheckoutController extends Controller
                     'status_label' => 'Inside Facility',
                     'visitor' => [
                         'visitor_id' => $visitRequest->visitor?->visitor_id,
-                        'name' => $visitRequest->visitor?->full_name ?? '—',
-                        'pdl' => $visitRequest->pdl?->full_name ?? '—',
+                        'name' => $visitRequest->visitor?->listName() ?? '—',
+                        'pdl' => $visitRequest->pdl?->listName() ?? '—',
                         'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
                     ],
                     'details' => $this->visitDetails($visitRequest, 'Checked in'),
@@ -529,8 +529,8 @@ class CheckinCheckoutController extends Controller
                     'surrendered_id' => $this->surrenderedId($checkin),
                     'checkin' => [
                         'checkin_id' => $checkin->checkin_id,
-                        'visitor_name' => $visitRequest->visitor?->full_name ?? '—',
-                        'pdl_name' => $visitRequest->pdl?->full_name ?? '—',
+                        'visitor_name' => $visitRequest->visitor?->listName() ?? '—',
+                        'pdl_name' => $visitRequest->pdl?->listName() ?? '—',
                         'pdl_number' => $visitRequest->pdl?->pdl_number ?? '—',
                         'check_in_time' => $checkin->check_in_time
                             ? Carbon::parse($checkin->check_in_time)->format('M d, Y H:i')
@@ -702,10 +702,10 @@ class CheckinCheckoutController extends Controller
                         $visitRequest->visitor?->visitor_id,
 
                     'name' =>
-                        $visitRequest->visitor?->full_name ?? '—',
+                        $visitRequest->visitor?->listName() ?? '—',
 
                     'pdl' =>
-                        $visitRequest->pdl?->full_name ?? '—',
+                        $visitRequest->pdl?->listName() ?? '—',
 
                     'pdl_number' =>
                         $visitRequest->pdl?->pdl_number ?? '—',
@@ -1155,10 +1155,10 @@ class CheckinCheckoutController extends Controller
 
                 'visitor' => [
                     'name' =>
-                        $visitRequest->visitor?->full_name ?? '—',
+                        $visitRequest->visitor?->listName() ?? '—',
 
                     'pdl' =>
-                        $visitRequest->pdl?->full_name ?? '—',
+                        $visitRequest->pdl?->listName() ?? '—',
 
                     'pdl_number' =>
                         $visitRequest->pdl?->pdl_number ?? '—',
@@ -1724,7 +1724,7 @@ class CheckinCheckoutController extends Controller
                             .($checkin->check_in_time?->format('M j, Y H:i') ?? '—').'). '
                             .'Surrendered ID still at desk: '.$data['id_at_desk'].'. '
                             ."Reason: {$data['reason']}. "
-                            .'Visitor: '.($visitRequest->visitor?->full_name ?? '—'),
+                            .'Visitor: '.($visitRequest->visitor?->listName() ?? '—'),
                         255,
                         ''
                     ),

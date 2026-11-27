@@ -59,7 +59,7 @@
                             <td class="py-sm pr-md">
                                 <div class="flex items-center gap-sm">
                                     @include('admin.partials.avatar', ['name' => $pdl['full_name'], 'photo' => $pdl['photo'] ?? null, 'size' => 'h-8 w-8'])
-                                    <a href="{{ route('admin.pdls.show', $pdl['id']) }}" class="font-semibold hover:underline">{{ $pdl['full_name'] }}</a>
+                                    <a href="{{ route('admin.pdls.show', $pdl['id']) }}" class="font-semibold hover:underline">{{ $pdl['list_name'] }}</a>
                                 </div>
                             </td>
                             <td class="py-sm pr-md text-text-secondary">{{ $pdl['cell_block'] }}</td>

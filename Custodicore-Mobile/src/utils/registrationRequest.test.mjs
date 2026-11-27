@@ -155,3 +155,25 @@ test('no relationship documents without keys or files', () => {
     [],
   );
 });
+
+test('middle name and suffix are sent with a natural-order fullName', () => {
+  const body = buildRegisterBody(
+    payload({
+      fullName: 'Juan Santos Dela Cruz Jr.',
+      firstName: 'Juan',
+      lastName: 'Dela Cruz',
+      middleName: 'Santos',
+      suffix: 'Jr.',
+    }),
+  );
+  assert.equal(body.fullName, 'Juan Santos Dela Cruz Jr.');
+  assert.equal(body.middleName, 'Santos');
+  assert.equal(body.suffix, 'Jr.');
+  assert.equal(body.lastName, 'Dela Cruz');
+});
+
+test('no middle name or suffix: the keys are left out', () => {
+  const body = buildRegisterBody(payload({ middleName: '', suffix: '' }));
+  assert.equal('middleName' in body, false);
+  assert.equal('suffix' in body, false);
+});

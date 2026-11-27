@@ -44,7 +44,7 @@
                         @php $profileUrl = route('frontdesk.visitor-lookup.show', [$visitor->visitor_id, 'q' => $query]); @endphp
                         <tr class="cursor-pointer text-body align-top transition-colors hover:bg-background" data-row-href="{{ $profileUrl }}">
                             <td class="py-sm pr-md">
-                                <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->full_name }}</a>
+                                <a href="{{ $profileUrl }}" class="font-semibold text-primary-teal hover:underline">{{ $visitor->listName() }}</a>
                                 <span class="block text-metadata text-text-secondary">Visitor ID {{ $visitor->visitor_id }}</span>
                             </td>
                             <td class="py-sm pr-md">{{ $visitor->contact_number && $visitor->contact_number !== 'N/A' ? $visitor->contact_number : '—' }}</td>
